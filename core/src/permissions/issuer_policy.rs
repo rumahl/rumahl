@@ -15,15 +15,15 @@ use super::{
 
 #[derive(Debug, Default)]
 pub struct GrantIssuerPolicy {
-    user_access: HashMap<UserId, UserRole>,
+    user_roles: HashMap<UserId, UserRole>,
     trusted_services: HashSet<ServiceId>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum GrantIssuerPolicyError {
     AppCannotIssueGrant,
-    UserAccessNotAssigned,
-    UserAccessInsufficient,
+    UserRoleNotAssigned,
+    UserRoleInsufficient,
     ServiceNotTrusted,
 }
 
@@ -32,12 +32,12 @@ impl GrantIssuerPolicy {
         Self::default()
     }
 
-    pub fn set_user_access(
+    pub fn set_user_role(
         &mut self,
         user: UserId,
-        access: UserRole,
+        role: UserRole,
     ) {
-        self.user_access.insert(user, access);
+        self.user_roles.insert(user, role);
     }
 
     pub fn trust_service(
@@ -70,24 +70,24 @@ impl GrantIssuerPolicy {
             }
 
             Identity::User(user) => {
-                let access = self
-                    .user_access
+                let role = self
+                    .user_roles
                     .get(user.id())
                     .copied()
                     .ok_or(
-                        GrantIssuerPolicyError::UserAccessNotAssigned
+                        GrantIssuerPolicyError::UserRoleNotAssigned
                     )?;
 
-                Self::authorize_user(access, scope)
+                Self::authorize_user(role, scope)
             }
         }
     }
 
     fn authorize_user(
-        access: UserRole,
+        role: UserRole,
         scope: PermissionScope,
     ) -> Result<(), GrantIssuerPolicyError> {
-        let allowed = match access {
+        let allowed = match role {
             UserRole::PreAuthentication => false,
 
             UserRole::User => {
@@ -126,7 +126,7 @@ impl GrantIssuerPolicy {
             Ok(())
         } else {
             Err(
-                GrantIssuerPolicyError::UserAccessInsufficient
+                GrantIssuerPolicyError::UserRoleInsufficient
             )
         }
     }
@@ -142,14 +142,14 @@ impl fmt::Display for GrantIssuerPolicyError {
                 )
             }
 
-            Self::UserAccessNotAssigned => {
+            Self::UserRoleNotAssigned => {
                 write!(
                     f,
                     "user has no assigned access class"
                 )
             }
 
-            Self::UserAccessInsufficient => {
+            Self::UserRoleInsufficient => {
                 write!(
                     f,
                     "user access class is insufficient for this permission scope"
@@ -185,7 +185,7 @@ mod tests {
         let mut policy =
             GrantIssuerPolicy::new();
 
-        policy.set_user_access(
+        policy.set_user_role(
             user_id,
             UserRole::User,
         );
@@ -207,7 +207,7 @@ mod tests {
         let mut policy =
             GrantIssuerPolicy::new();
 
-        policy.set_user_access(
+        policy.set_user_role(
             user_id,
             UserRole::User,
         );
@@ -218,7 +218,7 @@ mod tests {
                 PermissionScope::System
             ),
             Err(
-                GrantIssuerPolicyError::UserAccessInsufficient
+                GrantIssuerPolicyError::UserRoleInsufficient
             )
         );
     }
@@ -231,7 +231,7 @@ mod tests {
         let mut policy =
             GrantIssuerPolicy::new();
 
-        policy.set_user_access(
+        policy.set_user_role(
             user_id,
             UserRole::Owner,
         );

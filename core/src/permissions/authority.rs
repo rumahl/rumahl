@@ -131,7 +131,7 @@ mod tests {
         let mut policy =
             GrantIssuerPolicy::new();
 
-        policy.set_user_access(
+        policy.set_user_role(
             user_id,
             UserRole::User,
         );
@@ -244,7 +244,7 @@ mod tests {
         let mut policy =
             GrantIssuerPolicy::new();
 
-        policy.set_user_access(
+        policy.set_user_role(
             user_id,
             UserRole::User,
         );
