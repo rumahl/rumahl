@@ -5,6 +5,7 @@ mod installation_id;
 mod publisher_id;
 mod service;
 mod service_id;
+mod session_id;
 mod user;
 mod user_id;
 
@@ -38,4 +39,9 @@ pub use user::UserIdentity;
 pub use user_id::{
     UserId,
     UserIdError,
+};
+
+pub use session_id::{
+    SessionId,
+    SessionIdError,
 };

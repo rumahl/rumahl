@@ -1,4 +1,11 @@
+pub mod context;
 pub mod identity;
+
+pub use context::{
+    CorrelationId,
+    CorrelationIdError,
+    OperationContext,
+};
 
 pub use identity::{
     AppId,
@@ -12,6 +19,8 @@ pub use identity::{
     ServiceId,
     ServiceIdError,
     ServiceIdentity,
+    SessionId,
+    SessionIdError,
     UserId,
     UserIdError,
     UserIdentity,
