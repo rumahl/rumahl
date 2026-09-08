@@ -46,6 +46,8 @@ pub use permissions::{
     GrantAuthority,
     GrantAuthorityError,
     GrantId,
+    GrantIssuerPolicy,
+    GrantIssuerPolicyError,
     InMemoryGrantStore,
     PermissionGrant,
     PermissionGrantError,
@@ -53,6 +55,7 @@ pub use permissions::{
     PermissionIdError,
     PermissionRequest,
     PermissionScope,
+    UserAccessClass,
 };
 
 #[cfg(test)]

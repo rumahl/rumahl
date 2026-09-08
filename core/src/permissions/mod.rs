@@ -7,6 +7,8 @@ mod id;
 mod request;
 mod scope;
 mod store;
+mod issuer_policy;
+mod role;
 
 pub use authorization::{
     AuthorizationDecision,
@@ -36,3 +38,10 @@ pub use id::{
 pub use request::PermissionRequest;
 pub use scope::PermissionScope;
 pub use store::InMemoryGrantStore;
+
+pub use issuer_policy::{
+    GrantIssuerPolicy,
+    GrantIssuerPolicyError,
+};
+
+pub use role::UserRole;

@@ -5,6 +5,8 @@ use crate::identity::Identity;
 use crate::resources::ResourceRef;
 
 use super::{
+    GrantIssuerPolicy,
+    GrantIssuerPolicyError,
     PermissionGrant,
     PermissionGrantError,
     PermissionId,
@@ -16,7 +18,7 @@ pub struct GrantAuthority;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum GrantAuthorityError {
-    AppCannotIssueGrant,
+    IssuerNotAuthorized(GrantIssuerPolicyError),
     InvalidGrant(PermissionGrantError),
 }
 
@@ -27,17 +29,18 @@ impl GrantAuthority {
 
     pub fn issue(
         &self,
+        policy: &GrantIssuerPolicy,
         issuer: Identity,
         subject: Identity,
         permission: PermissionId,
         scope: PermissionScope,
         resources: Vec<ResourceRef>,
     ) -> Result<PermissionGrant, GrantAuthorityError> {
-        if issuer.is_app() {
-            return Err(
-                GrantAuthorityError::AppCannotIssueGrant
-            );
-        }
+        policy
+            .authorize_issuer(&issuer, scope)
+            .map_err(
+                GrantAuthorityError::IssuerNotAuthorized
+            )?;
 
         PermissionGrant::new(
             subject,
@@ -53,10 +56,10 @@ impl GrantAuthority {
 impl fmt::Display for GrantAuthorityError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::AppCannotIssueGrant => {
+            Self::IssuerNotAuthorized(error) => {
                 write!(
                     f,
-                    "apps are not allowed to issue permission grants"
+                    "grant issuer is not authorized: {error}"
                 )
             }
 
@@ -73,7 +76,7 @@ impl fmt::Display for GrantAuthorityError {
 impl Error for GrantAuthorityError {
     fn source(&self) -> Option<&(dyn Error + 'static)> {
         match self {
-            Self::AppCannotIssueGrant => None,
+            Self::IssuerNotAuthorized(error) => Some(error),
             Self::InvalidGrant(error) => Some(error),
         }
     }
@@ -93,6 +96,7 @@ mod tests {
         ResourceNamespace,
         ServiceId,
         ServiceIdentity,
+        UserAccessClass,
         UserId,
         UserIdentity,
     };
@@ -114,47 +118,68 @@ mod tests {
     }
 
     #[test]
-    fn user_can_issue_grant() {
-        let authority = GrantAuthority::new();
+    fn authorized_user_can_issue_grant() {
+        let authority =
+            GrantAuthority::new();
 
         let user =
             UserIdentity::new(UserId::new());
 
-        let app =
-            notes_app();
+        let user_id =
+            *user.id();
 
-        let resource =
-            file("document-1");
+        let mut policy =
+            GrantIssuerPolicy::new();
+
+        policy.set_user_access(
+            user_id,
+            UserAccessClass::User,
+        );
 
         let result = authority.issue(
+            &policy,
             user.into(),
-            app.into(),
-            PermissionId::parse("rumahl.files.read").unwrap(),
+            notes_app().into(),
+            PermissionId::parse(
+                "rumahl.files.read"
+            )
+            .unwrap(),
             PermissionScope::Explicit,
-            vec![resource],
+            vec![file("document-1")],
         );
 
         assert!(result.is_ok());
     }
 
     #[test]
-    fn service_can_issue_grant() {
-        let authority = GrantAuthority::new();
+    fn trusted_service_can_issue_grant() {
+        let authority =
+            GrantAuthority::new();
 
-        let service = ServiceIdentity::new(
+        let service_id =
             ServiceId::parse(
                 "rumahl.permission-service"
             )
-            .unwrap(),
-        );
+            .unwrap();
 
-        let app =
-            notes_app();
+        let service =
+            ServiceIdentity::new(
+                service_id.clone()
+            );
+
+        let mut policy =
+            GrantIssuerPolicy::new();
+
+        policy.trust_service(service_id);
 
         let result = authority.issue(
+            &policy,
             service.into(),
-            app.into(),
-            PermissionId::parse("rumahl.files.read").unwrap(),
+            notes_app().into(),
+            PermissionId::parse(
+                "rumahl.files.read"
+            )
+            .unwrap(),
             PermissionScope::Explicit,
             vec![file("document-1")],
         );
@@ -167,30 +192,45 @@ mod tests {
         let authority =
             GrantAuthority::new();
 
+        let policy =
+            GrantIssuerPolicy::new();
+
         let issuer =
             notes_app();
 
         let subject = AppIdentity::new(
-            AppId::parse("com.example.reader").unwrap(),
+            AppId::parse(
+                "com.example.reader"
+            )
+            .unwrap(),
             InstallationId::new(),
-            PublisherId::parse("com.example").unwrap(),
+            PublisherId::parse(
+                "com.example"
+            )
+            .unwrap(),
         );
 
         let result = authority.issue(
+            &policy,
             issuer.into(),
             subject.into(),
-            PermissionId::parse("rumahl.files.read").unwrap(),
+            PermissionId::parse(
+                "rumahl.files.read"
+            )
+            .unwrap(),
             PermissionScope::Explicit,
             vec![file("document-1")],
         );
 
         assert_eq!(
             result.unwrap_err(),
-            GrantAuthorityError::AppCannotIssueGrant
+            GrantAuthorityError::IssuerNotAuthorized(
+                GrantIssuerPolicyError::AppCannotIssueGrant
+            )
         );
     }
 
-        #[test]
+    #[test]
     fn rejects_invalid_grant() {
         let authority =
             GrantAuthority::new();
@@ -198,13 +238,25 @@ mod tests {
         let user =
             UserIdentity::new(UserId::new());
 
-        let app =
-            notes_app();
+        let user_id =
+            *user.id();
+
+        let mut policy =
+            GrantIssuerPolicy::new();
+
+        policy.set_user_access(
+            user_id,
+            UserAccessClass::User,
+        );
 
         let result = authority.issue(
+            &policy,
             user.into(),
-            app.into(),
-            PermissionId::parse("rumahl.files.read").unwrap(),
+            notes_app().into(),
+            PermissionId::parse(
+                "rumahl.files.read"
+            )
+            .unwrap(),
             PermissionScope::Explicit,
             vec![],
         );
