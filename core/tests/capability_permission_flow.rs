@@ -4,6 +4,7 @@ use rumahl_core::{
     AuthorizationDecision,
     AuthorizationDenyReason,
     AuthorizationEngine,
+    CapabilityAccessRegistry,
     CapabilityAccessRule,
     CapabilityId,
     CapabilityInvocation,
@@ -166,31 +167,42 @@ fn capability_invocation_is_authorized_through_permission_engine() {
         );
 
     /*
-     * Platform rule:
-     *
-     * rumahl.files.preview
-     * requires
-     * rumahl.files.read
-     */
+    * Trusted platform access rules.
+    *
+    * rumahl.files.preview
+    * requires
+    * rumahl.files.read
+    */
 
     let access_rule =
         CapabilityAccessRule::new(
-            capability,
+            capability.clone(),
             PermissionId::parse(
                 "rumahl.files.read"
             )
             .unwrap(),
         );
 
-    let engine =
-        AuthorizationEngine::new();
+    let mut access_registry =
+        CapabilityAccessRegistry::new();
+
+    access_registry
+        .register(access_rule)
+        .unwrap();
+
+    let resolved_rule =
+        access_registry
+            .rule_for(&capability)
+            .unwrap();
+
+    let engine = AuthorizationEngine::new();
 
     /*
      * document-1 was granted.
      */
 
     let allowed_request =
-        access_rule
+        resolved_rule
             .authorization_request(
                 &invocation,
                 Some(allowed_file),
@@ -210,7 +222,7 @@ fn capability_invocation_is_authorized_through_permission_engine() {
      */
 
     let denied_request =
-        access_rule
+        resolved_rule
             .authorization_request(
                 &invocation,
                 Some(denied_file),
