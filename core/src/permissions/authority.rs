@@ -70,8 +70,32 @@ mod tests {
 
     use crate::{
         AppId, AppIdentity, InstallationId, PublisherId, ResourceKey, ResourceKind,
-        ResourceNamespace, ServiceId, ServiceIdentity, UserId, UserIdentity, UserRole,
+        ResourceNamespace, ResourceRef, ServiceId, ServiceIdentity, UserId, UserIdentity,
     };
+
+    use super::super::{
+        GrantIssuerPolicy, PermissionGrantError, PermissionId, PermissionScope, UserRole,
+    };
+
+    fn test_app_identity() -> AppIdentity {
+        AppIdentity::new(
+            AppId::parse("com.rumahl.notes").unwrap(),
+            InstallationId::new(),
+            PublisherId::parse("com.rumahl").unwrap(),
+        )
+    }
+
+    fn test_owner_identity() -> UserIdentity {
+        UserIdentity::new(UserId::new())
+    }
+
+    fn test_file_resource() -> ResourceRef {
+        ResourceRef::new(
+            ResourceNamespace::parse("rumahl.files").unwrap(),
+            ResourceKind::parse("file").unwrap(),
+            ResourceKey::parse("document-1").unwrap(),
+        )
+    }
 
     fn notes_app() -> AppIdentity {
         AppIdentity::new(
@@ -190,6 +214,38 @@ mod tests {
         assert_eq!(
             result.unwrap_err(),
             GrantAuthorityError::InvalidGrant(PermissionGrantError::ExplicitScopeRequiresResources)
+        );
+    }
+    #[test]
+    fn rejects_system_grant_with_resources() {
+        let owner = test_owner_identity();
+
+        let owner_id = *owner.id();
+
+        let subject = test_app_identity();
+
+        let resource = test_file_resource();
+
+        let mut policy = GrantIssuerPolicy::new();
+
+        policy.set_user_role(owner_id, UserRole::Owner);
+
+        let authority = GrantAuthority::new();
+
+        let result = authority.issue(
+            &policy,
+            owner.into(),
+            subject.into(),
+            PermissionId::parse("rumahl.files.read").unwrap(),
+            PermissionScope::System,
+            vec![resource],
+        );
+
+        assert_eq!(
+            result.unwrap_err(),
+            GrantAuthorityError::InvalidGrant(
+                PermissionGrantError::SystemScopeCannotContainResources
+            )
         );
     }
 }
