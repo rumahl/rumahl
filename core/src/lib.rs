@@ -64,6 +64,8 @@ pub use capabilities::{
     CapabilityAccessRegistryError,
     CapabilityAccessRule,
     CapabilityAccessRuleError,
+    CapabilityDispatchError,
+    CapabilityDispatcher,
     CapabilityId,
     CapabilityIdError,
     CapabilityInvocation,

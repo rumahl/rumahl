@@ -1,9 +1,10 @@
 mod access;
+mod access_registry;
+mod dispatcher;
 mod id;
 mod provider;
 mod registry;
 mod invocation;
-mod access_registry;
 
 pub use access::{
     CapabilityAccessRule,
@@ -13,6 +14,11 @@ pub use access::{
 pub use access_registry::{
     CapabilityAccessRegistry,
     CapabilityAccessRegistryError,
+};
+
+pub use dispatcher::{
+    CapabilityDispatchError,
+    CapabilityDispatcher,
 };
 
 pub use id::{
