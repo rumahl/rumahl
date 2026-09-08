@@ -41,7 +41,10 @@ pub use contributions::{
     SearchContribution, SearchRegistry, SearchRegistryError,
 };
 
-pub use events::{EventEnvelope, EventId, EventName, EventNameError};
+pub use events::{
+    EventBus, EventBusError, EventDelivery, EventEnvelope, EventId, EventName, EventNameError,
+    EventSubscription, EventSubscriptionError,
+};
 
 #[cfg(test)]
 mod tests {
