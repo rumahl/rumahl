@@ -8,6 +8,7 @@ mod scope;
 
 pub use authorization::{
     AuthorizationDecision,
+    AuthorizationDenyReason,
     AuthorizationRequest,
 };
 

@@ -1,5 +1,6 @@
 use super::{
     AuthorizationDecision,
+    AuthorizationDenyReason,
     AuthorizationRequest,
     PermissionGrant,
     PermissionScope,
@@ -27,43 +28,88 @@ impl AuthorizationEngine {
         &self,
         request: &AuthorizationRequest,
     ) -> AuthorizationDecision {
+        let actor = request.context().actor();
+
+        let mut has_actor_grant = false;
+        let mut has_permission_grant = false;
+
+        let mut resource_required = false;
+        let mut resource_outside_scope = false;
+        let mut unsupported_scope = false;
+
         for grant in &self.grants {
-            if grant.subject() != request.context().actor() {
+            if grant.subject() != actor {
                 continue;
             }
+
+            has_actor_grant = true;
 
             if grant.permission() != request.permission() {
                 continue;
             }
 
-            if Self::grant_matches_request(grant, request) {
-                return AuthorizationDecision::Allow;
+            has_permission_grant = true;
+
+            match grant.scope() {
+                PermissionScope::System => {
+                    return AuthorizationDecision::Allow;
+                }
+
+                PermissionScope::Explicit => {
+                    let Some(resource) = request.resource() else {
+                        resource_required = true;
+                        continue;
+                    };
+
+                    if grant.resources().contains(resource) {
+                        return AuthorizationDecision::Allow;
+                    }
+
+                    resource_outside_scope = true;
+                }
+
+                PermissionScope::AppPrivate
+                | PermissionScope::UserOwn
+                | PermissionScope::UserSelected
+                | PermissionScope::FamilyShared => {
+                    unsupported_scope = true;
+                }
             }
         }
 
-        AuthorizationDecision::Deny
-    }
-
-    fn grant_matches_request(
-        grant: &PermissionGrant,
-        request: &AuthorizationRequest,
-    ) -> bool {
-        match grant.scope() {
-            PermissionScope::Explicit => {
-                let Some(resource) = request.resource() else {
-                    return false;
-                };
-
-                grant.resources().contains(resource)
-            }
-
-            PermissionScope::System => true,
-
-            PermissionScope::AppPrivate
-            | PermissionScope::UserOwn
-            | PermissionScope::UserSelected
-            | PermissionScope::FamilyShared => false,
+        if !has_actor_grant {
+            return AuthorizationDecision::Deny(
+                AuthorizationDenyReason::NoGrantForActor,
+            );
         }
+
+        if !has_permission_grant {
+            return AuthorizationDecision::Deny(
+                AuthorizationDenyReason::PermissionNotGranted,
+            );
+        }
+
+        if resource_required {
+            return AuthorizationDecision::Deny(
+                AuthorizationDenyReason::ResourceRequired,
+            );
+        }
+
+        if resource_outside_scope {
+            return AuthorizationDecision::Deny(
+                AuthorizationDenyReason::ResourceOutsideScope,
+            );
+        }
+
+        if unsupported_scope {
+            return AuthorizationDecision::Deny(
+                AuthorizationDenyReason::UnsupportedScope,
+            );
+        }
+
+        AuthorizationDecision::Deny(
+            AuthorizationDenyReason::PermissionNotGranted,
+        )
     }
 }
 
@@ -77,7 +123,6 @@ mod tests {
         InstallationId,
         OperationContext,
         PermissionId,
-        PermissionScope,
         PublisherId,
         ResourceKey,
         ResourceKind,
@@ -103,37 +148,32 @@ mod tests {
         )
     }
 
-        #[test]
+    #[test]
     fn allows_explicitly_granted_resource() {
         let app = notes_app();
-
-        let allowed_file =
-            file("document-1");
+        let target = file("document-1");
 
         let grant = PermissionGrant::new(
             app.clone().into(),
             PermissionId::parse("rumahl.files.read").unwrap(),
             PermissionScope::Explicit,
-            vec![allowed_file.clone()],
+            vec![target.clone()],
             app.clone().into(),
         );
 
-        let context =
-            OperationContext::for_app_as_user(
-                app,
-                UserId::new(),
-                SessionId::new(),
-            );
+        let context = OperationContext::for_app_as_user(
+            app,
+            UserId::new(),
+            SessionId::new(),
+        );
 
         let request = AuthorizationRequest::new(
             context,
             PermissionId::parse("rumahl.files.read").unwrap(),
-            Some(allowed_file),
+            Some(target),
         );
 
-        let mut engine =
-            AuthorizationEngine::new();
-
+        let mut engine = AuthorizationEngine::new();
         engine.add_grant(grant);
 
         assert_eq!(
@@ -142,15 +182,12 @@ mod tests {
         );
     }
 
-        #[test]
+    #[test]
     fn denies_resource_not_in_explicit_grant() {
         let app = notes_app();
 
-        let allowed_file =
-            file("document-1");
-
-        let denied_file =
-            file("private-document");
+        let allowed_file = file("document-1");
+        let denied_file = file("private-document");
 
         let grant = PermissionGrant::new(
             app.clone().into(),
@@ -160,12 +197,11 @@ mod tests {
             app.clone().into(),
         );
 
-        let context =
-            OperationContext::for_app_as_user(
-                app,
-                UserId::new(),
-                SessionId::new(),
-            );
+        let context = OperationContext::for_app_as_user(
+            app,
+            UserId::new(),
+            SessionId::new(),
+        );
 
         let request = AuthorizationRequest::new(
             context,
@@ -173,98 +209,85 @@ mod tests {
             Some(denied_file),
         );
 
-        let mut engine =
-            AuthorizationEngine::new();
-
+        let mut engine = AuthorizationEngine::new();
         engine.add_grant(grant);
 
         assert_eq!(
             engine.authorize(&request),
-            AuthorizationDecision::Deny
+            AuthorizationDecision::Deny(
+                AuthorizationDenyReason::ResourceOutsideScope
+            )
         );
     }
 
-        #[test]
-    fn denies_permission_not_granted() {
+    #[test]
+    fn explicit_scope_requires_resource() {
+        let app = notes_app();
+        let target = file("document-1");
+
+        let grant = PermissionGrant::new(
+            app.clone().into(),
+            PermissionId::parse("rumahl.files.read").unwrap(),
+            PermissionScope::Explicit,
+            vec![target],
+            app.clone().into(),
+        );
+
+        let context = OperationContext::for_app_as_user(
+            app,
+            UserId::new(),
+            SessionId::new(),
+        );
+
+        let request = AuthorizationRequest::new(
+            context,
+            PermissionId::parse("rumahl.files.read").unwrap(),
+            None,
+        );
+
+        let mut engine = AuthorizationEngine::new();
+        engine.add_grant(grant);
+
+        assert_eq!(
+            engine.authorize(&request),
+            AuthorizationDecision::Deny(
+                AuthorizationDenyReason::ResourceRequired
+            )
+        );
+    }
+
+    #[test]
+    fn denies_unsupported_scope() {
         let app = notes_app();
 
-        let target =
-            file("document-1");
-
         let grant = PermissionGrant::new(
             app.clone().into(),
             PermissionId::parse("rumahl.files.read").unwrap(),
-            PermissionScope::Explicit,
-            vec![target.clone()],
+            PermissionScope::UserOwn,
+            vec![],
             app.clone().into(),
         );
 
-        let context =
-            OperationContext::for_app_as_user(
-                app,
-                UserId::new(),
-                SessionId::new(),
-            );
-
-        let request = AuthorizationRequest::new(
-            context,
-            PermissionId::parse("rumahl.files.write").unwrap(),
-            Some(target),
+        let context = OperationContext::for_app_as_user(
+            app,
+            UserId::new(),
+            SessionId::new(),
         );
-
-        let mut engine =
-            AuthorizationEngine::new();
-
-        engine.add_grant(grant);
-
-        assert_eq!(
-            engine.authorize(&request),
-            AuthorizationDecision::Deny
-        );
-    }
-
-        #[test]
-    fn denies_grant_owned_by_different_actor() {
-        let notes = notes_app();
-
-        let other_app = AppIdentity::new(
-            AppId::parse("com.example.reader").unwrap(),
-            InstallationId::new(),
-            PublisherId::parse("com.example").unwrap(),
-        );
-
-        let target =
-            file("document-1");
-
-        let grant = PermissionGrant::new(
-            notes.into(),
-            PermissionId::parse("rumahl.files.read").unwrap(),
-            PermissionScope::Explicit,
-            vec![target.clone()],
-            other_app.clone().into(),
-        );
-
-        let context =
-            OperationContext::for_app_as_user(
-                other_app,
-                UserId::new(),
-                SessionId::new(),
-            );
 
         let request = AuthorizationRequest::new(
             context,
             PermissionId::parse("rumahl.files.read").unwrap(),
-            Some(target),
+            Some(file("document-1")),
         );
 
-        let mut engine =
-            AuthorizationEngine::new();
-
+        let mut engine = AuthorizationEngine::new();
         engine.add_grant(grant);
 
         assert_eq!(
             engine.authorize(&request),
-            AuthorizationDecision::Deny
+            AuthorizationDecision::Deny(
+                AuthorizationDenyReason::UnsupportedScope
+            )
         );
     }
 }

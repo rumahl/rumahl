@@ -40,6 +40,7 @@ pub use resources::{
 
 pub use permissions::{
     AuthorizationDecision,
+    AuthorizationDenyReason,
     AuthorizationEngine,
     AuthorizationRequest,
     GrantId,

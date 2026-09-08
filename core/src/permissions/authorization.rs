@@ -36,10 +36,19 @@ impl AuthorizationRequest {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AuthorizationDenyReason {
+    NoGrantForActor,
+    PermissionNotGranted,
+    ResourceRequired,
+    ResourceOutsideScope,
+    UnsupportedScope,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum AuthorizationDecision {
     Allow,
-    Deny,
+    Deny(AuthorizationDenyReason),
     RequireUserApproval,
     RequireReauthentication,
 }
