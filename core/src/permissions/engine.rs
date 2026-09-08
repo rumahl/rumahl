@@ -16,10 +16,6 @@ impl AuthorizationEngine {
         Self::default()
     }
 
-    pub fn add_grant(&mut self, grant: PermissionGrant) {
-        self.grants.push(grant);
-    }
-
     pub fn grants(&self) -> &[PermissionGrant] {
         &self.grants
     }
@@ -174,8 +170,7 @@ mod tests {
             Some(target),
         );
 
-        let mut engine = AuthorizationEngine::new();
-        engine.add_grant(grant);
+        let engine = AuthorizationEngine::new(vec![grant]);
 
         assert_eq!(
             engine.authorize(&request),
@@ -211,8 +206,7 @@ mod tests {
             Some(denied_file),
         );
 
-        let mut engine = AuthorizationEngine::new();
-        engine.add_grant(grant);
+        let engine = AuthorizationEngine::new(vec![grant]);
 
         assert_eq!(
             engine.authorize(&request),
@@ -248,8 +242,7 @@ mod tests {
             None,
         );
 
-        let mut engine = AuthorizationEngine::new();
-        engine.add_grant(grant);
+        let engine = AuthorizationEngine::new(vec![grant]);
 
         assert_eq!(
             engine.authorize(&request),
@@ -284,8 +277,7 @@ mod tests {
             Some(file("document-1")),
         );
 
-        let mut engine = AuthorizationEngine::new();
-        engine.add_grant(grant);
+        let engine = AuthorizationEngine::new(vec![grant]);
 
         assert_eq!(
             engine.authorize(&request),
