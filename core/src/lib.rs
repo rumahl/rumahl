@@ -1,5 +1,6 @@
 pub mod capabilities;
 pub mod context;
+pub mod contributions;
 pub mod identity;
 pub mod permissions;
 pub mod resources;
@@ -30,6 +31,11 @@ pub use capabilities::{
     CapabilityDispatcher, CapabilityExecution, CapabilityId, CapabilityIdError,
     CapabilityInvocation, CapabilityProvider, CapabilityProviderError, CapabilityRegistry,
     CapabilityRegistryError,
+};
+
+pub use contributions::{
+    Contribution, ContributionError, ContributionId, ContributionIdError, ContributionKind,
+    ContributionKindError, ContributionRegistry, ContributionRegistryError,
 };
 
 #[cfg(test)]
