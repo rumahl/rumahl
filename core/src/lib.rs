@@ -62,6 +62,7 @@ pub use permissions::{
 pub use capabilities::{
     CapabilityId,
     CapabilityIdError,
+    CapabilityInvocation,
     CapabilityProvider,
     CapabilityProviderError,
     CapabilityRegistry,

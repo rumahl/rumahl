@@ -1,5 +1,6 @@
 use std::error::Error;
 use std::fmt;
+use crate::identity::Identity;
 
 use super::{
     CapabilityId,
@@ -55,8 +56,17 @@ impl CapabilityRegistry {
         self.providers.contains(provider)
     }
 
-    pub fn providers(&self) -> &[CapabilityProvider] {
-        &self.providers
+    pub fn provider(
+        &self,
+        capability: &CapabilityId,
+        identity: &Identity,
+    ) -> Option<&CapabilityProvider> {
+        self.providers
+            .iter()
+            .find(|provider| {
+                provider.capability() == capability
+                    && provider.identity() == identity
+            })
     }
 
     pub fn len(&self) -> usize {
@@ -152,7 +162,7 @@ mod tests {
         );
     }
 
-        #[test]
+    #[test]
     fn capability_can_have_multiple_providers() {
         let notes =
             search_provider(
@@ -182,7 +192,7 @@ mod tests {
         assert_eq!(providers.len(), 2);
     }
 
-        #[test]
+    #[test]
     fn providers_are_filtered_by_capability() {
         let notes =
             search_provider(
@@ -217,6 +227,110 @@ mod tests {
         assert_eq!(
             registry.providers_for(&search).len(),
             1
+        );
+    }
+
+    #[test]
+    fn resolves_specific_provider() {
+        let notes =
+            app("com.rumahl.notes");
+
+        let files =
+            app("com.rumahl.files");
+
+        let notes_identity =
+            notes.clone().into();
+
+        let capability =
+            CapabilityId::parse(
+                "rumahl.search.query"
+            )
+            .unwrap();
+
+        let notes_provider =
+            CapabilityProvider::new(
+                notes.into(),
+                capability.clone(),
+            )
+            .unwrap();
+
+        let files_provider =
+            CapabilityProvider::new(
+                files.into(),
+                capability.clone(),
+            )
+            .unwrap();
+
+        let mut registry =
+            CapabilityRegistry::new();
+
+        registry
+            .register(notes_provider)
+            .unwrap();
+
+        registry
+            .register(files_provider)
+            .unwrap();
+
+        let resolved = registry
+            .provider(
+                &capability,
+                &notes_identity,
+            )
+            .unwrap();
+
+        assert_eq!(
+            resolved.identity(),
+            &notes_identity
+        );
+
+        assert_eq!(
+            resolved.capability(),
+            &capability
+        );
+    }
+
+    #[test]
+    fn does_not_resolve_identity_for_wrong_capability() {
+        let notes =
+            app("com.rumahl.notes");
+
+        let notes_identity =
+            notes.clone().into();
+
+        let search =
+            CapabilityId::parse(
+                "rumahl.search.query"
+            )
+            .unwrap();
+
+        let preview =
+            CapabilityId::parse(
+                "rumahl.files.preview"
+            )
+            .unwrap();
+
+        let provider =
+            CapabilityProvider::new(
+                notes.into(),
+                search,
+            )
+            .unwrap();
+
+        let mut registry =
+            CapabilityRegistry::new();
+
+        registry
+            .register(provider)
+            .unwrap();
+
+        assert!(
+            registry
+                .provider(
+                    &preview,
+                    &notes_identity,
+                )
+                .is_none()
         );
     }
 }

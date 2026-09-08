@@ -1,6 +1,7 @@
 mod id;
 mod provider;
 mod registry;
+mod invocation;
 
 pub use id::{
     CapabilityId,
@@ -16,3 +17,5 @@ pub use registry::{
     CapabilityRegistry,
     CapabilityRegistryError,
 };
+
+pub use invocation::CapabilityInvocation;
