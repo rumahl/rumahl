@@ -1,0 +1,232 @@
+use std::error::Error;
+use std::fmt;
+
+use crate::Identity;
+
+use super::{ContributionId, SearchContribution};
+
+#[derive(Debug, Default)]
+pub struct SearchRegistry {
+    contributions: Vec<SearchContribution>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum SearchRegistryError {
+    AlreadyRegistered,
+}
+
+impl SearchRegistry {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    pub fn register(
+        &mut self,
+        contribution: SearchContribution,
+    ) -> Result<(), SearchRegistryError> {
+        if self
+            .contributions
+            .iter()
+            .any(|existing| existing.id() == contribution.id())
+        {
+            return Err(SearchRegistryError::AlreadyRegistered);
+        }
+
+        self.contributions.push(contribution);
+
+        Ok(())
+    }
+
+    pub fn get(&self, id: &ContributionId) -> Option<&SearchContribution> {
+        self.contributions
+            .iter()
+            .find(|contribution| contribution.id() == id)
+    }
+
+    pub fn contributions_for_owner(&self, owner: &Identity) -> Vec<&SearchContribution> {
+        self.contributions
+            .iter()
+            .filter(|contribution| contribution.owner() == owner)
+            .collect()
+    }
+
+    pub fn contributions(&self) -> &[SearchContribution] {
+        &self.contributions
+    }
+
+    pub fn len(&self) -> usize {
+        self.contributions.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.contributions.is_empty()
+    }
+}
+
+impl fmt::Display for SearchRegistryError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::AlreadyRegistered => {
+                write!(f, "search contribution is already registered")
+            }
+        }
+    }
+}
+
+impl Error for SearchRegistryError {}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    use crate::{AppId, AppIdentity, CapabilityId, InstallationId, PublisherId};
+
+    fn app(id: &str) -> AppIdentity {
+        AppIdentity::new(
+            AppId::parse(id).unwrap(),
+            InstallationId::new(),
+            PublisherId::parse("com.rumahl").unwrap(),
+        )
+    }
+
+    fn search(id: &str, owner: AppIdentity, capability: &str) -> SearchContribution {
+        SearchContribution::new(
+            ContributionId::parse(id).unwrap(),
+            owner.into(),
+            CapabilityId::parse(capability).unwrap(),
+        )
+        .unwrap()
+    }
+
+    #[test]
+    fn registers_search_contribution() {
+        let mut registry = SearchRegistry::new();
+
+        registry
+            .register(search(
+                "com.rumahl.notes.search",
+                app("com.rumahl.notes"),
+                "com.rumahl.notes.search",
+            ))
+            .unwrap();
+
+        assert_eq!(registry.len(), 1);
+
+        assert!(!registry.is_empty());
+    }
+
+    #[test]
+    fn resolves_search_contribution_by_id() {
+        let id = ContributionId::parse("com.rumahl.notes.search").unwrap();
+
+        let mut registry = SearchRegistry::new();
+
+        registry
+            .register(search(
+                id.as_str(),
+                app("com.rumahl.notes"),
+                "com.rumahl.notes.search",
+            ))
+            .unwrap();
+
+        let resolved = registry.get(&id).unwrap();
+
+        assert_eq!(resolved.id(), &id);
+
+        assert_eq!(resolved.capability().as_str(), "com.rumahl.notes.search");
+    }
+
+    #[test]
+    fn rejects_duplicate_search_contribution_id() {
+        let notes = app("com.rumahl.notes");
+
+        let first = search(
+            "com.rumahl.notes.search",
+            notes.clone(),
+            "com.rumahl.notes.search",
+        );
+
+        let duplicate = search(
+            "com.rumahl.notes.search",
+            notes,
+            "com.rumahl.notes.search-v2",
+        );
+
+        let mut registry = SearchRegistry::new();
+
+        registry.register(first).unwrap();
+
+        assert_eq!(
+            registry.register(duplicate).unwrap_err(),
+            SearchRegistryError::AlreadyRegistered
+        );
+    }
+
+    #[test]
+    fn lists_search_contributions_for_owner() {
+        let notes = app("com.rumahl.notes");
+
+        let files = app("com.rumahl.files");
+
+        let notes_identity = notes.clone().into();
+
+        let mut registry = SearchRegistry::new();
+
+        registry
+            .register(search(
+                "com.rumahl.notes.search",
+                notes.clone(),
+                "com.rumahl.notes.search",
+            ))
+            .unwrap();
+
+        registry
+            .register(search(
+                "com.rumahl.notes.search-recent",
+                notes,
+                "com.rumahl.notes.search-recent",
+            ))
+            .unwrap();
+
+        registry
+            .register(search(
+                "com.rumahl.files.search",
+                files,
+                "com.rumahl.files.search",
+            ))
+            .unwrap();
+
+        let contributions = registry.contributions_for_owner(&notes_identity);
+
+        assert_eq!(contributions.len(), 2);
+
+        assert!(
+            contributions
+                .iter()
+                .all(|contribution| { contribution.owner() == &notes_identity })
+        );
+    }
+
+    #[test]
+    fn multiple_apps_can_register_search_contributions() {
+        let mut registry = SearchRegistry::new();
+
+        registry
+            .register(search(
+                "com.rumahl.notes.search",
+                app("com.rumahl.notes"),
+                "com.rumahl.notes.search",
+            ))
+            .unwrap();
+
+        registry
+            .register(search(
+                "com.rumahl.files.search",
+                app("com.rumahl.files"),
+                "com.rumahl.files.search",
+            ))
+            .unwrap();
+
+        assert_eq!(registry.len(), 2);
+    }
+}
