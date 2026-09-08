@@ -37,6 +37,7 @@ pub use contributions::{
     CommandAction, CommandContribution, CommandContributionError, CommandRegistry,
     CommandRegistryError, Contribution, ContributionError, ContributionId, ContributionIdError,
     ContributionKind, ContributionKindError, ContributionRegistry, ContributionRegistryError,
+    SearchContribution,
 };
 
 #[cfg(test)]
