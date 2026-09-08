@@ -26,7 +26,7 @@ pub struct PermissionGrant {
 }
 
 impl PermissionGrant {
-    pub fn new(
+    pub(crate) fn new(
         subject: Identity,
         permission: PermissionId,
         scope: PermissionScope,

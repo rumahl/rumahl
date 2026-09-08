@@ -43,6 +43,8 @@ pub use permissions::{
     AuthorizationDenyReason,
     AuthorizationEngine,
     AuthorizationRequest,
+    GrantAuthority,
+    GrantAuthorityError,
     GrantId,
     InMemoryGrantStore,
     PermissionGrant,
