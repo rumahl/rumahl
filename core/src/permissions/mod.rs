@@ -14,7 +14,10 @@ pub use authorization::{
 
 pub use engine::AuthorizationEngine;
 
-pub use grant::PermissionGrant;
+pub use grant::{
+    PermissionGrant,
+    PermissionGrantError,
+};
 pub use grant_id::GrantId;
 
 pub use id::{

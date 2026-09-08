@@ -159,7 +159,8 @@ mod tests {
             PermissionScope::Explicit,
             vec![target.clone()],
             app.clone().into(),
-        );
+        )
+        .unwrap();
 
         let context = OperationContext::for_app_as_user(
             app,
@@ -195,7 +196,8 @@ mod tests {
             PermissionScope::Explicit,
             vec![allowed_file],
             app.clone().into(),
-        );
+        )
+        .unwrap();
 
         let context = OperationContext::for_app_as_user(
             app,
@@ -231,7 +233,8 @@ mod tests {
             PermissionScope::Explicit,
             vec![target],
             app.clone().into(),
-        );
+        )
+        .unwrap();
 
         let context = OperationContext::for_app_as_user(
             app,
@@ -266,7 +269,8 @@ mod tests {
             PermissionScope::UserOwn,
             vec![],
             app.clone().into(),
-        );
+        )
+        .unwrap();
 
         let context = OperationContext::for_app_as_user(
             app,

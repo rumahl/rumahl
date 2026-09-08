@@ -45,6 +45,7 @@ pub use permissions::{
     AuthorizationRequest,
     GrantId,
     PermissionGrant,
+    PermissionGrantError,
     PermissionId,
     PermissionIdError,
     PermissionRequest,
@@ -80,7 +81,8 @@ mod tests {
             PermissionScope::Explicit,
             vec![file.clone()],
             app.into(),
-        );
+        )
+        .unwrap();
 
         assert_eq!(
             grant.permission().as_str(),
