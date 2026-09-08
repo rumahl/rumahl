@@ -1,6 +1,7 @@
 pub mod capabilities;
 pub mod context;
 pub mod contributions;
+pub mod events;
 pub mod identity;
 pub mod permissions;
 pub mod resources;
@@ -39,6 +40,8 @@ pub use contributions::{
     ContributionKind, ContributionKindError, ContributionRegistry, ContributionRegistryError,
     SearchContribution, SearchRegistry, SearchRegistryError,
 };
+
+pub use events::{EventEnvelope, EventId, EventName, EventNameError};
 
 #[cfg(test)]
 mod tests {
