@@ -26,9 +26,10 @@ pub use permissions::{
 
 pub use capabilities::{
     CapabilityAccessRegistry, CapabilityAccessRegistryError, CapabilityAccessRule,
-    CapabilityAccessRuleError, CapabilityDispatchError, CapabilityDispatcher, CapabilityId,
-    CapabilityIdError, CapabilityInvocation, CapabilityProvider, CapabilityProviderError,
-    CapabilityRegistry, CapabilityRegistryError,
+    CapabilityAccessRuleError, CapabilityDispatchError, CapabilityDispatchOutcome,
+    CapabilityDispatcher, CapabilityExecution, CapabilityId, CapabilityIdError,
+    CapabilityInvocation, CapabilityProvider, CapabilityProviderError, CapabilityRegistry,
+    CapabilityRegistryError,
 };
 
 #[cfg(test)]
