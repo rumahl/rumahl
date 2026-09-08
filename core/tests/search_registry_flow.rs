@@ -21,7 +21,7 @@ fn search(id: &str, owner: AppIdentity, capability: &str) -> SearchContribution 
 }
 
 #[test]
-fn search_contributions_can_be_registered_across_apps() {
+fn search_providers_can_be_registered_across_apps() {
     let notes = app("com.rumahl.notes", "com.rumahl");
 
     let files = app("com.rumahl.files", "com.rumahl");
@@ -50,21 +50,21 @@ fn search_contributions_can_be_registered_across_apps() {
 
     assert_eq!(registry.len(), 2);
 
-    let notes_contributions = registry.contributions_for_owner(&notes_identity);
+    let notes_providers = registry.providers_for_owner(&notes_identity);
 
-    assert_eq!(notes_contributions.len(), 1);
+    assert_eq!(notes_providers.len(), 1);
 
     assert_eq!(
-        notes_contributions[0].capability().as_str(),
+        notes_providers[0].capability().as_str(),
         "com.rumahl.notes.search"
     );
 
-    let files_contributions = registry.contributions_for_owner(&files_identity);
+    let files_providers = registry.providers_for_owner(&files_identity);
 
-    assert_eq!(files_contributions.len(), 1);
+    assert_eq!(files_providers.len(), 1);
 
     assert_eq!(
-        files_contributions[0].capability().as_str(),
+        files_providers[0].capability().as_str(),
         "com.rumahl.files.search"
     );
 }
@@ -94,7 +94,7 @@ fn search_contribution_can_be_resolved_with_capability() {
 }
 
 #[test]
-fn owner_can_register_multiple_search_contributions() {
+fn owner_can_register_multiple_search_providers() {
     let notes = app("com.rumahl.notes", "com.rumahl");
 
     let notes_identity = notes.clone().into();
@@ -117,12 +117,12 @@ fn owner_can_register_multiple_search_contributions() {
         ))
         .unwrap();
 
-    let contributions = registry.contributions_for_owner(&notes_identity);
+    let providers = registry.providers_for_owner(&notes_identity);
 
-    assert_eq!(contributions.len(), 2);
+    assert_eq!(providers.len(), 2);
 
     assert!(
-        contributions
+        providers
             .iter()
             .all(|contribution| { contribution.owner() == &notes_identity })
     );

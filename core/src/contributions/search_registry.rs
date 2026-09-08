@@ -7,7 +7,7 @@ use super::{ContributionId, SearchContribution};
 
 #[derive(Debug, Default)]
 pub struct SearchRegistry {
-    contributions: Vec<SearchContribution>,
+    providers: Vec<SearchContribution>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -25,41 +25,41 @@ impl SearchRegistry {
         contribution: SearchContribution,
     ) -> Result<(), SearchRegistryError> {
         if self
-            .contributions
+            .providers
             .iter()
             .any(|existing| existing.id() == contribution.id())
         {
             return Err(SearchRegistryError::AlreadyRegistered);
         }
 
-        self.contributions.push(contribution);
+        self.providers.push(contribution);
 
         Ok(())
     }
 
     pub fn get(&self, id: &ContributionId) -> Option<&SearchContribution> {
-        self.contributions
+        self.providers
             .iter()
             .find(|contribution| contribution.id() == id)
     }
 
-    pub fn contributions_for_owner(&self, owner: &Identity) -> Vec<&SearchContribution> {
-        self.contributions
+    pub fn providers_for_owner(&self, owner: &Identity) -> Vec<&SearchContribution> {
+        self.providers
             .iter()
             .filter(|contribution| contribution.owner() == owner)
             .collect()
     }
 
-    pub fn contributions(&self) -> &[SearchContribution] {
-        &self.contributions
+    pub fn providers(&self) -> &[SearchContribution] {
+        &self.providers
     }
 
     pub fn len(&self) -> usize {
-        self.contributions.len()
+        self.providers.len()
     }
 
     pub fn is_empty(&self) -> bool {
-        self.contributions.is_empty()
+        self.providers.is_empty()
     }
 }
 
@@ -163,7 +163,7 @@ mod tests {
     }
 
     #[test]
-    fn lists_search_contributions_for_owner() {
+    fn lists_search_providers_for_owner() {
         let notes = app("com.rumahl.notes");
 
         let files = app("com.rumahl.files");
@@ -196,19 +196,19 @@ mod tests {
             ))
             .unwrap();
 
-        let contributions = registry.contributions_for_owner(&notes_identity);
+        let providers = registry.providers_for_owner(&notes_identity);
 
-        assert_eq!(contributions.len(), 2);
+        assert_eq!(providers.len(), 2);
 
         assert!(
-            contributions
+            providers
                 .iter()
                 .all(|contribution| { contribution.owner() == &notes_identity })
         );
     }
 
     #[test]
-    fn multiple_apps_can_register_search_contributions() {
+    fn multiple_apps_can_register_search_providers() {
         let mut registry = SearchRegistry::new();
 
         registry
