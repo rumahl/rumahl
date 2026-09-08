@@ -44,6 +44,7 @@ pub use permissions::{
     AuthorizationEngine,
     AuthorizationRequest,
     GrantId,
+    InMemoryGrantStore,
     PermissionGrant,
     PermissionGrantError,
     PermissionId,
