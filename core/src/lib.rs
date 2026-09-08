@@ -2,6 +2,7 @@ pub mod context;
 pub mod identity;
 pub mod resources;
 pub mod permissions;
+pub mod capabilities;
 
 pub use context::{
     CorrelationId,
@@ -56,6 +57,15 @@ pub use permissions::{
     PermissionRequest,
     PermissionScope,
     UserRole,
+};
+
+pub use capabilities::{
+    CapabilityId,
+    CapabilityIdError,
+    CapabilityProvider,
+    CapabilityProviderError,
+    CapabilityRegistry,
+    CapabilityRegistryError,
 };
 
 #[cfg(test)]
