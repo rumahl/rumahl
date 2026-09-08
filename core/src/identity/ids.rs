@@ -81,10 +81,7 @@ fn validate_segment(segment: &str) -> Result<(), AppIdError> {
     }
 
     for character in characters {
-        if !character.is_ascii_lowercase()
-            && !character.is_ascii_digit()
-            && character != '-'
-        {
+        if !character.is_ascii_lowercase() && !character.is_ascii_digit() && character != '-' {
             return Err(AppIdError::InvalidCharacter(character));
         }
     }
@@ -128,11 +125,7 @@ impl fmt::Display for AppIdError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::Empty => write!(f, "app ID must not be empty"),
-            Self::TooLong => write!(
-                f,
-                "app ID must not exceed {} characters",
-                AppId::MAX_LENGTH
-            ),
+            Self::TooLong => write!(f, "app ID must not exceed {} characters", AppId::MAX_LENGTH),
             Self::TooFewSegments => write!(
                 f,
                 "app ID must contain at least {} segments",

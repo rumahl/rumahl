@@ -10,11 +10,7 @@ pub struct ResourceRef {
 }
 
 impl ResourceRef {
-    pub fn new(
-        namespace: ResourceNamespace,
-        kind: ResourceKind,
-        key: ResourceKey,
-    ) -> Self {
+    pub fn new(namespace: ResourceNamespace, kind: ResourceKind, key: ResourceKey) -> Self {
         Self {
             namespace,
             kind,
@@ -37,12 +33,6 @@ impl ResourceRef {
 
 impl fmt::Display for ResourceRef {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "{}:{}:{}",
-            self.namespace,
-            self.kind,
-            self.key,
-        )
+        write!(f, "{}:{}:{}", self.namespace, self.kind, self.key,)
     }
 }

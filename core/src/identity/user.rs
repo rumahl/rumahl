@@ -23,8 +23,7 @@ mod tests {
     fn creates_user_identity() {
         let user_id = UserId::new();
 
-        let identity =
-            UserIdentity::new(user_id);
+        let identity = UserIdentity::new(user_id);
 
         assert_eq!(identity.id(), &user_id);
     }

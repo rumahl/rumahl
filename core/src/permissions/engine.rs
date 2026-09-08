@@ -1,8 +1,5 @@
 use super::{
-    AuthorizationDecision,
-    AuthorizationDenyReason,
-    AuthorizationRequest,
-    PermissionGrant,
+    AuthorizationDecision, AuthorizationDenyReason, AuthorizationRequest, PermissionGrant,
     PermissionScope,
 };
 
@@ -68,38 +65,26 @@ impl AuthorizationEngine {
         }
 
         if !has_actor_grant {
-            return AuthorizationDecision::Deny(
-                AuthorizationDenyReason::NoGrantForActor,
-            );
+            return AuthorizationDecision::Deny(AuthorizationDenyReason::NoGrantForActor);
         }
 
         if !has_permission_grant {
-            return AuthorizationDecision::Deny(
-                AuthorizationDenyReason::PermissionNotGranted,
-            );
+            return AuthorizationDecision::Deny(AuthorizationDenyReason::PermissionNotGranted);
         }
 
         if resource_required {
-            return AuthorizationDecision::Deny(
-                AuthorizationDenyReason::ResourceRequired,
-            );
+            return AuthorizationDecision::Deny(AuthorizationDenyReason::ResourceRequired);
         }
 
         if resource_outside_scope {
-            return AuthorizationDecision::Deny(
-                AuthorizationDenyReason::ResourceOutsideScope,
-            );
+            return AuthorizationDecision::Deny(AuthorizationDenyReason::ResourceOutsideScope);
         }
 
         if unsupported_scope {
-            return AuthorizationDecision::Deny(
-                AuthorizationDenyReason::UnsupportedScope,
-            );
+            return AuthorizationDecision::Deny(AuthorizationDenyReason::UnsupportedScope);
         }
 
-        AuthorizationDecision::Deny(
-            AuthorizationDenyReason::PermissionNotGranted,
-        )
+        AuthorizationDecision::Deny(AuthorizationDenyReason::PermissionNotGranted)
     }
 }
 
@@ -108,18 +93,8 @@ mod tests {
     use super::*;
 
     use crate::{
-        AppId,
-        AppIdentity,
-        InstallationId,
-        OperationContext,
-        PermissionId,
-        PublisherId,
-        ResourceKey,
-        ResourceKind,
-        ResourceNamespace,
-        ResourceRef,
-        SessionId,
-        UserId,
+        AppId, AppIdentity, InstallationId, OperationContext, PermissionId, PublisherId,
+        ResourceKey, ResourceKind, ResourceNamespace, ResourceRef, SessionId, UserId,
     };
 
     fn notes_app() -> AppIdentity {
@@ -152,11 +127,7 @@ mod tests {
         )
         .unwrap();
 
-        let context = OperationContext::for_app_as_user(
-            app,
-            UserId::new(),
-            SessionId::new(),
-        );
+        let context = OperationContext::for_app_as_user(app, UserId::new(), SessionId::new());
 
         let request = AuthorizationRequest::new(
             context,
@@ -167,10 +138,7 @@ mod tests {
         let engine = AuthorizationEngine::new();
 
         assert_eq!(
-            engine.authorize(
-                &request,
-                &[grant],
-            ),
+            engine.authorize(&request, &[grant],),
             AuthorizationDecision::Allow
         );
     }
@@ -191,11 +159,7 @@ mod tests {
         )
         .unwrap();
 
-        let context = OperationContext::for_app_as_user(
-            app,
-            UserId::new(),
-            SessionId::new(),
-        );
+        let context = OperationContext::for_app_as_user(app, UserId::new(), SessionId::new());
 
         let request = AuthorizationRequest::new(
             context,
@@ -207,9 +171,7 @@ mod tests {
 
         assert_eq!(
             engine.authorize(&request, &[grant]),
-            AuthorizationDecision::Deny(
-                AuthorizationDenyReason::ResourceOutsideScope
-            )
+            AuthorizationDecision::Deny(AuthorizationDenyReason::ResourceOutsideScope)
         );
     }
 
@@ -227,11 +189,7 @@ mod tests {
         )
         .unwrap();
 
-        let context = OperationContext::for_app_as_user(
-            app,
-            UserId::new(),
-            SessionId::new(),
-        );
+        let context = OperationContext::for_app_as_user(app, UserId::new(), SessionId::new());
 
         let request = AuthorizationRequest::new(
             context,
@@ -243,9 +201,7 @@ mod tests {
 
         assert_eq!(
             engine.authorize(&request, &[grant]),
-            AuthorizationDecision::Deny(
-                AuthorizationDenyReason::ResourceRequired
-            )
+            AuthorizationDecision::Deny(AuthorizationDenyReason::ResourceRequired)
         );
     }
 
@@ -262,11 +218,7 @@ mod tests {
         )
         .unwrap();
 
-        let context = OperationContext::for_app_as_user(
-            app,
-            UserId::new(),
-            SessionId::new(),
-        );
+        let context = OperationContext::for_app_as_user(app, UserId::new(), SessionId::new());
 
         let request = AuthorizationRequest::new(
             context,
@@ -278,9 +230,7 @@ mod tests {
 
         assert_eq!(
             engine.authorize(&request, &[grant]),
-            AuthorizationDecision::Deny(
-                AuthorizationDenyReason::UnsupportedScope
-            )
+            AuthorizationDecision::Deny(AuthorizationDenyReason::UnsupportedScope)
         );
     }
 }

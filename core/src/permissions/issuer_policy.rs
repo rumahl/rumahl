@@ -2,16 +2,9 @@ use std::collections::{HashMap, HashSet};
 use std::error::Error;
 use std::fmt;
 
-use crate::identity::{
-    Identity,
-    ServiceId,
-    UserId,
-};
+use crate::identity::{Identity, ServiceId, UserId};
 
-use super::{
-    PermissionScope,
-    UserRole,
-};
+use super::{PermissionScope, UserRole};
 
 #[derive(Debug, Default)]
 pub struct GrantIssuerPolicy {
@@ -32,18 +25,11 @@ impl GrantIssuerPolicy {
         Self::default()
     }
 
-    pub fn set_user_role(
-        &mut self,
-        user: UserId,
-        role: UserRole,
-    ) {
+    pub fn set_user_role(&mut self, user: UserId, role: UserRole) {
         self.user_roles.insert(user, role);
     }
 
-    pub fn trust_service(
-        &mut self,
-        service: ServiceId,
-    ) {
+    pub fn trust_service(&mut self, service: ServiceId) {
         self.trusted_services.insert(service);
     }
 
@@ -53,19 +39,13 @@ impl GrantIssuerPolicy {
         scope: PermissionScope,
     ) -> Result<(), GrantIssuerPolicyError> {
         match issuer {
-            Identity::App(_) => {
-                Err(
-                    GrantIssuerPolicyError::AppCannotIssueGrant
-                )
-            }
+            Identity::App(_) => Err(GrantIssuerPolicyError::AppCannotIssueGrant),
 
             Identity::Service(service) => {
                 if self.trusted_services.contains(service.id()) {
                     Ok(())
                 } else {
-                    Err(
-                        GrantIssuerPolicyError::ServiceNotTrusted
-                    )
+                    Err(GrantIssuerPolicyError::ServiceNotTrusted)
                 }
             }
 
@@ -74,9 +54,7 @@ impl GrantIssuerPolicy {
                     .user_roles
                     .get(user.id())
                     .copied()
-                    .ok_or(
-                        GrantIssuerPolicyError::UserRoleNotAssigned
-                    )?;
+                    .ok_or(GrantIssuerPolicyError::UserRoleNotAssigned)?;
 
                 Self::authorize_user(role, scope)
             }
@@ -125,9 +103,7 @@ impl GrantIssuerPolicy {
         if allowed {
             Ok(())
         } else {
-            Err(
-                GrantIssuerPolicyError::UserRoleInsufficient
-            )
+            Err(GrantIssuerPolicyError::UserRoleInsufficient)
         }
     }
 }
@@ -136,17 +112,11 @@ impl fmt::Display for GrantIssuerPolicyError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::AppCannotIssueGrant => {
-                write!(
-                    f,
-                    "apps are not allowed to issue permission grants"
-                )
+                write!(f, "apps are not allowed to issue permission grants")
             }
 
             Self::UserRoleNotAssigned => {
-                write!(
-                    f,
-                    "user has no assigned access class"
-                )
+                write!(f, "user has no assigned access class")
             }
 
             Self::UserRoleInsufficient => {
@@ -157,10 +127,7 @@ impl fmt::Display for GrantIssuerPolicyError {
             }
 
             Self::ServiceNotTrusted => {
-                write!(
-                    f,
-                    "service is not trusted to issue permission grants"
-                )
+                write!(f, "service is not trusted to issue permission grants")
             }
         }
     }
@@ -172,29 +139,19 @@ impl Error for GrantIssuerPolicyError {}
 mod tests {
     use super::*;
 
-    use crate::{
-        ServiceIdentity,
-        UserIdentity,
-    };
+    use crate::{ServiceIdentity, UserIdentity};
 
     #[test]
     fn normal_user_can_issue_explicit_grant() {
         let user = UserIdentity::new(UserId::new());
         let user_id = *user.id();
 
-        let mut policy =
-            GrantIssuerPolicy::new();
+        let mut policy = GrantIssuerPolicy::new();
 
-        policy.set_user_role(
-            user_id,
-            UserRole::User,
-        );
+        policy.set_user_role(user_id, UserRole::User);
 
         assert_eq!(
-            policy.authorize_issuer(
-                &user.into(),
-                PermissionScope::Explicit
-            ),
+            policy.authorize_issuer(&user.into(), PermissionScope::Explicit),
             Ok(())
         );
     }
@@ -204,22 +161,13 @@ mod tests {
         let user = UserIdentity::new(UserId::new());
         let user_id = *user.id();
 
-        let mut policy =
-            GrantIssuerPolicy::new();
+        let mut policy = GrantIssuerPolicy::new();
 
-        policy.set_user_role(
-            user_id,
-            UserRole::User,
-        );
+        policy.set_user_role(user_id, UserRole::User);
 
         assert_eq!(
-            policy.authorize_issuer(
-                &user.into(),
-                PermissionScope::System
-            ),
-            Err(
-                GrantIssuerPolicyError::UserRoleInsufficient
-            )
+            policy.authorize_issuer(&user.into(), PermissionScope::System),
+            Err(GrantIssuerPolicyError::UserRoleInsufficient)
         );
     }
 
@@ -228,70 +176,40 @@ mod tests {
         let user = UserIdentity::new(UserId::new());
         let user_id = *user.id();
 
-        let mut policy =
-            GrantIssuerPolicy::new();
+        let mut policy = GrantIssuerPolicy::new();
 
-        policy.set_user_role(
-            user_id,
-            UserRole::Owner,
-        );
+        policy.set_user_role(user_id, UserRole::Owner);
 
         assert_eq!(
-            policy.authorize_issuer(
-                &user.into(),
-                PermissionScope::System
-            ),
+            policy.authorize_issuer(&user.into(), PermissionScope::System),
             Ok(())
         );
     }
 
     #[test]
     fn untrusted_service_cannot_issue_grant() {
-        let service =
-            ServiceIdentity::new(
-                ServiceId::parse(
-                    "rumahl.random-service"
-                )
-                .unwrap(),
-            );
+        let service = ServiceIdentity::new(ServiceId::parse("rumahl.random-service").unwrap());
 
-        let policy =
-            GrantIssuerPolicy::new();
+        let policy = GrantIssuerPolicy::new();
 
         assert_eq!(
-            policy.authorize_issuer(
-                &service.into(),
-                PermissionScope::System
-            ),
-            Err(
-                GrantIssuerPolicyError::ServiceNotTrusted
-            )
+            policy.authorize_issuer(&service.into(), PermissionScope::System),
+            Err(GrantIssuerPolicyError::ServiceNotTrusted)
         );
     }
 
     #[test]
     fn trusted_service_can_issue_grant() {
-        let service_id =
-            ServiceId::parse(
-                "rumahl.permission-service"
-            )
-            .unwrap();
+        let service_id = ServiceId::parse("rumahl.permission-service").unwrap();
 
-        let service =
-            ServiceIdentity::new(
-                service_id.clone()
-            );
+        let service = ServiceIdentity::new(service_id.clone());
 
-        let mut policy =
-            GrantIssuerPolicy::new();
+        let mut policy = GrantIssuerPolicy::new();
 
         policy.trust_service(service_id);
 
         assert_eq!(
-            policy.authorize_issuer(
-                &service.into(),
-                PermissionScope::System
-            ),
+            policy.authorize_issuer(&service.into(), PermissionScope::System),
             Ok(())
         );
     }

@@ -19,9 +19,7 @@ impl PermissionId {
     pub const MAX_LENGTH: usize = 255;
     pub const MIN_SEGMENTS: usize = 3;
 
-    pub fn parse(
-        value: impl Into<String>,
-    ) -> Result<Self, PermissionIdError> {
+    pub fn parse(value: impl Into<String>) -> Result<Self, PermissionIdError> {
         let value = value.into();
 
         if value.is_empty() {
@@ -50,9 +48,7 @@ impl PermissionId {
     }
 }
 
-fn validate_segment(
-    segment: &str,
-) -> Result<(), PermissionIdError> {
+fn validate_segment(segment: &str) -> Result<(), PermissionIdError> {
     if segment.is_empty() {
         return Err(PermissionIdError::EmptySegment);
     }
@@ -68,13 +64,8 @@ fn validate_segment(
     }
 
     for character in characters {
-        if !character.is_ascii_lowercase()
-            && !character.is_ascii_digit()
-            && character != '-'
-        {
-            return Err(
-                PermissionIdError::InvalidCharacter(character),
-            );
+        if !character.is_ascii_lowercase() && !character.is_ascii_digit() && character != '-' {
+            return Err(PermissionIdError::InvalidCharacter(character));
         }
     }
 
@@ -126,17 +117,11 @@ impl fmt::Display for PermissionIdError {
             }
 
             Self::InvalidCharacter(character) => {
-                write!(
-                    f,
-                    "invalid character '{character}' in permission ID"
-                )
+                write!(f, "invalid character '{character}' in permission ID")
             }
 
             Self::InvalidSegmentEnd => {
-                write!(
-                    f,
-                    "permission ID segment must not end with '-'"
-                )
+                write!(f, "permission ID segment must not end with '-'")
             }
         }
     }
@@ -150,20 +135,14 @@ mod tests {
 
     #[test]
     fn accepts_rumahl_permission() {
-        let permission =
-            PermissionId::parse("rumahl.files.read").unwrap();
+        let permission = PermissionId::parse("rumahl.files.read").unwrap();
 
-        assert_eq!(
-            permission.as_str(),
-            "rumahl.files.read"
-        );
+        assert_eq!(permission.as_str(), "rumahl.files.read");
     }
 
     #[test]
     fn accepts_third_party_permission() {
-        assert!(
-            PermissionId::parse("com.rumahl.notes.export").is_ok()
-        );
+        assert!(PermissionId::parse("com.rumahl.notes.export").is_ok());
     }
 
     #[test]

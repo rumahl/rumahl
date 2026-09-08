@@ -1,8 +1,4 @@
-use super::{
-    AppIdentity,
-    ServiceIdentity,
-    UserIdentity,
-};
+use super::{AppIdentity, ServiceIdentity, UserIdentity};
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum Identity {
@@ -47,19 +43,11 @@ impl From<ServiceIdentity> for Identity {
 mod tests {
     use super::*;
 
-    use crate::identity::{
-        AppId,
-        InstallationId,
-        PublisherId,
-        ServiceId,
-        UserId,
-    };
+    use crate::identity::{AppId, InstallationId, PublisherId, ServiceId, UserId};
 
     #[test]
     fn converts_user_identity_into_identity() {
-        let user = UserIdentity::new(
-            UserId::new(),
-        );
+        let user = UserIdentity::new(UserId::new());
 
         let identity: Identity = user.into();
 
@@ -85,9 +73,7 @@ mod tests {
 
     #[test]
     fn converts_service_identity_into_identity() {
-        let service = ServiceIdentity::new(
-            ServiceId::parse("rumahl.storage").unwrap(),
-        );
+        let service = ServiceIdentity::new(ServiceId::parse("rumahl.storage").unwrap());
 
         let identity: Identity = service.into();
 

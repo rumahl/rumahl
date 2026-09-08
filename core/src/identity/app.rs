@@ -8,11 +8,7 @@ pub struct AppIdentity {
 }
 
 impl AppIdentity {
-    pub fn new(
-        app_id: AppId,
-        installation_id: InstallationId,
-        publisher_id: PublisherId,
-    ) -> Self {
+    pub fn new(app_id: AppId, installation_id: InstallationId, publisher_id: PublisherId) -> Self {
         Self {
             app_id,
             installation_id,
@@ -39,26 +35,16 @@ mod tests {
 
     #[test]
     fn creates_app_identity() {
-        let app_id =
-            AppId::parse("com.rumahl.notes").unwrap();
+        let app_id = AppId::parse("com.rumahl.notes").unwrap();
 
-        let publisher_id =
-            PublisherId::parse("com.rumahl").unwrap();
+        let publisher_id = PublisherId::parse("com.rumahl").unwrap();
 
-        let installation_id =
-            InstallationId::new();
+        let installation_id = InstallationId::new();
 
-        let identity = AppIdentity::new(
-            app_id.clone(),
-            installation_id,
-            publisher_id.clone(),
-        );
+        let identity = AppIdentity::new(app_id.clone(), installation_id, publisher_id.clone());
 
         assert_eq!(identity.app_id(), &app_id);
         assert_eq!(identity.publisher_id(), &publisher_id);
-        assert_eq!(
-            identity.installation_id(),
-            &installation_id
-        );
+        assert_eq!(identity.installation_id(), &installation_id);
     }
 }

@@ -50,9 +50,7 @@ impl CapabilityId {
                 .expect("non-empty segment must have first character");
 
             if !first.is_ascii_lowercase() {
-                return Err(
-                    CapabilityIdError::InvalidSegmentStart(first)
-                );
+                return Err(CapabilityIdError::InvalidSegmentStart(first));
             }
 
             for character in chars {
@@ -60,16 +58,12 @@ impl CapabilityId {
                     && !character.is_ascii_digit()
                     && character != '-'
                 {
-                    return Err(
-                        CapabilityIdError::InvalidCharacter(character)
-                    );
+                    return Err(CapabilityIdError::InvalidCharacter(character));
                 }
             }
 
             if segment.ends_with('-') {
-                return Err(
-                    CapabilityIdError::InvalidSegmentEnd
-                );
+                return Err(CapabilityIdError::InvalidSegmentEnd);
             }
         }
 
@@ -121,45 +115,27 @@ impl fmt::Display for CapabilityIdError {
             }
 
             Self::TooFewSegments => {
-                write!(
-                    f,
-                    "capability id must contain at least three segments"
-                )
+                write!(f, "capability id must contain at least three segments")
             }
 
             Self::EmptySegment => {
-                write!(
-                    f,
-                    "capability id cannot contain empty segments"
-                )
+                write!(f, "capability id cannot contain empty segments")
             }
 
             Self::SegmentTooLong => {
-                write!(
-                    f,
-                    "capability id segment is too long"
-                )
+                write!(f, "capability id segment is too long")
             }
 
             Self::InvalidSegmentStart(character) => {
-                write!(
-                    f,
-                    "capability id segment cannot start with '{character}'"
-                )
+                write!(f, "capability id segment cannot start with '{character}'")
             }
 
             Self::InvalidCharacter(character) => {
-                write!(
-                    f,
-                    "capability id contains invalid character '{character}'"
-                )
+                write!(f, "capability id contains invalid character '{character}'")
             }
 
             Self::InvalidSegmentEnd => {
-                write!(
-                    f,
-                    "capability id segment cannot end with '-'"
-                )
+                write!(f, "capability id segment cannot end with '-'")
             }
         }
     }
@@ -173,27 +149,16 @@ mod tests {
 
     #[test]
     fn accepts_platform_capability() {
-        let id =
-            CapabilityId::parse("rumahl.search.query").unwrap();
+        let id = CapabilityId::parse("rumahl.search.query").unwrap();
 
-        assert_eq!(
-            id.as_str(),
-            "rumahl.search.query"
-        );
+        assert_eq!(id.as_str(), "rumahl.search.query");
     }
 
     #[test]
     fn accepts_third_party_capability() {
-        let id =
-            CapabilityId::parse(
-                "com.rumahl.notes.search"
-            )
-            .unwrap();
+        let id = CapabilityId::parse("com.rumahl.notes.search").unwrap();
 
-        assert_eq!(
-            id.as_str(),
-            "com.rumahl.notes.search"
-        );
+        assert_eq!(id.as_str(), "com.rumahl.notes.search");
     }
 
     #[test]
@@ -207,10 +172,7 @@ mod tests {
     #[test]
     fn rejects_uppercase_character() {
         assert_eq!(
-            CapabilityId::parse(
-                "rumahl.search.Query"
-            )
-            .unwrap_err(),
+            CapabilityId::parse("rumahl.search.Query").unwrap_err(),
             CapabilityIdError::InvalidSegmentStart('Q')
         );
     }
@@ -218,10 +180,7 @@ mod tests {
     #[test]
     fn rejects_trailing_hyphen() {
         assert_eq!(
-            CapabilityId::parse(
-                "rumahl.search.query-"
-            )
-            .unwrap_err(),
+            CapabilityId::parse("rumahl.search.query-").unwrap_err(),
             CapabilityIdError::InvalidSegmentEnd
         );
     }

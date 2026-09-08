@@ -21,11 +21,9 @@ mod tests {
 
     #[test]
     fn creates_service_identity() {
-        let service_id =
-            ServiceId::parse("rumahl.storage").unwrap();
+        let service_id = ServiceId::parse("rumahl.storage").unwrap();
 
-        let identity =
-            ServiceIdentity::new(service_id.clone());
+        let identity = ServiceIdentity::new(service_id.clone());
 
         assert_eq!(identity.id(), &service_id);
     }

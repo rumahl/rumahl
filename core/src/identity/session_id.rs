@@ -18,8 +18,7 @@ impl SessionId {
     }
 
     pub fn parse(value: &str) -> Result<Self, SessionIdError> {
-        let uuid =
-            Uuid::try_parse(value).map_err(SessionIdError::InvalidFormat)?;
+        let uuid = Uuid::try_parse(value).map_err(SessionIdError::InvalidFormat)?;
 
         let version = uuid.get_version_num();
 
@@ -109,8 +108,7 @@ mod tests {
     fn round_trip_preserves_session_id() {
         let original = SessionId::new();
 
-        let parsed =
-            SessionId::parse(&original.to_string()).unwrap();
+        let parsed = SessionId::parse(&original.to_string()).unwrap();
 
         assert_eq!(original, parsed);
     }
@@ -126,9 +124,7 @@ mod tests {
     #[test]
     fn rejects_non_v7_uuid() {
         assert!(matches!(
-            SessionId::parse(
-                "550e8400-e29b-41d4-a716-446655440000"
-            ),
+            SessionId::parse("550e8400-e29b-41d4-a716-446655440000"),
             Err(SessionIdError::WrongVersion(4))
         ));
     }

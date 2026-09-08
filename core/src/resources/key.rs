@@ -65,10 +65,7 @@ impl fmt::Display for ResourceKeyError {
             }
 
             Self::InvalidCharacter(character) => {
-                write!(
-                    f,
-                    "invalid character '{character}' in resource key"
-                )
+                write!(f, "invalid character '{character}' in resource key")
             }
         }
     }
@@ -99,10 +96,7 @@ mod tests {
 
     #[test]
     fn rejects_empty_key() {
-        assert_eq!(
-            ResourceKey::parse("").unwrap_err(),
-            ResourceKeyError::Empty
-        );
+        assert_eq!(ResourceKey::parse("").unwrap_err(), ResourceKeyError::Empty);
     }
 
     #[test]

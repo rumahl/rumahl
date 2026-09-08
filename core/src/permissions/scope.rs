@@ -1,11 +1,4 @@
-#[derive(
-    Debug,
-    Clone,
-    Copy,
-    PartialEq,
-    Eq,
-    Hash,
-)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum PermissionScope {
     AppPrivate,
     UserOwn,

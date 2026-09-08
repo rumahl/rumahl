@@ -1,7 +1,4 @@
-use super::{
-    PermissionId,
-    PermissionScope,
-};
+use super::{PermissionId, PermissionScope};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PermissionRequest {

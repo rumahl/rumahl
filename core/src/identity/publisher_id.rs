@@ -70,10 +70,7 @@ fn validate_segment(segment: &str) -> Result<(), PublisherIdError> {
     }
 
     for character in characters {
-        if !character.is_ascii_lowercase()
-            && !character.is_ascii_digit()
-            && character != '-'
-        {
+        if !character.is_ascii_lowercase() && !character.is_ascii_digit() && character != '-' {
             return Err(PublisherIdError::InvalidCharacter(character));
         }
     }

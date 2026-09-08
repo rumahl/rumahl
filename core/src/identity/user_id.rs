@@ -18,8 +18,7 @@ impl UserId {
     }
 
     pub fn parse(value: &str) -> Result<Self, UserIdError> {
-        let uuid =
-            Uuid::try_parse(value).map_err(UserIdError::InvalidFormat)?;
+        let uuid = Uuid::try_parse(value).map_err(UserIdError::InvalidFormat)?;
 
         let version = uuid.get_version_num();
 
@@ -55,10 +54,7 @@ impl fmt::Display for UserIdError {
             }
 
             Self::WrongVersion(version) => {
-                write!(
-                    f,
-                    "user ID must be UUID version 7, found version {version}"
-                )
+                write!(f, "user ID must be UUID version 7, found version {version}")
             }
         }
     }
@@ -112,8 +108,7 @@ mod tests {
     fn parses_existing_user_id() {
         let original = UserId::new();
 
-        let parsed =
-            UserId::parse(&original.to_string()).unwrap();
+        let parsed = UserId::parse(&original.to_string()).unwrap();
 
         assert_eq!(original, parsed);
     }
@@ -128,12 +123,8 @@ mod tests {
 
     #[test]
     fn rejects_non_v7_uuid() {
-        let result =
-            UserId::parse("550e8400-e29b-41d4-a716-446655440000");
+        let result = UserId::parse("550e8400-e29b-41d4-a716-446655440000");
 
-        assert!(matches!(
-            result,
-            Err(UserIdError::WrongVersion(4))
-        ));
+        assert!(matches!(result, Err(UserIdError::WrongVersion(4))));
     }
 }

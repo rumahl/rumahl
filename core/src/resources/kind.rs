@@ -16,9 +16,7 @@ pub enum ResourceKindError {
 impl ResourceKind {
     pub const MAX_LENGTH: usize = 64;
 
-    pub fn parse(
-        value: impl Into<String>,
-    ) -> Result<Self, ResourceKindError> {
+    pub fn parse(value: impl Into<String>) -> Result<Self, ResourceKindError> {
         let value = value.into();
 
         if value.is_empty() {
@@ -40,13 +38,8 @@ impl ResourceKind {
         }
 
         for character in characters {
-            if !character.is_ascii_lowercase()
-                && !character.is_ascii_digit()
-                && character != '-'
-            {
-                return Err(
-                    ResourceKindError::InvalidCharacter(character),
-                );
+            if !character.is_ascii_lowercase() && !character.is_ascii_digit() && character != '-' {
+                return Err(ResourceKindError::InvalidCharacter(character));
             }
         }
 
@@ -91,10 +84,7 @@ impl fmt::Display for ResourceKindError {
             }
 
             Self::InvalidCharacter(character) => {
-                write!(
-                    f,
-                    "invalid character '{character}' in resource kind"
-                )
+                write!(f, "invalid character '{character}' in resource kind")
             }
 
             Self::InvalidEnd => {
@@ -105,7 +95,6 @@ impl fmt::Display for ResourceKindError {
 }
 
 impl Error for ResourceKindError {}
-
 
 #[cfg(test)]
 mod tests {

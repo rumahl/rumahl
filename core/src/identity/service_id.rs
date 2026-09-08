@@ -70,10 +70,7 @@ fn validate_segment(segment: &str) -> Result<(), ServiceIdError> {
     }
 
     for character in characters {
-        if !character.is_ascii_lowercase()
-            && !character.is_ascii_digit()
-            && character != '-'
-        {
+        if !character.is_ascii_lowercase() && !character.is_ascii_digit() && character != '-' {
             return Err(ServiceIdError::InvalidCharacter(character));
         }
     }
@@ -181,9 +178,7 @@ mod tests {
 
     #[test]
     fn accepts_multi_segment_service_id() {
-        assert!(
-            ServiceId::parse("com.example.special-service").is_ok()
-        );
+        assert!(ServiceId::parse("com.example.special-service").is_ok());
     }
 
     #[test]

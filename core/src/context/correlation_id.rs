@@ -18,8 +18,7 @@ impl CorrelationId {
     }
 
     pub fn parse(value: &str) -> Result<Self, CorrelationIdError> {
-        let uuid =
-            Uuid::try_parse(value).map_err(CorrelationIdError::InvalidFormat)?;
+        let uuid = Uuid::try_parse(value).map_err(CorrelationIdError::InvalidFormat)?;
 
         let version = uuid.get_version_num();
 
@@ -86,18 +85,14 @@ mod tests {
 
     #[test]
     fn generated_ids_are_unique() {
-        assert_ne!(
-            CorrelationId::new(),
-            CorrelationId::new()
-        );
+        assert_ne!(CorrelationId::new(), CorrelationId::new());
     }
 
     #[test]
     fn round_trip_preserves_correlation_id() {
         let original = CorrelationId::new();
 
-        let parsed =
-            CorrelationId::parse(&original.to_string()).unwrap();
+        let parsed = CorrelationId::parse(&original.to_string()).unwrap();
 
         assert_eq!(original, parsed);
     }

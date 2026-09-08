@@ -1,9 +1,6 @@
 use crate::identity::Identity;
 
-use super::{
-    GrantId,
-    PermissionGrant,
-};
+use super::{GrantId, PermissionGrant};
 
 #[derive(Debug, Default)]
 pub struct InMemoryGrantStore {
@@ -15,38 +12,21 @@ impl InMemoryGrantStore {
         Self::default()
     }
 
-    pub fn insert(
-        &mut self,
-        grant: PermissionGrant,
-    ) {
+    pub fn insert(&mut self, grant: PermissionGrant) {
         self.grants.push(grant);
     }
 
-    pub fn get(
-        &self,
-        id: &GrantId,
-    ) -> Option<&PermissionGrant> {
-        self.grants
-            .iter()
-            .find(|grant| grant.id() == id)
+    pub fn get(&self, id: &GrantId) -> Option<&PermissionGrant> {
+        self.grants.iter().find(|grant| grant.id() == id)
     }
 
-    pub fn remove(
-        &mut self,
-        id: &GrantId,
-    ) -> Option<PermissionGrant> {
-        let position = self
-            .grants
-            .iter()
-            .position(|grant| grant.id() == id)?;
+    pub fn remove(&mut self, id: &GrantId) -> Option<PermissionGrant> {
+        let position = self.grants.iter().position(|grant| grant.id() == id)?;
 
         Some(self.grants.remove(position))
     }
 
-    pub fn grants_for_subject(
-        &self,
-        subject: &Identity,
-    ) -> Vec<&PermissionGrant> {
+    pub fn grants_for_subject(&self, subject: &Identity) -> Vec<&PermissionGrant> {
         self.grants
             .iter()
             .filter(|grant| grant.subject() == subject)
@@ -71,16 +51,8 @@ mod tests {
     use super::*;
 
     use crate::{
-        AppId,
-        AppIdentity,
-        InstallationId,
-        PermissionId,
-        PermissionScope,
-        PublisherId,
-        ResourceKey,
-        ResourceKind,
-        ResourceNamespace,
-        ResourceRef,
+        AppId, AppIdentity, InstallationId, PermissionId, PermissionScope, PublisherId,
+        ResourceKey, ResourceKind, ResourceNamespace, ResourceRef,
     };
 
     fn notes_app() -> AppIdentity {
@@ -99,10 +71,7 @@ mod tests {
         )
     }
 
-    fn file_read_grant(
-        app: &AppIdentity,
-        key: &str,
-    ) -> PermissionGrant {
+    fn file_read_grant(app: &AppIdentity, key: &str) -> PermissionGrant {
         PermissionGrant::new(
             app.clone().into(),
             PermissionId::parse("rumahl.files.read").unwrap(),
@@ -164,9 +133,7 @@ mod tests {
     fn removing_unknown_grant_returns_none() {
         let mut store = InMemoryGrantStore::new();
 
-        assert!(
-            store.remove(&GrantId::new()).is_none()
-        );
+        assert!(store.remove(&GrantId::new()).is_none());
     }
 
     #[test]
@@ -183,28 +150,14 @@ mod tests {
 
         let mut store = InMemoryGrantStore::new();
 
-        store.insert(
-            file_read_grant(
-                &notes,
-                "notes-document",
-            )
-        );
+        store.insert(file_read_grant(&notes, "notes-document"));
 
-        store.insert(
-            file_read_grant(
-                &other,
-                "other-document",
-            )
-        );
+        store.insert(file_read_grant(&other, "other-document"));
 
-        let grants =
-            store.grants_for_subject(&notes_identity);
+        let grants = store.grants_for_subject(&notes_identity);
 
         assert_eq!(grants.len(), 1);
 
-        assert_eq!(
-            grants[0].subject(),
-            &notes_identity
-        );
+        assert_eq!(grants[0].subject(), &notes_identity);
     }
 }

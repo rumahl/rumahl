@@ -1,78 +1,34 @@
+pub mod capabilities;
 pub mod context;
 pub mod identity;
-pub mod resources;
 pub mod permissions;
-pub mod capabilities;
+pub mod resources;
 
-pub use context::{
-    CorrelationId,
-    CorrelationIdError,
-    OperationContext,
-};
+pub use context::{CorrelationId, CorrelationIdError, OperationContext};
 
 pub use identity::{
-    AppId,
-    AppIdError,
-    AppIdentity,
-    Identity,
-    InstallationId,
-    InstallationIdError,
-    PublisherId,
-    PublisherIdError,
-    ServiceId,
-    ServiceIdError,
-    ServiceIdentity,
-    SessionId,
-    SessionIdError,
-    UserId,
-    UserIdError,
-    UserIdentity,
+    AppId, AppIdError, AppIdentity, Identity, InstallationId, InstallationIdError, PublisherId,
+    PublisherIdError, ServiceId, ServiceIdError, ServiceIdentity, SessionId, SessionIdError,
+    UserId, UserIdError, UserIdentity,
 };
 
 pub use resources::{
-    ResourceKey,
-    ResourceKeyError,
-    ResourceKind,
-    ResourceKindError,
-    ResourceNamespace,
-    ResourceNamespaceError,
-    ResourceRef,
+    ResourceKey, ResourceKeyError, ResourceKind, ResourceKindError, ResourceNamespace,
+    ResourceNamespaceError, ResourceRef,
 };
 
 pub use permissions::{
-    AuthorizationDecision,
-    AuthorizationDenyReason,
-    AuthorizationEngine,
-    AuthorizationRequest,
-    GrantAuthority,
-    GrantAuthorityError,
-    GrantId,
-    GrantIssuerPolicy,
-    GrantIssuerPolicyError,
-    InMemoryGrantStore,
-    PermissionGrant,
-    PermissionGrantError,
-    PermissionId,
-    PermissionIdError,
-    PermissionRequest,
-    PermissionScope,
-    UserRole,
+    AuthorizationDecision, AuthorizationDenyReason, AuthorizationEngine, AuthorizationRequest,
+    GrantAuthority, GrantAuthorityError, GrantId, GrantIssuerPolicy, GrantIssuerPolicyError,
+    InMemoryGrantStore, PermissionGrant, PermissionGrantError, PermissionId, PermissionIdError,
+    PermissionRequest, PermissionScope, UserRole,
 };
 
 pub use capabilities::{
-    CapabilityAccessRegistry,
-    CapabilityAccessRegistryError,
-    CapabilityAccessRule,
-    CapabilityAccessRuleError,
-    CapabilityDispatchError,
-    CapabilityDispatcher,
-    CapabilityId,
-    CapabilityIdError,
-    CapabilityInvocation,
-    CapabilityProvider,
-    CapabilityProviderError,
-    CapabilityRegistry,
-    CapabilityRegistryError,
+    CapabilityAccessRegistry, CapabilityAccessRegistryError, CapabilityAccessRule,
+    CapabilityAccessRuleError, CapabilityDispatchError, CapabilityDispatcher, CapabilityId,
+    CapabilityIdError, CapabilityInvocation, CapabilityProvider, CapabilityProviderError,
+    CapabilityRegistry, CapabilityRegistryError,
 };
 
 #[cfg(test)]
@@ -97,24 +53,15 @@ mod tests {
 
         let grant = PermissionGrant::new(
             subject,
-            PermissionId::parse(
-                "rumahl.files.read",
-            )
-            .unwrap(),
+            PermissionId::parse("rumahl.files.read").unwrap(),
             PermissionScope::Explicit,
             vec![file.clone()],
             app.into(),
         )
         .unwrap();
 
-        assert_eq!(
-            grant.permission().as_str(),
-            "rumahl.files.read"
-        );
+        assert_eq!(grant.permission().as_str(), "rumahl.files.read");
 
-        assert_eq!(
-            grant.resources(),
-            &[file]
-        );
+        assert_eq!(grant.resources(), &[file]);
     }
 }

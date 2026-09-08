@@ -4,11 +4,7 @@ use std::fmt;
 use crate::identity::Identity;
 use crate::resources::ResourceRef;
 
-use super::{
-    GrantId,
-    PermissionId,
-    PermissionScope,
-};
+use super::{GrantId, PermissionId, PermissionScope};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum PermissionGrantError {
@@ -34,9 +30,7 @@ impl PermissionGrant {
         granted_by: Identity,
     ) -> Result<Self, PermissionGrantError> {
         if scope == PermissionScope::Explicit && resources.is_empty() {
-            return Err(
-                PermissionGrantError::ExplicitScopeRequiresResources
-            );
+            return Err(PermissionGrantError::ExplicitScopeRequiresResources);
         }
 
         Ok(Self {
@@ -94,15 +88,8 @@ mod tests {
     use super::*;
 
     use crate::{
-        AppId,
-        AppIdentity,
-        InstallationId,
-        PermissionId,
-        PublisherId,
-        ResourceKey,
-        ResourceKind,
-        ResourceNamespace,
-        ResourceRef,
+        AppId, AppIdentity, InstallationId, PermissionId, PublisherId, ResourceKey, ResourceKind,
+        ResourceNamespace, ResourceRef,
     };
 
     fn notes_app() -> AppIdentity {

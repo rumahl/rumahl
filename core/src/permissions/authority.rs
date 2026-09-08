@@ -5,11 +5,7 @@ use crate::identity::Identity;
 use crate::resources::ResourceRef;
 
 use super::{
-    GrantIssuerPolicy,
-    GrantIssuerPolicyError,
-    PermissionGrant,
-    PermissionGrantError,
-    PermissionId,
+    GrantIssuerPolicy, GrantIssuerPolicyError, PermissionGrant, PermissionGrantError, PermissionId,
     PermissionScope,
 };
 
@@ -38,18 +34,10 @@ impl GrantAuthority {
     ) -> Result<PermissionGrant, GrantAuthorityError> {
         policy
             .authorize_issuer(&issuer, scope)
-            .map_err(
-                GrantAuthorityError::IssuerNotAuthorized
-            )?;
+            .map_err(GrantAuthorityError::IssuerNotAuthorized)?;
 
-        PermissionGrant::new(
-            subject,
-            permission,
-            scope,
-            resources,
-            issuer,
-        )
-        .map_err(GrantAuthorityError::InvalidGrant)
+        PermissionGrant::new(subject, permission, scope, resources, issuer)
+            .map_err(GrantAuthorityError::InvalidGrant)
     }
 }
 
@@ -57,17 +45,11 @@ impl fmt::Display for GrantAuthorityError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::IssuerNotAuthorized(error) => {
-                write!(
-                    f,
-                    "grant issuer is not authorized: {error}"
-                )
+                write!(f, "grant issuer is not authorized: {error}")
             }
 
             Self::InvalidGrant(error) => {
-                write!(
-                    f,
-                    "cannot issue invalid permission grant: {error}"
-                )
+                write!(f, "cannot issue invalid permission grant: {error}")
             }
         }
     }
@@ -87,18 +69,8 @@ mod tests {
     use super::*;
 
     use crate::{
-        AppId,
-        AppIdentity,
-        InstallationId,
-        PublisherId,
-        ResourceKey,
-        ResourceKind,
-        ResourceNamespace,
-        ServiceId,
-        ServiceIdentity,
-        UserRole,
-        UserId,
-        UserIdentity,
+        AppId, AppIdentity, InstallationId, PublisherId, ResourceKey, ResourceKind,
+        ResourceNamespace, ServiceId, ServiceIdentity, UserId, UserIdentity, UserRole,
     };
 
     fn notes_app() -> AppIdentity {
@@ -119,31 +91,21 @@ mod tests {
 
     #[test]
     fn authorized_user_can_issue_grant() {
-        let authority =
-            GrantAuthority::new();
+        let authority = GrantAuthority::new();
 
-        let user =
-            UserIdentity::new(UserId::new());
+        let user = UserIdentity::new(UserId::new());
 
-        let user_id =
-            *user.id();
+        let user_id = *user.id();
 
-        let mut policy =
-            GrantIssuerPolicy::new();
+        let mut policy = GrantIssuerPolicy::new();
 
-        policy.set_user_role(
-            user_id,
-            UserRole::User,
-        );
+        policy.set_user_role(user_id, UserRole::User);
 
         let result = authority.issue(
             &policy,
             user.into(),
             notes_app().into(),
-            PermissionId::parse(
-                "rumahl.files.read"
-            )
-            .unwrap(),
+            PermissionId::parse("rumahl.files.read").unwrap(),
             PermissionScope::Explicit,
             vec![file("document-1")],
         );
@@ -153,22 +115,13 @@ mod tests {
 
     #[test]
     fn trusted_service_can_issue_grant() {
-        let authority =
-            GrantAuthority::new();
+        let authority = GrantAuthority::new();
 
-        let service_id =
-            ServiceId::parse(
-                "rumahl.permission-service"
-            )
-            .unwrap();
+        let service_id = ServiceId::parse("rumahl.permission-service").unwrap();
 
-        let service =
-            ServiceIdentity::new(
-                service_id.clone()
-            );
+        let service = ServiceIdentity::new(service_id.clone());
 
-        let mut policy =
-            GrantIssuerPolicy::new();
+        let mut policy = GrantIssuerPolicy::new();
 
         policy.trust_service(service_id);
 
@@ -176,10 +129,7 @@ mod tests {
             &policy,
             service.into(),
             notes_app().into(),
-            PermissionId::parse(
-                "rumahl.files.read"
-            )
-            .unwrap(),
+            PermissionId::parse("rumahl.files.read").unwrap(),
             PermissionScope::Explicit,
             vec![file("document-1")],
         );
@@ -189,83 +139,57 @@ mod tests {
 
     #[test]
     fn app_cannot_issue_grant() {
-        let authority =
-            GrantAuthority::new();
+        let authority = GrantAuthority::new();
 
-        let policy =
-            GrantIssuerPolicy::new();
+        let policy = GrantIssuerPolicy::new();
 
-        let issuer =
-            notes_app();
+        let issuer = notes_app();
 
         let subject = AppIdentity::new(
-            AppId::parse(
-                "com.example.reader"
-            )
-            .unwrap(),
+            AppId::parse("com.example.reader").unwrap(),
             InstallationId::new(),
-            PublisherId::parse(
-                "com.example"
-            )
-            .unwrap(),
+            PublisherId::parse("com.example").unwrap(),
         );
 
         let result = authority.issue(
             &policy,
             issuer.into(),
             subject.into(),
-            PermissionId::parse(
-                "rumahl.files.read"
-            )
-            .unwrap(),
+            PermissionId::parse("rumahl.files.read").unwrap(),
             PermissionScope::Explicit,
             vec![file("document-1")],
         );
 
         assert_eq!(
             result.unwrap_err(),
-            GrantAuthorityError::IssuerNotAuthorized(
-                GrantIssuerPolicyError::AppCannotIssueGrant
-            )
+            GrantAuthorityError::IssuerNotAuthorized(GrantIssuerPolicyError::AppCannotIssueGrant)
         );
     }
 
     #[test]
     fn rejects_invalid_grant() {
-        let authority =
-            GrantAuthority::new();
+        let authority = GrantAuthority::new();
 
-        let user =
-            UserIdentity::new(UserId::new());
+        let user = UserIdentity::new(UserId::new());
 
-        let user_id =
-            *user.id();
+        let user_id = *user.id();
 
-        let mut policy =
-            GrantIssuerPolicy::new();
+        let mut policy = GrantIssuerPolicy::new();
 
-        policy.set_user_role(
-            user_id,
-            UserRole::User,
-        );
+        policy.set_user_role(user_id, UserRole::User);
 
         let result = authority.issue(
             &policy,
             user.into(),
             notes_app().into(),
-            PermissionId::parse(
-                "rumahl.files.read"
-            )
-            .unwrap(),
+            PermissionId::parse("rumahl.files.read").unwrap(),
             PermissionScope::Explicit,
             vec![],
         );
 
         assert_eq!(
             result.unwrap_err(),
-            GrantAuthorityError::InvalidGrant(
-                PermissionGrantError::ExplicitScopeRequiresResources
-            )
+            GrantAuthorityError::InvalidGrant(PermissionGrantError::ExplicitScopeRequiresResources)
         );
     }
 }

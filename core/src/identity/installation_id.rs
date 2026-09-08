@@ -18,8 +18,7 @@ impl InstallationId {
     }
 
     pub fn parse(value: &str) -> Result<Self, InstallationIdError> {
-        let uuid =
-            Uuid::try_parse(value).map_err(InstallationIdError::InvalidFormat)?;
+        let uuid = Uuid::try_parse(value).map_err(InstallationIdError::InvalidFormat)?;
 
         let version = uuid.get_version_num();
 
@@ -112,8 +111,7 @@ mod tests {
     fn parses_valid_uuid_v7() {
         let generated = InstallationId::new();
 
-        let parsed =
-            InstallationId::parse(&generated.to_string()).unwrap();
+        let parsed = InstallationId::parse(&generated.to_string()).unwrap();
 
         assert_eq!(generated, parsed);
     }
@@ -122,20 +120,13 @@ mod tests {
     fn rejects_invalid_uuid() {
         let result = InstallationId::parse("not-a-uuid");
 
-        assert!(matches!(
-            result,
-            Err(InstallationIdError::InvalidFormat(_))
-        ));
+        assert!(matches!(result, Err(InstallationIdError::InvalidFormat(_))));
     }
 }
 
 #[test]
 fn rejects_non_v7_uuid() {
-    let result =
-        InstallationId::parse("550e8400-e29b-41d4-a716-446655440000");
+    let result = InstallationId::parse("550e8400-e29b-41d4-a716-446655440000");
 
-    assert!(matches!(
-        result,
-        Err(InstallationIdError::WrongVersion(_))
-    ));
+    assert!(matches!(result, Err(InstallationIdError::WrongVersion(_))));
 }

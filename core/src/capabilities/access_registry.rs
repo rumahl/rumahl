@@ -1,10 +1,7 @@
 use std::error::Error;
 use std::fmt;
 
-use super::{
-    CapabilityAccessRule,
-    CapabilityId,
-};
+use super::{CapabilityAccessRule, CapabilityId};
 
 #[derive(Debug, Default)]
 pub struct CapabilityAccessRegistry {
@@ -28,15 +25,9 @@ impl CapabilityAccessRegistry {
         if self
             .rules
             .iter()
-            .any(|existing| {
-                existing.capability()
-                    == rule.capability()
-            })
+            .any(|existing| existing.capability() == rule.capability())
         {
-            return Err(
-                CapabilityAccessRegistryError::
-                    CapabilityAlreadyRegistered
-            );
+            return Err(CapabilityAccessRegistryError::CapabilityAlreadyRegistered);
         }
 
         self.rules.push(rule);
@@ -44,20 +35,13 @@ impl CapabilityAccessRegistry {
         Ok(())
     }
 
-    pub fn rule_for(
-        &self,
-        capability: &CapabilityId,
-    ) -> Option<&CapabilityAccessRule> {
+    pub fn rule_for(&self, capability: &CapabilityId) -> Option<&CapabilityAccessRule> {
         self.rules
             .iter()
-            .find(|rule| {
-                rule.capability() == capability
-            })
+            .find(|rule| rule.capability() == capability)
     }
 
-    pub fn rules(
-        &self,
-    ) -> &[CapabilityAccessRule] {
+    pub fn rules(&self) -> &[CapabilityAccessRule] {
         &self.rules
     }
 
@@ -70,19 +54,11 @@ impl CapabilityAccessRegistry {
     }
 }
 
-impl fmt::Display
-    for CapabilityAccessRegistryError
-{
-    fn fmt(
-        &self,
-        f: &mut fmt::Formatter<'_>,
-    ) -> fmt::Result {
+impl fmt::Display for CapabilityAccessRegistryError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::CapabilityAlreadyRegistered => {
-                write!(
-                    f,
-                    "capability already has an access rule"
-                )
+                write!(f, "capability already has an access rule")
             }
         }
     }
@@ -98,27 +74,18 @@ mod tests {
 
     fn preview_rule() -> CapabilityAccessRule {
         CapabilityAccessRule::new(
-            CapabilityId::parse(
-                "rumahl.files.preview"
-            )
-            .unwrap(),
-            PermissionId::parse(
-                "rumahl.files.read"
-            )
-            .unwrap(),
+            CapabilityId::parse("rumahl.files.preview").unwrap(),
+            PermissionId::parse("rumahl.files.read").unwrap(),
         )
     }
 
     #[test]
     fn registers_access_rule() {
-        let mut registry =
-            CapabilityAccessRegistry::new();
+        let mut registry = CapabilityAccessRegistry::new();
 
         assert!(registry.is_empty());
 
-        registry
-            .register(preview_rule())
-            .unwrap();
+        registry.register(preview_rule()).unwrap();
 
         assert_eq!(registry.len(), 1);
         assert!(!registry.is_empty());
@@ -126,99 +93,54 @@ mod tests {
 
     #[test]
     fn resolves_access_rule_for_capability() {
-        let capability =
-            CapabilityId::parse(
-                "rumahl.files.preview"
-            )
-            .unwrap();
+        let capability = CapabilityId::parse("rumahl.files.preview").unwrap();
 
-        let mut registry =
-            CapabilityAccessRegistry::new();
+        let mut registry = CapabilityAccessRegistry::new();
 
-        registry
-            .register(preview_rule())
-            .unwrap();
+        registry.register(preview_rule()).unwrap();
 
-        let rule =
-            registry
-                .rule_for(&capability)
-                .unwrap();
+        let rule = registry.rule_for(&capability).unwrap();
 
-        assert_eq!(
-            rule.capability(),
-            &capability
-        );
+        assert_eq!(rule.capability(), &capability);
 
         assert_eq!(
             rule.permission(),
-            &PermissionId::parse(
-                "rumahl.files.read"
-            )
-            .unwrap()
+            &PermissionId::parse("rumahl.files.read").unwrap()
         );
     }
 
     #[test]
     fn returns_none_for_unknown_capability() {
-        let mut registry =
-            CapabilityAccessRegistry::new();
+        let mut registry = CapabilityAccessRegistry::new();
 
-        registry
-            .register(preview_rule())
-            .unwrap();
+        registry.register(preview_rule()).unwrap();
 
-        let search =
-            CapabilityId::parse(
-                "rumahl.search.query"
-            )
-            .unwrap();
+        let search = CapabilityId::parse("rumahl.search.query").unwrap();
 
-        assert!(
-            registry
-                .rule_for(&search)
-                .is_none()
-        );
+        assert!(registry.rule_for(&search).is_none());
     }
 
     #[test]
     fn rejects_second_rule_for_same_capability() {
-        let capability =
-            CapabilityId::parse(
-                "rumahl.files.preview"
-            )
-            .unwrap();
+        let capability = CapabilityId::parse("rumahl.files.preview").unwrap();
 
-        let first =
-            CapabilityAccessRule::new(
-                capability.clone(),
-                PermissionId::parse(
-                    "rumahl.files.read"
-                )
-                .unwrap(),
-            );
+        let first = CapabilityAccessRule::new(
+            capability.clone(),
+            PermissionId::parse("rumahl.files.read").unwrap(),
+        );
 
-        let second =
-            CapabilityAccessRule::new(
-                capability,
-                PermissionId::parse(
-                    "rumahl.files.write"
-                )
-                .unwrap(),
-            );
+        let second = CapabilityAccessRule::new(
+            capability,
+            PermissionId::parse("rumahl.files.write").unwrap(),
+        );
 
-        let mut registry =
-            CapabilityAccessRegistry::new();
+        let mut registry = CapabilityAccessRegistry::new();
 
-        registry
-            .register(first)
-            .unwrap();
+        registry.register(first).unwrap();
 
         assert_eq!(
-            registry
-                .register(second)
-                .unwrap_err(),
-            CapabilityAccessRegistryError::
-                CapabilityAlreadyRegistered
+            registry.register(second).unwrap_err(),
+            CapabilityAccessRegistryError::CapabilityAlreadyRegistered
         );
     }
 }

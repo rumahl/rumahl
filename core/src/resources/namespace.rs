@@ -19,9 +19,7 @@ impl ResourceNamespace {
     pub const MAX_LENGTH: usize = 255;
     pub const MIN_SEGMENTS: usize = 2;
 
-    pub fn parse(
-        value: impl Into<String>,
-    ) -> Result<Self, ResourceNamespaceError> {
+    pub fn parse(value: impl Into<String>) -> Result<Self, ResourceNamespaceError> {
         let value = value.into();
 
         if value.is_empty() {
@@ -50,9 +48,7 @@ impl ResourceNamespace {
     }
 }
 
-fn validate_segment(
-    segment: &str,
-) -> Result<(), ResourceNamespaceError> {
+fn validate_segment(segment: &str) -> Result<(), ResourceNamespaceError> {
     if segment.is_empty() {
         return Err(ResourceNamespaceError::EmptySegment);
     }
@@ -64,19 +60,12 @@ fn validate_segment(
         .expect("non-empty namespace segment must contain a first character");
 
     if !first.is_ascii_lowercase() {
-        return Err(
-            ResourceNamespaceError::InvalidSegmentStart(first),
-        );
+        return Err(ResourceNamespaceError::InvalidSegmentStart(first));
     }
 
     for character in characters {
-        if !character.is_ascii_lowercase()
-            && !character.is_ascii_digit()
-            && character != '-'
-        {
-            return Err(
-                ResourceNamespaceError::InvalidCharacter(character),
-            );
+        if !character.is_ascii_lowercase() && !character.is_ascii_digit() && character != '-' {
+            return Err(ResourceNamespaceError::InvalidCharacter(character));
         }
     }
 
@@ -117,10 +106,7 @@ impl fmt::Display for ResourceNamespaceError {
             }
 
             Self::EmptySegment => {
-                write!(
-                    f,
-                    "resource namespace must not contain empty segments"
-                )
+                write!(f, "resource namespace must not contain empty segments")
             }
 
             Self::InvalidSegmentStart(character) => {
@@ -131,17 +117,11 @@ impl fmt::Display for ResourceNamespaceError {
             }
 
             Self::InvalidCharacter(character) => {
-                write!(
-                    f,
-                    "invalid character '{character}' in resource namespace"
-                )
+                write!(f, "invalid character '{character}' in resource namespace")
             }
 
             Self::InvalidSegmentEnd => {
-                write!(
-                    f,
-                    "resource namespace segment must not end with '-'"
-                )
+                write!(f, "resource namespace segment must not end with '-'")
             }
         }
     }
@@ -155,17 +135,14 @@ mod tests {
 
     #[test]
     fn accepts_rumahl_namespace() {
-        let namespace =
-            ResourceNamespace::parse("rumahl.files").unwrap();
+        let namespace = ResourceNamespace::parse("rumahl.files").unwrap();
 
         assert_eq!(namespace.as_str(), "rumahl.files");
     }
 
     #[test]
     fn accepts_third_party_namespace() {
-        assert!(
-            ResourceNamespace::parse("com.rumahl.notes").is_ok()
-        );
+        assert!(ResourceNamespace::parse("com.rumahl.notes").is_ok());
     }
 
     #[test]
