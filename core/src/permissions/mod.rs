@@ -1,4 +1,5 @@
 mod authorization;
+mod engine;
 mod grant;
 mod grant_id;
 mod id;
@@ -9,6 +10,8 @@ pub use authorization::{
     AuthorizationDecision,
     AuthorizationRequest,
 };
+
+pub use engine::AuthorizationEngine;
 
 pub use grant::PermissionGrant;
 pub use grant_id::GrantId;
