@@ -3,6 +3,7 @@ mod action;
 pub use action::CommandAction;
 
 mod command;
+mod command_registry;
 mod contribution;
 mod id;
 mod kind;
@@ -17,3 +18,5 @@ pub use kind::{ContributionKind, ContributionKindError};
 pub use registry::{ContributionRegistry, ContributionRegistryError};
 
 pub use command::{CommandContribution, CommandContributionError};
+
+pub use command_registry::{CommandRegistry, CommandRegistryError};

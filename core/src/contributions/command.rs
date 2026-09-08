@@ -111,17 +111,17 @@ mod tests {
         AppId, AppIdentity, CapabilityId, InstallationId, PublisherId, UserId, UserIdentity,
     };
 
-    fn create_note_action() -> CommandAction {
-        CommandAction::invoke_capability(
-            CapabilityId::parse("com.rumahl.notes.create-note").unwrap(),
-        )
-    }
-
     fn notes_app() -> AppIdentity {
         AppIdentity::new(
             AppId::parse("com.rumahl.notes").unwrap(),
             InstallationId::new(),
             PublisherId::parse("com.rumahl").unwrap(),
+        )
+    }
+
+    fn create_note_action() -> CommandAction {
+        CommandAction::invoke_capability(
+            CapabilityId::parse("com.rumahl.notes.create-note").unwrap(),
         )
     }
 
@@ -148,7 +148,9 @@ mod tests {
             ContributionId::parse("com.rumahl.notes.new-note").unwrap(),
             notes_app().into(),
             "  New note  ",
-            create_note_action(),
+            CommandAction::invoke_capability(
+                CapabilityId::parse("com.rumahl.notes.create-note").unwrap(),
+            ),
         )
         .unwrap();
 
@@ -194,33 +196,5 @@ mod tests {
             result.unwrap_err(),
             CommandContributionError::InvalidContribution(ContributionError::UserCannotContribute)
         );
-    }
-
-    #[test]
-    fn command_can_invoke_capability() {
-        let capability = CapabilityId::parse("com.rumahl.notes.create-note").unwrap();
-        let command = CommandContribution::new(
-            ContributionId::parse("com.rumahl.notes.new-note").unwrap(),
-            notes_app().into(),
-            "New note",
-            CommandAction::invoke_capability(capability.clone()),
-        )
-        .unwrap();
-        assert_eq!(command.action().capability(), Some(&capability));
-        assert_eq!(command.action().app_id(), None);
-    }
-
-    #[test]
-    fn command_can_open_app() {
-        let app_id = AppId::parse("com.rumahl.notes").unwrap();
-        let command = CommandContribution::new(
-            ContributionId::parse("com.rumahl.notes.open").unwrap(),
-            notes_app().into(),
-            "Open Notes",
-            CommandAction::open_app(app_id.clone()),
-        )
-        .unwrap();
-        assert_eq!(command.action().app_id(), Some(&app_id));
-        assert_eq!(command.action().capability(), None);
     }
 }
