@@ -6,23 +6,17 @@ use super::{
     PermissionScope,
 };
 
-#[derive(Debug, Default)]
-pub struct AuthorizationEngine {
-    grants: Vec<PermissionGrant>,
-}
-
+#[derive(Debug, Default, Clone, Copy)]
+pub struct AuthorizationEngine;
 impl AuthorizationEngine {
     pub fn new() -> Self {
-        Self::default()
-    }
-
-    pub fn grants(&self) -> &[PermissionGrant] {
-        &self.grants
+        Self
     }
 
     pub fn authorize(
         &self,
         request: &AuthorizationRequest,
+        grants: &[PermissionGrant],
     ) -> AuthorizationDecision {
         let actor = request.context().actor();
 
@@ -33,7 +27,7 @@ impl AuthorizationEngine {
         let mut resource_outside_scope = false;
         let mut unsupported_scope = false;
 
-        for grant in &self.grants {
+        for grant in grants {
             if grant.subject() != actor {
                 continue;
             }
@@ -170,10 +164,13 @@ mod tests {
             Some(target),
         );
 
-        let engine = AuthorizationEngine::new(vec![grant]);
+        let engine = AuthorizationEngine::new();
 
         assert_eq!(
-            engine.authorize(&request),
+            engine.authorize(
+                &request,
+                &[grant],
+            ),
             AuthorizationDecision::Allow
         );
     }
@@ -206,10 +203,10 @@ mod tests {
             Some(denied_file),
         );
 
-        let engine = AuthorizationEngine::new(vec![grant]);
+        let engine = AuthorizationEngine::new();
 
         assert_eq!(
-            engine.authorize(&request),
+            engine.authorize(&request, &[grant]),
             AuthorizationDecision::Deny(
                 AuthorizationDenyReason::ResourceOutsideScope
             )
@@ -242,10 +239,10 @@ mod tests {
             None,
         );
 
-        let engine = AuthorizationEngine::new(vec![grant]);
+        let engine = AuthorizationEngine::new();
 
         assert_eq!(
-            engine.authorize(&request),
+            engine.authorize(&request, &[grant]),
             AuthorizationDecision::Deny(
                 AuthorizationDenyReason::ResourceRequired
             )
@@ -277,10 +274,10 @@ mod tests {
             Some(file("document-1")),
         );
 
-        let engine = AuthorizationEngine::new(vec![grant]);
+        let engine = AuthorizationEngine::new();
 
         assert_eq!(
-            engine.authorize(&request),
+            engine.authorize(&request, &[grant]),
             AuthorizationDecision::Deny(
                 AuthorizationDenyReason::UnsupportedScope
             )
