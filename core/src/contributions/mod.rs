@@ -1,3 +1,7 @@
+mod action;
+
+pub use action::CommandAction;
+
 mod command;
 mod contribution;
 mod id;

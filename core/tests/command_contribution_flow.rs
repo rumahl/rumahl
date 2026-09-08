@@ -1,7 +1,11 @@
 use rumahl_core::{
-    AppId, AppIdentity, CommandContribution, CommandContributionError, ContributionError,
-    ContributionId, InstallationId, PublisherId, UserId, UserIdentity,
+    AppId, AppIdentity, CapabilityId, CommandAction, CommandContribution, CommandContributionError,
+    ContributionError, ContributionId, InstallationId, PublisherId, UserId, UserIdentity,
 };
+
+fn create_note_action() -> CommandAction {
+    CommandAction::invoke_capability(CapabilityId::parse("com.rumahl.notes.create-note").unwrap())
+}
 
 fn app(app_id: &str, publisher_id: &str) -> AppIdentity {
     AppIdentity::new(
@@ -19,6 +23,7 @@ fn app_can_define_command_contribution() {
         ContributionId::parse("com.rumahl.notes.new-note").unwrap(),
         notes.clone().into(),
         "New note",
+        create_note_action(),
     )
     .unwrap();
 
@@ -39,6 +44,7 @@ fn command_title_is_normalized() {
         ContributionId::parse("com.rumahl.notes.new-note").unwrap(),
         notes.into(),
         "   New note   ",
+        create_note_action(),
     )
     .unwrap();
 
@@ -53,6 +59,7 @@ fn user_cannot_define_command_contribution() {
         ContributionId::parse("com.rumahl.notes.new-note").unwrap(),
         user.into(),
         "New note",
+        create_note_action(),
     );
 
     assert_eq!(
@@ -69,8 +76,37 @@ fn command_kind_is_always_command() {
         ContributionId::parse("com.rumahl.notes.open").unwrap(),
         notes.into(),
         "Open Notes",
+        CommandAction::open_app(AppId::parse("com.rumahl.notes").unwrap()),
     )
     .unwrap();
 
     assert_eq!(command.kind().as_str(), "command");
+}
+
+#[test]
+fn command_can_reference_capability_action() {
+    let capability = CapabilityId::parse("com.rumahl.notes.create-note").unwrap();
+    let command = CommandContribution::new(
+        ContributionId::parse("com.rumahl.notes.new-note").unwrap(),
+        app("com.rumahl.notes", "com.rumahl").into(),
+        "New note",
+        CommandAction::invoke_capability(capability.clone()),
+    )
+    .unwrap();
+    assert_eq!(command.action().capability(), Some(&capability));
+    assert_eq!(command.action().app_id(), None);
+}
+
+#[test]
+fn command_can_reference_app_action() {
+    let app_id = AppId::parse("com.rumahl.notes").unwrap();
+    let command = CommandContribution::new(
+        ContributionId::parse("com.rumahl.notes.open").unwrap(),
+        app("com.rumahl.notes", "com.rumahl").into(),
+        "Open Notes",
+        CommandAction::open_app(app_id.clone()),
+    )
+    .unwrap();
+    assert_eq!(command.action().app_id(), Some(&app_id));
+    assert_eq!(command.action().capability(), None);
 }
