@@ -10,12 +10,12 @@ use crate::identity::{
 
 use super::{
     PermissionScope,
-    UserAccessClass,
+    UserRole,
 };
 
 #[derive(Debug, Default)]
 pub struct GrantIssuerPolicy {
-    user_access: HashMap<UserId, UserAccessClass>,
+    user_access: HashMap<UserId, UserRole>,
     trusted_services: HashSet<ServiceId>,
 }
 
@@ -35,7 +35,7 @@ impl GrantIssuerPolicy {
     pub fn set_user_access(
         &mut self,
         user: UserId,
-        access: UserAccessClass,
+        access: UserRole,
     ) {
         self.user_access.insert(user, access);
     }
@@ -84,13 +84,13 @@ impl GrantIssuerPolicy {
     }
 
     fn authorize_user(
-        access: UserAccessClass,
+        access: UserRole,
         scope: PermissionScope,
     ) -> Result<(), GrantIssuerPolicyError> {
         let allowed = match access {
-            UserAccessClass::PreAuthentication => false,
+            UserRole::PreAuthentication => false,
 
-            UserAccessClass::User => {
+            UserRole::User => {
                 matches!(
                     scope,
                     PermissionScope::UserOwn
@@ -99,17 +99,7 @@ impl GrantIssuerPolicy {
                 )
             }
 
-            UserAccessClass::Manager => {
-                matches!(
-                    scope,
-                    PermissionScope::UserOwn
-                        | PermissionScope::UserSelected
-                        | PermissionScope::Explicit
-                        | PermissionScope::FamilyShared
-                )
-            }
-
-            UserAccessClass::Administrator => {
+            UserRole::Manager => {
                 matches!(
                     scope,
                     PermissionScope::UserOwn
@@ -119,7 +109,17 @@ impl GrantIssuerPolicy {
                 )
             }
 
-            UserAccessClass::Owner => true,
+            UserRole::Administrator => {
+                matches!(
+                    scope,
+                    PermissionScope::UserOwn
+                        | PermissionScope::UserSelected
+                        | PermissionScope::Explicit
+                        | PermissionScope::FamilyShared
+                )
+            }
+
+            UserRole::Owner => true,
         };
 
         if allowed {
@@ -187,7 +187,7 @@ mod tests {
 
         policy.set_user_access(
             user_id,
-            UserAccessClass::User,
+            UserRole::User,
         );
 
         assert_eq!(
@@ -209,7 +209,7 @@ mod tests {
 
         policy.set_user_access(
             user_id,
-            UserAccessClass::User,
+            UserRole::User,
         );
 
         assert_eq!(
@@ -233,7 +233,7 @@ mod tests {
 
         policy.set_user_access(
             user_id,
-            UserAccessClass::Owner,
+            UserRole::Owner,
         );
 
         assert_eq!(

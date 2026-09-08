@@ -55,7 +55,7 @@ pub use permissions::{
     PermissionIdError,
     PermissionRequest,
     PermissionScope,
-    UserAccessClass,
+    UserRole,
 };
 
 #[cfg(test)]

@@ -96,7 +96,7 @@ mod tests {
         ResourceNamespace,
         ServiceId,
         ServiceIdentity,
-        UserAccessClass,
+        UserRole,
         UserId,
         UserIdentity,
     };
@@ -133,7 +133,7 @@ mod tests {
 
         policy.set_user_access(
             user_id,
-            UserAccessClass::User,
+            UserRole::User,
         );
 
         let result = authority.issue(
@@ -246,7 +246,7 @@ mod tests {
 
         policy.set_user_access(
             user_id,
-            UserAccessClass::User,
+            UserRole::User,
         );
 
         let result = authority.issue(
