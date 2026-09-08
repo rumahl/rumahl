@@ -1,7 +1,13 @@
+mod access;
 mod id;
 mod provider;
 mod registry;
 mod invocation;
+
+pub use access::{
+    CapabilityAccessRule,
+    CapabilityAccessRuleError,
+};
 
 pub use id::{
     CapabilityId,

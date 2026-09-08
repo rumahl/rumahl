@@ -60,6 +60,8 @@ pub use permissions::{
 };
 
 pub use capabilities::{
+    CapabilityAccessRule,
+    CapabilityAccessRuleError,
     CapabilityId,
     CapabilityIdError,
     CapabilityInvocation,
