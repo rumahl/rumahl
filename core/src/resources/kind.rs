@@ -83,32 +83,22 @@ impl fmt::Display for ResourceKindError {
                 )
             }
 
-            Self::EmptySegment => {
+            Self::InvalidStart(character) => {
                 write!(
                     f,
-                    "resource kind must not contain empty segments"
-                )
-            }
-
-            Self::InvalidSegmentStart(character) => {
-                write!(
-                    f,
-                    "resource kind segment must start with a lowercase ASCII letter, found '{character}'"
+                    "resource kind must start with a lowercase ASCII letter, found '{character}'"
                 )
             }
 
             Self::InvalidCharacter(character) => {
                 write!(
                     f,
-                    "invalid character '{character}' in resource namespace"
+                    "invalid character '{character}' in resource kind"
                 )
             }
 
-            Self::InvalidSegmentEnd => {
-                write!(
-                    f,
-                    "resource namespace segment must not end with '-'"
-                )
+            Self::InvalidEnd => {
+                write!(f, "resource kind must not end with '-'")
             }
         }
     }
@@ -122,26 +112,46 @@ mod tests {
     use super::*;
 
     #[test]
-    fn accepts_rumahl_namespace() {
-        let namespace =
-            ResourceKind::parse("file").unwrap();
+    fn accepts_file_kind() {
+        let kind = ResourceKind::parse("file").unwrap();
 
-        assert_eq!(namespace.as_str(), "file");
+        assert_eq!(kind.as_str(), "file");
     }
 
     #[test]
-    fn rejects_single_segment() {
+    fn accepts_hyphenated_kind() {
+        assert!(ResourceKind::parse("network-interface").is_ok());
+    }
+
+    #[test]
+    fn rejects_empty_kind() {
         assert_eq!(
-            ResourceKind::parse("file").unwrap_err(),
-            ResourceKindError::TooFewSegments
+            ResourceKind::parse("").unwrap_err(),
+            ResourceKindError::Empty
         );
     }
 
     #[test]
-    fn rejects_uppercase_namespace() {
+    fn rejects_uppercase_kind() {
         assert_eq!(
             ResourceKind::parse("File").unwrap_err(),
-            ResourceKindError::InvalidSegmentStart('F')
+            ResourceKindError::InvalidStart('F')
+        );
+    }
+
+    #[test]
+    fn rejects_invalid_character() {
+        assert_eq!(
+            ResourceKind::parse("file_kind").unwrap_err(),
+            ResourceKindError::InvalidCharacter('_')
+        );
+    }
+
+    #[test]
+    fn rejects_trailing_hyphen() {
+        assert_eq!(
+            ResourceKind::parse("file-").unwrap_err(),
+            ResourceKindError::InvalidEnd
         );
     }
 }

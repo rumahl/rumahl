@@ -1,5 +1,5 @@
 mod app;
-mod identity;
+mod principal;
 mod ids;
 mod installation_id;
 mod publisher_id;
@@ -10,7 +10,7 @@ mod user;
 mod user_id;
 
 pub use app::AppIdentity;
-pub use identity::Identity;
+pub use principal::Identity;
 
 pub use ids::{
     AppId,

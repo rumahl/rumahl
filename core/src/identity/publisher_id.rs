@@ -145,6 +145,8 @@ impl fmt::Display for PublisherIdError {
     }
 }
 
+impl Error for PublisherIdError {}
+
 #[cfg(test)]
 mod tests {
     use super::*;
