@@ -11,37 +11,6 @@ pub enum Identity {
     Service(ServiceIdentity),
 }
 
-impl From<AppIdentity> for Identity {
-    fn from(identity: AppIdentity) -> Self {
-        Self::App(identity)
-    }
-}
-
-impl From<ServiceIdentity> for Identity {
-    fn from(identity: ServiceIdentity) -> Self {
-        Self::Service(identity)
-    }
-}
-
-impl From<UserIdentity> for Identity {
-    fn from(identity: UserIdentity) -> Self {
-        Self::User(identity)
-    }
-}
-
-let app_identity = AppIdentity::new(
-    app_id,
-    installation_id,
-    publisher_id,
-);
-
-let user = UserIdentity::new(UserId::new());
-
-
-let identity: Identity = app_identity.into();
-
-let identity: Identity = user.into();
-
 impl Identity {
     pub fn is_user(&self) -> bool {
         matches!(self, Self::User(_))
@@ -56,15 +25,48 @@ impl Identity {
     }
 }
 
+impl From<UserIdentity> for Identity {
+    fn from(identity: UserIdentity) -> Self {
+        Self::User(identity)
+    }
+}
+
+impl From<AppIdentity> for Identity {
+    fn from(identity: AppIdentity) -> Self {
+        Self::App(identity)
+    }
+}
+
+impl From<ServiceIdentity> for Identity {
+    fn from(identity: ServiceIdentity) -> Self {
+        Self::Service(identity)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
     use crate::identity::{
         AppId,
         InstallationId,
         PublisherId,
         ServiceId,
+        UserId,
     };
+
+    #[test]
+    fn converts_user_identity_into_identity() {
+        let user = UserIdentity::new(
+            UserId::new(),
+        );
+
+        let identity: Identity = user.into();
+
+        assert!(identity.is_user());
+        assert!(!identity.is_app());
+        assert!(!identity.is_service());
+    }
 
     #[test]
     fn converts_app_identity_into_identity() {
@@ -77,6 +79,7 @@ mod tests {
         let identity: Identity = app.into();
 
         assert!(identity.is_app());
+        assert!(!identity.is_user());
         assert!(!identity.is_service());
     }
 
@@ -89,18 +92,7 @@ mod tests {
         let identity: Identity = service.into();
 
         assert!(identity.is_service());
+        assert!(!identity.is_user());
         assert!(!identity.is_app());
-    }
-    
-    #[test]
-    fn converts_user_identity_into_identity() {
-        let user =
-            UserIdentity::new(UserId::new());
-
-        let identity: Identity = user.into();
-
-        assert!(identity.is_user());
-        assert!(!identity.is_app());
-        assert!(!identity.is_service());
     }
 }
