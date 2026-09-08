@@ -1,3 +1,4 @@
+mod command;
 mod contribution;
 mod id;
 mod kind;
@@ -10,3 +11,5 @@ pub use id::{ContributionId, ContributionIdError};
 pub use kind::{ContributionKind, ContributionKindError};
 
 pub use registry::{ContributionRegistry, ContributionRegistryError};
+
+pub use command::{CommandContribution, CommandContributionError};

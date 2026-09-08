@@ -1,0 +1,178 @@
+use std::error::Error;
+use std::fmt;
+
+use crate::Identity;
+
+use super::{Contribution, ContributionError, ContributionId, ContributionKind};
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CommandContribution {
+    contribution: Contribution,
+    title: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum CommandContributionError {
+    EmptyTitle,
+    TitleTooLong,
+    InvalidContribution(ContributionError),
+}
+
+impl CommandContribution {
+    pub fn new(
+        id: ContributionId,
+        owner: Identity,
+        title: impl Into<String>,
+    ) -> Result<Self, CommandContributionError> {
+        let title = title.into();
+        let title = title.trim();
+
+        if title.is_empty() {
+            return Err(CommandContributionError::EmptyTitle);
+        }
+
+        if title.chars().count() > 120 {
+            return Err(CommandContributionError::TitleTooLong);
+        }
+
+        let kind =
+            ContributionKind::parse("command").expect("command is a valid contribution kind");
+
+        let contribution = Contribution::new(id, owner, kind)
+            .map_err(CommandContributionError::InvalidContribution)?;
+
+        Ok(Self {
+            contribution,
+            title: title.to_owned(),
+        })
+    }
+
+    pub fn contribution(&self) -> &Contribution {
+        &self.contribution
+    }
+
+    pub fn id(&self) -> &ContributionId {
+        self.contribution.id()
+    }
+
+    pub fn owner(&self) -> &Identity {
+        self.contribution.owner()
+    }
+
+    pub fn kind(&self) -> &ContributionKind {
+        self.contribution.kind()
+    }
+
+    pub fn title(&self) -> &str {
+        &self.title
+    }
+}
+
+impl fmt::Display for CommandContributionError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::EmptyTitle => {
+                write!(f, "command title cannot be empty")
+            }
+
+            Self::TitleTooLong => {
+                write!(f, "command title cannot exceed 120 characters")
+            }
+
+            Self::InvalidContribution(error) => {
+                write!(f, "invalid command contribution: {error}")
+            }
+        }
+    }
+}
+
+impl Error for CommandContributionError {
+    fn source(&self) -> Option<&(dyn Error + 'static)> {
+        match self {
+            Self::InvalidContribution(error) => Some(error),
+
+            Self::EmptyTitle | Self::TitleTooLong => None,
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    use crate::{AppId, AppIdentity, InstallationId, PublisherId, UserId, UserIdentity};
+
+    fn notes_app() -> AppIdentity {
+        AppIdentity::new(
+            AppId::parse("com.rumahl.notes").unwrap(),
+            InstallationId::new(),
+            PublisherId::parse("com.rumahl").unwrap(),
+        )
+    }
+
+    #[test]
+    fn creates_command_contribution() {
+        let command = CommandContribution::new(
+            ContributionId::parse("com.rumahl.notes.new-note").unwrap(),
+            notes_app().into(),
+            "New note",
+        )
+        .unwrap();
+
+        assert_eq!(command.title(), "New note");
+
+        assert_eq!(command.kind().as_str(), "command");
+
+        assert_eq!(command.id().as_str(), "com.rumahl.notes.new-note");
+    }
+
+    #[test]
+    fn trims_command_title() {
+        let command = CommandContribution::new(
+            ContributionId::parse("com.rumahl.notes.new-note").unwrap(),
+            notes_app().into(),
+            "  New note  ",
+        )
+        .unwrap();
+
+        assert_eq!(command.title(), "New note");
+    }
+
+    #[test]
+    fn rejects_empty_title() {
+        let result = CommandContribution::new(
+            ContributionId::parse("com.rumahl.notes.new-note").unwrap(),
+            notes_app().into(),
+            "   ",
+        );
+
+        assert_eq!(result.unwrap_err(), CommandContributionError::EmptyTitle);
+    }
+
+    #[test]
+    fn rejects_title_longer_than_limit() {
+        let result = CommandContribution::new(
+            ContributionId::parse("com.rumahl.notes.new-note").unwrap(),
+            notes_app().into(),
+            "a".repeat(121),
+        );
+
+        assert_eq!(result.unwrap_err(), CommandContributionError::TitleTooLong);
+    }
+
+    #[test]
+    fn user_cannot_register_command_contribution() {
+        let user = UserIdentity::new(UserId::new());
+
+        let result = CommandContribution::new(
+            ContributionId::parse("com.rumahl.notes.new-note").unwrap(),
+            user.into(),
+            "New note",
+        );
+
+        assert_eq!(
+            result.unwrap_err(),
+            CommandContributionError::InvalidContribution(ContributionError::UserCannotContribute)
+        );
+    }
+}

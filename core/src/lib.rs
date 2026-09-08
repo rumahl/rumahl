@@ -34,8 +34,9 @@ pub use capabilities::{
 };
 
 pub use contributions::{
-    Contribution, ContributionError, ContributionId, ContributionIdError, ContributionKind,
-    ContributionKindError, ContributionRegistry, ContributionRegistryError,
+    CommandContribution, CommandContributionError, Contribution, ContributionError, ContributionId,
+    ContributionIdError, ContributionKind, ContributionKindError, ContributionRegistry,
+    ContributionRegistryError,
 };
 
 #[cfg(test)]
