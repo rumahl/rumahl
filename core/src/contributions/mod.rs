@@ -9,6 +9,7 @@ mod id;
 mod kind;
 mod registry;
 mod search;
+mod search_provider_resolver;
 mod search_registry;
 
 pub use contribution::{Contribution, ContributionError};
@@ -26,3 +27,5 @@ pub use command_registry::{CommandRegistry, CommandRegistryError};
 pub use search::SearchContribution;
 
 pub use search_registry::{SearchRegistry, SearchRegistryError};
+
+pub use search_provider_resolver::{SearchProviderResolutionError, SearchProviderResolver};

@@ -38,7 +38,8 @@ pub use contributions::{
     CommandAction, CommandContribution, CommandContributionError, CommandRegistry,
     CommandRegistryError, Contribution, ContributionError, ContributionId, ContributionIdError,
     ContributionKind, ContributionKindError, ContributionRegistry, ContributionRegistryError,
-    SearchContribution, SearchRegistry, SearchRegistryError,
+    SearchContribution, SearchProviderResolutionError, SearchProviderResolver, SearchRegistry,
+    SearchRegistryError,
 };
 
 pub use events::{
