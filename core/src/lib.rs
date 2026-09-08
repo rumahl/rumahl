@@ -1,5 +1,6 @@
 pub mod context;
 pub mod identity;
+pub mod resources;
 
 pub use context::{
     CorrelationId,
@@ -24,4 +25,14 @@ pub use identity::{
     UserId,
     UserIdError,
     UserIdentity,
+};
+
+pub use resources::{
+    ResourceKey,
+    ResourceKeyError,
+    ResourceKind,
+    ResourceKindError,
+    ResourceNamespace,
+    ResourceNamespaceError,
+    ResourceRef,
 };
