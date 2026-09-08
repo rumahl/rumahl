@@ -3,10 +3,16 @@ mod id;
 mod provider;
 mod registry;
 mod invocation;
+mod access_registry;
 
 pub use access::{
     CapabilityAccessRule,
     CapabilityAccessRuleError,
+};
+
+pub use access_registry::{
+    CapabilityAccessRegistry,
+    CapabilityAccessRegistryError,
 };
 
 pub use id::{
