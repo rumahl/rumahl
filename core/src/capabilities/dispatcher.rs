@@ -4,7 +4,8 @@ use std::fmt;
 use crate::{AuthorizationDecision, AuthorizationEngine, PermissionGrant, ResourceRef};
 
 use super::{
-    CapabilityAccessRegistry, CapabilityAccessRuleError, CapabilityInvocation, CapabilityRegistry,
+    CapabilityAccessRegistry, CapabilityAccessRuleError, CapabilityExecution, CapabilityInvocation,
+    CapabilityRegistry,
 };
 
 #[derive(Debug, Default, Clone, Copy)]
@@ -15,6 +16,12 @@ pub enum CapabilityDispatchError {
     ProviderNotRegistered,
     AccessRuleMissing,
     InvalidAccessRule(CapabilityAccessRuleError),
+}
+
+#[derive(Debug)]
+pub enum CapabilityDispatchOutcome {
+    Ready(Box<CapabilityExecution>),
+    NotAuthorized(AuthorizationDecision),
 }
 
 impl CapabilityDispatcher {
@@ -44,6 +51,37 @@ impl CapabilityDispatcher {
             .map_err(CapabilityDispatchError::InvalidAccessRule)?;
 
         Ok(authorization_engine.authorize(&authorization_request, grants))
+    }
+
+    pub fn prepare_execution(
+        &self,
+        invocation: &CapabilityInvocation,
+        resource: Option<ResourceRef>,
+        capability_registry: &CapabilityRegistry,
+        access_registry: &CapabilityAccessRegistry,
+        authorization_engine: &AuthorizationEngine,
+        grants: &[PermissionGrant],
+    ) -> Result<CapabilityDispatchOutcome, CapabilityDispatchError> {
+        let decision = self.authorize(
+            invocation,
+            resource.clone(),
+            capability_registry,
+            access_registry,
+            authorization_engine,
+            grants,
+        )?;
+
+        match decision {
+            AuthorizationDecision::Allow => Ok(CapabilityDispatchOutcome::Ready(Box::new(
+                CapabilityExecution::new(
+                    invocation.context().clone(),
+                    invocation.capability_provider().clone(),
+                    resource,
+                ),
+            ))),
+
+            decision => Ok(CapabilityDispatchOutcome::NotAuthorized(decision)),
+        }
     }
 }
 
@@ -84,7 +122,8 @@ mod tests {
 
     use crate::{
         AppId, AppIdentity, CapabilityAccessRule, CapabilityId, CapabilityProvider, InstallationId,
-        OperationContext, PermissionId, PublisherId, ResourceKey, ResourceKind, ResourceNamespace,
+        OperationContext, PermissionId, PermissionScope, PublisherId, ResourceKey, ResourceKind,
+        ResourceNamespace,
     };
 
     fn app(id: &str) -> AppIdentity {
@@ -229,5 +268,72 @@ mod tests {
             result,
             AuthorizationDecision::Deny(crate::AuthorizationDenyReason::NoGrantForActor)
         );
+    }
+
+    #[test]
+    fn prepares_execution_when_authorized() {
+        let consumer = app("com.rumahl.notes");
+
+        let provider_app = app("com.rumahl.files");
+
+        let capability = preview_capability();
+
+        let provider = CapabilityProvider::new(provider_app.into(), capability.clone()).unwrap();
+
+        let invocation = CapabilityInvocation::new(
+            OperationContext::for_background_app(consumer.clone()),
+            provider.clone(),
+        );
+
+        let mut registry = CapabilityRegistry::new();
+
+        registry.register(provider).unwrap();
+
+        let mut access_registry = CapabilityAccessRegistry::new();
+
+        let permission = PermissionId::parse("rumahl.files.read").unwrap();
+
+        access_registry
+            .register(CapabilityAccessRule::new(
+                capability.clone(),
+                permission.clone(),
+            ))
+            .unwrap();
+
+        let resource = file("document-1");
+
+        let grant = PermissionGrant::new(
+            consumer.clone().into(),
+            permission,
+            PermissionScope::Explicit,
+            vec![resource.clone()],
+            consumer.into(),
+        )
+        .unwrap();
+
+        let engine = AuthorizationEngine::new();
+
+        let dispatcher = CapabilityDispatcher::new();
+
+        let outcome = dispatcher
+            .prepare_execution(
+                &invocation,
+                Some(resource.clone()),
+                &registry,
+                &access_registry,
+                &engine,
+                &[grant],
+            )
+            .unwrap();
+
+        let CapabilityDispatchOutcome::Ready(execution) = outcome else {
+            panic!("expected ready capability execution");
+        };
+
+        assert_eq!(execution.capability(), &capability);
+
+        assert_eq!(execution.resource(), Some(&resource));
+
+        assert_eq!(execution.provider(), invocation.capability_provider());
     }
 }
