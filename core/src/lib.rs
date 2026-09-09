@@ -1,3 +1,4 @@
+pub mod apps;
 pub mod capabilities;
 pub mod context;
 pub mod contributions;
@@ -6,6 +7,7 @@ pub mod identity;
 pub mod permissions;
 pub mod resources;
 
+pub use apps::{AppVersion, AppVersionError};
 pub use context::{CorrelationId, CorrelationIdError, OperationContext};
 
 pub use identity::{
