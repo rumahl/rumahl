@@ -68,89 +68,77 @@ impl PlatformRegistrar {
         Ok(())
     }
 
-    pub(crate) fn register(
+    pub(crate) fn apply_registration(
         &self,
         registration: &PlatformRegistration,
         state: &mut PlatformState,
     ) -> Result<(), PlatformRegistrarError> {
-        self.can_register(registration, state)?;
-
-        let mut staged = state.clone();
-
         for provider in registration.capability_providers() {
-            staged
+            state
                 .capability_registry_mut()
                 .register(provider.clone())
                 .map_err(PlatformRegistrarError::CapabilityConflict)?;
         }
 
         for contribution in registration.contributions() {
-            staged
+            state
                 .contribution_registry_mut()
                 .register(contribution.clone())
                 .map_err(PlatformRegistrarError::ContributionConflict)?;
         }
 
         for command in registration.commands() {
-            staged
+            state
                 .command_registry_mut()
                 .register(command.clone())
                 .map_err(PlatformRegistrarError::CommandConflict)?;
         }
 
         for search in registration.searches() {
-            staged
+            state
                 .search_registry_mut()
                 .register(search.clone())
                 .map_err(PlatformRegistrarError::SearchConflict)?;
         }
 
         for subscription in registration.event_subscriptions() {
-            staged
+            state
                 .event_bus_mut()
                 .subscribe(subscription.clone())
                 .map_err(PlatformRegistrarError::EventSubscriptionConflict)?;
         }
 
-        *state = staged;
-
         Ok(())
     }
 
-    pub(crate) fn unregister_app(
+    pub(crate) fn apply_deregistration(
         &self,
         app: &InstalledApp,
         state: &mut PlatformState,
     ) -> PlatformDeregistrationReport {
         let identity = app.identity().clone().into();
 
-        let mut staged = state.clone();
-
-        let capability_providers = staged
+        let capability_providers = state
             .capability_registry_mut()
             .remove_for_identity(&identity);
 
-        let contributions = staged
+        let contributions = state
             .contribution_registry_mut()
             .remove_for_owner(&identity);
 
-        let commands = staged.command_registry_mut().remove_for_owner(&identity);
+        let commands = state.command_registry_mut().remove_for_owner(&identity);
 
-        let searches = staged.search_registry_mut().remove_for_owner(&identity);
+        let searches = state.search_registry_mut().remove_for_owner(&identity);
 
-        let event_subscriptions = staged.event_bus_mut().unsubscribe_all(&identity);
+        let event_subscriptions = state.event_bus_mut().unsubscribe_all(&identity);
 
-        let report = PlatformDeregistrationReport {
+        PlatformDeregistrationReport {
             capability_providers,
             contributions,
             commands,
             searches,
             event_subscriptions,
-        };
-
-        *state = staged;
-
-        report
+        }
     }
 }
 
@@ -284,7 +272,7 @@ mod tests {
             .add_event_subscription(EventName::parse("rumahl.files.changed").unwrap())
             .unwrap();
 
-        InstalledApp::install(manifest, &AppManifestValidator::new()).unwrap()
+        InstalledApp::create(manifest, &AppManifestValidator::new()).unwrap()
     }
 
     fn installed_app() -> InstalledApp {
@@ -426,7 +414,9 @@ mod tests {
 
         let registrar = PlatformRegistrar::new();
 
-        registrar.register(&registration, &mut state).unwrap();
+        registrar
+            .apply_registration(&registration, &mut state)
+            .unwrap();
 
         assert_eq!(
             state.capability_registry().len(),
@@ -452,7 +442,7 @@ mod tests {
     }
 
     #[test]
-    fn registration_conflict_leaves_platform_unchanged() {
+    fn preflight_conflict_leaves_platform_unchanged() {
         let registration = registration();
 
         let mut state = PlatformState::new();
@@ -474,7 +464,7 @@ mod tests {
 
         let registrar = PlatformRegistrar::new();
 
-        let result = registrar.register(&registration, &mut state);
+        let result = registrar.can_register(&registration, &state);
 
         assert_eq!(
             result.unwrap_err(),
@@ -502,7 +492,9 @@ mod tests {
 
         let registrar = PlatformRegistrar::new();
 
-        registrar.register(&registration, &mut state).unwrap();
+        registrar
+            .apply_registration(&registration, &mut state)
+            .unwrap();
 
         assert!(!state.capability_registry().is_empty());
 
@@ -514,7 +506,7 @@ mod tests {
 
         assert!(!state.event_bus().is_empty());
 
-        let report = registrar.unregister_app(&app, &mut state);
+        let report = registrar.apply_deregistration(&app, &mut state);
 
         assert_eq!(
             report.capability_providers(),
@@ -559,12 +551,14 @@ mod tests {
 
         let registrar = PlatformRegistrar::new();
 
-        registrar.register(&first_registration, &mut state).unwrap();
         registrar
-            .register(&second_registration, &mut state)
+            .apply_registration(&first_registration, &mut state)
+            .unwrap();
+        registrar
+            .apply_registration(&second_registration, &mut state)
             .unwrap();
 
-        registrar.unregister_app(&first, &mut state);
+        registrar.apply_deregistration(&first, &mut state);
 
         let second_identity = second.identity().clone().into();
 
@@ -619,13 +613,15 @@ mod tests {
 
         let registrar = PlatformRegistrar::new();
 
-        registrar.register(&registration, &mut state).unwrap();
+        registrar
+            .apply_registration(&registration, &mut state)
+            .unwrap();
 
-        let first = registrar.unregister_app(&app, &mut state);
+        let first = registrar.apply_deregistration(&app, &mut state);
 
         assert!(!first.is_empty());
 
-        let second = registrar.unregister_app(&app, &mut state);
+        let second = registrar.apply_deregistration(&app, &mut state);
 
         assert!(second.is_empty());
     }

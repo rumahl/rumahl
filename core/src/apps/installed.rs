@@ -17,7 +17,7 @@ pub enum InstalledAppError {
 }
 
 impl InstalledApp {
-    pub fn install(
+    pub fn create(
         manifest: AppManifest,
         validator: &AppManifestValidator,
     ) -> Result<Self, InstalledAppError> {
@@ -51,7 +51,10 @@ impl fmt::Display for InstalledAppError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::InvalidManifest(error) => {
-                write!(f, "cannot install invalid app manifest: {error}")
+                write!(
+                    f,
+                    "cannot create installed app from invalid manifest: {error}"
+                )
             }
         }
     }
@@ -84,12 +87,12 @@ mod tests {
     }
 
     #[test]
-    fn installs_valid_manifest() {
+    fn creates_installed_app_from_valid_manifest() {
         let manifest = manifest();
 
         let validator = AppManifestValidator::new();
 
-        let installed = InstalledApp::install(manifest, &validator).unwrap();
+        let installed = InstalledApp::create(manifest, &validator).unwrap();
 
         assert_eq!(installed.identity().app_id().as_str(), "com.rumahl.notes");
 
@@ -106,7 +109,7 @@ mod tests {
 
         let validator = AppManifestValidator::new();
 
-        let installed = InstalledApp::install(manifest, &validator).unwrap();
+        let installed = InstalledApp::create(manifest, &validator).unwrap();
 
         assert_eq!(installed.identity().app_id(), &app_id);
 
@@ -117,9 +120,9 @@ mod tests {
     fn separate_installations_receive_different_ids() {
         let validator = AppManifestValidator::new();
 
-        let first = InstalledApp::install(manifest(), &validator).unwrap();
+        let first = InstalledApp::create(manifest(), &validator).unwrap();
 
-        let second = InstalledApp::install(manifest(), &validator).unwrap();
+        let second = InstalledApp::create(manifest(), &validator).unwrap();
 
         assert_ne!(first.installation_id(), second.installation_id());
     }
@@ -145,7 +148,7 @@ mod tests {
 
         let validator = AppManifestValidator::new();
 
-        let result = InstalledApp::install(manifest, &validator);
+        let result = InstalledApp::create(manifest, &validator);
 
         assert!(matches!(
             result,

@@ -219,7 +219,7 @@ mod tests {
             .add_event_subscription(EventName::parse("rumahl.files.changed").unwrap())
             .unwrap();
 
-        InstalledApp::install(manifest, &AppManifestValidator::new()).unwrap()
+        InstalledApp::create(manifest, &AppManifestValidator::new()).unwrap()
     }
 
     #[test]

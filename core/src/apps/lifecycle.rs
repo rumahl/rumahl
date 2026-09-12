@@ -44,7 +44,7 @@ impl AppLifecycle {
          * Build the concrete installation.
          */
 
-        let app = InstalledApp::install(manifest, &self.validator)
+        let app = InstalledApp::create(manifest, &self.validator)
             .map_err(AppLifecycleError::InvalidApp)?;
 
         /*
@@ -81,7 +81,7 @@ impl AppLifecycle {
             .map_err(AppLifecycleError::InstalledAppConflict)?;
 
         self.registrar
-            .register(&registration, &mut staged)
+            .apply_registration(&registration, &mut staged)
             .map_err(AppLifecycleError::PlatformRegistrationConflict)?;
 
         /*
@@ -111,7 +111,7 @@ impl AppLifecycle {
 
         let mut staged = state.clone();
 
-        let deregistration = self.registrar.unregister_app(&app, &mut staged);
+        let deregistration = self.registrar.apply_deregistration(&app, &mut staged);
 
         let removed = staged
             .installed_apps_mut()
@@ -309,7 +309,7 @@ mod tests {
 
         let mut state = PlatformState::new();
 
-        let other_app = InstalledApp::install(
+        let other_app = InstalledApp::create(
             AppManifest::new(
                 AppId::parse("com.rumahl.other").unwrap(),
                 PublisherId::parse("com.rumahl").unwrap(),

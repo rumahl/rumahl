@@ -4,6 +4,11 @@ use crate::{
 };
 
 #[derive(Debug, Default, Clone)]
+/// Complete in-memory platform state.
+///
+/// Installed apps are the source of truth. Capability, contribution, command,
+/// search, and event registries are derived from those installations and are
+/// updated atomically through `AppLifecycle`.
 pub struct PlatformState {
     capability_registry: CapabilityRegistry,
     contribution_registry: ContributionRegistry,

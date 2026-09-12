@@ -117,7 +117,7 @@ mod tests {
         )
         .unwrap();
 
-        InstalledApp::install(manifest, &AppManifestValidator::new()).unwrap()
+        InstalledApp::create(manifest, &AppManifestValidator::new()).unwrap()
     }
 
     #[test]
