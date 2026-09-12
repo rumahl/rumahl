@@ -3,7 +3,7 @@ use std::fmt;
 
 use crate::{
     CapabilityRegistryError, CommandRegistryError, ContributionRegistryError, EventBusError,
-    PlatformState, SearchRegistryError,
+    InstalledAppRegistryError, PlatformState, SearchRegistryError,
 };
 
 use super::{InstalledApp, PlatformRegistration};
@@ -13,6 +13,7 @@ pub struct PlatformRegistrar;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum PlatformRegistrarError {
+    InstalledAppConflict(InstalledAppRegistryError),
     CapabilityConflict(CapabilityRegistryError),
     ContributionConflict(ContributionRegistryError),
     CommandConflict(CommandRegistryError),
@@ -30,6 +31,11 @@ impl PlatformRegistrar {
         registration: &PlatformRegistration,
         state: &PlatformState,
     ) -> Result<(), PlatformRegistrarError> {
+        state
+            .installed_apps()
+            .can_register(registration.installed_app())
+            .map_err(PlatformRegistrarError::InstalledAppConflict)?;
+
         for provider in registration.capability_providers() {
             state
                 .capability_registry()
@@ -76,6 +82,11 @@ impl PlatformRegistrar {
         self.can_register(registration, state)?;
 
         let mut staged = state.clone();
+
+        staged
+            .installed_apps_mut()
+            .register(registration.installed_app().clone())
+            .map_err(PlatformRegistrarError::InstalledAppConflict)?;
 
         for provider in registration.capability_providers() {
             staged
@@ -125,6 +136,8 @@ impl PlatformRegistrar {
         let identity = app.identity().clone().into();
 
         let mut staged = state.clone();
+
+        staged.installed_apps_mut().remove(app.installation_id());
 
         let capability_providers = staged
             .capability_registry_mut()
@@ -196,6 +209,10 @@ impl PlatformDeregistrationReport {
 impl fmt::Display for PlatformRegistrarError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
+            Self::InstalledAppConflict(error) => {
+                write!(f, "installed app registration conflict: {error}")
+            }
+
             Self::CapabilityConflict(error) => {
                 write!(f, "capability registration conflict: {error}")
             }
@@ -222,6 +239,8 @@ impl fmt::Display for PlatformRegistrarError {
 impl Error for PlatformRegistrarError {
     fn source(&self) -> Option<&(dyn Error + 'static)> {
         match self {
+            Self::InstalledAppConflict(error) => Some(error),
+
             Self::CapabilityConflict(error) => Some(error),
 
             Self::ContributionConflict(error) => Some(error),

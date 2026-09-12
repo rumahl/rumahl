@@ -1,5 +1,6 @@
 mod contribution;
 mod installed;
+mod installed_registry;
 mod manifest;
 mod registrar;
 mod registration;
@@ -22,3 +23,5 @@ pub use installed::{InstalledApp, InstalledAppError};
 pub use registration::{PlatformRegistration, PlatformRegistrationError};
 
 pub use registrar::{PlatformDeregistrationReport, PlatformRegistrar, PlatformRegistrarError};
+
+pub use installed_registry::{InstalledAppRegistry, InstalledAppRegistryError};

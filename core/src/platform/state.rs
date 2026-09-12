@@ -1,4 +1,7 @@
-use crate::{CapabilityRegistry, CommandRegistry, ContributionRegistry, EventBus, SearchRegistry};
+use crate::{
+    CapabilityRegistry, CommandRegistry, ContributionRegistry, EventBus, InstalledAppRegistry,
+    SearchRegistry,
+};
 
 #[derive(Debug, Default, Clone)]
 pub struct PlatformState {
@@ -7,6 +10,7 @@ pub struct PlatformState {
     command_registry: CommandRegistry,
     search_registry: SearchRegistry,
     event_bus: EventBus,
+    installed_app_registry: InstalledAppRegistry,
 }
 
 impl PlatformState {
@@ -34,6 +38,10 @@ impl PlatformState {
         &self.event_bus
     }
 
+    pub fn installed_apps(&self) -> &InstalledAppRegistry {
+        &self.installed_app_registry
+    }
+
     pub(crate) fn capability_registry_mut(&mut self) -> &mut CapabilityRegistry {
         &mut self.capability_registry
     }
@@ -52,5 +60,31 @@ impl PlatformState {
 
     pub(crate) fn event_bus_mut(&mut self) -> &mut EventBus {
         &mut self.event_bus
+    }
+
+    pub(crate) fn installed_apps_mut(&mut self) -> &mut InstalledAppRegistry {
+        &mut self.installed_app_registry
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn platform_state_starts_empty() {
+        let state = PlatformState::new();
+
+        assert!(state.installed_apps().is_empty());
+
+        assert!(state.capability_registry().is_empty());
+
+        assert!(state.contribution_registry().is_empty());
+
+        assert!(state.command_registry().is_empty());
+
+        assert!(state.search_registry().is_empty());
+
+        assert!(state.event_bus().is_empty());
     }
 }

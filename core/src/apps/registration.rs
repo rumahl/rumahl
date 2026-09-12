@@ -10,6 +10,7 @@ use super::{ContributionDeclaration, InstalledApp};
 
 #[derive(Debug, Clone)]
 pub struct PlatformRegistration {
+    installed_app: InstalledApp,
     capability_providers: Vec<CapabilityProvider>,
     contributions: Vec<Contribution>,
     commands: Vec<CommandContribution>,
@@ -99,12 +100,17 @@ impl PlatformRegistration {
         }
 
         Ok(Self {
+            installed_app: app.clone(),
             capability_providers,
             contributions,
             commands,
             searches,
             event_subscriptions,
         })
+    }
+
+    pub fn installed_app(&self) -> &InstalledApp {
+        &self.installed_app
     }
 
     pub fn capability_providers(&self) -> &[CapabilityProvider] {
