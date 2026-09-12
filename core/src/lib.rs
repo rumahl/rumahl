@@ -8,8 +8,9 @@ pub mod permissions;
 pub mod resources;
 
 pub use apps::{
-    AppManifest, AppManifestError, AppVersion, AppVersionError, CommandContributionDeclaration,
-    CommandContributionDeclarationError, ContributionDeclaration, SearchContributionDeclaration,
+    AppManifest, AppManifestError, AppManifestValidationError, AppManifestValidator, AppVersion,
+    AppVersionError, CommandContributionDeclaration, CommandContributionDeclarationError,
+    ContributionDeclaration, SearchContributionDeclaration,
 };
 
 pub use context::{CorrelationId, CorrelationIdError, OperationContext};
