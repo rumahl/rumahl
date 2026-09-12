@@ -77,6 +77,15 @@ impl ContributionRegistry {
     pub fn is_empty(&self) -> bool {
         self.contributions.is_empty()
     }
+
+    pub(crate) fn remove_for_owner(&mut self, owner: &Identity) -> usize {
+        let before = self.contributions.len();
+
+        self.contributions
+            .retain(|contribution| contribution.owner() != owner);
+
+        before - self.contributions.len()
+    }
 }
 
 impl fmt::Display for ContributionRegistryError {
@@ -237,5 +246,35 @@ mod tests {
             registry.can_register(&contribution).unwrap_err(),
             ContributionRegistryError::AlreadyRegistered
         );
+    }
+
+    #[test]
+    fn removes_only_contributions_for_owner() {
+        let notes = app("com.rumahl.notes");
+
+        let files = app("com.rumahl.files");
+
+        let notes_identity = notes.clone().into();
+
+        let mut registry = ContributionRegistry::new();
+
+        registry
+            .register(contribution("com.rumahl.notes.open", notes, "command"))
+            .unwrap();
+
+        registry
+            .register(contribution(
+                "com.rumahl.files.search",
+                files,
+                "search-provider",
+            ))
+            .unwrap();
+
+        let removed = registry.remove_for_owner(&notes_identity);
+
+        assert_eq!(removed, 1);
+        assert_eq!(registry.len(), 1);
+
+        assert!(registry.contributions_for_owner(&notes_identity).is_empty());
     }
 }

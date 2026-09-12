@@ -6,7 +6,7 @@ use crate::{
     PlatformState, SearchRegistryError,
 };
 
-use super::PlatformRegistration;
+use super::{InstalledApp, PlatformRegistration};
 
 #[derive(Debug, Default, Clone, Copy)]
 pub struct PlatformRegistrar;
@@ -116,6 +116,81 @@ impl PlatformRegistrar {
 
         Ok(())
     }
+
+    pub fn unregister_app(
+        &self,
+        app: &InstalledApp,
+        state: &mut PlatformState,
+    ) -> PlatformDeregistrationReport {
+        let identity = app.identity().clone().into();
+
+        let mut staged = state.clone();
+
+        let capability_providers = staged
+            .capability_registry_mut()
+            .remove_for_identity(&identity);
+
+        let contributions = staged
+            .contribution_registry_mut()
+            .remove_for_owner(&identity);
+
+        let commands = staged.command_registry_mut().remove_for_owner(&identity);
+
+        let searches = staged.search_registry_mut().remove_for_owner(&identity);
+
+        let event_subscriptions = staged.event_bus_mut().unsubscribe_all(&identity);
+
+        let report = PlatformDeregistrationReport {
+            capability_providers,
+            contributions,
+            commands,
+            searches,
+            event_subscriptions,
+        };
+
+        *state = staged;
+
+        report
+    }
+}
+
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+pub struct PlatformDeregistrationReport {
+    capability_providers: usize,
+    contributions: usize,
+    commands: usize,
+    searches: usize,
+    event_subscriptions: usize,
+}
+
+impl PlatformDeregistrationReport {
+    pub fn capability_providers(&self) -> usize {
+        self.capability_providers
+    }
+
+    pub fn contributions(&self) -> usize {
+        self.contributions
+    }
+
+    pub fn commands(&self) -> usize {
+        self.commands
+    }
+
+    pub fn searches(&self) -> usize {
+        self.searches
+    }
+
+    pub fn event_subscriptions(&self) -> usize {
+        self.event_subscriptions
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.capability_providers == 0
+            && self.contributions == 0
+            && self.commands == 0
+            && self.searches == 0
+            && self.event_subscriptions == 0
+    }
 }
 
 impl fmt::Display for PlatformRegistrarError {
@@ -170,12 +245,12 @@ mod tests {
         SearchContributionDeclaration,
     };
 
-    fn registration() -> PlatformRegistration {
+    fn installed_app_with_id(app_id: &str, display_name: &str) -> InstalledApp {
         let mut manifest = AppManifest::new(
-            AppId::parse("com.rumahl.notes").unwrap(),
+            AppId::parse(app_id).unwrap(),
             PublisherId::parse("com.rumahl").unwrap(),
             AppVersion::new(1, 0, 0),
-            "Notes",
+            display_name,
         )
         .unwrap();
 
@@ -186,9 +261,9 @@ mod tests {
         manifest
             .add_contribution(
                 CommandContributionDeclaration::new(
-                    ContributionId::parse("com.rumahl.notes.open").unwrap(),
-                    "Open Notes",
-                    CommandAction::open_app(AppId::parse("com.rumahl.notes").unwrap()),
+                    ContributionId::parse(format!("{app_id}.open")).unwrap(),
+                    format!("Open {display_name}"),
+                    CommandAction::open_app(AppId::parse(app_id).unwrap()),
                 )
                 .unwrap()
                 .into(),
@@ -198,7 +273,7 @@ mod tests {
         manifest
             .add_contribution(
                 SearchContributionDeclaration::new(
-                    ContributionId::parse("com.rumahl.notes.search").unwrap(),
+                    ContributionId::parse(format!("{app_id}.search")).unwrap(),
                     CapabilityId::parse("rumahl.search.query").unwrap(),
                 )
                 .into(),
@@ -209,9 +284,15 @@ mod tests {
             .add_event_subscription(EventName::parse("rumahl.files.changed").unwrap())
             .unwrap();
 
-        let app = InstalledApp::install(manifest, &AppManifestValidator::new()).unwrap();
+        InstalledApp::install(manifest, &AppManifestValidator::new()).unwrap()
+    }
 
-        PlatformRegistration::prepare(&app).unwrap()
+    fn installed_app() -> InstalledApp {
+        installed_app_with_id("com.rumahl.notes", "Notes")
+    }
+
+    fn registration() -> PlatformRegistration {
+        PlatformRegistration::prepare(&installed_app()).unwrap()
     }
 
     #[test]
@@ -409,5 +490,143 @@ mod tests {
         assert_eq!(state.search_registry().len(), searches_before);
 
         assert_eq!(state.event_bus().len(), subscriptions_before);
+    }
+
+    #[test]
+    fn unregisters_entire_app_registration() {
+        let app = installed_app();
+
+        let registration = PlatformRegistration::prepare(&app).unwrap();
+
+        let mut state = PlatformState::new();
+
+        let registrar = PlatformRegistrar::new();
+
+        registrar.register(&registration, &mut state).unwrap();
+
+        assert!(!state.capability_registry().is_empty());
+
+        assert!(!state.contribution_registry().is_empty());
+
+        assert!(!state.command_registry().is_empty());
+
+        assert!(!state.search_registry().is_empty());
+
+        assert!(!state.event_bus().is_empty());
+
+        let report = registrar.unregister_app(&app, &mut state);
+
+        assert_eq!(
+            report.capability_providers(),
+            registration.capability_providers().len()
+        );
+
+        assert_eq!(report.contributions(), registration.contributions().len());
+
+        assert_eq!(report.commands(), registration.commands().len());
+
+        assert_eq!(report.searches(), registration.searches().len());
+
+        assert_eq!(
+            report.event_subscriptions(),
+            registration.event_subscriptions().len()
+        );
+
+        assert!(state.capability_registry().is_empty());
+
+        assert!(state.contribution_registry().is_empty());
+
+        assert!(state.command_registry().is_empty());
+
+        assert!(state.search_registry().is_empty());
+
+        assert!(state.event_bus().is_empty());
+    }
+
+    #[test]
+    fn unregistering_app_does_not_remove_other_installation() {
+        let first = installed_app();
+
+        let second = installed_app_with_id("com.rumahl.files", "Files");
+
+        assert_ne!(first.installation_id(), second.installation_id());
+
+        let first_registration = PlatformRegistration::prepare(&first).unwrap();
+
+        let second_registration = PlatformRegistration::prepare(&second).unwrap();
+
+        let mut state = PlatformState::new();
+
+        let registrar = PlatformRegistrar::new();
+
+        registrar.register(&first_registration, &mut state).unwrap();
+        registrar
+            .register(&second_registration, &mut state)
+            .unwrap();
+
+        registrar.unregister_app(&first, &mut state);
+
+        let second_identity = second.identity().clone().into();
+
+        assert_eq!(
+            state
+                .capability_registry()
+                .providers_for(&CapabilityId::parse("rumahl.search.query").unwrap())
+                .iter()
+                .filter(|provider| provider.identity() == &second_identity)
+                .count(),
+            second_registration.capability_providers().len()
+        );
+        assert_eq!(
+            state
+                .contribution_registry()
+                .contributions_for_owner(&second_identity)
+                .len(),
+            second_registration.contributions().len()
+        );
+        assert_eq!(
+            state
+                .command_registry()
+                .commands_for_owner(&second_identity)
+                .len(),
+            second_registration.commands().len()
+        );
+        assert_eq!(
+            state
+                .search_registry()
+                .providers_for_owner(&second_identity)
+                .len(),
+            second_registration.searches().len()
+        );
+        assert_eq!(
+            state
+                .event_bus()
+                .subscriptions()
+                .iter()
+                .filter(|subscription| subscription.subscriber() == &second_identity)
+                .count(),
+            second_registration.event_subscriptions().len()
+        );
+    }
+
+    #[test]
+    fn unregistering_app_twice_is_idempotent() {
+        let app = installed_app();
+
+        let registration = PlatformRegistration::prepare(&app).unwrap();
+
+        let mut state = PlatformState::new();
+
+        let registrar = PlatformRegistrar::new();
+
+        registrar.register(&registration, &mut state).unwrap();
+
+        let first = registrar.unregister_app(&app, &mut state);
+
+        assert!(!first.is_empty());
+
+        let second = registrar.unregister_app(&app, &mut state);
+
+        assert!(second.is_empty());
     }
 }

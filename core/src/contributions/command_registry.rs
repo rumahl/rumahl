@@ -62,6 +62,14 @@ impl CommandRegistry {
     pub fn is_empty(&self) -> bool {
         self.commands.is_empty()
     }
+
+    pub(crate) fn remove_for_owner(&mut self, owner: &Identity) -> usize {
+        let before = self.commands.len();
+
+        self.commands.retain(|command| command.owner() != owner);
+
+        before - self.commands.len()
+    }
 }
 
 impl fmt::Display for CommandRegistryError {
@@ -249,5 +257,41 @@ mod tests {
             registry.can_register(&command).unwrap_err(),
             CommandRegistryError::AlreadyRegistered
         );
+    }
+
+    #[test]
+    fn removes_only_commands_for_owner() {
+        let notes = app("com.rumahl.notes");
+
+        let files = app("com.rumahl.files");
+
+        let notes_identity = notes.clone().into();
+
+        let mut registry = CommandRegistry::new();
+
+        registry
+            .register(command(
+                "com.rumahl.notes.open",
+                notes,
+                "Open Notes",
+                "com.rumahl.notes.open",
+            ))
+            .unwrap();
+
+        registry
+            .register(command(
+                "com.rumahl.files.open",
+                files,
+                "Open Files",
+                "com.rumahl.files.open",
+            ))
+            .unwrap();
+
+        let removed = registry.remove_for_owner(&notes_identity);
+
+        assert_eq!(removed, 1);
+        assert_eq!(registry.len(), 1);
+
+        assert!(registry.commands_for_owner(&notes_identity).is_empty());
     }
 }

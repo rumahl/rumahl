@@ -1,3 +1,4 @@
+use crate::Identity;
 use std::error::Error;
 use std::fmt;
 
@@ -58,6 +59,15 @@ impl EventBus {
 
     pub fn is_empty(&self) -> bool {
         self.subscriptions.is_empty()
+    }
+
+    pub(crate) fn unsubscribe_all(&mut self, subscriber: &Identity) -> usize {
+        let before = self.subscriptions.len();
+
+        self.subscriptions
+            .retain(|subscription| subscription.subscriber() != subscriber);
+
+        before - self.subscriptions.len()
     }
 }
 
@@ -252,6 +262,36 @@ mod tests {
         assert_eq!(
             bus.can_subscribe(&subscription).unwrap_err(),
             EventBusError::AlreadySubscribed
+        );
+    }
+
+    #[test]
+    fn unsubscribes_only_matching_subscriber() {
+        let notes = app("com.rumahl.notes");
+
+        let files = app("com.rumahl.files");
+
+        let notes_identity = notes.clone().into();
+
+        let event = EventName::parse("rumahl.files.changed").unwrap();
+
+        let mut bus = EventBus::new();
+
+        bus.subscribe(EventSubscription::new(notes.into(), event.clone()).unwrap())
+            .unwrap();
+
+        bus.subscribe(EventSubscription::new(files.into(), event).unwrap())
+            .unwrap();
+
+        let removed = bus.unsubscribe_all(&notes_identity);
+
+        assert_eq!(removed, 1);
+        assert_eq!(bus.len(), 1);
+
+        assert!(
+            bus.subscriptions()
+                .iter()
+                .all(|subscription| { subscription.subscriber() != &notes_identity })
         );
     }
 }

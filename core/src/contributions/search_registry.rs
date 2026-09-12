@@ -70,6 +70,14 @@ impl SearchRegistry {
     pub fn is_empty(&self) -> bool {
         self.providers.is_empty()
     }
+
+    pub(crate) fn remove_for_owner(&mut self, owner: &Identity) -> usize {
+        let before = self.providers.len();
+
+        self.providers.retain(|provider| provider.owner() != owner);
+
+        before - self.providers.len()
+    }
 }
 
 impl fmt::Display for SearchRegistryError {
@@ -270,5 +278,39 @@ mod tests {
             registry.can_register(&contribution).unwrap_err(),
             SearchRegistryError::AlreadyRegistered
         );
+    }
+
+    #[test]
+    fn removes_only_search_providers_for_owner() {
+        let notes = app("com.rumahl.notes");
+
+        let files = app("com.rumahl.files");
+
+        let notes_identity = notes.clone().into();
+
+        let mut registry = SearchRegistry::new();
+
+        registry
+            .register(search(
+                "com.rumahl.notes.search",
+                notes,
+                "com.rumahl.notes.search",
+            ))
+            .unwrap();
+
+        registry
+            .register(search(
+                "com.rumahl.files.search",
+                files,
+                "com.rumahl.files.search",
+            ))
+            .unwrap();
+
+        let removed = registry.remove_for_owner(&notes_identity);
+
+        assert_eq!(removed, 1);
+        assert_eq!(registry.len(), 1);
+
+        assert!(registry.providers_for_owner(&notes_identity).is_empty());
     }
 }

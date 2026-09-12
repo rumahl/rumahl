@@ -21,4 +21,4 @@ pub use installed::{InstalledApp, InstalledAppError};
 
 pub use registration::{PlatformRegistration, PlatformRegistrationError};
 
-pub use registrar::{PlatformRegistrar, PlatformRegistrarError};
+pub use registrar::{PlatformDeregistrationReport, PlatformRegistrar, PlatformRegistrarError};
