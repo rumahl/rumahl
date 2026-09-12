@@ -10,7 +10,8 @@ pub mod resources;
 pub use apps::{
     AppManifest, AppManifestError, AppManifestValidationError, AppManifestValidator, AppVersion,
     AppVersionError, CommandContributionDeclaration, CommandContributionDeclarationError,
-    ContributionDeclaration, InstalledApp, InstalledAppError, SearchContributionDeclaration,
+    ContributionDeclaration, InstalledApp, InstalledAppError, PlatformRegistration,
+    PlatformRegistrationError, SearchContributionDeclaration,
 };
 
 pub use context::{CorrelationId, CorrelationIdError, OperationContext};
