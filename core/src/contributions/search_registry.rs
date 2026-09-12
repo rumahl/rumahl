@@ -5,7 +5,7 @@ use crate::Identity;
 
 use super::{ContributionId, SearchContribution};
 
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone)]
 pub struct SearchRegistry {
     providers: Vec<SearchContribution>,
 }
@@ -20,9 +20,9 @@ impl SearchRegistry {
         Self::default()
     }
 
-    pub fn register(
-        &mut self,
-        contribution: SearchContribution,
+    pub fn can_register(
+        &self,
+        contribution: &SearchContribution,
     ) -> Result<(), SearchRegistryError> {
         if self
             .providers
@@ -31,6 +31,15 @@ impl SearchRegistry {
         {
             return Err(SearchRegistryError::AlreadyRegistered);
         }
+
+        Ok(())
+    }
+
+    pub fn register(
+        &mut self,
+        contribution: SearchContribution,
+    ) -> Result<(), SearchRegistryError> {
+        self.can_register(&contribution)?;
 
         self.providers.push(contribution);
 
@@ -60,6 +69,14 @@ impl SearchRegistry {
 
     pub fn is_empty(&self) -> bool {
         self.providers.is_empty()
+    }
+
+    pub(crate) fn remove_for_owner(&mut self, owner: &Identity) -> usize {
+        let before = self.providers.len();
+
+        self.providers.retain(|provider| provider.owner() != owner);
+
+        before - self.providers.len()
     }
 }
 
@@ -228,5 +245,72 @@ mod tests {
             .unwrap();
 
         assert_eq!(registry.len(), 2);
+    }
+
+    #[test]
+    fn can_register_new_search_provider_without_mutating_registry() {
+        let contribution = search(
+            "com.rumahl.notes.search",
+            app("com.rumahl.notes"),
+            "com.rumahl.notes.search",
+        );
+
+        let registry = SearchRegistry::new();
+
+        assert!(registry.can_register(&contribution).is_ok());
+
+        assert!(registry.is_empty());
+    }
+
+    #[test]
+    fn cannot_register_existing_search_provider() {
+        let contribution = search(
+            "com.rumahl.notes.search",
+            app("com.rumahl.notes"),
+            "com.rumahl.notes.search",
+        );
+
+        let mut registry = SearchRegistry::new();
+
+        registry.register(contribution.clone()).unwrap();
+
+        assert_eq!(
+            registry.can_register(&contribution).unwrap_err(),
+            SearchRegistryError::AlreadyRegistered
+        );
+    }
+
+    #[test]
+    fn removes_only_search_providers_for_owner() {
+        let notes = app("com.rumahl.notes");
+
+        let files = app("com.rumahl.files");
+
+        let notes_identity = notes.clone().into();
+
+        let mut registry = SearchRegistry::new();
+
+        registry
+            .register(search(
+                "com.rumahl.notes.search",
+                notes,
+                "com.rumahl.notes.search",
+            ))
+            .unwrap();
+
+        registry
+            .register(search(
+                "com.rumahl.files.search",
+                files,
+                "com.rumahl.files.search",
+            ))
+            .unwrap();
+
+        let removed = registry.remove_for_owner(&notes_identity);
+
+        assert_eq!(removed, 1);
+        assert_eq!(registry.len(), 1);
+
+        assert!(registry.providers_for_owner(&notes_identity).is_empty());
     }
 }

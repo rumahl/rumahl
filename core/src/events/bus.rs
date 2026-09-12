@@ -1,9 +1,10 @@
+use crate::Identity;
 use std::error::Error;
 use std::fmt;
 
 use super::{EventDelivery, EventEnvelope, EventSubscription};
 
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone)]
 pub struct EventBus {
     subscriptions: Vec<EventSubscription>,
 }
@@ -18,14 +19,20 @@ impl EventBus {
         Self::default()
     }
 
-    pub fn subscribe(&mut self, subscription: EventSubscription) -> Result<(), EventBusError> {
+    pub fn can_subscribe(&self, subscription: &EventSubscription) -> Result<(), EventBusError> {
         if self
             .subscriptions
             .iter()
-            .any(|existing| existing == &subscription)
+            .any(|existing| existing == subscription)
         {
             return Err(EventBusError::AlreadySubscribed);
         }
+
+        Ok(())
+    }
+
+    pub fn subscribe(&mut self, subscription: EventSubscription) -> Result<(), EventBusError> {
+        self.can_subscribe(&subscription)?;
 
         self.subscriptions.push(subscription);
 
@@ -52,6 +59,15 @@ impl EventBus {
 
     pub fn is_empty(&self) -> bool {
         self.subscriptions.is_empty()
+    }
+
+    pub(crate) fn unsubscribe_all(&mut self, subscriber: &Identity) -> usize {
+        let before = self.subscriptions.len();
+
+        self.subscriptions
+            .retain(|subscription| subscription.subscriber() != subscriber);
+
+        before - self.subscriptions.len()
     }
 }
 
@@ -213,6 +229,69 @@ mod tests {
             deliveries
                 .iter()
                 .all(|delivery| { delivery.event_id() == event.id() })
+        );
+    }
+
+    #[test]
+    fn can_subscribe_without_mutating_bus() {
+        let subscription = EventSubscription::new(
+            app("com.rumahl.notes").into(),
+            EventName::parse("rumahl.files.changed").unwrap(),
+        )
+        .unwrap();
+
+        let bus = EventBus::new();
+
+        assert!(bus.can_subscribe(&subscription).is_ok());
+
+        assert!(bus.is_empty());
+    }
+
+    #[test]
+    fn cannot_subscribe_duplicate() {
+        let subscription = EventSubscription::new(
+            app("com.rumahl.notes").into(),
+            EventName::parse("rumahl.files.changed").unwrap(),
+        )
+        .unwrap();
+
+        let mut bus = EventBus::new();
+
+        bus.subscribe(subscription.clone()).unwrap();
+
+        assert_eq!(
+            bus.can_subscribe(&subscription).unwrap_err(),
+            EventBusError::AlreadySubscribed
+        );
+    }
+
+    #[test]
+    fn unsubscribes_only_matching_subscriber() {
+        let notes = app("com.rumahl.notes");
+
+        let files = app("com.rumahl.files");
+
+        let notes_identity = notes.clone().into();
+
+        let event = EventName::parse("rumahl.files.changed").unwrap();
+
+        let mut bus = EventBus::new();
+
+        bus.subscribe(EventSubscription::new(notes.into(), event.clone()).unwrap())
+            .unwrap();
+
+        bus.subscribe(EventSubscription::new(files.into(), event).unwrap())
+            .unwrap();
+
+        let removed = bus.unsubscribe_all(&notes_identity);
+
+        assert_eq!(removed, 1);
+        assert_eq!(bus.len(), 1);
+
+        assert!(
+            bus.subscriptions()
+                .iter()
+                .all(|subscription| { subscription.subscriber() != &notes_identity })
         );
     }
 }

@@ -5,7 +5,7 @@ use crate::Identity;
 
 use super::{Contribution, ContributionId, ContributionKind};
 
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone)]
 pub struct ContributionRegistry {
     contributions: Vec<Contribution>,
 }
@@ -20,9 +20,9 @@ impl ContributionRegistry {
         Self::default()
     }
 
-    pub fn register(
-        &mut self,
-        contribution: Contribution,
+    pub fn can_register(
+        &self,
+        contribution: &Contribution,
     ) -> Result<(), ContributionRegistryError> {
         if self
             .contributions
@@ -31,6 +31,15 @@ impl ContributionRegistry {
         {
             return Err(ContributionRegistryError::AlreadyRegistered);
         }
+
+        Ok(())
+    }
+
+    pub fn register(
+        &mut self,
+        contribution: Contribution,
+    ) -> Result<(), ContributionRegistryError> {
+        self.can_register(&contribution)?;
 
         self.contributions.push(contribution);
 
@@ -67,6 +76,15 @@ impl ContributionRegistry {
 
     pub fn is_empty(&self) -> bool {
         self.contributions.is_empty()
+    }
+
+    pub(crate) fn remove_for_owner(&mut self, owner: &Identity) -> usize {
+        let before = self.contributions.len();
+
+        self.contributions
+            .retain(|contribution| contribution.owner() != owner);
+
+        before - self.contributions.len()
     }
 }
 
@@ -195,5 +213,68 @@ mod tests {
             .unwrap();
 
         assert_eq!(registry.contributions_for_owner(&notes_identity).len(), 2);
+    }
+
+    #[test]
+    fn can_register_new_contribution_without_mutating_registry() {
+        let contribution = contribution(
+            "com.rumahl.notes.new-note",
+            app("com.rumahl.notes"),
+            "command",
+        );
+
+        let registry = ContributionRegistry::new();
+
+        assert!(registry.can_register(&contribution).is_ok());
+
+        assert!(registry.is_empty());
+    }
+
+    #[test]
+    fn cannot_register_existing_contribution() {
+        let contribution = contribution(
+            "com.rumahl.notes.new-note",
+            app("com.rumahl.notes"),
+            "command",
+        );
+
+        let mut registry = ContributionRegistry::new();
+
+        registry.register(contribution.clone()).unwrap();
+
+        assert_eq!(
+            registry.can_register(&contribution).unwrap_err(),
+            ContributionRegistryError::AlreadyRegistered
+        );
+    }
+
+    #[test]
+    fn removes_only_contributions_for_owner() {
+        let notes = app("com.rumahl.notes");
+
+        let files = app("com.rumahl.files");
+
+        let notes_identity = notes.clone().into();
+
+        let mut registry = ContributionRegistry::new();
+
+        registry
+            .register(contribution("com.rumahl.notes.open", notes, "command"))
+            .unwrap();
+
+        registry
+            .register(contribution(
+                "com.rumahl.files.search",
+                files,
+                "search-provider",
+            ))
+            .unwrap();
+
+        let removed = registry.remove_for_owner(&notes_identity);
+
+        assert_eq!(removed, 1);
+        assert_eq!(registry.len(), 1);
+
+        assert!(registry.contributions_for_owner(&notes_identity).is_empty());
     }
 }

@@ -5,9 +5,18 @@ pub mod contributions;
 pub mod events;
 pub mod identity;
 pub mod permissions;
+pub mod platform;
 pub mod resources;
 
-pub use apps::{AppManifest, AppManifestError, AppVersion, AppVersionError};
+pub use apps::{
+    AppLifecycle, AppLifecycleError, AppManifest, AppManifestError, AppManifestValidationError,
+    AppManifestValidator, AppUninstallResult, AppVersion, AppVersionError,
+    CommandContributionDeclaration, CommandContributionDeclarationError, ContributionDeclaration,
+    InstalledApp, InstalledAppError, InstalledAppRegistry, InstalledAppRegistryError,
+    PlatformDeregistrationReport, PlatformRegistrar, PlatformRegistrarError, PlatformRegistration,
+    PlatformRegistrationError, SearchContributionDeclaration,
+};
+
 pub use context::{CorrelationId, CorrelationIdError, OperationContext};
 
 pub use identity::{
@@ -48,6 +57,8 @@ pub use events::{
     EventBus, EventBusError, EventDelivery, EventEnvelope, EventId, EventName, EventNameError,
     EventSubscription, EventSubscriptionError,
 };
+
+pub use platform::PlatformState;
 
 #[cfg(test)]
 mod tests {

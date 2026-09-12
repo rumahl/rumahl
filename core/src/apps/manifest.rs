@@ -1,11 +1,9 @@
 use std::error::Error;
 use std::fmt;
 
-use crate::{AppId, PublisherId};
+use crate::{AppId, CapabilityId, EventName, PermissionRequest, PublisherId};
 
-use super::AppVersion;
-use crate::CapabilityId;
-use crate::PermissionRequest;
+use super::{AppVersion, ContributionDeclaration};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AppManifest {
@@ -15,6 +13,8 @@ pub struct AppManifest {
     display_name: String,
     permission_requests: Vec<PermissionRequest>,
     provided_capabilities: Vec<CapabilityId>,
+    contributions: Vec<ContributionDeclaration>,
+    event_subscriptions: Vec<EventName>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -23,6 +23,8 @@ pub enum AppManifestError {
     DisplayNameTooLong,
     DuplicatePermissionRequest,
     DuplicateProvidedCapability,
+    DuplicateContribution,
+    DuplicateEventSubscription,
 }
 
 impl AppManifest {
@@ -51,6 +53,8 @@ impl AppManifest {
             display_name: display_name.to_owned(),
             permission_requests: Vec::new(),
             provided_capabilities: Vec::new(),
+            contributions: Vec::new(),
+            event_subscriptions: Vec::new(),
         })
     }
 
@@ -111,6 +115,45 @@ impl AppManifest {
     pub fn provided_capabilities(&self) -> &[CapabilityId] {
         &self.provided_capabilities
     }
+
+    pub fn add_contribution(
+        &mut self,
+        contribution: ContributionDeclaration,
+    ) -> Result<(), AppManifestError> {
+        if self
+            .contributions
+            .iter()
+            .any(|existing| existing.id() == contribution.id())
+        {
+            return Err(AppManifestError::DuplicateContribution);
+        }
+
+        self.contributions.push(contribution);
+
+        Ok(())
+    }
+
+    pub fn contributions(&self) -> &[ContributionDeclaration] {
+        &self.contributions
+    }
+
+    pub fn add_event_subscription(&mut self, event: EventName) -> Result<(), AppManifestError> {
+        if self
+            .event_subscriptions
+            .iter()
+            .any(|existing| existing == &event)
+        {
+            return Err(AppManifestError::DuplicateEventSubscription);
+        }
+
+        self.event_subscriptions.push(event);
+
+        Ok(())
+    }
+
+    pub fn event_subscriptions(&self) -> &[EventName] {
+        &self.event_subscriptions
+    }
 }
 
 impl fmt::Display for AppManifestError {
@@ -135,6 +178,20 @@ impl fmt::Display for AppManifestError {
                     "app manifest cannot provide the same capability more than once"
                 )
             }
+
+            Self::DuplicateContribution => {
+                write!(
+                    f,
+                    "app manifest cannot declare the same contribution id more than once"
+                )
+            }
+
+            Self::DuplicateEventSubscription => {
+                write!(
+                    f,
+                    "app manifest cannot subscribe to the same event more than once"
+                )
+            }
         }
     }
 }
@@ -146,7 +203,11 @@ mod tests {
     use super::*;
 
     use crate::CapabilityId;
+    use crate::EventName;
+    use crate::{CommandAction, ContributionId};
     use crate::{PermissionId, PermissionRequest, PermissionScope};
+
+    use crate::apps::{CommandContributionDeclaration, SearchContributionDeclaration};
 
     #[test]
     fn creates_app_manifest() {
@@ -360,6 +421,177 @@ mod tests {
         assert_eq!(
             result.unwrap_err(),
             AppManifestError::DuplicateProvidedCapability
+        );
+    }
+
+    #[test]
+    fn app_manifest_starts_without_contributions() {
+        let manifest = AppManifest::new(
+            AppId::parse("com.rumahl.notes").unwrap(),
+            PublisherId::parse("com.rumahl").unwrap(),
+            AppVersion::new(1, 0, 0),
+            "Notes",
+        )
+        .unwrap();
+
+        assert!(manifest.contributions().is_empty());
+    }
+
+    #[test]
+    fn app_manifest_can_declare_command_contribution() {
+        let mut manifest = AppManifest::new(
+            AppId::parse("com.rumahl.notes").unwrap(),
+            PublisherId::parse("com.rumahl").unwrap(),
+            AppVersion::new(1, 0, 0),
+            "Notes",
+        )
+        .unwrap();
+
+        manifest
+            .add_contribution(
+                CommandContributionDeclaration::new(
+                    ContributionId::parse("com.rumahl.notes.new-note").unwrap(),
+                    "New note",
+                    CommandAction::invoke_capability(
+                        CapabilityId::parse("com.rumahl.notes.create-note").unwrap(),
+                    ),
+                )
+                .unwrap()
+                .into(),
+            )
+            .unwrap();
+
+        assert_eq!(manifest.contributions().len(), 1);
+    }
+
+    #[test]
+    fn app_manifest_can_declare_search_contribution() {
+        let mut manifest = AppManifest::new(
+            AppId::parse("com.rumahl.notes").unwrap(),
+            PublisherId::parse("com.rumahl").unwrap(),
+            AppVersion::new(1, 0, 0),
+            "Notes",
+        )
+        .unwrap();
+
+        manifest
+            .add_contribution(
+                SearchContributionDeclaration::new(
+                    ContributionId::parse("com.rumahl.notes.search").unwrap(),
+                    CapabilityId::parse("rumahl.search.query").unwrap(),
+                )
+                .into(),
+            )
+            .unwrap();
+
+        assert_eq!(manifest.contributions().len(), 1);
+    }
+
+    #[test]
+    fn rejects_duplicate_contribution_id_across_types() {
+        let mut manifest = AppManifest::new(
+            AppId::parse("com.rumahl.notes").unwrap(),
+            PublisherId::parse("com.rumahl").unwrap(),
+            AppVersion::new(1, 0, 0),
+            "Notes",
+        )
+        .unwrap();
+
+        let id = ContributionId::parse("com.rumahl.notes.primary").unwrap();
+
+        manifest
+            .add_contribution(
+                CommandContributionDeclaration::new(
+                    id.clone(),
+                    "Open Notes",
+                    CommandAction::open_app(AppId::parse("com.rumahl.notes").unwrap()),
+                )
+                .unwrap()
+                .into(),
+            )
+            .unwrap();
+
+        let result = manifest.add_contribution(
+            SearchContributionDeclaration::new(
+                id,
+                CapabilityId::parse("rumahl.search.query").unwrap(),
+            )
+            .into(),
+        );
+
+        assert_eq!(result.unwrap_err(), AppManifestError::DuplicateContribution);
+    }
+
+    #[test]
+    fn app_manifest_starts_without_event_subscriptions() {
+        let manifest = AppManifest::new(
+            AppId::parse("com.rumahl.notes").unwrap(),
+            PublisherId::parse("com.rumahl").unwrap(),
+            AppVersion::new(1, 0, 0),
+            "Notes",
+        )
+        .unwrap();
+
+        assert!(manifest.event_subscriptions().is_empty());
+    }
+
+    #[test]
+    fn app_manifest_can_subscribe_to_event() {
+        let mut manifest = AppManifest::new(
+            AppId::parse("com.rumahl.notes").unwrap(),
+            PublisherId::parse("com.rumahl").unwrap(),
+            AppVersion::new(1, 0, 0),
+            "Notes",
+        )
+        .unwrap();
+
+        let event = EventName::parse("rumahl.files.changed").unwrap();
+
+        manifest.add_event_subscription(event.clone()).unwrap();
+
+        assert_eq!(manifest.event_subscriptions(), &[event]);
+    }
+
+    #[test]
+    fn app_manifest_can_subscribe_to_multiple_events() {
+        let mut manifest = AppManifest::new(
+            AppId::parse("com.rumahl.notes").unwrap(),
+            PublisherId::parse("com.rumahl").unwrap(),
+            AppVersion::new(1, 0, 0),
+            "Notes",
+        )
+        .unwrap();
+
+        manifest
+            .add_event_subscription(EventName::parse("rumahl.files.changed").unwrap())
+            .unwrap();
+
+        manifest
+            .add_event_subscription(EventName::parse("rumahl.apps.installed").unwrap())
+            .unwrap();
+
+        assert_eq!(manifest.event_subscriptions().len(), 2);
+    }
+
+    #[test]
+    fn rejects_duplicate_event_subscription() {
+        let mut manifest = AppManifest::new(
+            AppId::parse("com.rumahl.notes").unwrap(),
+            PublisherId::parse("com.rumahl").unwrap(),
+            AppVersion::new(1, 0, 0),
+            "Notes",
+        )
+        .unwrap();
+
+        let event = EventName::parse("rumahl.files.changed").unwrap();
+
+        manifest.add_event_subscription(event.clone()).unwrap();
+
+        let result = manifest.add_event_subscription(event);
+
+        assert_eq!(
+            result.unwrap_err(),
+            AppManifestError::DuplicateEventSubscription
         );
     }
 }
