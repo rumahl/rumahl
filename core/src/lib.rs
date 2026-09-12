@@ -7,7 +7,11 @@ pub mod identity;
 pub mod permissions;
 pub mod resources;
 
-pub use apps::{AppManifest, AppManifestError, AppVersion, AppVersionError};
+pub use apps::{
+    AppManifest, AppManifestError, AppVersion, AppVersionError, CommandContributionDeclaration,
+    CommandContributionDeclarationError, ContributionDeclaration, SearchContributionDeclaration,
+};
+
 pub use context::{CorrelationId, CorrelationIdError, OperationContext};
 
 pub use identity::{

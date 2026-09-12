@@ -3,7 +3,8 @@ use std::fmt;
 
 use crate::{AppId, PublisherId};
 
-use super::AppVersion;
+use super::{AppVersion, ContributionDeclaration};
+
 use crate::CapabilityId;
 use crate::PermissionRequest;
 
@@ -15,6 +16,7 @@ pub struct AppManifest {
     display_name: String,
     permission_requests: Vec<PermissionRequest>,
     provided_capabilities: Vec<CapabilityId>,
+    contributions: Vec<ContributionDeclaration>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -23,6 +25,7 @@ pub enum AppManifestError {
     DisplayNameTooLong,
     DuplicatePermissionRequest,
     DuplicateProvidedCapability,
+    DuplicateContribution,
 }
 
 impl AppManifest {
@@ -51,6 +54,7 @@ impl AppManifest {
             display_name: display_name.to_owned(),
             permission_requests: Vec::new(),
             provided_capabilities: Vec::new(),
+            contributions: Vec::new(),
         })
     }
 
@@ -111,6 +115,27 @@ impl AppManifest {
     pub fn provided_capabilities(&self) -> &[CapabilityId] {
         &self.provided_capabilities
     }
+
+    pub fn add_contribution(
+        &mut self,
+        contribution: ContributionDeclaration,
+    ) -> Result<(), AppManifestError> {
+        if self
+            .contributions
+            .iter()
+            .any(|existing| existing.id() == contribution.id())
+        {
+            return Err(AppManifestError::DuplicateContribution);
+        }
+
+        self.contributions.push(contribution);
+
+        Ok(())
+    }
+
+    pub fn contributions(&self) -> &[ContributionDeclaration] {
+        &self.contributions
+    }
 }
 
 impl fmt::Display for AppManifestError {
@@ -133,6 +158,13 @@ impl fmt::Display for AppManifestError {
                 write!(
                     f,
                     "app manifest cannot provide the same capability more than once"
+                )
+            }
+
+            Self::DuplicateContribution => {
+                write!(
+                    f,
+                    "app manifest cannot declare the same contribution id more than once"
                 )
             }
         }
