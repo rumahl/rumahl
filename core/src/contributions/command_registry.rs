@@ -20,7 +20,7 @@ impl CommandRegistry {
         Self::default()
     }
 
-    pub fn register(&mut self, command: CommandContribution) -> Result<(), CommandRegistryError> {
+    pub fn can_register(&self, command: &CommandContribution) -> Result<(), CommandRegistryError> {
         if self
             .commands
             .iter()
@@ -28,6 +28,12 @@ impl CommandRegistry {
         {
             return Err(CommandRegistryError::AlreadyRegistered);
         }
+
+        Ok(())
+    }
+
+    pub fn register(&mut self, command: CommandContribution) -> Result<(), CommandRegistryError> {
+        self.can_register(&command)?;
 
         self.commands.push(command);
 
@@ -207,6 +213,41 @@ mod tests {
             commands
                 .iter()
                 .all(|command| { command.owner() == &notes_identity })
+        );
+    }
+
+    #[test]
+    fn can_register_new_command_without_mutating_registry() {
+        let command = command(
+            "com.rumahl.notes.new-note",
+            app("com.rumahl.notes"),
+            "New note",
+            "com.rumahl.notes.create-note",
+        );
+
+        let registry = CommandRegistry::new();
+
+        assert!(registry.can_register(&command).is_ok());
+
+        assert!(registry.is_empty());
+    }
+
+    #[test]
+    fn cannot_register_existing_command() {
+        let command = command(
+            "com.rumahl.notes.new-note",
+            app("com.rumahl.notes"),
+            "New note",
+            "com.rumahl.notes.create-note",
+        );
+
+        let mut registry = CommandRegistry::new();
+
+        registry.register(command.clone()).unwrap();
+
+        assert_eq!(
+            registry.can_register(&command).unwrap_err(),
+            CommandRegistryError::AlreadyRegistered
         );
     }
 }

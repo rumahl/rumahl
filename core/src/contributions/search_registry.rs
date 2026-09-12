@@ -20,9 +20,9 @@ impl SearchRegistry {
         Self::default()
     }
 
-    pub fn register(
-        &mut self,
-        contribution: SearchContribution,
+    pub fn can_register(
+        &self,
+        contribution: &SearchContribution,
     ) -> Result<(), SearchRegistryError> {
         if self
             .providers
@@ -31,6 +31,15 @@ impl SearchRegistry {
         {
             return Err(SearchRegistryError::AlreadyRegistered);
         }
+
+        Ok(())
+    }
+
+    pub fn register(
+        &mut self,
+        contribution: SearchContribution,
+    ) -> Result<(), SearchRegistryError> {
+        self.can_register(&contribution)?;
 
         self.providers.push(contribution);
 
@@ -228,5 +237,38 @@ mod tests {
             .unwrap();
 
         assert_eq!(registry.len(), 2);
+    }
+
+    #[test]
+    fn can_register_new_search_provider_without_mutating_registry() {
+        let contribution = search(
+            "com.rumahl.notes.search",
+            app("com.rumahl.notes"),
+            "com.rumahl.notes.search",
+        );
+
+        let registry = SearchRegistry::new();
+
+        assert!(registry.can_register(&contribution).is_ok());
+
+        assert!(registry.is_empty());
+    }
+
+    #[test]
+    fn cannot_register_existing_search_provider() {
+        let contribution = search(
+            "com.rumahl.notes.search",
+            app("com.rumahl.notes"),
+            "com.rumahl.notes.search",
+        );
+
+        let mut registry = SearchRegistry::new();
+
+        registry.register(contribution.clone()).unwrap();
+
+        assert_eq!(
+            registry.can_register(&contribution).unwrap_err(),
+            SearchRegistryError::AlreadyRegistered
+        );
     }
 }

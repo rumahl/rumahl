@@ -18,14 +18,20 @@ impl EventBus {
         Self::default()
     }
 
-    pub fn subscribe(&mut self, subscription: EventSubscription) -> Result<(), EventBusError> {
+    pub fn can_subscribe(&self, subscription: &EventSubscription) -> Result<(), EventBusError> {
         if self
             .subscriptions
             .iter()
-            .any(|existing| existing == &subscription)
+            .any(|existing| existing == subscription)
         {
             return Err(EventBusError::AlreadySubscribed);
         }
+
+        Ok(())
+    }
+
+    pub fn subscribe(&mut self, subscription: EventSubscription) -> Result<(), EventBusError> {
+        self.can_subscribe(&subscription)?;
 
         self.subscriptions.push(subscription);
 
@@ -213,6 +219,39 @@ mod tests {
             deliveries
                 .iter()
                 .all(|delivery| { delivery.event_id() == event.id() })
+        );
+    }
+
+    #[test]
+    fn can_subscribe_without_mutating_bus() {
+        let subscription = EventSubscription::new(
+            app("com.rumahl.notes").into(),
+            EventName::parse("rumahl.files.changed").unwrap(),
+        )
+        .unwrap();
+
+        let bus = EventBus::new();
+
+        assert!(bus.can_subscribe(&subscription).is_ok());
+
+        assert!(bus.is_empty());
+    }
+
+    #[test]
+    fn cannot_subscribe_duplicate() {
+        let subscription = EventSubscription::new(
+            app("com.rumahl.notes").into(),
+            EventName::parse("rumahl.files.changed").unwrap(),
+        )
+        .unwrap();
+
+        let mut bus = EventBus::new();
+
+        bus.subscribe(subscription.clone()).unwrap();
+
+        assert_eq!(
+            bus.can_subscribe(&subscription).unwrap_err(),
+            EventBusError::AlreadySubscribed
         );
     }
 }

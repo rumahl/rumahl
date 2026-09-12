@@ -20,9 +20,9 @@ impl ContributionRegistry {
         Self::default()
     }
 
-    pub fn register(
-        &mut self,
-        contribution: Contribution,
+    pub fn can_register(
+        &self,
+        contribution: &Contribution,
     ) -> Result<(), ContributionRegistryError> {
         if self
             .contributions
@@ -31,6 +31,15 @@ impl ContributionRegistry {
         {
             return Err(ContributionRegistryError::AlreadyRegistered);
         }
+
+        Ok(())
+    }
+
+    pub fn register(
+        &mut self,
+        contribution: Contribution,
+    ) -> Result<(), ContributionRegistryError> {
+        self.can_register(&contribution)?;
 
         self.contributions.push(contribution);
 
@@ -195,5 +204,38 @@ mod tests {
             .unwrap();
 
         assert_eq!(registry.contributions_for_owner(&notes_identity).len(), 2);
+    }
+
+    #[test]
+    fn can_register_new_contribution_without_mutating_registry() {
+        let contribution = contribution(
+            "com.rumahl.notes.new-note",
+            app("com.rumahl.notes"),
+            "command",
+        );
+
+        let registry = ContributionRegistry::new();
+
+        assert!(registry.can_register(&contribution).is_ok());
+
+        assert!(registry.is_empty());
+    }
+
+    #[test]
+    fn cannot_register_existing_contribution() {
+        let contribution = contribution(
+            "com.rumahl.notes.new-note",
+            app("com.rumahl.notes"),
+            "command",
+        );
+
+        let mut registry = ContributionRegistry::new();
+
+        registry.register(contribution.clone()).unwrap();
+
+        assert_eq!(
+            registry.can_register(&contribution).unwrap_err(),
+            ContributionRegistryError::AlreadyRegistered
+        );
     }
 }

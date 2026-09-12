@@ -19,13 +19,22 @@ impl CapabilityRegistry {
         Self::default()
     }
 
+    pub fn can_register(
+        &self,
+        provider: &CapabilityProvider,
+    ) -> Result<(), CapabilityRegistryError> {
+        if self.providers.contains(provider) {
+            return Err(CapabilityRegistryError::AlreadyRegistered);
+        }
+
+        Ok(())
+    }
+
     pub fn register(
         &mut self,
         provider: CapabilityProvider,
     ) -> Result<(), CapabilityRegistryError> {
-        if self.providers.contains(&provider) {
-            return Err(CapabilityRegistryError::AlreadyRegistered);
-        }
+        self.can_register(&provider)?;
 
         self.providers.push(provider);
 
@@ -204,5 +213,30 @@ mod tests {
         registry.register(provider).unwrap();
 
         assert!(registry.provider(&preview, &notes_identity,).is_none());
+    }
+
+    #[test]
+    fn can_register_new_provider_without_mutating_registry() {
+        let provider = search_provider(app("com.rumahl.notes"));
+
+        let registry = CapabilityRegistry::new();
+
+        assert!(registry.can_register(&provider).is_ok());
+
+        assert!(registry.is_empty());
+    }
+
+    #[test]
+    fn cannot_register_existing_provider() {
+        let provider = search_provider(app("com.rumahl.notes"));
+
+        let mut registry = CapabilityRegistry::new();
+
+        registry.register(provider.clone()).unwrap();
+
+        assert_eq!(
+            registry.can_register(&provider).unwrap_err(),
+            CapabilityRegistryError::AlreadyRegistered
+        );
     }
 }
