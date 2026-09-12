@@ -5,7 +5,7 @@ use crate::Identity;
 
 use super::{Contribution, ContributionId, ContributionKind};
 
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone)]
 pub struct ContributionRegistry {
     contributions: Vec<Contribution>,
 }

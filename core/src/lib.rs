@@ -5,6 +5,7 @@ pub mod contributions;
 pub mod events;
 pub mod identity;
 pub mod permissions;
+pub mod platform;
 pub mod resources;
 
 pub use apps::{
@@ -55,6 +56,8 @@ pub use events::{
     EventBus, EventBusError, EventDelivery, EventEnvelope, EventId, EventName, EventNameError,
     EventSubscription, EventSubscriptionError,
 };
+
+pub use platform::PlatformState;
 
 #[cfg(test)]
 mod tests {

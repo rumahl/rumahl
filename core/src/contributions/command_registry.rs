@@ -5,7 +5,7 @@ use crate::Identity;
 
 use super::{CommandContribution, ContributionId};
 
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone)]
 pub struct CommandRegistry {
     commands: Vec<CommandContribution>,
 }

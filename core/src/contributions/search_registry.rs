@@ -5,7 +5,7 @@ use crate::Identity;
 
 use super::{ContributionId, SearchContribution};
 
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone)]
 pub struct SearchRegistry {
     providers: Vec<SearchContribution>,
 }

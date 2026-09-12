@@ -4,7 +4,7 @@ use std::fmt;
 
 use super::{CapabilityId, CapabilityProvider};
 
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone)]
 pub struct CapabilityRegistry {
     providers: Vec<CapabilityProvider>,
 }

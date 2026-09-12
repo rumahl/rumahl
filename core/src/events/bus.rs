@@ -3,7 +3,7 @@ use std::fmt;
 
 use super::{EventDelivery, EventEnvelope, EventSubscription};
 
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone)]
 pub struct EventBus {
     subscriptions: Vec<EventSubscription>,
 }

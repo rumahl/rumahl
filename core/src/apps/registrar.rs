@@ -2,9 +2,8 @@ use std::error::Error;
 use std::fmt;
 
 use crate::{
-    CapabilityRegistry, CapabilityRegistryError, CommandRegistry, CommandRegistryError,
-    ContributionRegistry, ContributionRegistryError, EventBus, EventBusError, SearchRegistry,
-    SearchRegistryError,
+    CapabilityRegistryError, CommandRegistryError, ContributionRegistryError, EventBusError,
+    PlatformState, SearchRegistryError,
 };
 
 use super::PlatformRegistration;
@@ -29,41 +28,91 @@ impl PlatformRegistrar {
     pub fn can_register(
         &self,
         registration: &PlatformRegistration,
-        capability_registry: &CapabilityRegistry,
-        contribution_registry: &ContributionRegistry,
-        command_registry: &CommandRegistry,
-        search_registry: &SearchRegistry,
-        event_bus: &EventBus,
+        state: &PlatformState,
     ) -> Result<(), PlatformRegistrarError> {
         for provider in registration.capability_providers() {
-            capability_registry
+            state
+                .capability_registry()
                 .can_register(provider)
                 .map_err(PlatformRegistrarError::CapabilityConflict)?;
         }
 
         for contribution in registration.contributions() {
-            contribution_registry
+            state
+                .contribution_registry()
                 .can_register(contribution)
                 .map_err(PlatformRegistrarError::ContributionConflict)?;
         }
 
         for command in registration.commands() {
-            command_registry
+            state
+                .command_registry()
                 .can_register(command)
                 .map_err(PlatformRegistrarError::CommandConflict)?;
         }
 
         for search in registration.searches() {
-            search_registry
+            state
+                .search_registry()
                 .can_register(search)
                 .map_err(PlatformRegistrarError::SearchConflict)?;
         }
 
         for subscription in registration.event_subscriptions() {
-            event_bus
+            state
+                .event_bus()
                 .can_subscribe(subscription)
                 .map_err(PlatformRegistrarError::EventSubscriptionConflict)?;
         }
+
+        Ok(())
+    }
+
+    pub fn register(
+        &self,
+        registration: &PlatformRegistration,
+        state: &mut PlatformState,
+    ) -> Result<(), PlatformRegistrarError> {
+        self.can_register(registration, state)?;
+
+        let mut staged = state.clone();
+
+        for provider in registration.capability_providers() {
+            staged
+                .capability_registry_mut()
+                .register(provider.clone())
+                .map_err(PlatformRegistrarError::CapabilityConflict)?;
+        }
+
+        for contribution in registration.contributions() {
+            staged
+                .contribution_registry_mut()
+                .register(contribution.clone())
+                .map_err(PlatformRegistrarError::ContributionConflict)?;
+        }
+
+        for command in registration.commands() {
+            staged
+                .command_registry_mut()
+                .register(command.clone())
+                .map_err(PlatformRegistrarError::CommandConflict)?;
+        }
+
+        for search in registration.searches() {
+            staged
+                .search_registry_mut()
+                .register(search.clone())
+                .map_err(PlatformRegistrarError::SearchConflict)?;
+        }
+
+        for subscription in registration.event_subscriptions() {
+            staged
+                .event_bus_mut()
+                .subscribe(subscription.clone())
+                .map_err(PlatformRegistrarError::EventSubscriptionConflict)?;
+        }
+
+        *state = staged;
 
         Ok(())
     }
@@ -168,61 +217,33 @@ mod tests {
     #[test]
     fn accepts_registration_without_mutating_platform() {
         let registration = registration();
-
-        let capability_registry = CapabilityRegistry::new();
-
-        let contribution_registry = ContributionRegistry::new();
-
-        let command_registry = CommandRegistry::new();
-
-        let search_registry = SearchRegistry::new();
-
-        let event_bus = EventBus::new();
+        let state = PlatformState::new();
 
         let registrar = PlatformRegistrar::new();
 
-        registrar
-            .can_register(
-                &registration,
-                &capability_registry,
-                &contribution_registry,
-                &command_registry,
-                &search_registry,
-                &event_bus,
-            )
-            .unwrap();
+        registrar.can_register(&registration, &state).unwrap();
 
-        assert!(capability_registry.is_empty());
-
-        assert!(contribution_registry.is_empty());
-
-        assert!(command_registry.is_empty());
-
-        assert!(search_registry.is_empty());
-
-        assert!(event_bus.is_empty());
+        assert!(state.capability_registry().is_empty());
+        assert!(state.contribution_registry().is_empty());
+        assert!(state.command_registry().is_empty());
+        assert!(state.search_registry().is_empty());
+        assert!(state.event_bus().is_empty());
     }
 
     #[test]
     fn detects_capability_conflict() {
         let registration = registration();
 
-        let mut capability_registry = CapabilityRegistry::new();
+        let mut state = PlatformState::new();
 
-        capability_registry
+        state
+            .capability_registry_mut()
             .register(registration.capability_providers()[0].clone())
             .unwrap();
 
         let registrar = PlatformRegistrar::new();
 
-        let result = registrar.can_register(
-            &registration,
-            &capability_registry,
-            &ContributionRegistry::new(),
-            &CommandRegistry::new(),
-            &SearchRegistry::new(),
-            &EventBus::new(),
-        );
+        let result = registrar.can_register(&registration, &state);
 
         assert_eq!(
             result.unwrap_err(),
@@ -234,22 +255,16 @@ mod tests {
     fn detects_contribution_conflict() {
         let registration = registration();
 
-        let mut contribution_registry = ContributionRegistry::new();
+        let mut state = PlatformState::new();
 
-        contribution_registry
+        state
+            .contribution_registry_mut()
             .register(registration.contributions()[0].clone())
             .unwrap();
 
         let registrar = PlatformRegistrar::new();
 
-        let result = registrar.can_register(
-            &registration,
-            &CapabilityRegistry::new(),
-            &contribution_registry,
-            &CommandRegistry::new(),
-            &SearchRegistry::new(),
-            &EventBus::new(),
-        );
+        let result = registrar.can_register(&registration, &state);
 
         assert_eq!(
             result.unwrap_err(),
@@ -263,22 +278,16 @@ mod tests {
     fn detects_command_conflict() {
         let registration = registration();
 
-        let mut command_registry = CommandRegistry::new();
+        let mut state = PlatformState::new();
 
-        command_registry
+        state
+            .command_registry_mut()
             .register(registration.commands()[0].clone())
             .unwrap();
 
         let registrar = PlatformRegistrar::new();
 
-        let result = registrar.can_register(
-            &registration,
-            &CapabilityRegistry::new(),
-            &ContributionRegistry::new(),
-            &command_registry,
-            &SearchRegistry::new(),
-            &EventBus::new(),
-        );
+        let result = registrar.can_register(&registration, &state);
 
         assert_eq!(
             result.unwrap_err(),
@@ -290,22 +299,16 @@ mod tests {
     fn detects_search_conflict() {
         let registration = registration();
 
-        let mut search_registry = SearchRegistry::new();
+        let mut state = PlatformState::new();
 
-        search_registry
+        state
+            .search_registry_mut()
             .register(registration.searches()[0].clone())
             .unwrap();
 
         let registrar = PlatformRegistrar::new();
 
-        let result = registrar.can_register(
-            &registration,
-            &CapabilityRegistry::new(),
-            &ContributionRegistry::new(),
-            &CommandRegistry::new(),
-            &search_registry,
-            &EventBus::new(),
-        );
+        let result = registrar.can_register(&registration, &state);
 
         assert_eq!(
             result.unwrap_err(),
@@ -317,26 +320,94 @@ mod tests {
     fn detects_event_subscription_conflict() {
         let registration = registration();
 
-        let mut event_bus = EventBus::new();
+        let mut state = PlatformState::new();
 
-        event_bus
+        state
+            .event_bus_mut()
             .subscribe(registration.event_subscriptions()[0].clone())
             .unwrap();
 
         let registrar = PlatformRegistrar::new();
 
-        let result = registrar.can_register(
-            &registration,
-            &CapabilityRegistry::new(),
-            &ContributionRegistry::new(),
-            &CommandRegistry::new(),
-            &SearchRegistry::new(),
-            &event_bus,
-        );
+        let result = registrar.can_register(&registration, &state);
 
         assert_eq!(
             result.unwrap_err(),
             PlatformRegistrarError::EventSubscriptionConflict(EventBusError::AlreadySubscribed)
         );
+    }
+
+    #[test]
+    fn registers_platform_registration_atomically() {
+        let registration = registration();
+
+        let mut state = PlatformState::new();
+
+        let registrar = PlatformRegistrar::new();
+
+        registrar.register(&registration, &mut state).unwrap();
+
+        assert_eq!(
+            state.capability_registry().len(),
+            registration.capability_providers().len()
+        );
+
+        assert_eq!(
+            state.contribution_registry().len(),
+            registration.contributions().len()
+        );
+
+        assert_eq!(
+            state.command_registry().len(),
+            registration.commands().len()
+        );
+
+        assert_eq!(state.search_registry().len(), registration.searches().len());
+
+        assert_eq!(
+            state.event_bus().len(),
+            registration.event_subscriptions().len()
+        );
+    }
+
+    #[test]
+    fn registration_conflict_leaves_platform_unchanged() {
+        let registration = registration();
+
+        let mut state = PlatformState::new();
+
+        state
+            .event_bus_mut()
+            .subscribe(registration.event_subscriptions()[0].clone())
+            .unwrap();
+
+        let capabilities_before = state.capability_registry().len();
+
+        let contributions_before = state.contribution_registry().len();
+
+        let commands_before = state.command_registry().len();
+
+        let searches_before = state.search_registry().len();
+
+        let subscriptions_before = state.event_bus().len();
+
+        let registrar = PlatformRegistrar::new();
+
+        let result = registrar.register(&registration, &mut state);
+
+        assert_eq!(
+            result.unwrap_err(),
+            PlatformRegistrarError::EventSubscriptionConflict(EventBusError::AlreadySubscribed)
+        );
+
+        assert_eq!(state.capability_registry().len(), capabilities_before);
+
+        assert_eq!(state.contribution_registry().len(), contributions_before);
+
+        assert_eq!(state.command_registry().len(), commands_before);
+
+        assert_eq!(state.search_registry().len(), searches_before);
+
+        assert_eq!(state.event_bus().len(), subscriptions_before);
     }
 }
