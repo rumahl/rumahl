@@ -1,3 +1,4 @@
+pub mod accounts;
 pub mod apps;
 pub mod capabilities;
 pub mod context;
@@ -9,6 +10,13 @@ pub mod persistence;
 pub mod platform;
 pub mod resources;
 pub mod runtime;
+
+pub use accounts::{
+    AccountRegistry, AccountRegistryError, AccountSession, AccountSessionError,
+    AccountSessionRegistry, AccountSessionRegistryError, AccountState, AccountStateError,
+    AccountStateRepository, AccountStatus, AccountUsername, AccountUsernameError, LocalAccount,
+    LocalAccountError, UnixTimestamp, UnixTimestampError,
+};
 
 pub use apps::{
     AppLifecycle, AppLifecycleError, AppManifest, AppManifestError, AppManifestValidationError,
