@@ -83,6 +83,14 @@ Password is not the account model. Passkeys and future device-backed methods
 can establish the same verified local-account result and enter the identical
 OS-session issuance path without changing `LocalAccount` or OIDC semantics.
 
+Creating a password-backed account is one persistence transaction: the active
+local account and its verifier either both become durable or neither does. A
+password change consumes a fresh, non-copyable authentication result (five
+minutes by default), replaces the verifier, and revokes every live OS session
+and its opaque transport credentials in the same transaction. The in-memory
+account state is committed only after durable persistence succeeds; a storage
+or revocation failure leaves the previous password and sessions intact.
+
 Multiple accounts can have live sessions at the same time. Switching the
 desktop account selects another session; it does not reassign existing app
 tokens, grants, background jobs, or audit entries to that account.
@@ -239,8 +247,11 @@ plain values.
 - local account registry and uniqueness rules;
 - account/session repository contracts;
 - account and session recovery;
+- atomic account-plus-credential provisioning;
 - dedicated encrypted secret-store contract;
 - OIDC client, consent, subject, code, and token-family persistence;
+- transactional verifier replacement and session-credential revocation on
+  password change;
 - transactional revocation on account disable, password reset, and uninstall.
 
 ### P4A — account authentication

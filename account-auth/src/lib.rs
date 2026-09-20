@@ -6,6 +6,8 @@
 //! platform API still revalidates the current account and session state for
 //! every request.
 
+mod account_administration;
+mod account_administration_repository;
 mod password;
 mod password_authentication;
 mod password_repository;
@@ -13,6 +15,11 @@ mod repository;
 mod resolver;
 mod token;
 
+pub use account_administration::{
+    AccountProvisioningError, LocalAccountAdministrationService, PasswordChangeError,
+    PasswordChangePolicy, PasswordChangePolicyError,
+};
+pub use account_administration_repository::LocalAccountAdministrationRepository;
 pub use password::{
     Argon2idPasswordEngine, Password, PasswordBlocklist, PasswordEngineError, PasswordHashRecord,
     PasswordHashRecordError, PasswordPolicy, PasswordPolicyError,

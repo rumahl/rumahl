@@ -22,7 +22,7 @@ pub struct PasswordAuthenticationService<R, B> {
     dummy_hash: crate::PasswordHashRecord,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq)]
 pub struct VerifiedLocalAccount {
     user_id: UserId,
     authenticated_at: UnixTimestamp,
@@ -91,6 +91,10 @@ where
         })
     }
 
+    /// Enrolls a password for an existing account at the credential-adapter
+    /// level. User-initiated password changes must go through
+    /// `LocalAccountAdministrationService::change_password` so session
+    /// revocation and credential replacement share one persistence transaction.
     pub fn set_password(
         &self,
         state: &AccountState,
