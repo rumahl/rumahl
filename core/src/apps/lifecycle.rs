@@ -1,7 +1,7 @@
 use std::error::Error;
 use std::fmt;
 
-use crate::{InstallationId, PlatformState};
+use crate::{Identity, InMemoryGrantStore, InstallationId, PermissionGrant, PlatformState};
 
 use super::{
     AppManifest, AppManifestValidator, InstalledApp, InstalledAppError, InstalledAppRegistryError,
@@ -19,6 +19,7 @@ pub struct AppLifecycle {
 pub struct AppUninstallResult {
     app: InstalledApp,
     deregistration: PlatformDeregistrationReport,
+    revoked_grants: Vec<PermissionGrant>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -113,6 +114,7 @@ impl AppLifecycle {
         &self,
         installation_id: &InstallationId,
         state: &mut PlatformState,
+        grant_store: &mut InMemoryGrantStore,
     ) -> Result<AppUninstallResult, AppLifecycleError> {
         /*
          * Resolve and clone before taking mutable
@@ -126,6 +128,7 @@ impl AppLifecycle {
             .ok_or(AppLifecycleError::InstallationNotFound)?;
 
         let mut staged = state.clone();
+        let mut staged_grants = grant_store.clone();
 
         let deregistration = self.registrar.apply_deregistration(&app, &mut staged);
 
@@ -134,15 +137,20 @@ impl AppLifecycle {
             .remove(installation_id)
             .ok_or(AppLifecycleError::InstallationNotFound)?;
 
+        let subject = Identity::App(removed.identity().clone());
+        let revoked_grants = staged_grants.remove_for_subject(&subject);
+
         /*
          * Only now replace the live state.
          */
 
         *state = staged;
+        *grant_store = staged_grants;
 
         Ok(AppUninstallResult {
             app: removed,
             deregistration,
+            revoked_grants,
         })
     }
 }
@@ -154,6 +162,10 @@ impl AppUninstallResult {
 
     pub fn deregistration(&self) -> &PlatformDeregistrationReport {
         &self.deregistration
+    }
+
+    pub fn revoked_grants(&self) -> &[PermissionGrant] {
+        &self.revoked_grants
     }
 }
 
@@ -205,8 +217,8 @@ mod tests {
 
     use crate::{
         AppId, AppVersion, CapabilityId, CommandAction, CommandContributionDeclaration,
-        Contribution, ContributionId, ContributionKind, EventName, PublisherId,
-        SearchContributionDeclaration,
+        Contribution, ContributionId, ContributionKind, EventName, PermissionId, PermissionScope,
+        PublisherId, SearchContributionDeclaration, UserId, UserIdentity,
     };
 
     fn web_runtime() -> crate::RuntimeDescriptor {
@@ -401,12 +413,25 @@ mod tests {
         let app = lifecycle.install(manifest(), &mut state).unwrap();
 
         let installation_id = *app.installation_id();
+        let grant = PermissionGrant::new(
+            app.identity().clone().into(),
+            PermissionId::parse("rumahl.files.read").unwrap(),
+            PermissionScope::AppPrivate,
+            Vec::new(),
+            UserIdentity::new(UserId::new()).into(),
+        )
+        .unwrap();
+        let mut grants = InMemoryGrantStore::new();
+        grants.insert(grant);
 
-        let result = lifecycle.uninstall(&installation_id, &mut state).unwrap();
+        let result = lifecycle
+            .uninstall(&installation_id, &mut state, &mut grants)
+            .unwrap();
 
         assert_eq!(result.app().installation_id(), &installation_id);
 
         assert!(!result.deregistration().is_empty());
+        assert_eq!(result.revoked_grants().len(), 1);
 
         assert!(state.installed_apps().is_empty());
 
@@ -419,6 +444,7 @@ mod tests {
         assert!(state.search_registry().is_empty());
 
         assert!(state.event_bus().is_empty());
+        assert!(grants.is_empty());
     }
 
     #[test]
@@ -428,8 +454,9 @@ mod tests {
         let mut state = PlatformState::new();
 
         let installation_id = InstallationId::new();
+        let mut grants = InMemoryGrantStore::new();
 
-        let result = lifecycle.uninstall(&installation_id, &mut state);
+        let result = lifecycle.uninstall(&installation_id, &mut state, &mut grants);
 
         assert!(matches!(
             result,
@@ -437,5 +464,6 @@ mod tests {
         ));
 
         assert!(state.installed_apps().is_empty());
+        assert!(grants.is_empty());
     }
 }

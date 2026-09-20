@@ -1,9 +1,9 @@
 use rumahl_core::{
     AppId, AppLifecycle, AppLifecycleError, AppManifest, AppVersion, CapabilityId, CommandAction,
-    CommandContributionDeclaration, ContributionId, EventName, Identity, InstalledAppRegistryError,
-    PackagePath, PermissionId, PermissionRequest, PermissionScope, PlatformState, PublisherId,
-    RuntimeDescriptor, RuntimeEntrypoint, RuntimeEntrypointId, RuntimeKind,
-    SearchContributionDeclaration,
+    CommandContributionDeclaration, ContributionId, EventName, Identity, InMemoryGrantStore,
+    InstalledAppRegistryError, PackagePath, PermissionId, PermissionRequest, PermissionScope,
+    PlatformState, PublisherId, RuntimeDescriptor, RuntimeEntrypoint, RuntimeEntrypointId,
+    RuntimeKind, SearchContributionDeclaration,
 };
 
 fn notes_manifest() -> AppManifest {
@@ -226,8 +226,11 @@ fn complete_app_lifecycle_flow() {
      */
 
     let installation_id = *installed.installation_id();
+    let mut grants = InMemoryGrantStore::new();
 
-    let result = lifecycle.uninstall(&installation_id, &mut state).unwrap();
+    let result = lifecycle
+        .uninstall(&installation_id, &mut state, &mut grants)
+        .unwrap();
 
     assert_eq!(result.app().installation_id(), &installation_id);
 
@@ -263,7 +266,7 @@ fn complete_app_lifecycle_flow() {
      */
 
     assert!(matches!(
-        lifecycle.uninstall(&installation_id, &mut state,),
+        lifecycle.uninstall(&installation_id, &mut state, &mut grants),
         Err(AppLifecycleError::InstallationNotFound)
     ));
 }
