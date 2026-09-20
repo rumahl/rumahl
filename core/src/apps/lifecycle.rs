@@ -216,9 +216,10 @@ mod tests {
     use super::*;
 
     use crate::{
-        AppId, AppVersion, CapabilityId, CommandAction, CommandContributionDeclaration,
-        Contribution, ContributionId, ContributionKind, EventName, PermissionId, PermissionScope,
-        PublisherId, SearchContributionDeclaration, UserId, UserIdentity,
+        AppDatabaseDeclaration, AppDatabaseId, AppId, AppVersion, CapabilityId, CommandAction,
+        CommandContributionDeclaration, Contribution, ContributionId, ContributionKind, EventName,
+        PermissionId, PermissionScope, PublisherId, SearchContributionDeclaration, UserId,
+        UserIdentity,
     };
 
     fn web_runtime() -> crate::RuntimeDescriptor {
@@ -275,6 +276,12 @@ mod tests {
             .unwrap();
 
         manifest
+            .add_database(AppDatabaseDeclaration::new(
+                AppDatabaseId::parse("primary").unwrap(),
+            ))
+            .unwrap();
+
+        manifest
     }
 
     #[test]
@@ -296,6 +303,8 @@ mod tests {
         assert_eq!(state.search_registry().len(), 1);
 
         assert_eq!(state.event_bus().len(), 1);
+
+        assert_eq!(state.database_registry().len(), 1);
 
         assert!(
             state
@@ -325,6 +334,8 @@ mod tests {
 
         let subscriptions_before = state.event_bus().len();
 
+        let databases_before = state.database_registry().len();
+
         let result = lifecycle.install(manifest(), &mut state);
 
         assert_eq!(
@@ -343,6 +354,8 @@ mod tests {
         assert_eq!(state.search_registry().len(), searches_before);
 
         assert_eq!(state.event_bus().len(), subscriptions_before);
+
+        assert_eq!(state.database_registry().len(), databases_before);
     }
 
     #[test]
@@ -402,6 +415,7 @@ mod tests {
         assert!(state.search_registry().is_empty());
 
         assert!(state.event_bus().is_empty());
+        assert!(state.database_registry().is_empty());
     }
 
     #[test]
@@ -444,6 +458,7 @@ mod tests {
         assert!(state.search_registry().is_empty());
 
         assert!(state.event_bus().is_empty());
+        assert!(state.database_registry().is_empty());
         assert!(grants.is_empty());
     }
 

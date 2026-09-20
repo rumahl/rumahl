@@ -1,20 +1,21 @@
 use crate::{
-    CapabilityRegistry, CommandRegistry, ContributionRegistry, EventBus, InstalledAppRegistry,
-    SearchRegistry,
+    AppDatabaseRegistry, CapabilityRegistry, CommandRegistry, ContributionRegistry, EventBus,
+    InstalledAppRegistry, SearchRegistry,
 };
 
 #[derive(Debug, Default, Clone)]
 /// Complete in-memory platform state.
 ///
 /// Installed apps are the source of truth. Capability, contribution, command,
-/// search, and event registries are derived from those installations and are
-/// updated atomically through `AppLifecycle`.
+/// search, event, and database registries are derived from those installations
+/// and are updated atomically through `AppLifecycle`.
 pub struct PlatformState {
     capability_registry: CapabilityRegistry,
     contribution_registry: ContributionRegistry,
     command_registry: CommandRegistry,
     search_registry: SearchRegistry,
     event_bus: EventBus,
+    database_registry: AppDatabaseRegistry,
     installed_app_registry: InstalledAppRegistry,
 }
 
@@ -43,6 +44,10 @@ impl PlatformState {
         &self.event_bus
     }
 
+    pub fn database_registry(&self) -> &AppDatabaseRegistry {
+        &self.database_registry
+    }
+
     pub fn installed_apps(&self) -> &InstalledAppRegistry {
         &self.installed_app_registry
     }
@@ -65,6 +70,10 @@ impl PlatformState {
 
     pub(crate) fn event_bus_mut(&mut self) -> &mut EventBus {
         &mut self.event_bus
+    }
+
+    pub(crate) fn database_registry_mut(&mut self) -> &mut AppDatabaseRegistry {
+        &mut self.database_registry
     }
 
     pub(crate) fn installed_apps_mut(&mut self) -> &mut InstalledAppRegistry {
@@ -91,5 +100,6 @@ mod tests {
         assert!(state.search_registry().is_empty());
 
         assert!(state.event_bus().is_empty());
+        assert!(state.database_registry().is_empty());
     }
 }

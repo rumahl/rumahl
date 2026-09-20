@@ -2,14 +2,14 @@ use std::error::Error;
 use std::fmt;
 
 use rumahl_core::{
-    AppId, AppIdentity, AppManifest, AppVersion, CapabilityId, CommandAction,
-    CommandContributionDeclaration, ContributionDeclaration, ContributionId, EventName, GrantId,
-    Identity, InstallationId, InstalledAppSnapshot, OidcCallbackPath, OidcClientDeclaration,
-    OidcClientType, OidcScope, PackagePath, PermissionGrantSnapshot, PermissionId,
-    PermissionRequest, PermissionScope, PlatformSnapshot, PublisherId, ResourceKey, ResourceKind,
-    ResourceNamespace, ResourceRef, RuntimeDescriptor, RuntimeEndpointId, RuntimeEntrypoint,
-    RuntimeEntrypointId, RuntimeEntrypointTarget, RuntimeKind, ServiceId, ServiceIdentity, UserId,
-    UserIdentity,
+    AppDatabaseDeclaration, AppDatabaseId, AppId, AppIdentity, AppManifest, AppVersion,
+    CapabilityId, CommandAction, CommandContributionDeclaration, ContributionDeclaration,
+    ContributionId, EventName, GrantId, Identity, InstallationId, InstalledAppSnapshot,
+    OidcCallbackPath, OidcClientDeclaration, OidcClientType, OidcScope, PackagePath,
+    PermissionGrantSnapshot, PermissionId, PermissionRequest, PermissionScope, PlatformSnapshot,
+    PublisherId, ResourceKey, ResourceKind, ResourceNamespace, ResourceRef, RuntimeDescriptor,
+    RuntimeEndpointId, RuntimeEntrypoint, RuntimeEntrypointId, RuntimeEntrypointTarget,
+    RuntimeKind, ServiceId, ServiceIdentity, UserId, UserIdentity,
 };
 use serde::{Deserialize, Serialize};
 
@@ -138,6 +138,8 @@ struct WireManifest {
     provided_capabilities: Vec<String>,
     contributions: Vec<WireContribution>,
     event_subscriptions: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    databases: Vec<WireAppDatabase>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     oidc_client: Option<WireOidcClient>,
 }
@@ -169,6 +171,11 @@ impl WireManifest {
                 .event_subscriptions()
                 .iter()
                 .map(|event| event.as_str().to_owned())
+                .collect(),
+            databases: manifest
+                .databases()
+                .iter()
+                .map(WireAppDatabase::capture)
                 .collect(),
             oidc_client: manifest.oidc_client().map(WireOidcClient::capture),
         }
@@ -221,6 +228,12 @@ impl WireManifest {
                 })?;
         }
 
+        for database in self.databases {
+            manifest
+                .add_database(database.into_domain()?)
+                .map_err(|error| WireSnapshotError::invalid("manifest database", error))?;
+        }
+
         if let Some(oidc_client) = self.oidc_client {
             manifest
                 .declare_oidc_client(oidc_client.into_domain()?)
@@ -228,6 +241,26 @@ impl WireManifest {
         }
 
         Ok(manifest)
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct WireAppDatabase {
+    id: String,
+}
+
+impl WireAppDatabase {
+    fn capture(declaration: &AppDatabaseDeclaration) -> Self {
+        Self {
+            id: declaration.id().as_str().to_owned(),
+        }
+    }
+
+    fn into_domain(self) -> Result<AppDatabaseDeclaration, WireSnapshotError> {
+        AppDatabaseId::parse(self.id)
+            .map(AppDatabaseDeclaration::new)
+            .map_err(|error| WireSnapshotError::invalid("app database id", error))
     }
 }
 

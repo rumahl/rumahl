@@ -3,6 +3,7 @@ pub mod apps;
 pub mod capabilities;
 pub mod context;
 pub mod contributions;
+pub mod databases;
 pub mod events;
 pub mod identity;
 pub mod permissions;
@@ -30,6 +31,11 @@ pub use apps::{
 };
 
 pub use context::{CorrelationId, CorrelationIdError, OperationContext};
+
+pub use databases::{
+    AppDatabaseBinding, AppDatabaseDeclaration, AppDatabaseId, AppDatabaseIdError,
+    AppDatabaseRegistry, AppDatabaseRegistryError,
+};
 
 pub use identity::{
     AppId, AppIdError, AppIdentity, Identity, InstallationId, InstallationIdError, PublisherId,

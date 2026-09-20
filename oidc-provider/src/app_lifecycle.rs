@@ -205,10 +205,11 @@ mod tests {
     use std::cell::{Cell, RefCell};
 
     use rumahl_core::{
-        AppId, AppVersion, GrantAuthority, GrantIssuerPolicy, OidcCallbackPath,
-        OidcClientDeclaration, OidcClientType, OidcScope, PackagePath, PermissionId,
-        PermissionScope, PublisherId, ResourceKey, ResourceKind, ResourceNamespace, ResourceRef,
-        RuntimeDescriptor, RuntimeEntrypoint, RuntimeEntrypointId, UserId, UserIdentity, UserRole,
+        AppDatabaseDeclaration, AppDatabaseId, AppId, AppVersion, GrantAuthority,
+        GrantIssuerPolicy, OidcCallbackPath, OidcClientDeclaration, OidcClientType, OidcScope,
+        PackagePath, PermissionId, PermissionScope, PublisherId, ResourceKey, ResourceKind,
+        ResourceNamespace, ResourceRef, RuntimeDescriptor, RuntimeEntrypoint, RuntimeEntrypointId,
+        UserId, UserIdentity, UserRole,
     };
 
     use super::*;
@@ -403,17 +404,20 @@ mod tests {
         repository.fail_insert.set(true);
         let lifecycle = OidcAppLifecycle::new(repository, FixedOriginResolver);
         let mut state = PlatformState::new();
+        let mut manifest = manifest(false);
+        manifest
+            .add_database(AppDatabaseDeclaration::new(
+                AppDatabaseId::parse("primary").unwrap(),
+            ))
+            .unwrap();
 
         let result = lifecycle
-            .install(
-                manifest(false),
-                &mut state,
-                UnixTimestamp::from_seconds(100),
-            )
+            .install(manifest, &mut state, UnixTimestamp::from_seconds(100))
             .unwrap();
 
         assert!(result.oidc_registration().is_none());
         assert_eq!(state.installed_apps().len(), 1);
+        assert_eq!(state.database_registry().len(), 1);
         assert!(lifecycle.client_repository().clients.borrow().is_empty());
     }
 

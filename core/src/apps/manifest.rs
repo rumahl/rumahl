@@ -1,7 +1,10 @@
 use std::error::Error;
 use std::fmt;
 
-use crate::{AppId, CapabilityId, EventName, PermissionRequest, PublisherId, RuntimeDescriptor};
+use crate::{
+    AppDatabaseDeclaration, AppId, CapabilityId, EventName, PermissionRequest, PublisherId,
+    RuntimeDescriptor,
+};
 
 use super::{AppVersion, ContributionDeclaration, OidcClientDeclaration};
 
@@ -16,6 +19,7 @@ pub struct AppManifest {
     provided_capabilities: Vec<CapabilityId>,
     contributions: Vec<ContributionDeclaration>,
     event_subscriptions: Vec<EventName>,
+    databases: Vec<AppDatabaseDeclaration>,
     oidc_client: Option<OidcClientDeclaration>,
 }
 
@@ -27,10 +31,14 @@ pub enum AppManifestError {
     DuplicateProvidedCapability,
     DuplicateContribution,
     DuplicateEventSubscription,
+    DuplicateDatabaseDeclaration,
+    TooManyDatabaseDeclarations,
     DuplicateOidcClientDeclaration,
 }
 
 impl AppManifest {
+    pub const MAX_DATABASES: usize = 8;
+
     pub fn new(
         app_id: AppId,
         publisher_id: PublisherId,
@@ -60,6 +68,7 @@ impl AppManifest {
             provided_capabilities: Vec::new(),
             contributions: Vec::new(),
             event_subscriptions: Vec::new(),
+            databases: Vec::new(),
             oidc_client: None,
         })
     }
@@ -165,6 +174,31 @@ impl AppManifest {
         &self.event_subscriptions
     }
 
+    pub fn add_database(
+        &mut self,
+        declaration: AppDatabaseDeclaration,
+    ) -> Result<(), AppManifestError> {
+        if self
+            .databases
+            .iter()
+            .any(|existing| existing.id() == declaration.id())
+        {
+            return Err(AppManifestError::DuplicateDatabaseDeclaration);
+        }
+
+        if self.databases.len() == Self::MAX_DATABASES {
+            return Err(AppManifestError::TooManyDatabaseDeclarations);
+        }
+
+        self.databases.push(declaration);
+
+        Ok(())
+    }
+
+    pub fn databases(&self) -> &[AppDatabaseDeclaration] {
+        &self.databases
+    }
+
     pub fn declare_oidc_client(
         &mut self,
         declaration: OidcClientDeclaration,
@@ -219,6 +253,17 @@ impl fmt::Display for AppManifestError {
                     "app manifest cannot subscribe to the same event more than once"
                 )
             }
+            Self::DuplicateDatabaseDeclaration => {
+                write!(
+                    f,
+                    "app manifest cannot declare the same database more than once"
+                )
+            }
+            Self::TooManyDatabaseDeclarations => write!(
+                f,
+                "app manifest cannot declare more than {} databases",
+                AppManifest::MAX_DATABASES
+            ),
             Self::DuplicateOidcClientDeclaration => {
                 write!(f, "app manifest cannot declare more than one OIDC client")
             }
@@ -238,6 +283,10 @@ mod tests {
     use crate::{PermissionId, PermissionRequest, PermissionScope};
 
     use crate::apps::{CommandContributionDeclaration, SearchContributionDeclaration};
+
+    fn database(id: &str) -> AppDatabaseDeclaration {
+        AppDatabaseDeclaration::new(crate::AppDatabaseId::parse(id).unwrap())
+    }
 
     #[test]
     fn creates_app_manifest() {
@@ -648,6 +697,53 @@ mod tests {
         assert_eq!(
             result.unwrap_err(),
             AppManifestError::DuplicateEventSubscription
+        );
+    }
+
+    #[test]
+    fn databases_are_optional_and_use_logical_ids() {
+        let mut manifest = AppManifest::new(
+            AppId::parse("com.rumahl.notes").unwrap(),
+            PublisherId::parse("com.rumahl").unwrap(),
+            AppVersion::new(1, 0, 0),
+            "Notes",
+            RuntimeDescriptor::web(),
+        )
+        .unwrap();
+
+        assert!(manifest.databases().is_empty());
+
+        manifest.add_database(database("primary")).unwrap();
+
+        assert_eq!(manifest.databases()[0].id().as_str(), "primary");
+    }
+
+    #[test]
+    fn rejects_duplicate_and_excessive_database_declarations() {
+        let mut manifest = AppManifest::new(
+            AppId::parse("com.rumahl.notes").unwrap(),
+            PublisherId::parse("com.rumahl").unwrap(),
+            AppVersion::new(1, 0, 0),
+            "Notes",
+            RuntimeDescriptor::web(),
+        )
+        .unwrap();
+        manifest.add_database(database("primary")).unwrap();
+
+        assert_eq!(
+            manifest.add_database(database("primary")).unwrap_err(),
+            AppManifestError::DuplicateDatabaseDeclaration
+        );
+
+        for index in 1..AppManifest::MAX_DATABASES {
+            manifest
+                .add_database(database(&format!("database-{index}")))
+                .unwrap();
+        }
+
+        assert_eq!(
+            manifest.add_database(database("overflow")).unwrap_err(),
+            AppManifestError::TooManyDatabaseDeclarations
         );
     }
 }

@@ -185,6 +185,9 @@ redirect, or host filesystem path.
 
 The first implementation persists the logical declaration as part of the app
 snapshot and creates the concrete registration in a dedicated OIDC repository.
+The declaration is optional: an app without it receives no OIDC client and the
+client repository is not touched. Other optional resources, including managed
+app databases, do not implicitly enable OIDC.
 Only an `InstallationId` currently present in `PlatformState` can be
 registered. Static web runtimes must declare a public client; container
 runtimes must declare a confidential client whose callback references a
