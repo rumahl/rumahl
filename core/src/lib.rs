@@ -23,8 +23,10 @@ pub use apps::{
     AppManifestValidator, AppUninstallResult, AppVersion, AppVersionError,
     CommandContributionDeclaration, CommandContributionDeclarationError, ContributionDeclaration,
     InstalledApp, InstalledAppError, InstalledAppRegistry, InstalledAppRegistryError,
-    PlatformDeregistrationReport, PlatformRegistrar, PlatformRegistrarError, PlatformRegistration,
-    PlatformRegistrationError, SearchContributionDeclaration,
+    OidcCallbackPath, OidcCallbackPathError, OidcClientDeclaration, OidcClientDeclarationError,
+    OidcClientType, OidcScope, PlatformDeregistrationReport, PlatformRegistrar,
+    PlatformRegistrarError, PlatformRegistration, PlatformRegistrationError,
+    SearchContributionDeclaration,
 };
 
 pub use context::{CorrelationId, CorrelationIdError, OperationContext};

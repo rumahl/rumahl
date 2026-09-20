@@ -170,9 +170,10 @@ mod tests {
     use rumahl_core::{
         AppId, AppLifecycle, AppManifest, AppVersion, CapabilityId, CommandAction,
         CommandContributionDeclaration, ContributionId, EventName, GrantAuthority,
-        GrantIssuerPolicy, InMemoryGrantStore, PLATFORM_SNAPSHOT_VERSION, PackagePath,
-        PermissionId, PermissionRequest, PermissionScope, PlatformRecovery, PlatformState,
-        PublisherId, ResourceKey, ResourceKind, ResourceNamespace, ResourceRef, RuntimeDescriptor,
+        GrantIssuerPolicy, InMemoryGrantStore, OidcCallbackPath, OidcClientDeclaration,
+        OidcClientType, OidcScope, PLATFORM_SNAPSHOT_VERSION, PackagePath, PermissionId,
+        PermissionRequest, PermissionScope, PlatformRecovery, PlatformState, PublisherId,
+        ResourceKey, ResourceKind, ResourceNamespace, ResourceRef, RuntimeDescriptor,
         RuntimeEntrypoint, RuntimeEntrypointId, SearchContributionDeclaration, UserId,
         UserIdentity, UserRole,
     };
@@ -193,6 +194,17 @@ mod tests {
             runtime,
         )
         .unwrap();
+        manifest
+            .declare_oidc_client(
+                OidcClientDeclaration::new(
+                    OidcClientType::Public,
+                    RuntimeEntrypointId::parse("main").unwrap(),
+                    OidcCallbackPath::parse("/oidc/callback").unwrap(),
+                    vec![OidcScope::OpenId, OidcScope::Profile],
+                )
+                .unwrap(),
+            )
+            .unwrap();
         manifest
             .add_permission_request(PermissionRequest::new(
                 PermissionId::parse("rumahl.files.read").unwrap(),
@@ -279,6 +291,12 @@ mod tests {
         assert_eq!(state.command_registry().len(), 1);
         assert_eq!(state.search_registry().len(), 1);
         assert_eq!(state.event_bus().len(), 1);
+        let oidc = state.installed_apps().apps()[0]
+            .manifest()
+            .oidc_client()
+            .unwrap();
+        assert_eq!(oidc.client_type(), OidcClientType::Public);
+        assert_eq!(oidc.callback_path().as_str(), "/oidc/callback");
     }
 
     #[test]

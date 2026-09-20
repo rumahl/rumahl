@@ -3,7 +3,7 @@ use std::fmt;
 
 use crate::{AppId, CapabilityId, EventName, PermissionRequest, PublisherId, RuntimeDescriptor};
 
-use super::{AppVersion, ContributionDeclaration};
+use super::{AppVersion, ContributionDeclaration, OidcClientDeclaration};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AppManifest {
@@ -16,6 +16,7 @@ pub struct AppManifest {
     provided_capabilities: Vec<CapabilityId>,
     contributions: Vec<ContributionDeclaration>,
     event_subscriptions: Vec<EventName>,
+    oidc_client: Option<OidcClientDeclaration>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -26,6 +27,7 @@ pub enum AppManifestError {
     DuplicateProvidedCapability,
     DuplicateContribution,
     DuplicateEventSubscription,
+    DuplicateOidcClientDeclaration,
 }
 
 impl AppManifest {
@@ -58,6 +60,7 @@ impl AppManifest {
             provided_capabilities: Vec::new(),
             contributions: Vec::new(),
             event_subscriptions: Vec::new(),
+            oidc_client: None,
         })
     }
 
@@ -161,6 +164,23 @@ impl AppManifest {
     pub fn event_subscriptions(&self) -> &[EventName] {
         &self.event_subscriptions
     }
+
+    pub fn declare_oidc_client(
+        &mut self,
+        declaration: OidcClientDeclaration,
+    ) -> Result<(), AppManifestError> {
+        if self.oidc_client.is_some() {
+            return Err(AppManifestError::DuplicateOidcClientDeclaration);
+        }
+
+        self.oidc_client = Some(declaration);
+
+        Ok(())
+    }
+
+    pub fn oidc_client(&self) -> Option<&OidcClientDeclaration> {
+        self.oidc_client.as_ref()
+    }
 }
 
 impl fmt::Display for AppManifestError {
@@ -198,6 +218,9 @@ impl fmt::Display for AppManifestError {
                     f,
                     "app manifest cannot subscribe to the same event more than once"
                 )
+            }
+            Self::DuplicateOidcClientDeclaration => {
+                write!(f, "app manifest cannot declare more than one OIDC client")
             }
         }
     }

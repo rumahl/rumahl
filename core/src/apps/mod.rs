@@ -3,6 +3,7 @@ mod installed;
 mod installed_registry;
 mod lifecycle;
 mod manifest;
+mod oidc;
 mod registrar;
 mod registration;
 mod validator;
@@ -14,6 +15,11 @@ pub use contribution::{
 };
 
 pub use manifest::{AppManifest, AppManifestError};
+
+pub use oidc::{
+    OidcCallbackPath, OidcCallbackPathError, OidcClientDeclaration, OidcClientDeclarationError,
+    OidcClientType, OidcScope,
+};
 
 pub use version::{AppVersion, AppVersionError};
 
