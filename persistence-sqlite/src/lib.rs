@@ -6,7 +6,11 @@
 
 mod account_repository;
 mod repository;
+mod session_credential_repository;
 mod wire;
 
 pub use account_repository::{SqliteAccountStateRepository, SqliteAccountStateRepositoryError};
 pub use repository::{SqliteSnapshotRepository, SqliteSnapshotRepositoryError};
+pub use session_credential_repository::{
+    SqliteSessionCredentialRepository, SqliteSessionCredentialRepositoryError,
+};

@@ -18,6 +18,12 @@ replaced in one immediate transaction, so an account lock and its session
 revocations survive together. Credentials, tokens, client secrets, and signing
 keys are intentionally outside both repositories.
 
+Opaque OS session credentials use a third repository. Only a SHA-256 digest of
+each randomly generated 256-bit token is stored; the clear token is returned
+once to the HTTP, IPC, or native transport. Revoking a session invalidates all
+of its stored transport credentials, while the platform API independently
+revalidates the account and session on every request.
+
 ## SQLite linking
 
 The default `bundled` feature compiles SQLite with the crate. This keeps host
