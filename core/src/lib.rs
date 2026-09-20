@@ -1,4 +1,5 @@
 pub mod accounts;
+pub mod app_operations;
 pub mod apps;
 pub mod capabilities;
 pub mod context;
@@ -17,6 +18,12 @@ pub use accounts::{
     AccountSessionRegistry, AccountSessionRegistryError, AccountState, AccountStateError,
     AccountStateRepository, AccountStatus, AccountUsername, AccountUsernameError, LocalAccount,
     LocalAccountError, UnixTimestamp, UnixTimestampError,
+};
+
+pub use app_operations::{
+    AppOperation, AppOperationError, AppOperationId, AppOperationIdError, AppOperationKind,
+    AppOperationPhase, AppOperationRepository, AppOperationResource, AppOperationResourceState,
+    AppOperationStep,
 };
 
 pub use apps::{

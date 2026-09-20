@@ -98,11 +98,13 @@ Implemented:
   file isolation;
 - retained databases are inaccessible until restored for the exact original
   `InstallationId`;
+- durable cross-resource operation state machine and SQLite journal, including
+  crash-visible apply/compensation steps and optimistic revisions.
 
 Remaining:
 
 - explicit purge policy and audit workflow;
-- atomic coordination with app install, update, and uninstall;
+- provider execution and startup reconciliation through the operation journal;
 - quota and storage-health reporting;
 - audit events without credentials or query contents.
 

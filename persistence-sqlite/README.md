@@ -75,6 +75,18 @@ authenticated React platform-data service. Container connection delivery and
 managed PostgreSQL remain separate runtime adapters; neither changes the core
 manifest contract.
 
+## App operation journal
+
+`SqliteAppOperationRepository` durably stores ordered app-resource steps for
+install, update, and uninstall operations. Each transition uses an optimistic
+revision check and updates the operation plus all steps in one SQLite
+transaction. Incomplete operations remain queryable after restart, including
+steps interrupted while applying or compensating.
+
+The journal is a recovery mechanism across independent providers, not a false
+cross-filesystem transaction. Provider execution and startup reconciliation
+are layered above this repository.
+
 The service that owns this repository remains responsible for choosing and
 creating the parent state directory. No host path is embedded in the domain
 model or in this adapter.

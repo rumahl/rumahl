@@ -207,8 +207,17 @@ exceptions are deferred until the native runtime trust policy exists.
 platform state and grants. The live state is replaced only after the atomic
 OIDC repository insert or revocation succeeds, so repository failures roll the
 in-process lifecycle back without publishing partial state. Durable crash
-atomicity between the platform snapshot and OIDC tables will be provided by a
-single persistence transaction in the Buildroot runtime integration.
+consistency between the platform snapshot, OIDC metadata, and external app
+resources is provided by the operation journal plus idempotent startup
+reconciliation. A shared SQLite transaction may optimize metadata stored in
+one database, but is not assumed across provider boundaries.
+
+The general `AppOperation` journal now records OIDC as an optional participant
+alongside app databases and the final platform snapshot. It does not make OIDC
+a prerequisite for installation. The remaining runtime coordinator will
+supersede `OidcAppLifecycle` as the top-level cross-resource boundary and use
+the journal for restart reconciliation; the OIDC registrar remains the
+provider-specific participant.
 
 - Container and server-side web apps such as Nextcloud are confidential
   clients. Their generated secret is injected through the runtime secret

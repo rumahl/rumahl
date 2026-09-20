@@ -6,6 +6,7 @@
 
 mod account_repository;
 mod app_database_provider;
+mod app_operation_repository;
 mod identity_schema;
 mod local_account_administration_repository;
 mod oidc_client_repository;
@@ -17,6 +18,9 @@ mod wire;
 
 pub use account_repository::{SqliteAccountStateRepository, SqliteAccountStateRepositoryError};
 pub use app_database_provider::{SqliteAppDatabaseProvider, SqliteAppDatabaseProviderError};
+pub use app_operation_repository::{
+    SqliteAppOperationRepository, SqliteAppOperationRepositoryError,
+};
 pub use local_account_administration_repository::{
     SqliteLocalAccountAdministrationRepository, SqliteLocalAccountAdministrationRepositoryError,
 };
