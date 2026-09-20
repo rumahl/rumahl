@@ -11,6 +11,8 @@ use rumahl_account_auth::{
 use rumahl_core::{UnixTimestamp, UserId};
 use rusqlite::{Connection, OptionalExtension, TransactionBehavior, params};
 
+use crate::identity_schema;
+
 #[derive(Debug)]
 pub struct SqlitePasswordCredentialRepository {
     connection: Mutex<Connection>,
@@ -44,21 +46,7 @@ impl SqlitePasswordCredentialRepository {
         connection
             .busy_timeout(Duration::from_secs(5))
             .map_err(Self::database_error)?;
-        connection
-            .execute_batch(
-                "PRAGMA journal_mode = WAL;
-                 PRAGMA synchronous = FULL;
-
-                 CREATE TABLE IF NOT EXISTS password_credential (
-                     user_id TEXT PRIMARY KEY,
-                     password_hash TEXT NOT NULL,
-                     changed_at INTEGER NOT NULL CHECK (changed_at >= 0),
-                     failed_attempts INTEGER NOT NULL DEFAULT 0 CHECK (failed_attempts >= 0),
-                     blocked_until INTEGER,
-                     CHECK (blocked_until IS NULL OR blocked_until >= 0)
-                 );",
-            )
-            .map_err(Self::database_error)?;
+        identity_schema::initialize(&connection).map_err(Self::database_error)?;
 
         Ok(Self {
             connection: Mutex::new(connection),

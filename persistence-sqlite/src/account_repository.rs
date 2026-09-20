@@ -10,6 +10,8 @@ use rumahl_core::{
 };
 use rusqlite::{Connection, Transaction, TransactionBehavior, params};
 
+use crate::identity_schema;
+
 #[derive(Debug)]
 pub struct SqliteAccountStateRepository {
     connection: Mutex<Connection>,
@@ -40,39 +42,7 @@ impl SqliteAccountStateRepository {
         connection
             .busy_timeout(Duration::from_secs(5))
             .map_err(Self::database_error)?;
-        connection
-            .execute_batch(
-                "PRAGMA foreign_keys = ON;
-                 PRAGMA journal_mode = WAL;
-                 PRAGMA synchronous = FULL;
-
-                 CREATE TABLE IF NOT EXISTS local_account (
-                     user_id TEXT PRIMARY KEY,
-                     username TEXT NOT NULL UNIQUE COLLATE NOCASE,
-                     display_name TEXT NOT NULL,
-                     status TEXT NOT NULL CHECK (status IN ('active', 'locked', 'disabled'))
-                 );
-
-                 CREATE TABLE IF NOT EXISTS account_session (
-                     session_id TEXT PRIMARY KEY,
-                     user_id TEXT NOT NULL REFERENCES local_account(user_id) ON DELETE CASCADE,
-                     authenticated_at INTEGER NOT NULL CHECK (authenticated_at >= 0),
-                     last_seen_at INTEGER NOT NULL CHECK (last_seen_at >= authenticated_at),
-                     reauthenticated_at INTEGER,
-                     expires_at INTEGER NOT NULL CHECK (expires_at > authenticated_at),
-                     revoked_at INTEGER,
-                     CHECK (last_seen_at < expires_at),
-                     CHECK (
-                         reauthenticated_at IS NULL OR
-                         (reauthenticated_at >= authenticated_at AND reauthenticated_at <= last_seen_at)
-                     ),
-                     CHECK (revoked_at IS NULL OR revoked_at >= authenticated_at)
-                 );
-
-                 CREATE INDEX IF NOT EXISTS account_session_user_id
-                 ON account_session(user_id);",
-            )
-            .map_err(Self::database_error)?;
+        identity_schema::initialize(&connection).map_err(Self::database_error)?;
 
         Ok(Self {
             connection: Mutex::new(connection),

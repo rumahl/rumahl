@@ -10,6 +10,8 @@ use rumahl_account_auth::{
 use rumahl_core::{SessionId, UnixTimestamp};
 use rusqlite::{Connection, OptionalExtension, params};
 
+use crate::identity_schema;
+
 #[derive(Debug)]
 pub struct SqliteSessionCredentialRepository {
     connection: Mutex<Connection>,
@@ -38,23 +40,7 @@ impl SqliteSessionCredentialRepository {
         connection
             .busy_timeout(Duration::from_secs(5))
             .map_err(Self::database_error)?;
-        connection
-            .execute_batch(
-                "PRAGMA journal_mode = WAL;
-                 PRAGMA synchronous = FULL;
-
-                 CREATE TABLE IF NOT EXISTS session_credential (
-                     token_digest BLOB PRIMARY KEY CHECK (length(token_digest) = 32),
-                     session_id TEXT NOT NULL,
-                     issued_at INTEGER NOT NULL CHECK (issued_at >= 0),
-                     revoked_at INTEGER,
-                     CHECK (revoked_at IS NULL OR revoked_at >= issued_at)
-                 );
-
-                 CREATE INDEX IF NOT EXISTS session_credential_session_id
-                 ON session_credential(session_id);",
-            )
-            .map_err(Self::database_error)?;
+        identity_schema::initialize(&connection).map_err(Self::database_error)?;
 
         Ok(Self {
             connection: Mutex::new(connection),

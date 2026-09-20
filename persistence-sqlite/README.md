@@ -29,6 +29,13 @@ account identity itself. Its repository stores Argon2id PHC verifiers and the
 persistent retry state per `UserId`. Attempt reservation, lockout updates, and
 success resets are transactional; plaintext passwords never enter SQLite.
 
+`SqliteLocalAccountAdministrationRepository` is the cross-table transaction
+boundary for local identity administration. Initial account and password
+creation commits together. A password change replaces the verifier, resets its
+retry state, revokes all live account-session rows, and invalidates every
+opaque transport credential for those sessions before committing. The caller
+swaps its staged in-memory `AccountState` only after this transaction succeeds.
+
 ## SQLite linking
 
 The default `bundled` feature compiles SQLite with the crate. This keeps host

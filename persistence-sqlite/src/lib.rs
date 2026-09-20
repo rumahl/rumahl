@@ -5,12 +5,17 @@
 //! the public core constructors before platform recovery can commit it.
 
 mod account_repository;
+mod identity_schema;
+mod local_account_administration_repository;
 mod password_credential_repository;
 mod repository;
 mod session_credential_repository;
 mod wire;
 
 pub use account_repository::{SqliteAccountStateRepository, SqliteAccountStateRepositoryError};
+pub use local_account_administration_repository::{
+    SqliteLocalAccountAdministrationRepository, SqliteLocalAccountAdministrationRepositoryError,
+};
 pub use password_credential_repository::{
     SqlitePasswordCredentialRepository, SqlitePasswordCredentialRepositoryError,
 };
