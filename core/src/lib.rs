@@ -7,6 +7,7 @@ pub mod identity;
 pub mod permissions;
 pub mod platform;
 pub mod resources;
+pub mod runtime;
 
 pub use apps::{
     AppLifecycle, AppLifecycleError, AppManifest, AppManifestError, AppManifestValidationError,
@@ -29,6 +30,8 @@ pub use resources::{
     ResourceKey, ResourceKeyError, ResourceKind, ResourceKindError, ResourceNamespace,
     ResourceNamespaceError, ResourceRef,
 };
+
+pub use runtime::{RuntimeDescriptor, RuntimeKind};
 
 pub use permissions::{
     AuthorizationDecision, AuthorizationDenyReason, AuthorizationEngine, AuthorizationRequest,

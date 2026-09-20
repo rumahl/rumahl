@@ -2,7 +2,7 @@ use rumahl_core::{
     AppId, AppLifecycle, AppLifecycleError, AppManifest, AppVersion, CapabilityId, CommandAction,
     CommandContributionDeclaration, ContributionId, EventName, Identity, InstalledAppRegistryError,
     PermissionId, PermissionRequest, PermissionScope, PlatformState, PublisherId,
-    SearchContributionDeclaration,
+    RuntimeDescriptor, RuntimeKind, SearchContributionDeclaration,
 };
 
 fn notes_manifest() -> AppManifest {
@@ -11,6 +11,7 @@ fn notes_manifest() -> AppManifest {
         PublisherId::parse("com.rumahl").unwrap(),
         AppVersion::new(1, 0, 0),
         "Notes",
+        RuntimeDescriptor::web(),
     )
     .unwrap();
 
@@ -109,6 +110,8 @@ fn complete_app_lifecycle_flow() {
     assert_eq!(stored.manifest().contributions().len(), 2);
 
     assert_eq!(stored.manifest().event_subscriptions().len(), 1);
+
+    assert_eq!(stored.manifest().runtime().kind(), RuntimeKind::Web);
 
     /*
      * Concrete platform registration.

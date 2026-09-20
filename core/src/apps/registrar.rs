@@ -239,6 +239,7 @@ mod tests {
             PublisherId::parse("com.rumahl").unwrap(),
             AppVersion::new(1, 0, 0),
             display_name,
+            crate::RuntimeDescriptor::web(),
         )
         .unwrap();
 

@@ -199,6 +199,7 @@ mod tests {
             PublisherId::parse("com.rumahl").unwrap(),
             AppVersion::new(1, 0, 0),
             "Notes",
+            crate::RuntimeDescriptor::web(),
         )
         .unwrap();
 
@@ -315,6 +316,7 @@ mod tests {
                 PublisherId::parse("com.rumahl").unwrap(),
                 AppVersion::new(1, 0, 0),
                 "Other",
+                crate::RuntimeDescriptor::web(),
             )
             .unwrap(),
             &AppManifestValidator::new(),

@@ -1,7 +1,7 @@
 use std::error::Error;
 use std::fmt;
 
-use crate::{AppId, CapabilityId, EventName, PermissionRequest, PublisherId};
+use crate::{AppId, CapabilityId, EventName, PermissionRequest, PublisherId, RuntimeDescriptor};
 
 use super::{AppVersion, ContributionDeclaration};
 
@@ -11,6 +11,7 @@ pub struct AppManifest {
     publisher_id: PublisherId,
     version: AppVersion,
     display_name: String,
+    runtime: RuntimeDescriptor,
     permission_requests: Vec<PermissionRequest>,
     provided_capabilities: Vec<CapabilityId>,
     contributions: Vec<ContributionDeclaration>,
@@ -33,6 +34,7 @@ impl AppManifest {
         publisher_id: PublisherId,
         version: AppVersion,
         display_name: impl Into<String>,
+        runtime: RuntimeDescriptor,
     ) -> Result<Self, AppManifestError> {
         let display_name = display_name.into();
 
@@ -51,6 +53,7 @@ impl AppManifest {
             publisher_id,
             version,
             display_name: display_name.to_owned(),
+            runtime,
             permission_requests: Vec::new(),
             provided_capabilities: Vec::new(),
             contributions: Vec::new(),
@@ -72,6 +75,10 @@ impl AppManifest {
 
     pub fn display_name(&self) -> &str {
         &self.display_name
+    }
+
+    pub fn runtime(&self) -> &RuntimeDescriptor {
+        &self.runtime
     }
 
     pub fn add_permission_request(
@@ -217,8 +224,14 @@ mod tests {
 
         let version = AppVersion::new(1, 4, 2);
 
-        let manifest =
-            AppManifest::new(app_id.clone(), publisher_id.clone(), version, "Notes").unwrap();
+        let manifest = AppManifest::new(
+            app_id.clone(),
+            publisher_id.clone(),
+            version,
+            "Notes",
+            RuntimeDescriptor::web(),
+        )
+        .unwrap();
 
         assert_eq!(manifest.app_id(), &app_id);
 
@@ -227,6 +240,8 @@ mod tests {
         assert_eq!(manifest.version(), &AppVersion::new(1, 4, 2,));
 
         assert_eq!(manifest.display_name(), "Notes");
+
+        assert_eq!(manifest.runtime().kind(), crate::RuntimeKind::Web);
     }
 
     #[test]
@@ -236,6 +251,7 @@ mod tests {
             PublisherId::parse("com.rumahl").unwrap(),
             AppVersion::new(1, 0, 0),
             "   Notes   ",
+            RuntimeDescriptor::web(),
         )
         .unwrap();
 
@@ -249,6 +265,7 @@ mod tests {
             PublisherId::parse("com.rumahl").unwrap(),
             AppVersion::new(1, 0, 0),
             "   ",
+            RuntimeDescriptor::web(),
         );
 
         assert_eq!(result.unwrap_err(), AppManifestError::EmptyDisplayName);
@@ -261,6 +278,7 @@ mod tests {
             PublisherId::parse("com.rumahl").unwrap(),
             AppVersion::new(1, 0, 0),
             "a".repeat(121),
+            RuntimeDescriptor::web(),
         );
 
         assert_eq!(result.unwrap_err(), AppManifestError::DisplayNameTooLong);
@@ -273,6 +291,7 @@ mod tests {
             PublisherId::parse("com.rumahl").unwrap(),
             AppVersion::new(1, 0, 0),
             "Notes",
+            RuntimeDescriptor::web(),
         )
         .unwrap();
 
@@ -286,6 +305,7 @@ mod tests {
             PublisherId::parse("com.rumahl").unwrap(),
             AppVersion::new(1, 0, 0),
             "Notes",
+            RuntimeDescriptor::web(),
         )
         .unwrap();
 
@@ -320,6 +340,7 @@ mod tests {
             PublisherId::parse("com.rumahl").unwrap(),
             AppVersion::new(1, 0, 0),
             "Notes",
+            RuntimeDescriptor::web(),
         )
         .unwrap();
 
@@ -354,6 +375,7 @@ mod tests {
             PublisherId::parse("com.rumahl").unwrap(),
             AppVersion::new(1, 0, 0),
             "Notes",
+            RuntimeDescriptor::web(),
         )
         .unwrap();
 
@@ -367,6 +389,7 @@ mod tests {
             PublisherId::parse("com.rumahl").unwrap(),
             AppVersion::new(1, 0, 0),
             "Notes",
+            RuntimeDescriptor::web(),
         )
         .unwrap();
 
@@ -386,6 +409,7 @@ mod tests {
             PublisherId::parse("com.rumahl").unwrap(),
             AppVersion::new(1, 0, 0),
             "Notes",
+            RuntimeDescriptor::web(),
         )
         .unwrap();
 
@@ -407,6 +431,7 @@ mod tests {
             PublisherId::parse("com.rumahl").unwrap(),
             AppVersion::new(1, 0, 0),
             "Notes",
+            RuntimeDescriptor::web(),
         )
         .unwrap();
 
@@ -431,6 +456,7 @@ mod tests {
             PublisherId::parse("com.rumahl").unwrap(),
             AppVersion::new(1, 0, 0),
             "Notes",
+            RuntimeDescriptor::web(),
         )
         .unwrap();
 
@@ -444,6 +470,7 @@ mod tests {
             PublisherId::parse("com.rumahl").unwrap(),
             AppVersion::new(1, 0, 0),
             "Notes",
+            RuntimeDescriptor::web(),
         )
         .unwrap();
 
@@ -471,6 +498,7 @@ mod tests {
             PublisherId::parse("com.rumahl").unwrap(),
             AppVersion::new(1, 0, 0),
             "Notes",
+            RuntimeDescriptor::web(),
         )
         .unwrap();
 
@@ -494,6 +522,7 @@ mod tests {
             PublisherId::parse("com.rumahl").unwrap(),
             AppVersion::new(1, 0, 0),
             "Notes",
+            RuntimeDescriptor::web(),
         )
         .unwrap();
 
@@ -529,6 +558,7 @@ mod tests {
             PublisherId::parse("com.rumahl").unwrap(),
             AppVersion::new(1, 0, 0),
             "Notes",
+            RuntimeDescriptor::web(),
         )
         .unwrap();
 
@@ -542,6 +572,7 @@ mod tests {
             PublisherId::parse("com.rumahl").unwrap(),
             AppVersion::new(1, 0, 0),
             "Notes",
+            RuntimeDescriptor::web(),
         )
         .unwrap();
 
@@ -559,6 +590,7 @@ mod tests {
             PublisherId::parse("com.rumahl").unwrap(),
             AppVersion::new(1, 0, 0),
             "Notes",
+            RuntimeDescriptor::web(),
         )
         .unwrap();
 
@@ -580,6 +612,7 @@ mod tests {
             PublisherId::parse("com.rumahl").unwrap(),
             AppVersion::new(1, 0, 0),
             "Notes",
+            RuntimeDescriptor::web(),
         )
         .unwrap();
 
