@@ -32,8 +32,11 @@ pub use resources::{
 };
 
 pub use runtime::{
-    RuntimeAdapter, RuntimeAdapterError, RuntimeAdapterRegistry, RuntimeAdapterRegistryError,
-    RuntimeDescriptor, RuntimeKind, RuntimeRouter, RuntimeRoutingError,
+    PackagePath, PackagePathError, RuntimeAdapter, RuntimeAdapterError, RuntimeAdapterRegistry,
+    RuntimeAdapterRegistryError, RuntimeDescriptor, RuntimeDescriptorError, RuntimeEndpointId,
+    RuntimeEndpointIdError, RuntimeEntrypoint, RuntimeEntrypointId, RuntimeEntrypointIdError,
+    RuntimeEntrypointKind, RuntimeEntrypointTarget, RuntimeKind, RuntimeRouter,
+    RuntimeRoutingError,
 };
 
 pub use permissions::{
