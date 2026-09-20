@@ -41,7 +41,8 @@ pub use context::{CorrelationId, CorrelationIdError, OperationContext};
 
 pub use databases::{
     AppDatabaseBinding, AppDatabaseDeclaration, AppDatabaseId, AppDatabaseIdError,
-    AppDatabaseProvider, AppDatabaseRegistry, AppDatabaseRegistryError,
+    AppDatabaseInstallationState, AppDatabaseProvider, AppDatabaseRegistry,
+    AppDatabaseRegistryError,
 };
 
 pub use identity::{

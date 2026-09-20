@@ -96,6 +96,8 @@ Implemented:
 - engine-neutral provision, access, retain, and restore provider contract;
 - SQLite adapter with atomic staging-directory activation and per-installation
   file isolation;
+- idempotent SQLite provisioning that preserves a matching active installation,
+  rebuilds incomplete staging, and rejects conflicting physical states;
 - retained databases are inaccessible until restored for the exact original
   `InstallationId`;
 - durable cross-resource operation state machine and SQLite journal, including
@@ -104,7 +106,8 @@ Implemented:
 Remaining:
 
 - explicit purge policy and audit workflow;
-- provider execution and startup reconciliation through the operation journal;
+- top-level provider execution and OIDC/startup reconciliation through the
+  operation journal;
 - quota and storage-health reporting;
 - audit events without credentials or query contents.
 

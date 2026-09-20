@@ -85,8 +85,8 @@ The next runtime slice must:
 
 1. create the journal entry before the first external side effect;
 2. persist `applying` before and `applied` after each participant call;
-3. reconcile SQLite database directories and OIDC registrations
-   idempotently after startup;
+3. use the implemented idempotent SQLite database reconciliation and add the
+   equivalent secret-safe OIDC reconciliation after startup;
 4. store the platform snapshot as the final resource step;
 5. publish cloned in-memory `PlatformState` only after the snapshot step;
 6. retain enough audit context without recording secrets or database queries.

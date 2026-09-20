@@ -64,6 +64,11 @@ atomically by renaming that directory into the active namespace. Different
 `InstallationId` values never share files, even when their logical database IDs
 are identical.
 
+Provisioning is safe to replay after an interrupted operation. A matching
+active installation is preserved, incomplete staging is rebuilt, and retained,
+conflicting, or declaration-mismatched state fails closed. Retain and restore
+are likewise idempotent for their already-reached target state.
+
 The adapter returns a configured `rusqlite::Connection` only for an active
 `AppDatabaseBinding`. Retaining an installation moves its complete database
 directory out of the active namespace; restoring is permitted only for the

@@ -6,7 +6,9 @@ use std::io;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
-use rumahl_core::{AppDatabaseBinding, AppDatabaseProvider, InstallationId};
+use rumahl_core::{
+    AppDatabaseBinding, AppDatabaseInstallationState, AppDatabaseProvider, InstallationId,
+};
 use rusqlite::Connection;
 
 const ACTIVE_DIRECTORY: &str = "active";
@@ -24,9 +26,10 @@ pub enum SqliteAppDatabaseProviderError {
     Database(rusqlite::Error),
     MixedInstallationBindings,
     DuplicateDatabaseBinding,
-    AlreadyProvisioned,
     RetainedDataExists,
     StagingDataExists,
+    ConflictingInstallationState,
+    ActiveDataMismatch,
     DatabaseNotActive,
 }
 
@@ -51,6 +54,89 @@ impl SqliteAppDatabaseProvider {
     fn active_database_path(&self, binding: &AppDatabaseBinding) -> PathBuf {
         self.installation_directory(ACTIVE_DIRECTORY, binding.owner().installation_id())
             .join(format!("{}.sqlite3", binding.id().as_str()))
+    }
+
+    fn installation_state_internal(
+        &self,
+        installation_id: &InstallationId,
+    ) -> Result<AppDatabaseInstallationState, SqliteAppDatabaseProviderError> {
+        let active = self.installation_directory(ACTIVE_DIRECTORY, installation_id);
+        let retained = self.installation_directory(RETAINED_DIRECTORY, installation_id);
+        let staging = self.installation_directory(STAGING_DIRECTORY, installation_id);
+        let active_exists = active
+            .try_exists()
+            .map_err(SqliteAppDatabaseProviderError::Io)?;
+        let retained_exists = retained
+            .try_exists()
+            .map_err(SqliteAppDatabaseProviderError::Io)?;
+        let staging_exists = staging
+            .try_exists()
+            .map_err(SqliteAppDatabaseProviderError::Io)?;
+
+        if [active_exists, retained_exists, staging_exists]
+            .into_iter()
+            .filter(|exists| *exists)
+            .count()
+            > 1
+        {
+            return Err(SqliteAppDatabaseProviderError::ConflictingInstallationState);
+        }
+
+        Ok(if active_exists {
+            AppDatabaseInstallationState::Active
+        } else if retained_exists {
+            AppDatabaseInstallationState::Retained
+        } else if staging_exists {
+            AppDatabaseInstallationState::Staged
+        } else {
+            AppDatabaseInstallationState::Absent
+        })
+    }
+
+    fn verify_active_bindings(
+        &self,
+        installation_id: &InstallationId,
+        bindings: &[AppDatabaseBinding],
+    ) -> Result<(), SqliteAppDatabaseProviderError> {
+        let active = self.installation_directory(ACTIVE_DIRECTORY, installation_id);
+        let expected = bindings
+            .iter()
+            .map(|binding| format!("{}.sqlite3", binding.id().as_str()))
+            .collect::<HashSet<_>>();
+        let mut found = HashSet::new();
+
+        for entry in fs::read_dir(active).map_err(SqliteAppDatabaseProviderError::Io)? {
+            let entry = entry.map_err(SqliteAppDatabaseProviderError::Io)?;
+            let file_type = entry
+                .file_type()
+                .map_err(SqliteAppDatabaseProviderError::Io)?;
+            let Some(name) = entry.file_name().to_str().map(str::to_owned) else {
+                return Err(SqliteAppDatabaseProviderError::ActiveDataMismatch);
+            };
+
+            if !file_type.is_file() {
+                return Err(SqliteAppDatabaseProviderError::ActiveDataMismatch);
+            }
+
+            if expected.contains(&name) {
+                found.insert(name);
+                continue;
+            }
+
+            let recognized_sidecar = ["-wal", "-shm", "-journal"].iter().any(|suffix| {
+                name.strip_suffix(suffix)
+                    .is_some_and(|base| expected.contains(base))
+            });
+            if !recognized_sidecar {
+                return Err(SqliteAppDatabaseProviderError::ActiveDataMismatch);
+            }
+        }
+
+        if found != expected {
+            return Err(SqliteAppDatabaseProviderError::ActiveDataMismatch);
+        }
+
+        Ok(())
     }
 
     fn configure(connection: &Connection) -> Result<(), SqliteAppDatabaseProviderError> {
@@ -102,19 +188,19 @@ impl AppDatabaseProvider for SqliteAppDatabaseProvider {
             return Ok(());
         };
         let active = self.installation_directory(ACTIVE_DIRECTORY, &installation_id);
-        let retained = self.installation_directory(RETAINED_DIRECTORY, &installation_id);
         let staging = self.installation_directory(STAGING_DIRECTORY, &installation_id);
 
-        if active.exists() {
-            return Err(SqliteAppDatabaseProviderError::AlreadyProvisioned);
-        }
-
-        if retained.exists() {
-            return Err(SqliteAppDatabaseProviderError::RetainedDataExists);
-        }
-
-        if staging.exists() {
-            return Err(SqliteAppDatabaseProviderError::StagingDataExists);
+        match self.installation_state_internal(&installation_id)? {
+            AppDatabaseInstallationState::Active => {
+                return self.verify_active_bindings(&installation_id, bindings);
+            }
+            AppDatabaseInstallationState::Retained => {
+                return Err(SqliteAppDatabaseProviderError::RetainedDataExists);
+            }
+            AppDatabaseInstallationState::Staged => {
+                fs::remove_dir_all(&staging).map_err(SqliteAppDatabaseProviderError::Io)?
+            }
+            AppDatabaseInstallationState::Absent => {}
         }
 
         fs::create_dir(&staging).map_err(SqliteAppDatabaseProviderError::Io)?;
@@ -137,6 +223,13 @@ impl AppDatabaseProvider for SqliteAppDatabaseProvider {
         provision
     }
 
+    fn installation_state(
+        &self,
+        installation_id: &InstallationId,
+    ) -> Result<AppDatabaseInstallationState, Self::Error> {
+        self.installation_state_internal(installation_id)
+    }
+
     fn access(&self, binding: &AppDatabaseBinding) -> Result<Self::Access, Self::Error> {
         let path = self.active_database_path(binding);
 
@@ -153,14 +246,15 @@ impl AppDatabaseProvider for SqliteAppDatabaseProvider {
 
     fn retain_installation(&self, installation_id: &InstallationId) -> Result<bool, Self::Error> {
         let active = self.installation_directory(ACTIVE_DIRECTORY, installation_id);
-
-        if !active.exists() {
-            return Ok(false);
-        }
-
         let retained = self.installation_directory(RETAINED_DIRECTORY, installation_id);
-        if retained.exists() {
-            return Err(SqliteAppDatabaseProviderError::RetainedDataExists);
+
+        match self.installation_state_internal(installation_id)? {
+            AppDatabaseInstallationState::Absent => return Ok(false),
+            AppDatabaseInstallationState::Retained => return Ok(true),
+            AppDatabaseInstallationState::Staged => {
+                return Err(SqliteAppDatabaseProviderError::StagingDataExists);
+            }
+            AppDatabaseInstallationState::Active => {}
         }
 
         fs::rename(active, retained).map_err(SqliteAppDatabaseProviderError::Io)?;
@@ -170,14 +264,15 @@ impl AppDatabaseProvider for SqliteAppDatabaseProvider {
 
     fn restore_installation(&self, installation_id: &InstallationId) -> Result<bool, Self::Error> {
         let retained = self.installation_directory(RETAINED_DIRECTORY, installation_id);
-
-        if !retained.exists() {
-            return Ok(false);
-        }
-
         let active = self.installation_directory(ACTIVE_DIRECTORY, installation_id);
-        if active.exists() {
-            return Err(SqliteAppDatabaseProviderError::AlreadyProvisioned);
+
+        match self.installation_state_internal(installation_id)? {
+            AppDatabaseInstallationState::Absent => return Ok(false),
+            AppDatabaseInstallationState::Active => return Ok(true),
+            AppDatabaseInstallationState::Staged => {
+                return Err(SqliteAppDatabaseProviderError::StagingDataExists);
+            }
+            AppDatabaseInstallationState::Retained => {}
         }
 
         fs::rename(retained, active).map_err(SqliteAppDatabaseProviderError::Io)?;
@@ -197,14 +292,20 @@ impl fmt::Display for SqliteAppDatabaseProviderError {
             Self::DuplicateDatabaseBinding => {
                 write!(f, "app database bindings contain a duplicate logical id")
             }
-            Self::AlreadyProvisioned => {
-                write!(f, "app databases are already provisioned")
-            }
             Self::RetainedDataExists => {
                 write!(f, "retained app database data already exists")
             }
             Self::StagingDataExists => {
                 write!(f, "staged app database data already exists")
+            }
+            Self::ConflictingInstallationState => {
+                write!(
+                    f,
+                    "app database installation has conflicting physical states"
+                )
+            }
+            Self::ActiveDataMismatch => {
+                write!(f, "active app databases do not match the declared bindings")
             }
             Self::DatabaseNotActive => write!(f, "app database is not active"),
         }
@@ -218,9 +319,10 @@ impl Error for SqliteAppDatabaseProviderError {
             Self::Database(error) => Some(error),
             Self::MixedInstallationBindings
             | Self::DuplicateDatabaseBinding
-            | Self::AlreadyProvisioned
             | Self::RetainedDataExists
             | Self::StagingDataExists
+            | Self::ConflictingInstallationState
+            | Self::ActiveDataMismatch
             | Self::DatabaseNotActive => None,
         }
     }
@@ -279,6 +381,10 @@ mod tests {
                 .unwrap();
         }
 
+        provider
+            .provision_installation(&[primary.clone(), search.clone()])
+            .unwrap();
+
         let search_connection = provider.access(&search).unwrap();
         assert!(search_connection.prepare("SELECT * FROM note").is_err());
         drop(search_connection);
@@ -288,10 +394,26 @@ mod tests {
                 .retain_installation(owner.installation_id())
                 .unwrap()
         );
+        assert_eq!(
+            provider
+                .installation_state(owner.installation_id())
+                .unwrap(),
+            AppDatabaseInstallationState::Retained
+        );
+        assert!(
+            provider
+                .retain_installation(owner.installation_id())
+                .unwrap()
+        );
         assert!(matches!(
             provider.access(&primary),
             Err(SqliteAppDatabaseProviderError::DatabaseNotActive)
         ));
+        assert!(
+            provider
+                .restore_installation(owner.installation_id())
+                .unwrap()
+        );
         assert!(
             provider
                 .restore_installation(owner.installation_id())
@@ -349,6 +471,63 @@ mod tests {
                 .next()
                 .is_none()
         );
+
+        drop(provider);
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn replaces_incomplete_staging_before_replaying_provision() {
+        let root = provider_root("staged-app-databases");
+        let provider = SqliteAppDatabaseProvider::open(&root).unwrap();
+        let owner = owner("com.rumahl.notes");
+        let primary = binding(&owner, "primary");
+        let staging = provider.installation_directory(STAGING_DIRECTORY, owner.installation_id());
+        fs::create_dir(&staging).unwrap();
+        fs::write(staging.join("partial.sqlite3"), b"incomplete").unwrap();
+
+        provider
+            .provision_installation(std::slice::from_ref(&primary))
+            .unwrap();
+
+        assert_eq!(
+            provider
+                .installation_state(owner.installation_id())
+                .unwrap(),
+            AppDatabaseInstallationState::Active
+        );
+        assert!(provider.access(&primary).is_ok());
+
+        drop(provider);
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn rejects_conflicting_or_mismatched_active_state() {
+        let root = provider_root("conflicting-app-databases");
+        let provider = SqliteAppDatabaseProvider::open(&root).unwrap();
+        let owner = owner("com.rumahl.notes");
+        let primary = binding(&owner, "primary");
+        provider
+            .provision_installation(std::slice::from_ref(&primary))
+            .unwrap();
+        let active = provider.installation_directory(ACTIVE_DIRECTORY, owner.installation_id());
+        fs::write(active.join("unexpected.sqlite3"), b"not declared").unwrap();
+
+        assert!(matches!(
+            provider.provision_installation(std::slice::from_ref(&primary)),
+            Err(SqliteAppDatabaseProviderError::ActiveDataMismatch)
+        ));
+
+        fs::remove_file(active.join("unexpected.sqlite3")).unwrap();
+        fs::create_dir(
+            provider.installation_directory(RETAINED_DIRECTORY, owner.installation_id()),
+        )
+        .unwrap();
+        assert!(matches!(
+            provider.installation_state(owner.installation_id()),
+            Err(SqliteAppDatabaseProviderError::ConflictingInstallationState)
+        ));
 
         drop(provider);
         fs::remove_dir_all(root).unwrap();
