@@ -14,6 +14,11 @@ OAuth security best current practice.
 
 ## Terms and boundaries
 
+- `LocalAccount` belongs to the rumahl OS identity plane. It is not a web
+  account, an app-owned user, or a mandatory rumahl cloud identity.
+- Multi-user isolation is an OS responsibility: sessions, home/profile data,
+  permissions, background work, audit attribution, and app authorizations stay
+  attached to the originating `UserId`.
 - A `UserIdentity` is the stable local platform principal.
 - A local account contains login, profile, status, and recovery metadata for
   one `UserIdentity`.
@@ -22,6 +27,12 @@ OAuth security best current practice.
 - An installed app is not an account and cannot issue identity tokens.
 - Linking a future rumahl cloud identity must remain optional. Local sign-in
   and local OIDC continue to work without Internet access.
+
+The OpenID Provider is likewise an OS platform service rather than a
+Nextcloud-specific bridge. Any installed app can become a relying party through
+the same install-time client-registration policy. Nextcloud is one required
+interoperability target, not a special identity authority or architectural
+dependency.
 
 Account profile data, credentials, sessions, OAuth grants, tokens, and signing
 keys are not app-manifest fields. Password hashes, refresh tokens, client
@@ -63,6 +74,12 @@ domain model as plain strings.
 Multiple accounts can have live sessions at the same time. Switching the
 desktop account selects another session; it does not reassign existing app
 tokens, grants, background jobs, or audit entries to that account.
+
+An internal `SessionId` identifies a session but is not itself a bearer secret.
+HTTP cookies, IPC peer credentials, device-bound tokens, and future native
+transports resolve their own opaque credentials to a session at the transport
+boundary. Every request then revalidates the current OS account status, session
+expiry, and revocation state before creating an `OperationContext`.
 
 ## OpenID Provider
 

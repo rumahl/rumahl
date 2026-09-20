@@ -6,8 +6,13 @@
 
 mod authentication;
 mod gateway;
+mod local_session;
 mod request;
 
 pub use authentication::{AuthenticatedPrincipal, RequestAuthenticator, RequestContextFactory};
 pub use gateway::{PlatformRequestAuthenticationError, PlatformRequestGateway};
+pub use local_session::{
+    AuthenticationClock, LocalSessionAuthenticationError, LocalSessionAuthenticator,
+    SessionCredentialResolver, SystemAuthenticationClock,
+};
 pub use request::PlatformRequest;
