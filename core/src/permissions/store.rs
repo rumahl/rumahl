@@ -2,7 +2,7 @@ use crate::identity::Identity;
 
 use super::{GrantId, PermissionGrant};
 
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone)]
 pub struct InMemoryGrantStore {
     grants: Vec<PermissionGrant>,
 }
@@ -24,6 +24,17 @@ impl InMemoryGrantStore {
         let position = self.grants.iter().position(|grant| grant.id() == id)?;
 
         Some(self.grants.remove(position))
+    }
+
+    pub fn remove_for_subject(&mut self, subject: &Identity) -> Vec<PermissionGrant> {
+        let (removed, retained) = self
+            .grants
+            .drain(..)
+            .partition(|grant| grant.subject() == subject);
+
+        self.grants = retained;
+
+        removed
     }
 
     pub fn grants_for_subject(&self, subject: &Identity) -> Vec<&PermissionGrant> {
@@ -159,5 +170,27 @@ mod tests {
         assert_eq!(grants.len(), 1);
 
         assert_eq!(grants[0].subject(), &notes_identity);
+    }
+
+    #[test]
+    fn removes_only_grants_for_requested_subject() {
+        let notes = notes_app();
+        let other = AppIdentity::new(
+            AppId::parse("com.example.reader").unwrap(),
+            InstallationId::new(),
+            PublisherId::parse("com.example").unwrap(),
+        );
+        let notes_identity = notes.clone().into();
+        let other_identity = other.clone().into();
+        let mut store = InMemoryGrantStore::new();
+
+        store.insert(file_read_grant(&notes, "notes-document"));
+        store.insert(file_read_grant(&other, "other-document"));
+
+        let removed = store.remove_for_subject(&notes_identity);
+
+        assert_eq!(removed.len(), 1);
+        assert!(store.grants_for_subject(&notes_identity).is_empty());
+        assert_eq!(store.grants_for_subject(&other_identity).len(), 1);
     }
 }

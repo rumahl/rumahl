@@ -5,9 +5,20 @@ pub mod contributions;
 pub mod events;
 pub mod identity;
 pub mod permissions;
+pub mod persistence;
+pub mod platform;
 pub mod resources;
+pub mod runtime;
 
-pub use apps::{AppManifest, AppManifestError, AppVersion, AppVersionError};
+pub use apps::{
+    AppLifecycle, AppLifecycleError, AppManifest, AppManifestError, AppManifestValidationError,
+    AppManifestValidator, AppUninstallResult, AppVersion, AppVersionError,
+    CommandContributionDeclaration, CommandContributionDeclarationError, ContributionDeclaration,
+    InstalledApp, InstalledAppError, InstalledAppRegistry, InstalledAppRegistryError,
+    PlatformDeregistrationReport, PlatformRegistrar, PlatformRegistrarError, PlatformRegistration,
+    PlatformRegistrationError, SearchContributionDeclaration,
+};
+
 pub use context::{CorrelationId, CorrelationIdError, OperationContext};
 
 pub use identity::{
@@ -21,11 +32,25 @@ pub use resources::{
     ResourceNamespaceError, ResourceRef,
 };
 
+pub use runtime::{
+    PackagePath, PackagePathError, RuntimeAdapter, RuntimeAdapterError, RuntimeAdapterRegistry,
+    RuntimeAdapterRegistryError, RuntimeDescriptor, RuntimeDescriptorError, RuntimeEndpointId,
+    RuntimeEndpointIdError, RuntimeEntrypoint, RuntimeEntrypointId, RuntimeEntrypointIdError,
+    RuntimeEntrypointKind, RuntimeEntrypointTarget, RuntimeKind, RuntimeRouter,
+    RuntimeRoutingError, RuntimeStatus,
+};
+
 pub use permissions::{
     AuthorizationDecision, AuthorizationDenyReason, AuthorizationEngine, AuthorizationRequest,
-    GrantAuthority, GrantAuthorityError, GrantId, GrantIssuerPolicy, GrantIssuerPolicyError,
-    InMemoryGrantStore, PermissionGrant, PermissionGrantError, PermissionId, PermissionIdError,
-    PermissionRequest, PermissionScope, UserRole,
+    GrantAuthority, GrantAuthorityError, GrantId, GrantIdError, GrantIssuerPolicy,
+    GrantIssuerPolicyError, InMemoryGrantStore, PermissionGrant, PermissionGrantError,
+    PermissionId, PermissionIdError, PermissionRequest, PermissionScope, UserRole,
+};
+
+pub use persistence::{
+    InstalledAppSnapshot, PLATFORM_SNAPSHOT_VERSION, PermissionGrantSnapshot, PlatformLoadError,
+    PlatformPersistence, PlatformRecovery, PlatformRecoveryError, PlatformRecoveryReport,
+    PlatformSnapshot, PlatformSnapshotRepository,
 };
 
 pub use capabilities::{
@@ -48,6 +73,8 @@ pub use events::{
     EventBus, EventBusError, EventDelivery, EventEnvelope, EventId, EventName, EventNameError,
     EventSubscription, EventSubscriptionError,
 };
+
+pub use platform::PlatformState;
 
 #[cfg(test)]
 mod tests {
