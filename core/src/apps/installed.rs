@@ -14,6 +14,8 @@ pub struct InstalledApp {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum InstalledAppError {
     InvalidManifest(AppManifestValidationError),
+    AppIdMismatch,
+    PublisherIdMismatch,
 }
 
 impl InstalledApp {
@@ -21,15 +23,31 @@ impl InstalledApp {
         manifest: AppManifest,
         validator: &AppManifestValidator,
     ) -> Result<Self, InstalledAppError> {
-        validator
-            .validate(&manifest)
-            .map_err(InstalledAppError::InvalidManifest)?;
+        Self::validate_manifest(&manifest, validator)?;
 
         let identity = AppIdentity::new(
             manifest.app_id().clone(),
             InstallationId::new(),
             manifest.publisher_id().clone(),
         );
+
+        Ok(Self { identity, manifest })
+    }
+
+    pub(crate) fn restore(
+        identity: AppIdentity,
+        manifest: AppManifest,
+        validator: &AppManifestValidator,
+    ) -> Result<Self, InstalledAppError> {
+        Self::validate_manifest(&manifest, validator)?;
+
+        if identity.app_id() != manifest.app_id() {
+            return Err(InstalledAppError::AppIdMismatch);
+        }
+
+        if identity.publisher_id() != manifest.publisher_id() {
+            return Err(InstalledAppError::PublisherIdMismatch);
+        }
 
         Ok(Self { identity, manifest })
     }
@@ -45,6 +63,15 @@ impl InstalledApp {
     pub fn installation_id(&self) -> &InstallationId {
         self.identity.installation_id()
     }
+
+    fn validate_manifest(
+        manifest: &AppManifest,
+        validator: &AppManifestValidator,
+    ) -> Result<(), InstalledAppError> {
+        validator
+            .validate(manifest)
+            .map_err(InstalledAppError::InvalidManifest)
+    }
 }
 
 impl fmt::Display for InstalledAppError {
@@ -56,6 +83,17 @@ impl fmt::Display for InstalledAppError {
                     "cannot create installed app from invalid manifest: {error}"
                 )
             }
+
+            Self::AppIdMismatch => {
+                write!(f, "installed app identity does not match manifest app id")
+            }
+
+            Self::PublisherIdMismatch => {
+                write!(
+                    f,
+                    "installed app identity does not match manifest publisher id"
+                )
+            }
         }
     }
 }
@@ -64,6 +102,7 @@ impl Error for InstalledAppError {
     fn source(&self) -> Option<&(dyn Error + 'static)> {
         match self {
             Self::InvalidManifest(error) => Some(error),
+            Self::AppIdMismatch | Self::PublisherIdMismatch => None,
         }
     }
 }
@@ -170,5 +209,55 @@ mod tests {
                 AppManifestValidationError::SearchCapabilityNotProvided { .. }
             ))
         ));
+    }
+
+    #[test]
+    fn restores_existing_installation_identity() {
+        let manifest = manifest();
+
+        let identity = AppIdentity::new(
+            manifest.app_id().clone(),
+            InstallationId::new(),
+            manifest.publisher_id().clone(),
+        );
+
+        let installation_id = *identity.installation_id();
+
+        let restored =
+            InstalledApp::restore(identity, manifest, &AppManifestValidator::new()).unwrap();
+
+        assert_eq!(restored.installation_id(), &installation_id);
+    }
+
+    #[test]
+    fn rejects_restored_identity_with_different_app_id() {
+        let manifest = manifest();
+
+        let identity = AppIdentity::new(
+            AppId::parse("com.rumahl.files").unwrap(),
+            InstallationId::new(),
+            manifest.publisher_id().clone(),
+        );
+
+        assert_eq!(
+            InstalledApp::restore(identity, manifest, &AppManifestValidator::new()).unwrap_err(),
+            InstalledAppError::AppIdMismatch
+        );
+    }
+
+    #[test]
+    fn rejects_restored_identity_with_different_publisher() {
+        let manifest = manifest();
+
+        let identity = AppIdentity::new(
+            manifest.app_id().clone(),
+            InstallationId::new(),
+            PublisherId::parse("com.example").unwrap(),
+        );
+
+        assert_eq!(
+            InstalledApp::restore(identity, manifest, &AppManifestValidator::new()).unwrap_err(),
+            InstalledAppError::PublisherIdMismatch
+        );
     }
 }

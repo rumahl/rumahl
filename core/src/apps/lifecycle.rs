@@ -47,6 +47,22 @@ impl AppLifecycle {
         let app = InstalledApp::create(manifest, &self.validator)
             .map_err(AppLifecycleError::InvalidApp)?;
 
+        self.register(app, state)
+    }
+
+    pub(crate) fn restore(
+        &self,
+        app: InstalledApp,
+        state: &mut PlatformState,
+    ) -> Result<InstalledApp, AppLifecycleError> {
+        self.register(app, state)
+    }
+
+    fn register(
+        &self,
+        app: InstalledApp,
+        state: &mut PlatformState,
+    ) -> Result<InstalledApp, AppLifecycleError> {
         /*
          * Build the complete platform
          * registration before mutating state.

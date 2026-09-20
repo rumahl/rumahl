@@ -5,6 +5,7 @@ pub mod contributions;
 pub mod events;
 pub mod identity;
 pub mod permissions;
+pub mod persistence;
 pub mod platform;
 pub mod resources;
 pub mod runtime;
@@ -44,6 +45,12 @@ pub use permissions::{
     GrantAuthority, GrantAuthorityError, GrantId, GrantIssuerPolicy, GrantIssuerPolicyError,
     InMemoryGrantStore, PermissionGrant, PermissionGrantError, PermissionId, PermissionIdError,
     PermissionRequest, PermissionScope, UserRole,
+};
+
+pub use persistence::{
+    InstalledAppSnapshot, PLATFORM_SNAPSHOT_VERSION, PlatformLoadError, PlatformPersistence,
+    PlatformRecovery, PlatformRecoveryError, PlatformRecoveryReport, PlatformSnapshot,
+    PlatformSnapshotRepository,
 };
 
 pub use capabilities::{
