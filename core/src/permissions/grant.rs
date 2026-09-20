@@ -30,6 +30,35 @@ impl PermissionGrant {
         resources: Vec<ResourceRef>,
         granted_by: Identity,
     ) -> Result<Self, PermissionGrantError> {
+        Self::create(
+            GrantId::new(),
+            subject,
+            permission,
+            scope,
+            resources,
+            granted_by,
+        )
+    }
+
+    pub(crate) fn restore(
+        id: GrantId,
+        subject: Identity,
+        permission: PermissionId,
+        scope: PermissionScope,
+        resources: Vec<ResourceRef>,
+        granted_by: Identity,
+    ) -> Result<Self, PermissionGrantError> {
+        Self::create(id, subject, permission, scope, resources, granted_by)
+    }
+
+    fn create(
+        id: GrantId,
+        subject: Identity,
+        permission: PermissionId,
+        scope: PermissionScope,
+        resources: Vec<ResourceRef>,
+        granted_by: Identity,
+    ) -> Result<Self, PermissionGrantError> {
         if scope == PermissionScope::Explicit && resources.is_empty() {
             return Err(PermissionGrantError::ExplicitScopeRequiresResources);
         }
@@ -39,7 +68,7 @@ impl PermissionGrant {
         }
 
         Ok(Self {
-            id: GrantId::new(),
+            id,
             subject,
             permission,
             scope,
@@ -192,5 +221,23 @@ mod tests {
         );
 
         assert!(result.is_ok());
+    }
+
+    #[test]
+    fn restores_existing_grant_id() {
+        let app = notes_app();
+        let id = GrantId::new();
+
+        let grant = PermissionGrant::restore(
+            id,
+            app.clone().into(),
+            PermissionId::parse("rumahl.files.read").unwrap(),
+            PermissionScope::Explicit,
+            vec![test_file_resource()],
+            app.into(),
+        )
+        .unwrap();
+
+        assert_eq!(grant.id(), &id);
     }
 }
