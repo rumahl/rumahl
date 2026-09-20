@@ -71,6 +71,18 @@ Credential implementations are adapters. Password verifiers, passkey private
 material, TOTP secrets, recovery codes, and equivalent secrets do not enter the
 domain model as plain strings.
 
+The first login adapter uses Argon2id password verifiers with a unique random
+salt and PHC-encoded parameters. Password enrollment normalizes Unicode to NFC,
+accepts spaces and Unicode without composition rules, requires at least 15
+characters for the single-factor flow, and requires an offline blocklist
+implementation. Failed attempts and temporary lockout state are persisted per
+account. Unknown users, wrong passwords, missing credentials, locked accounts,
+and throttled accounts return the same public authentication failure.
+
+Password is not the account model. Passkeys and future device-backed methods
+can establish the same verified local-account result and enter the identical
+OS-session issuance path without changing `LocalAccount` or OIDC semantics.
+
 Multiple accounts can have live sessions at the same time. Switching the
 desktop account selects another session; it does not reassign existing app
 tokens, grants, background jobs, or audit entries to that account.
