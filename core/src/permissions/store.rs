@@ -2,7 +2,7 @@ use crate::identity::Identity;
 
 use super::{GrantId, PermissionGrant};
 
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone)]
 pub struct InMemoryGrantStore {
     grants: Vec<PermissionGrant>,
 }
