@@ -282,6 +282,13 @@ keys through a separate key-provider contract. SQLite never contains the root
 key or reusable plaintext. Buildroot still needs to supply the production
 device-bound key provider.
 
+`OidcClientRegistrar::register_or_recover_installed_app` now stores a
+confidential client secret before inserting its digest-only client record. A
+restart verifies and returns the same active client and decrypted secret;
+missing secrets or declaration mismatches fail closed. Public clients never
+create secret material. Runtime delivery acknowledgement remains part of the
+top-level operation coordinator.
+
 ## Delivery phases
 
 ### P3 extension — account persistence

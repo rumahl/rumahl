@@ -1,7 +1,8 @@
 # Secret store
 
-Status: engine-neutral core contract and encrypted SQLite adapter implemented;
-Buildroot root-key provider and OIDC delivery integration remain.
+Status: engine-neutral core contract, encrypted SQLite adapter, and recoverable
+OIDC client-secret registration implemented; Buildroot root-key provider and
+runtime delivery acknowledgement remain.
 
 ## Boundary
 
@@ -50,13 +51,17 @@ atomic store statement. Higher-level app operations still decide whether an
 install failure removes a pending secret or whether uninstall revokes the
 dependent credential before deleting its encrypted delivery material.
 
-For confidential OIDC clients, the intended recovery sequence is:
+For confidential OIDC clients, the implemented registration sequence is:
 
 1. store the generated client secret under
    `rumahl.oidc.client-secret`;
 2. persist only its digest in the OIDC client repository;
-3. mark the OIDC operation step applied;
-4. deliver the value once through the runtime secret channel;
-5. retain or remove it according to the explicit delivery/recovery policy.
+3. on replay, verify the active client's complete declaration-derived metadata
+   and digest against the decrypted stored value;
+4. return the same client and secret for runtime delivery.
+
+The operation coordinator still needs to mark the OIDC step applied, deliver
+the value through the runtime secret channel, and persist an acknowledgement
+before applying the final retention/removal policy.
 
 Public OIDC clients never create this secret.

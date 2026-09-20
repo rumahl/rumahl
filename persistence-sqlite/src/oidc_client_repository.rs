@@ -356,15 +356,19 @@ mod tests {
     use std::time::{SystemTime, UNIX_EPOCH};
 
     use rumahl_core::{
-        AppManifest, AppVersion, InMemoryGrantStore, OidcCallbackPath, OidcClientDeclaration,
-        OidcScope, PackagePath, PlatformState, PublisherId, RuntimeDescriptor, RuntimeEntrypoint,
-        RuntimeEntrypointId,
+        AppLifecycle, AppManifest, AppVersion, InMemoryGrantStore, OidcCallbackPath,
+        OidcClientDeclaration, OidcScope, PackagePath, PlatformState, PublisherId,
+        RuntimeDescriptor, RuntimeEndpointId, RuntimeEntrypoint, RuntimeEntrypointId,
     };
     use rumahl_oidc_provider::{
-        InstalledAppOriginResolver, OidcAppLifecycle, OidcClientSecret, OidcClientSecretDigest,
+        InstalledAppOriginResolver, OidcAppLifecycle, OidcClientRegistrar, OidcClientSecret,
+        OidcClientSecretDigest,
     };
 
     use super::*;
+    use crate::{
+        SecretEncryptionKey, SecretEncryptionKeyId, SecretEncryptionKeyProvider, SqliteSecretStore,
+    };
 
     fn database_path(test_name: &str) -> std::path::PathBuf {
         let nonce = SystemTime::now()
@@ -416,6 +420,30 @@ mod tests {
         }
     }
 
+    struct FixedSecretKeyProvider;
+
+    impl SecretEncryptionKeyProvider for FixedSecretKeyProvider {
+        type Error = Infallible;
+
+        fn active_key(&self) -> Result<SecretEncryptionKey, Self::Error> {
+            Ok(secret_key())
+        }
+
+        fn key_by_id(
+            &self,
+            id: &SecretEncryptionKeyId,
+        ) -> Result<Option<SecretEncryptionKey>, Self::Error> {
+            Ok((id.as_str() == "device-key-1").then(secret_key))
+        }
+    }
+
+    fn secret_key() -> SecretEncryptionKey {
+        SecretEncryptionKey::new(
+            SecretEncryptionKeyId::parse("device-key-1").unwrap(),
+            [0x42; 32],
+        )
+    }
+
     fn public_web_manifest() -> AppManifest {
         let mut runtime = RuntimeDescriptor::web();
         runtime
@@ -438,6 +466,43 @@ mod tests {
                     OidcClientType::Public,
                     RuntimeEntrypointId::parse("main").unwrap(),
                     OidcCallbackPath::parse("/oidc/callback").unwrap(),
+                    vec![OidcScope::OpenId, OidcScope::Profile],
+                )
+                .unwrap(),
+            )
+            .unwrap();
+
+        manifest
+    }
+
+    fn confidential_container_manifest() -> AppManifest {
+        let mut runtime = RuntimeDescriptor::container();
+        runtime
+            .add_entrypoint(RuntimeEntrypoint::container_artifact(
+                RuntimeEntrypointId::parse("service").unwrap(),
+                PackagePath::parse("runtime/server.oci").unwrap(),
+            ))
+            .unwrap();
+        runtime
+            .add_entrypoint(RuntimeEntrypoint::endpoint(
+                RuntimeEntrypointId::parse("main").unwrap(),
+                RuntimeEndpointId::parse("web").unwrap(),
+            ))
+            .unwrap();
+        let mut manifest = AppManifest::new(
+            AppId::parse("com.rumahl.cloud").unwrap(),
+            PublisherId::parse("com.rumahl").unwrap(),
+            AppVersion::new(1, 0, 0),
+            "Cloud",
+            runtime,
+        )
+        .unwrap();
+        manifest
+            .declare_oidc_client(
+                OidcClientDeclaration::new(
+                    OidcClientType::Confidential,
+                    RuntimeEntrypointId::parse("main").unwrap(),
+                    OidcCallbackPath::parse("/apps/oidc/callback").unwrap(),
                     vec![OidcScope::OpenId, OidcScope::Profile],
                 )
                 .unwrap(),
@@ -559,5 +624,59 @@ mod tests {
                 .unwrap()
                 .is_none()
         );
+    }
+
+    #[test]
+    fn confidential_registration_recovers_across_real_sqlite_repositories() {
+        let path = database_path("recoverable-oidc-client");
+        let mut state = PlatformState::new();
+        let app = AppLifecycle::new()
+            .install(confidential_container_manifest(), &mut state)
+            .unwrap();
+        let installation_id = *app.installation_id();
+
+        let (client_id, encoded_secret) = {
+            let registrar = OidcClientRegistrar::new(
+                SqliteOidcClientRepository::open(&path).unwrap(),
+                FixedOriginResolver,
+            );
+            let secret_store = SqliteSecretStore::open(&path, FixedSecretKeyProvider).unwrap();
+            let registration = registrar
+                .register_or_recover_installed_app(
+                    &state,
+                    &installation_id,
+                    UnixTimestamp::from_seconds(100),
+                    &secret_store,
+                )
+                .unwrap()
+                .unwrap();
+
+            (
+                registration.client().client_id().clone(),
+                registration.client_secret().unwrap().encode(),
+            )
+        };
+
+        let registrar = OidcClientRegistrar::new(
+            SqliteOidcClientRepository::open(&path).unwrap(),
+            FixedOriginResolver,
+        );
+        let secret_store = SqliteSecretStore::open(&path, FixedSecretKeyProvider).unwrap();
+        let recovered = registrar
+            .register_or_recover_installed_app(
+                &state,
+                &installation_id,
+                UnixTimestamp::from_seconds(101),
+                &secret_store,
+            )
+            .unwrap()
+            .unwrap();
+
+        assert_eq!(recovered.client().client_id(), &client_id);
+        assert_eq!(recovered.client_secret().unwrap().encode(), encoded_secret);
+
+        drop(secret_store);
+        drop(registrar);
+        remove_database(&path);
     }
 }

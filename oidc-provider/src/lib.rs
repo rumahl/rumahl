@@ -27,7 +27,8 @@ pub use client_secret::{
 };
 pub use redirect_uri::{OidcRedirectUri, OidcRedirectUriError};
 pub use registrar::{
-    InstalledAppOriginResolver, OidcClientRegistrar, OidcClientRegistration,
+    InstalledAppOriginResolver, OIDC_CLIENT_SECRET_PURPOSE, OidcClientProvisioningError,
+    OidcClientProvisioningResult, OidcClientRegistrar, OidcClientRegistration,
     OidcClientRegistrationError,
 };
 pub use repository::OidcClientRepository;
