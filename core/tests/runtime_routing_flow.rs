@@ -1,0 +1,220 @@
+use std::sync::Arc;
+use std::sync::atomic::{AtomicUsize, Ordering};
+
+use rumahl_core::{
+    AppId, AppLifecycle, AppManifest, AppVersion, AuthorizationEngine, CapabilityAccessRegistry,
+    CapabilityAccessRule, CapabilityDispatchOutcome, CapabilityDispatcher, CapabilityExecution,
+    CapabilityId, CapabilityInvocation, EventDelivery, EventEnvelope, EventName, GrantAuthority,
+    GrantIssuerPolicy, Identity, InstalledApp, OperationContext, PermissionId, PermissionScope,
+    PlatformState, PublisherId, ResourceKey, ResourceKind, ResourceNamespace, ResourceRef,
+    RuntimeAdapter, RuntimeAdapterError, RuntimeAdapterRegistry, RuntimeDescriptor, RuntimeKind,
+    RuntimeRouter, UserId, UserIdentity, UserRole,
+};
+
+struct RecordingAdapter {
+    kind: RuntimeKind,
+    executions: Arc<AtomicUsize>,
+    deliveries: Arc<AtomicUsize>,
+}
+
+impl RecordingAdapter {
+    fn new(kind: RuntimeKind, executions: Arc<AtomicUsize>, deliveries: Arc<AtomicUsize>) -> Self {
+        Self {
+            kind,
+            executions,
+            deliveries,
+        }
+    }
+}
+
+impl RuntimeAdapter for RecordingAdapter {
+    fn kind(&self) -> RuntimeKind {
+        self.kind
+    }
+
+    fn execute_capability(
+        &self,
+        app: &InstalledApp,
+        execution: &CapabilityExecution,
+    ) -> Result<(), RuntimeAdapterError> {
+        let identity: Identity = app.identity().clone().into();
+
+        assert_eq!(&identity, execution.provider().identity());
+
+        self.executions.fetch_add(1, Ordering::Relaxed);
+
+        Ok(())
+    }
+
+    fn deliver_event(
+        &self,
+        app: &InstalledApp,
+        delivery: &EventDelivery,
+    ) -> Result<(), RuntimeAdapterError> {
+        assert_eq!(delivery.subscriber(), &app.identity().clone().into());
+
+        self.deliveries.fetch_add(1, Ordering::Relaxed);
+
+        Ok(())
+    }
+}
+
+fn files_manifest() -> AppManifest {
+    let mut manifest = AppManifest::new(
+        AppId::parse("com.rumahl.files").unwrap(),
+        PublisherId::parse("com.rumahl").unwrap(),
+        AppVersion::new(1, 0, 0),
+        "Files",
+        RuntimeDescriptor::container(),
+    )
+    .unwrap();
+
+    manifest
+        .add_provided_capability(CapabilityId::parse("rumahl.files.preview").unwrap())
+        .unwrap();
+
+    manifest
+}
+
+fn notes_manifest() -> AppManifest {
+    let mut manifest = AppManifest::new(
+        AppId::parse("com.rumahl.notes").unwrap(),
+        PublisherId::parse("com.rumahl").unwrap(),
+        AppVersion::new(1, 0, 0),
+        "Notes",
+        RuntimeDescriptor::web(),
+    )
+    .unwrap();
+
+    manifest
+        .add_event_subscription(EventName::parse("rumahl.files.changed").unwrap())
+        .unwrap();
+
+    manifest
+}
+
+fn file(key: &str) -> ResourceRef {
+    ResourceRef::new(
+        ResourceNamespace::parse("rumahl.files").unwrap(),
+        ResourceKind::parse("file").unwrap(),
+        ResourceKey::parse(key).unwrap(),
+    )
+}
+
+#[test]
+fn authorized_capability_and_event_delivery_reach_declared_runtimes() {
+    let lifecycle = AppLifecycle::new();
+
+    let mut state = PlatformState::new();
+
+    let files = lifecycle.install(files_manifest(), &mut state).unwrap();
+
+    let notes = lifecycle.install(notes_manifest(), &mut state).unwrap();
+
+    let web_deliveries = Arc::new(AtomicUsize::new(0));
+
+    let container_executions = Arc::new(AtomicUsize::new(0));
+
+    let mut adapters = RuntimeAdapterRegistry::new();
+
+    adapters
+        .register(Box::new(RecordingAdapter::new(
+            RuntimeKind::Web,
+            Arc::new(AtomicUsize::new(0)),
+            Arc::clone(&web_deliveries),
+        )))
+        .unwrap();
+
+    adapters
+        .register(Box::new(RecordingAdapter::new(
+            RuntimeKind::Container,
+            Arc::clone(&container_executions),
+            Arc::new(AtomicUsize::new(0)),
+        )))
+        .unwrap();
+
+    let resource = file("document-1");
+
+    let capability = CapabilityId::parse("rumahl.files.preview").unwrap();
+
+    let files_identity = files.identity().clone().into();
+
+    let provider = state
+        .capability_registry()
+        .provider(&capability, &files_identity)
+        .unwrap()
+        .clone();
+
+    let mut access_registry = CapabilityAccessRegistry::new();
+
+    let permission = PermissionId::parse("rumahl.files.read").unwrap();
+
+    access_registry
+        .register(CapabilityAccessRule::new(capability, permission.clone()))
+        .unwrap();
+
+    let notes_identity: Identity = notes.identity().clone().into();
+
+    let user = UserIdentity::new(UserId::new());
+
+    let user_id = *user.id();
+
+    let mut issuer_policy = GrantIssuerPolicy::new();
+
+    issuer_policy.set_user_role(user_id, UserRole::User);
+
+    let grant = GrantAuthority::new()
+        .issue(
+            &issuer_policy,
+            user.into(),
+            notes_identity,
+            permission,
+            PermissionScope::Explicit,
+            vec![resource.clone()],
+        )
+        .unwrap();
+
+    let invocation = CapabilityInvocation::new(
+        OperationContext::for_background_app(notes.identity().clone()),
+        provider,
+    );
+
+    let outcome = CapabilityDispatcher::new()
+        .prepare_execution(
+            &invocation,
+            Some(resource.clone()),
+            state.capability_registry(),
+            &access_registry,
+            &AuthorizationEngine::new(),
+            &[grant],
+        )
+        .unwrap();
+
+    let CapabilityDispatchOutcome::Ready(execution) = outcome else {
+        panic!("expected authorized runtime execution");
+    };
+
+    RuntimeRouter::new()
+        .route_execution(&execution, &state, &adapters)
+        .unwrap();
+
+    assert_eq!(container_executions.load(Ordering::Relaxed), 1);
+    assert_eq!(web_deliveries.load(Ordering::Relaxed), 0);
+
+    let event = EventEnvelope::new(
+        EventName::parse("rumahl.files.changed").unwrap(),
+        OperationContext::for_background_app(files.identity().clone()),
+        Some(resource),
+    );
+
+    let deliveries = state.event_bus().prepare_deliveries(&event);
+
+    assert_eq!(deliveries.len(), 1);
+
+    RuntimeRouter::new()
+        .route_event_delivery(&deliveries[0], &state, &adapters)
+        .unwrap();
+
+    assert_eq!(web_deliveries.load(Ordering::Relaxed), 1);
+    assert_eq!(container_executions.load(Ordering::Relaxed), 1);
+}
