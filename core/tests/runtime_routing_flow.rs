@@ -42,9 +42,11 @@ impl RuntimeAdapter for RecordingAdapter {
 
     fn start(
         &self,
-        _context: &OperationContext,
-        _app: &InstalledApp,
+        context: &OperationContext,
+        app: &InstalledApp,
     ) -> Result<RuntimeStatus, RuntimeAdapterError> {
+        assert_eq!(context.actor(), &app.identity().clone().into());
+
         let mut status = self.status.lock().unwrap();
 
         *status = RuntimeStatus::Running;
@@ -54,9 +56,11 @@ impl RuntimeAdapter for RecordingAdapter {
 
     fn stop(
         &self,
-        _context: &OperationContext,
-        _app: &InstalledApp,
+        context: &OperationContext,
+        app: &InstalledApp,
     ) -> Result<RuntimeStatus, RuntimeAdapterError> {
+        assert_eq!(context.actor(), &app.identity().clone().into());
+
         let mut status = self.status.lock().unwrap();
 
         *status = RuntimeStatus::Stopped;
@@ -66,9 +70,11 @@ impl RuntimeAdapter for RecordingAdapter {
 
     fn status(
         &self,
-        _context: &OperationContext,
-        _app: &InstalledApp,
+        context: &OperationContext,
+        app: &InstalledApp,
     ) -> Result<RuntimeStatus, RuntimeAdapterError> {
+        assert_eq!(context.actor(), &app.identity().clone().into());
+
         Ok(*self.status.lock().unwrap())
     }
 
@@ -230,6 +236,36 @@ fn authorized_capability_and_event_delivery_reach_declared_runtimes() {
         )))
         .unwrap();
 
+    let router = RuntimeRouter::new();
+
+    let files_context = OperationContext::for_background_app(files.identity().clone());
+
+    let notes_context = OperationContext::for_background_app(notes.identity().clone());
+
+    assert_eq!(
+        router
+            .app_status(&files_context, files.installation_id(), &state, &adapters,)
+            .unwrap(),
+        RuntimeStatus::Stopped
+    );
+
+    assert_eq!(
+        router
+            .start_app(&files_context, files.installation_id(), &state, &adapters,)
+            .unwrap(),
+        RuntimeStatus::Running
+    );
+
+    assert_eq!(
+        router
+            .start_app(&notes_context, notes.installation_id(), &state, &adapters,)
+            .unwrap(),
+        RuntimeStatus::Running
+    );
+
+    assert_eq!(*container_status.lock().unwrap(), RuntimeStatus::Running);
+    assert_eq!(*web_status.lock().unwrap(), RuntimeStatus::Running);
+
     let resource = file("document-1");
 
     let capability = CapabilityId::parse("rumahl.files.preview").unwrap();
@@ -291,7 +327,7 @@ fn authorized_capability_and_event_delivery_reach_declared_runtimes() {
         panic!("expected authorized runtime execution");
     };
 
-    RuntimeRouter::new()
+    router
         .route_execution(&execution, &state, &adapters)
         .unwrap();
 
@@ -308,10 +344,27 @@ fn authorized_capability_and_event_delivery_reach_declared_runtimes() {
 
     assert_eq!(deliveries.len(), 1);
 
-    RuntimeRouter::new()
+    router
         .route_event_delivery(&deliveries[0], &state, &adapters)
         .unwrap();
 
     assert_eq!(web_deliveries.load(Ordering::Relaxed), 1);
     assert_eq!(container_executions.load(Ordering::Relaxed), 1);
+
+    assert_eq!(
+        router
+            .stop_app(&notes_context, notes.installation_id(), &state, &adapters,)
+            .unwrap(),
+        RuntimeStatus::Stopped
+    );
+
+    assert_eq!(
+        router
+            .stop_app(&files_context, files.installation_id(), &state, &adapters,)
+            .unwrap(),
+        RuntimeStatus::Stopped
+    );
+
+    assert_eq!(*web_status.lock().unwrap(), RuntimeStatus::Stopped);
+    assert_eq!(*container_status.lock().unwrap(), RuntimeStatus::Stopped);
 }
