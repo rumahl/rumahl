@@ -33,7 +33,7 @@ pub use resources::{
 
 pub use runtime::{
     RuntimeAdapter, RuntimeAdapterError, RuntimeAdapterRegistry, RuntimeAdapterRegistryError,
-    RuntimeDescriptor, RuntimeKind,
+    RuntimeDescriptor, RuntimeKind, RuntimeRouter, RuntimeRoutingError,
 };
 
 pub use permissions::{
