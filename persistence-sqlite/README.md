@@ -12,6 +12,12 @@ The wire schema is private to this adapter and rejects unknown fields,
 malformed domain identifiers, mismatched schema versions, stale app grants,
 and invalid manifests before live state is changed.
 
+The crate also implements `AccountStateRepository` using dedicated relational
+tables for local accounts and their sessions. Account and session metadata is
+replaced in one immediate transaction, so an account lock and its session
+revocations survive together. Credentials, tokens, client secrets, and signing
+keys are intentionally outside both repositories.
+
 ## SQLite linking
 
 The default `bundled` feature compiles SQLite with the crate. This keeps host
