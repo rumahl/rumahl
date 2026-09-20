@@ -7,6 +7,7 @@ mod entrypoint_id;
 mod kind;
 mod package_path;
 mod router;
+mod status;
 
 pub use adapter::{RuntimeAdapter, RuntimeAdapterError};
 pub use adapter_registry::{RuntimeAdapterRegistry, RuntimeAdapterRegistryError};
@@ -17,3 +18,4 @@ pub use entrypoint_id::{RuntimeEntrypointId, RuntimeEntrypointIdError};
 pub use kind::RuntimeKind;
 pub use package_path::{PackagePath, PackagePathError};
 pub use router::{RuntimeRouter, RuntimeRoutingError};
+pub use status::RuntimeStatus;

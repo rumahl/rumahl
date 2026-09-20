@@ -1,9 +1,12 @@
 use std::error::Error;
 use std::fmt;
 
-use crate::{CapabilityExecution, EventDelivery, Identity, InstalledApp, PlatformState};
+use crate::{
+    CapabilityExecution, EventDelivery, Identity, InstallationId, InstalledApp, OperationContext,
+    PlatformState,
+};
 
-use super::{RuntimeAdapterError, RuntimeAdapterRegistry, RuntimeKind};
+use super::{RuntimeAdapterError, RuntimeAdapterRegistry, RuntimeKind, RuntimeStatus};
 
 #[derive(Debug, Default, Clone, Copy)]
 pub struct RuntimeRouter;
@@ -36,6 +39,54 @@ impl RuntimeRouter {
             .map_err(RuntimeRoutingError::AdapterFailed)
     }
 
+    pub fn start_app(
+        &self,
+        context: &OperationContext,
+        installation_id: &InstallationId,
+        state: &PlatformState,
+        adapters: &RuntimeAdapterRegistry,
+    ) -> Result<RuntimeStatus, RuntimeRoutingError> {
+        let app = self.resolve_installed_app(installation_id, state)?;
+
+        let adapter = self.resolve_adapter(app, adapters)?;
+
+        adapter
+            .start(context, app)
+            .map_err(RuntimeRoutingError::AdapterFailed)
+    }
+
+    pub fn stop_app(
+        &self,
+        context: &OperationContext,
+        installation_id: &InstallationId,
+        state: &PlatformState,
+        adapters: &RuntimeAdapterRegistry,
+    ) -> Result<RuntimeStatus, RuntimeRoutingError> {
+        let app = self.resolve_installed_app(installation_id, state)?;
+
+        let adapter = self.resolve_adapter(app, adapters)?;
+
+        adapter
+            .stop(context, app)
+            .map_err(RuntimeRoutingError::AdapterFailed)
+    }
+
+    pub fn app_status(
+        &self,
+        context: &OperationContext,
+        installation_id: &InstallationId,
+        state: &PlatformState,
+        adapters: &RuntimeAdapterRegistry,
+    ) -> Result<RuntimeStatus, RuntimeRoutingError> {
+        let app = self.resolve_installed_app(installation_id, state)?;
+
+        let adapter = self.resolve_adapter(app, adapters)?;
+
+        adapter
+            .status(context, app)
+            .map_err(RuntimeRoutingError::AdapterFailed)
+    }
+
     pub fn route_event_delivery(
         &self,
         delivery: &EventDelivery,
@@ -64,6 +115,17 @@ impl RuntimeRouter {
             .installed_apps()
             .get_by_installation_id(identity.installation_id())
             .filter(|app| app.identity() == identity)
+            .ok_or(RuntimeRoutingError::AppNotInstalled)
+    }
+
+    fn resolve_installed_app<'a>(
+        &self,
+        installation_id: &InstallationId,
+        state: &'a PlatformState,
+    ) -> Result<&'a InstalledApp, RuntimeRoutingError> {
+        state
+            .installed_apps()
+            .get_by_installation_id(installation_id)
             .ok_or(RuntimeRoutingError::AppNotInstalled)
     }
 
@@ -114,8 +176,8 @@ impl Error for RuntimeRoutingError {
 
 #[cfg(test)]
 mod tests {
-    use std::sync::Arc;
     use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::sync::{Arc, Mutex};
 
     use super::*;
 
@@ -129,6 +191,7 @@ mod tests {
         kind: RuntimeKind,
         executions: Arc<AtomicUsize>,
         deliveries: Arc<AtomicUsize>,
+        status: Arc<Mutex<RuntimeStatus>>,
         failure: Option<RuntimeAdapterError>,
     }
 
@@ -137,11 +200,13 @@ mod tests {
             kind: RuntimeKind,
             executions: Arc<AtomicUsize>,
             deliveries: Arc<AtomicUsize>,
+            status: Arc<Mutex<RuntimeStatus>>,
         ) -> Self {
             Self {
                 kind,
                 executions,
                 deliveries,
+                status,
                 failure: None,
             }
         }
@@ -151,6 +216,7 @@ mod tests {
                 kind,
                 executions: Arc::new(AtomicUsize::new(0)),
                 deliveries: Arc::new(AtomicUsize::new(0)),
+                status: Arc::new(Mutex::new(RuntimeStatus::Stopped)),
                 failure: Some(failure),
             }
         }
@@ -159,6 +225,50 @@ mod tests {
     impl RuntimeAdapter for RecordingAdapter {
         fn kind(&self) -> RuntimeKind {
             self.kind
+        }
+
+        fn start(
+            &self,
+            _context: &OperationContext,
+            _app: &InstalledApp,
+        ) -> Result<RuntimeStatus, RuntimeAdapterError> {
+            if let Some(error) = self.failure {
+                return Err(error);
+            }
+
+            let mut status = self.status.lock().unwrap();
+
+            *status = RuntimeStatus::Running;
+
+            Ok(*status)
+        }
+
+        fn stop(
+            &self,
+            _context: &OperationContext,
+            _app: &InstalledApp,
+        ) -> Result<RuntimeStatus, RuntimeAdapterError> {
+            if let Some(error) = self.failure {
+                return Err(error);
+            }
+
+            let mut status = self.status.lock().unwrap();
+
+            *status = RuntimeStatus::Stopped;
+
+            Ok(*status)
+        }
+
+        fn status(
+            &self,
+            _context: &OperationContext,
+            _app: &InstalledApp,
+        ) -> Result<RuntimeStatus, RuntimeAdapterError> {
+            if let Some(error) = self.failure {
+                return Err(error);
+            }
+
+            Ok(*self.status.lock().unwrap())
         }
 
         fn execute_capability(
@@ -252,6 +362,7 @@ mod tests {
                 RuntimeKind::Web,
                 Arc::clone(&executions),
                 Arc::new(AtomicUsize::new(0)),
+                Arc::new(Mutex::new(RuntimeStatus::Stopped)),
             )))
             .unwrap();
 
@@ -279,6 +390,7 @@ mod tests {
                 RuntimeKind::Container,
                 Arc::new(AtomicUsize::new(0)),
                 Arc::clone(&deliveries),
+                Arc::new(Mutex::new(RuntimeStatus::Stopped)),
             )))
             .unwrap();
 
@@ -375,5 +487,56 @@ mod tests {
             result.unwrap_err(),
             RuntimeRoutingError::AdapterFailed(RuntimeAdapterError::Unavailable)
         );
+    }
+
+    #[test]
+    fn routes_lifecycle_operations_to_matching_adapter() {
+        let app = installed_app(RuntimeKind::Web);
+
+        let installation_id = *app.installation_id();
+
+        let context = OperationContext::for_background_app(app.identity().clone());
+
+        let state = state_with(app);
+
+        let status = Arc::new(Mutex::new(RuntimeStatus::Stopped));
+
+        let mut adapters = RuntimeAdapterRegistry::new();
+
+        adapters
+            .register(Box::new(RecordingAdapter::new(
+                RuntimeKind::Web,
+                Arc::new(AtomicUsize::new(0)),
+                Arc::new(AtomicUsize::new(0)),
+                Arc::clone(&status),
+            )))
+            .unwrap();
+
+        let router = RuntimeRouter::new();
+
+        assert_eq!(
+            router
+                .app_status(&context, &installation_id, &state, &adapters)
+                .unwrap(),
+            RuntimeStatus::Stopped
+        );
+
+        assert_eq!(
+            router
+                .start_app(&context, &installation_id, &state, &adapters)
+                .unwrap(),
+            RuntimeStatus::Running
+        );
+
+        assert_eq!(*status.lock().unwrap(), RuntimeStatus::Running);
+
+        assert_eq!(
+            router
+                .stop_app(&context, &installation_id, &state, &adapters)
+                .unwrap(),
+            RuntimeStatus::Stopped
+        );
+
+        assert_eq!(*status.lock().unwrap(), RuntimeStatus::Stopped);
     }
 }

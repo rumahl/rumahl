@@ -36,7 +36,7 @@ pub use runtime::{
     RuntimeAdapterRegistryError, RuntimeDescriptor, RuntimeDescriptorError, RuntimeEndpointId,
     RuntimeEndpointIdError, RuntimeEntrypoint, RuntimeEntrypointId, RuntimeEntrypointIdError,
     RuntimeEntrypointKind, RuntimeEntrypointTarget, RuntimeKind, RuntimeRouter,
-    RuntimeRoutingError,
+    RuntimeRoutingError, RuntimeStatus,
 };
 
 pub use permissions::{

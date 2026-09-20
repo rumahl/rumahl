@@ -1,5 +1,5 @@
-use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::{Arc, Mutex};
 
 use rumahl_core::{
     AppId, AppLifecycle, AppManifest, AppVersion, AuthorizationEngine, CapabilityAccessRegistry,
@@ -8,22 +8,29 @@ use rumahl_core::{
     GrantIssuerPolicy, Identity, InstalledApp, OperationContext, PackagePath, PermissionId,
     PermissionScope, PlatformState, PublisherId, ResourceKey, ResourceKind, ResourceNamespace,
     ResourceRef, RuntimeAdapter, RuntimeAdapterError, RuntimeAdapterRegistry, RuntimeDescriptor,
-    RuntimeEndpointId, RuntimeEntrypoint, RuntimeEntrypointId, RuntimeKind, RuntimeRouter, UserId,
-    UserIdentity, UserRole,
+    RuntimeEndpointId, RuntimeEntrypoint, RuntimeEntrypointId, RuntimeKind, RuntimeRouter,
+    RuntimeStatus, UserId, UserIdentity, UserRole,
 };
 
 struct RecordingAdapter {
     kind: RuntimeKind,
     executions: Arc<AtomicUsize>,
     deliveries: Arc<AtomicUsize>,
+    status: Arc<Mutex<RuntimeStatus>>,
 }
 
 impl RecordingAdapter {
-    fn new(kind: RuntimeKind, executions: Arc<AtomicUsize>, deliveries: Arc<AtomicUsize>) -> Self {
+    fn new(
+        kind: RuntimeKind,
+        executions: Arc<AtomicUsize>,
+        deliveries: Arc<AtomicUsize>,
+        status: Arc<Mutex<RuntimeStatus>>,
+    ) -> Self {
         Self {
             kind,
             executions,
             deliveries,
+            status,
         }
     }
 }
@@ -31,6 +38,38 @@ impl RecordingAdapter {
 impl RuntimeAdapter for RecordingAdapter {
     fn kind(&self) -> RuntimeKind {
         self.kind
+    }
+
+    fn start(
+        &self,
+        _context: &OperationContext,
+        _app: &InstalledApp,
+    ) -> Result<RuntimeStatus, RuntimeAdapterError> {
+        let mut status = self.status.lock().unwrap();
+
+        *status = RuntimeStatus::Running;
+
+        Ok(*status)
+    }
+
+    fn stop(
+        &self,
+        _context: &OperationContext,
+        _app: &InstalledApp,
+    ) -> Result<RuntimeStatus, RuntimeAdapterError> {
+        let mut status = self.status.lock().unwrap();
+
+        *status = RuntimeStatus::Stopped;
+
+        Ok(*status)
+    }
+
+    fn status(
+        &self,
+        _context: &OperationContext,
+        _app: &InstalledApp,
+    ) -> Result<RuntimeStatus, RuntimeAdapterError> {
+        Ok(*self.status.lock().unwrap())
     }
 
     fn execute_capability(
@@ -167,6 +206,10 @@ fn authorized_capability_and_event_delivery_reach_declared_runtimes() {
 
     let container_executions = Arc::new(AtomicUsize::new(0));
 
+    let web_status = Arc::new(Mutex::new(RuntimeStatus::Stopped));
+
+    let container_status = Arc::new(Mutex::new(RuntimeStatus::Stopped));
+
     let mut adapters = RuntimeAdapterRegistry::new();
 
     adapters
@@ -174,6 +217,7 @@ fn authorized_capability_and_event_delivery_reach_declared_runtimes() {
             RuntimeKind::Web,
             Arc::new(AtomicUsize::new(0)),
             Arc::clone(&web_deliveries),
+            Arc::clone(&web_status),
         )))
         .unwrap();
 
@@ -182,6 +226,7 @@ fn authorized_capability_and_event_delivery_reach_declared_runtimes() {
             RuntimeKind::Container,
             Arc::clone(&container_executions),
             Arc::new(AtomicUsize::new(0)),
+            Arc::clone(&container_status),
         )))
         .unwrap();
 

@@ -74,7 +74,10 @@ impl Error for RuntimeAdapterRegistryError {}
 mod tests {
     use super::*;
 
-    use crate::{CapabilityExecution, EventDelivery, InstalledApp, RuntimeAdapterError};
+    use crate::{
+        CapabilityExecution, EventDelivery, InstalledApp, OperationContext, RuntimeAdapterError,
+        RuntimeStatus,
+    };
 
     struct TestAdapter {
         kind: RuntimeKind,
@@ -89,6 +92,30 @@ mod tests {
     impl RuntimeAdapter for TestAdapter {
         fn kind(&self) -> RuntimeKind {
             self.kind
+        }
+
+        fn start(
+            &self,
+            _context: &OperationContext,
+            _app: &InstalledApp,
+        ) -> Result<RuntimeStatus, RuntimeAdapterError> {
+            Ok(RuntimeStatus::Running)
+        }
+
+        fn stop(
+            &self,
+            _context: &OperationContext,
+            _app: &InstalledApp,
+        ) -> Result<RuntimeStatus, RuntimeAdapterError> {
+            Ok(RuntimeStatus::Stopped)
+        }
+
+        fn status(
+            &self,
+            _context: &OperationContext,
+            _app: &InstalledApp,
+        ) -> Result<RuntimeStatus, RuntimeAdapterError> {
+            Ok(RuntimeStatus::Stopped)
         }
 
         fn execute_capability(

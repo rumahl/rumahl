@@ -1,12 +1,30 @@
 use std::error::Error;
 use std::fmt;
 
-use crate::{CapabilityExecution, EventDelivery, InstalledApp};
+use crate::{CapabilityExecution, EventDelivery, InstalledApp, OperationContext};
 
-use super::RuntimeKind;
+use super::{RuntimeKind, RuntimeStatus};
 
 pub trait RuntimeAdapter: Send + Sync {
     fn kind(&self) -> RuntimeKind;
+
+    fn start(
+        &self,
+        context: &OperationContext,
+        app: &InstalledApp,
+    ) -> Result<RuntimeStatus, RuntimeAdapterError>;
+
+    fn stop(
+        &self,
+        context: &OperationContext,
+        app: &InstalledApp,
+    ) -> Result<RuntimeStatus, RuntimeAdapterError>;
+
+    fn status(
+        &self,
+        context: &OperationContext,
+        app: &InstalledApp,
+    ) -> Result<RuntimeStatus, RuntimeAdapterError>;
 
     fn execute_capability(
         &self,
