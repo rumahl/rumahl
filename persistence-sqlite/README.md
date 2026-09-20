@@ -24,6 +24,11 @@ once to the HTTP, IPC, or native transport. Revoking a session invalidates all
 of its stored transport credentials, while the platform API independently
 revalidates the account and session on every request.
 
+Password authentication is an optional local login adapter, not part of the
+account identity itself. Its repository stores Argon2id PHC verifiers and the
+persistent retry state per `UserId`. Attempt reservation, lockout updates, and
+success resets are transactional; plaintext passwords never enter SQLite.
+
 ## SQLite linking
 
 The default `bundled` feature compiles SQLite with the crate. This keeps host
