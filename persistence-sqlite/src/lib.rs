@@ -7,6 +7,8 @@
 mod account_repository;
 mod identity_schema;
 mod local_account_administration_repository;
+mod oidc_client_repository;
+mod oidc_schema;
 mod password_credential_repository;
 mod repository;
 mod session_credential_repository;
@@ -16,6 +18,7 @@ pub use account_repository::{SqliteAccountStateRepository, SqliteAccountStateRep
 pub use local_account_administration_repository::{
     SqliteLocalAccountAdministrationRepository, SqliteLocalAccountAdministrationRepositoryError,
 };
+pub use oidc_client_repository::{SqliteOidcClientRepository, SqliteOidcClientRepositoryError};
 pub use password_credential_repository::{
     SqlitePasswordCredentialRepository, SqlitePasswordCredentialRepositoryError,
 };

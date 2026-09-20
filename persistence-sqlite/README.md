@@ -36,6 +36,13 @@ retry state, revokes all live account-session rows, and invalidates every
 opaque transport credential for those sessions before committing. The caller
 swaps its staged in-memory `AccountState` only after this transaction succeeds.
 
+OIDC client registrations use dedicated relational tables keyed by generated
+`client_id` and `InstallationId`. Redirect URIs, explicit client type, allowed
+scopes, creation/revocation state, and only the digest of a confidential client
+secret are persisted. A unique installation constraint prevents parallel
+client identities for the same installed app. Revoked registrations are not
+returned by active-client lookups.
+
 ## SQLite linking
 
 The default `bundled` feature compiles SQLite with the crate. This keeps host

@@ -1,0 +1,14 @@
+[package]
+name = "rumahl-oidc-provider"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[dependencies]
+base64 = "0.23.1"
+getrandom = "0.4.3"
+rumahl-core = { path = "../core" }
+sha2 = "0.11.0"
+subtle = "2.6"
+url = "2.5"
+zeroize = "1.9.0"

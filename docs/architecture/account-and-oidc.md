@@ -183,6 +183,22 @@ The platform resolves the endpoint through the installed runtime descriptor.
 The manifest cannot choose an external issuer, arbitrary host port, wildcard
 redirect, or host filesystem path.
 
+The first implementation persists the logical declaration as part of the app
+snapshot and creates the concrete registration in a dedicated OIDC repository.
+Only an `InstallationId` currently present in `PlatformState` can be
+registered. Static web runtimes must declare a public client; container
+runtimes must declare a confidential client whose callback references a
+declared runtime endpoint. The platform origin resolver supplies the HTTPS
+origin, while the manifest supplies only a strictly parsed absolute path.
+
+Each installation receives a random 192-bit `client_id`. Confidential clients
+also receive a random 256-bit secret exactly once for delivery through the
+runtime secret channel; SQLite stores only its SHA-256 digest. Public clients
+receive no secret. Both client types require Authorization Code with PKCE
+`S256`, and authorization requests are accepted only when the supplied redirect
+URI is byte-for-byte equal to the canonical registered URI. Native callback
+exceptions are deferred until the native runtime trust policy exists.
+
 - Container and server-side web apps such as Nextcloud are confidential
   clients. Their generated secret is injected through the runtime secret
   channel and is never written into the manifest or React bundle.
@@ -309,3 +325,4 @@ The account and OIDC milestone is complete only when:
 - [RFC 8414 — OAuth 2.0 Authorization Server Metadata](https://www.rfc-editor.org/rfc/rfc8414.html)
 - [RFC 8252 — OAuth 2.0 for Native Apps](https://www.rfc-editor.org/rfc/rfc8252.html)
 - [RFC 9700 — OAuth 2.0 Security Best Current Practice](https://www.rfc-editor.org/rfc/rfc9700.html)
+- [RFC 10017 — OAuth 2.0 for Browser-Based Applications](https://www.rfc-editor.org/rfc/rfc10017.html)
