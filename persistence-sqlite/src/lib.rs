@@ -5,6 +5,7 @@
 //! the public core constructors before platform recovery can commit it.
 
 mod account_repository;
+mod app_database_provider;
 mod identity_schema;
 mod local_account_administration_repository;
 mod oidc_client_repository;
@@ -15,6 +16,7 @@ mod session_credential_repository;
 mod wire;
 
 pub use account_repository::{SqliteAccountStateRepository, SqliteAccountStateRepositoryError};
+pub use app_database_provider::{SqliteAppDatabaseProvider, SqliteAppDatabaseProviderError};
 pub use local_account_administration_repository::{
     SqliteLocalAccountAdministrationRepository, SqliteLocalAccountAdministrationRepositoryError,
 };

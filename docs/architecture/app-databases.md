@@ -1,6 +1,6 @@
 # App databases
 
-Status: first engine-neutral core contract.
+Status: engine-neutral core contract and first local SQLite provider.
 
 ## Purpose
 
@@ -89,9 +89,19 @@ must not be inferred from whether OIDC is enabled.
 - per-installation `AppDatabaseRegistry` integrated into atomic app lifecycle;
 - snapshot round-trip and recovery of database declarations.
 
-### D2 — provider lifecycle
+### D2 — provider lifecycle (partially implemented)
 
-- engine-neutral provision, retain, restore, and purge repository contracts;
+Implemented:
+
+- engine-neutral provision, access, retain, and restore provider contract;
+- SQLite adapter with atomic staging-directory activation and per-installation
+  file isolation;
+- retained databases are inaccessible until restored for the exact original
+  `InstallationId`;
+
+Remaining:
+
+- explicit purge policy and audit workflow;
 - atomic coordination with app install, update, and uninstall;
 - quota and storage-health reporting;
 - audit events without credentials or query contents.

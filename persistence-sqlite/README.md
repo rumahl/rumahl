@@ -55,6 +55,26 @@ features:
 cargo build -p rumahl-persistence-sqlite --no-default-features
 ```
 
+## App database provider
+
+`SqliteAppDatabaseProvider` is the first physical implementation of the
+engine-neutral `AppDatabaseProvider` contract. It provisions all logical
+databases for one installation in a private staging directory and exposes them
+atomically by renaming that directory into the active namespace. Different
+`InstallationId` values never share files, even when their logical database IDs
+are identical.
+
+The adapter returns a configured `rusqlite::Connection` only for an active
+`AppDatabaseBinding`. Retaining an installation moves its complete database
+directory out of the active namespace; restoring is permitted only for the
+same installation identity. The provider root is supplied by the OS runtime
+and is never derived from manifest data.
+
+This adapter is suitable for local embedded app data and the future
+authenticated React platform-data service. Container connection delivery and
+managed PostgreSQL remain separate runtime adapters; neither changes the core
+manifest contract.
+
 The service that owns this repository remains responsible for choosing and
 creating the parent state directory. No host path is embedded in the domain
 model or in this adapter.
