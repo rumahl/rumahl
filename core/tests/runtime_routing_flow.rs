@@ -5,10 +5,11 @@ use rumahl_core::{
     AppId, AppLifecycle, AppManifest, AppVersion, AuthorizationEngine, CapabilityAccessRegistry,
     CapabilityAccessRule, CapabilityDispatchOutcome, CapabilityDispatcher, CapabilityExecution,
     CapabilityId, CapabilityInvocation, EventDelivery, EventEnvelope, EventName, GrantAuthority,
-    GrantIssuerPolicy, Identity, InstalledApp, OperationContext, PermissionId, PermissionScope,
-    PlatformState, PublisherId, ResourceKey, ResourceKind, ResourceNamespace, ResourceRef,
-    RuntimeAdapter, RuntimeAdapterError, RuntimeAdapterRegistry, RuntimeDescriptor, RuntimeKind,
-    RuntimeRouter, UserId, UserIdentity, UserRole,
+    GrantIssuerPolicy, Identity, InstalledApp, OperationContext, PackagePath, PermissionId,
+    PermissionScope, PlatformState, PublisherId, ResourceKey, ResourceKind, ResourceNamespace,
+    ResourceRef, RuntimeAdapter, RuntimeAdapterError, RuntimeAdapterRegistry, RuntimeDescriptor,
+    RuntimeEndpointId, RuntimeEntrypoint, RuntimeEntrypointId, RuntimeKind, RuntimeRouter, UserId,
+    UserIdentity, UserRole,
 };
 
 struct RecordingAdapter {
@@ -41,6 +42,19 @@ impl RuntimeAdapter for RecordingAdapter {
 
         assert_eq!(&identity, execution.provider().identity());
 
+        if self.kind == RuntimeKind::Container {
+            let service = app
+                .manifest()
+                .runtime()
+                .entrypoint(&RuntimeEntrypointId::parse("service").unwrap())
+                .unwrap();
+
+            assert_eq!(
+                service.target().package_path().unwrap().as_str(),
+                "runtime/server.oci"
+            );
+        }
+
         self.executions.fetch_add(1, Ordering::Relaxed);
 
         Ok(())
@@ -53,6 +67,19 @@ impl RuntimeAdapter for RecordingAdapter {
     ) -> Result<(), RuntimeAdapterError> {
         assert_eq!(delivery.subscriber(), &app.identity().clone().into());
 
+        if self.kind == RuntimeKind::Web {
+            let main = app
+                .manifest()
+                .runtime()
+                .entrypoint(&RuntimeEntrypointId::parse("main").unwrap())
+                .unwrap();
+
+            assert_eq!(
+                main.target().package_path().unwrap().as_str(),
+                "frontend/index.html"
+            );
+        }
+
         self.deliveries.fetch_add(1, Ordering::Relaxed);
 
         Ok(())
@@ -60,12 +87,28 @@ impl RuntimeAdapter for RecordingAdapter {
 }
 
 fn files_manifest() -> AppManifest {
+    let mut runtime = RuntimeDescriptor::container();
+
+    runtime
+        .add_entrypoint(RuntimeEntrypoint::container_artifact(
+            RuntimeEntrypointId::parse("service").unwrap(),
+            PackagePath::parse("runtime/server.oci").unwrap(),
+        ))
+        .unwrap();
+
+    runtime
+        .add_entrypoint(RuntimeEntrypoint::endpoint(
+            RuntimeEntrypointId::parse("main").unwrap(),
+            RuntimeEndpointId::parse("web").unwrap(),
+        ))
+        .unwrap();
+
     let mut manifest = AppManifest::new(
         AppId::parse("com.rumahl.files").unwrap(),
         PublisherId::parse("com.rumahl").unwrap(),
         AppVersion::new(1, 0, 0),
         "Files",
-        RuntimeDescriptor::container(),
+        runtime,
     )
     .unwrap();
 
@@ -77,12 +120,21 @@ fn files_manifest() -> AppManifest {
 }
 
 fn notes_manifest() -> AppManifest {
+    let mut runtime = RuntimeDescriptor::web();
+
+    runtime
+        .add_entrypoint(RuntimeEntrypoint::web_asset(
+            RuntimeEntrypointId::parse("main").unwrap(),
+            PackagePath::parse("frontend/index.html").unwrap(),
+        ))
+        .unwrap();
+
     let mut manifest = AppManifest::new(
         AppId::parse("com.rumahl.notes").unwrap(),
         PublisherId::parse("com.rumahl").unwrap(),
         AppVersion::new(1, 0, 0),
         "Notes",
-        RuntimeDescriptor::web(),
+        runtime,
     )
     .unwrap();
 
