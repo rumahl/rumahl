@@ -31,7 +31,10 @@ pub use resources::{
     ResourceNamespaceError, ResourceRef,
 };
 
-pub use runtime::{RuntimeDescriptor, RuntimeKind};
+pub use runtime::{
+    RuntimeAdapter, RuntimeAdapterError, RuntimeAdapterRegistry, RuntimeAdapterRegistryError,
+    RuntimeDescriptor, RuntimeKind,
+};
 
 pub use permissions::{
     AuthorizationDecision, AuthorizationDenyReason, AuthorizationEngine, AuthorizationRequest,
