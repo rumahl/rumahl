@@ -199,6 +199,14 @@ receive no secret. Both client types require Authorization Code with PKCE
 URI is byte-for-byte equal to the canonical registered URI. Native callback
 exceptions are deferred until the native runtime trust policy exists.
 
+`OidcAppLifecycle` is the current integration boundary above the core
+`AppLifecycle`. Installation and uninstallation first run against cloned
+platform state and grants. The live state is replaced only after the atomic
+OIDC repository insert or revocation succeeds, so repository failures roll the
+in-process lifecycle back without publishing partial state. Durable crash
+atomicity between the platform snapshot and OIDC tables will be provided by a
+single persistence transaction in the Buildroot runtime integration.
+
 - Container and server-side web apps such as Nextcloud are confidential
   clients. Their generated secret is injected through the runtime secret
   channel and is never written into the manifest or React bundle.

@@ -351,10 +351,18 @@ impl Error for SqliteOidcClientRepositoryError {
 
 #[cfg(test)]
 mod tests {
+    use std::convert::Infallible;
     use std::fs;
     use std::time::{SystemTime, UNIX_EPOCH};
 
-    use rumahl_oidc_provider::{OidcClientSecret, OidcClientSecretDigest};
+    use rumahl_core::{
+        AppManifest, AppVersion, InMemoryGrantStore, OidcCallbackPath, OidcClientDeclaration,
+        OidcScope, PackagePath, PlatformState, PublisherId, RuntimeDescriptor, RuntimeEntrypoint,
+        RuntimeEntrypointId,
+    };
+    use rumahl_oidc_provider::{
+        InstalledAppOriginResolver, OidcAppLifecycle, OidcClientSecret, OidcClientSecretDigest,
+    };
 
     use super::*;
 
@@ -391,6 +399,52 @@ mod tests {
             None,
         )
         .unwrap()
+    }
+
+    #[derive(Debug)]
+    struct FixedOriginResolver;
+
+    impl InstalledAppOriginResolver for FixedOriginResolver {
+        type Error = Infallible;
+
+        fn resolve_origin(
+            &self,
+            _app: &rumahl_core::InstalledApp,
+            _entrypoint: &RuntimeEntrypointId,
+        ) -> Result<String, Self::Error> {
+            Ok("https://notes.rumahl.local/".to_owned())
+        }
+    }
+
+    fn public_web_manifest() -> AppManifest {
+        let mut runtime = RuntimeDescriptor::web();
+        runtime
+            .add_entrypoint(RuntimeEntrypoint::web_asset(
+                RuntimeEntrypointId::parse("main").unwrap(),
+                PackagePath::parse("frontend/index.html").unwrap(),
+            ))
+            .unwrap();
+        let mut manifest = AppManifest::new(
+            AppId::parse("com.rumahl.notes").unwrap(),
+            PublisherId::parse("com.rumahl").unwrap(),
+            AppVersion::new(1, 0, 0),
+            "Notes",
+            runtime,
+        )
+        .unwrap();
+        manifest
+            .declare_oidc_client(
+                OidcClientDeclaration::new(
+                    OidcClientType::Public,
+                    RuntimeEntrypointId::parse("main").unwrap(),
+                    OidcCallbackPath::parse("/oidc/callback").unwrap(),
+                    vec![OidcScope::OpenId, OidcScope::Profile],
+                )
+                .unwrap(),
+            )
+            .unwrap();
+
+        manifest
     }
 
     #[test]
@@ -461,5 +515,49 @@ mod tests {
             error,
             SqliteOidcClientRepositoryError::Database(_)
         ));
+    }
+
+    #[test]
+    fn sqlite_registry_participates_in_oidc_aware_app_lifecycle() {
+        let lifecycle = OidcAppLifecycle::new(
+            SqliteOidcClientRepository::open_in_memory().unwrap(),
+            FixedOriginResolver,
+        );
+        let mut state = PlatformState::new();
+        let installed = lifecycle
+            .install(
+                public_web_manifest(),
+                &mut state,
+                UnixTimestamp::from_seconds(100),
+            )
+            .unwrap();
+        let installation_id = *installed.app().installation_id();
+
+        assert!(
+            lifecycle
+                .client_repository()
+                .find_active_by_installation(&installation_id)
+                .unwrap()
+                .is_some()
+        );
+
+        let result = lifecycle
+            .uninstall(
+                &installation_id,
+                &mut state,
+                &mut InMemoryGrantStore::new(),
+                UnixTimestamp::from_seconds(200),
+            )
+            .unwrap();
+
+        assert_eq!(result.revoked_oidc_clients(), 1);
+        assert!(state.installed_apps().is_empty());
+        assert!(
+            lifecycle
+                .client_repository()
+                .find_active_by_installation(&installation_id)
+                .unwrap()
+                .is_none()
+        );
     }
 }

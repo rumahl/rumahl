@@ -5,6 +5,7 @@
 //! client registration without allowing the manifest to choose an arbitrary
 //! redirect host or reusable client secret.
 
+mod app_lifecycle;
 mod client;
 mod client_id;
 mod client_secret;
@@ -12,6 +13,10 @@ mod redirect_uri;
 mod registrar;
 mod repository;
 
+pub use app_lifecycle::{
+    OidcAppInstallError, OidcAppInstallResult, OidcAppLifecycle, OidcAppUninstallError,
+    OidcAppUninstallResult,
+};
 pub use client::{
     OidcClientRecord, OidcClientRecordError, OidcCodeChallengeMethod, OidcTokenEndpointAuthMethod,
 };
