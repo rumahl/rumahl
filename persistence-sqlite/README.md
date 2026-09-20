@@ -92,6 +92,18 @@ The journal is a recovery mechanism across independent providers, not a false
 cross-filesystem transaction. Provider execution and startup reconciliation
 are layered above this repository.
 
+## Encrypted secret store
+
+`SqliteSecretStore` encrypts each installation-bound secret with AES-256-GCM.
+The secret ID, complete app identity, purpose, key ID, and creation timestamp
+are authenticated as associated data. SQLite contains only ciphertext, a
+random nonce, metadata, and the non-secret key ID.
+
+Encryption keys come from `SecretEncryptionKeyProvider`; they are never stored
+in SQLite. The adapter supports an active key for writes and historical lookup
+by key ID for reads and rotation. The production Buildroot key provider is a
+separate integration responsibility.
+
 The service that owns this repository remains responsible for choosing and
 creating the parent state directory. No host path is embedded in the domain
 model or in this adapter.

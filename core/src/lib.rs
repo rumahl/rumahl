@@ -12,6 +12,7 @@ pub mod persistence;
 pub mod platform;
 pub mod resources;
 pub mod runtime;
+pub mod secrets;
 
 pub use accounts::{
     AccountRegistry, AccountRegistryError, AccountSession, AccountSessionError,
@@ -54,6 +55,11 @@ pub use identity::{
 pub use resources::{
     ResourceKey, ResourceKeyError, ResourceKind, ResourceKindError, ResourceNamespace,
     ResourceNamespaceError, ResourceRef,
+};
+
+pub use secrets::{
+    SecretId, SecretIdError, SecretPurpose, SecretPurposeError, SecretRecord, SecretStore,
+    SecretValue, SecretValueError,
 };
 
 pub use runtime::{

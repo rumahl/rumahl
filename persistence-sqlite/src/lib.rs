@@ -13,6 +13,7 @@ mod oidc_client_repository;
 mod oidc_schema;
 mod password_credential_repository;
 mod repository;
+mod secret_store;
 mod session_credential_repository;
 mod wire;
 
@@ -29,6 +30,10 @@ pub use password_credential_repository::{
     SqlitePasswordCredentialRepository, SqlitePasswordCredentialRepositoryError,
 };
 pub use repository::{SqliteSnapshotRepository, SqliteSnapshotRepositoryError};
+pub use secret_store::{
+    SecretEncryptionKey, SecretEncryptionKeyId, SecretEncryptionKeyIdError,
+    SecretEncryptionKeyProvider, SqliteSecretStore, SqliteSecretStoreError,
+};
 pub use session_credential_repository::{
     SqliteSessionCredentialRepository, SqliteSessionCredentialRepositoryError,
 };

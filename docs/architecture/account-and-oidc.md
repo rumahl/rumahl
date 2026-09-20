@@ -276,6 +276,12 @@ platform facility. Databases contain hashes for authorization codes, refresh
 tokens, recovery codes, and confidential client secrets rather than reusable
 plain values.
 
+The first `SecretStore` implementation now encrypts installation-bound values
+with AES-256-GCM, authenticates their owner/purpose metadata, and resolves root
+keys through a separate key-provider contract. SQLite never contains the root
+key or reusable plaintext. Buildroot still needs to supply the production
+device-bound key provider.
+
 ## Delivery phases
 
 ### P3 extension — account persistence
@@ -284,7 +290,7 @@ plain values.
 - account/session repository contracts;
 - account and session recovery;
 - atomic account-plus-credential provisioning;
-- dedicated encrypted secret-store contract;
+- dedicated encrypted secret-store contract and SQLite adapter;
 - OIDC client, consent, subject, code, and token-family persistence;
 - transactional verifier replacement and session-credential revocation on
   password change;
