@@ -183,8 +183,9 @@ mod tests {
 
     use crate::{
         AppId, AppManifest, AppManifestValidator, AppVersion, CapabilityId, CapabilityProvider,
-        EventEnvelope, EventName, InstallationId, OperationContext, PublisherId, RuntimeAdapter,
-        RuntimeDescriptor, ServiceId, ServiceIdentity,
+        EventEnvelope, EventName, InstallationId, OperationContext, PackagePath, PublisherId,
+        RuntimeAdapter, RuntimeDescriptor, RuntimeEntrypoint, RuntimeEntrypointId, ServiceId,
+        ServiceIdentity,
     };
 
     struct RecordingAdapter {
@@ -301,12 +302,34 @@ mod tests {
     }
 
     fn installed_app(kind: RuntimeKind) -> InstalledApp {
+        let mut runtime = RuntimeDescriptor::new(kind);
+
+        match kind {
+            RuntimeKind::Web => runtime
+                .add_entrypoint(RuntimeEntrypoint::web_asset(
+                    RuntimeEntrypointId::parse("main").unwrap(),
+                    PackagePath::parse("frontend/index.html").unwrap(),
+                ))
+                .unwrap(),
+
+            RuntimeKind::Container => runtime
+                .add_entrypoint(RuntimeEntrypoint::container_artifact(
+                    RuntimeEntrypointId::parse("service").unwrap(),
+                    PackagePath::parse("runtime/server.oci").unwrap(),
+                ))
+                .unwrap(),
+
+            RuntimeKind::Native => {
+                panic!("native runtime cannot be installed without a trust policy")
+            }
+        }
+
         let manifest = AppManifest::new(
             AppId::parse("com.rumahl.notes").unwrap(),
             PublisherId::parse("com.rumahl").unwrap(),
             AppVersion::new(1, 0, 0),
             "Notes",
-            RuntimeDescriptor::new(kind),
+            runtime,
         )
         .unwrap();
 
@@ -403,7 +426,7 @@ mod tests {
 
     #[test]
     fn rejects_route_without_matching_adapter() {
-        let app = installed_app(RuntimeKind::Native);
+        let app = installed_app(RuntimeKind::Container);
 
         let execution = execution_for(&app);
 
@@ -417,7 +440,7 @@ mod tests {
 
         assert_eq!(
             result.unwrap_err(),
-            RuntimeRoutingError::AdapterNotRegistered(RuntimeKind::Native)
+            RuntimeRoutingError::AdapterNotRegistered(RuntimeKind::Container)
         );
     }
 

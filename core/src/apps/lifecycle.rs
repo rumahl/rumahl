@@ -193,13 +193,26 @@ mod tests {
         SearchContributionDeclaration,
     };
 
+    fn web_runtime() -> crate::RuntimeDescriptor {
+        let mut runtime = crate::RuntimeDescriptor::web();
+
+        runtime
+            .add_entrypoint(crate::RuntimeEntrypoint::web_asset(
+                crate::RuntimeEntrypointId::parse("main").unwrap(),
+                crate::PackagePath::parse("frontend/index.html").unwrap(),
+            ))
+            .unwrap();
+
+        runtime
+    }
+
     fn manifest() -> AppManifest {
         let mut manifest = AppManifest::new(
             AppId::parse("com.rumahl.notes").unwrap(),
             PublisherId::parse("com.rumahl").unwrap(),
             AppVersion::new(1, 0, 0),
             "Notes",
-            crate::RuntimeDescriptor::web(),
+            web_runtime(),
         )
         .unwrap();
 
@@ -316,7 +329,7 @@ mod tests {
                 PublisherId::parse("com.rumahl").unwrap(),
                 AppVersion::new(1, 0, 0),
                 "Other",
-                crate::RuntimeDescriptor::web(),
+                web_runtime(),
             )
             .unwrap(),
             &AppManifestValidator::new(),

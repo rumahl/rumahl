@@ -1,17 +1,27 @@
 use rumahl_core::{
     AppId, AppLifecycle, AppLifecycleError, AppManifest, AppVersion, CapabilityId, CommandAction,
     CommandContributionDeclaration, ContributionId, EventName, Identity, InstalledAppRegistryError,
-    PermissionId, PermissionRequest, PermissionScope, PlatformState, PublisherId,
-    RuntimeDescriptor, RuntimeKind, SearchContributionDeclaration,
+    PackagePath, PermissionId, PermissionRequest, PermissionScope, PlatformState, PublisherId,
+    RuntimeDescriptor, RuntimeEntrypoint, RuntimeEntrypointId, RuntimeKind,
+    SearchContributionDeclaration,
 };
 
 fn notes_manifest() -> AppManifest {
+    let mut runtime = RuntimeDescriptor::web();
+
+    runtime
+        .add_entrypoint(RuntimeEntrypoint::web_asset(
+            RuntimeEntrypointId::parse("main").unwrap(),
+            PackagePath::parse("frontend/index.html").unwrap(),
+        ))
+        .unwrap();
+
     let mut manifest = AppManifest::new(
         AppId::parse("com.rumahl.notes").unwrap(),
         PublisherId::parse("com.rumahl").unwrap(),
         AppVersion::new(1, 0, 0),
         "Notes",
-        RuntimeDescriptor::web(),
+        runtime,
     )
     .unwrap();
 

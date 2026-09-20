@@ -233,13 +233,26 @@ mod tests {
         SearchContributionDeclaration,
     };
 
+    fn web_runtime() -> crate::RuntimeDescriptor {
+        let mut runtime = crate::RuntimeDescriptor::web();
+
+        runtime
+            .add_entrypoint(crate::RuntimeEntrypoint::web_asset(
+                crate::RuntimeEntrypointId::parse("main").unwrap(),
+                crate::PackagePath::parse("frontend/index.html").unwrap(),
+            ))
+            .unwrap();
+
+        runtime
+    }
+
     fn installed_app_with_id(app_id: &str, display_name: &str) -> InstalledApp {
         let mut manifest = AppManifest::new(
             AppId::parse(app_id).unwrap(),
             PublisherId::parse("com.rumahl").unwrap(),
             AppVersion::new(1, 0, 0),
             display_name,
-            crate::RuntimeDescriptor::web(),
+            web_runtime(),
         )
         .unwrap();
 
