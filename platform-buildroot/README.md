@@ -1,8 +1,9 @@
 # rumahl Buildroot platform adapters
 
-`rumahl-platform-buildroot` contains the Linux-facing security adapters used by
-the privileged rumahl platform service. It does not provision a TPM object or
-run the container supervisor; those remain image- and device-lifecycle work.
+`rumahl-platform-buildroot` contains the Linux-facing adapters used by the
+privileged rumahl platform service and its runtime supervisor. It does not
+provision a TPM object or implement an OCI engine; those remain image- and
+device-lifecycle work.
 
 ## TPM-sealed secret-store root keys
 
@@ -85,3 +86,45 @@ The supervisor's `RuntimeSecretTarget` must additionally:
 
 Linux documents that `SO_PEERCRED` returns credentials captured for the peer of
 a connected Unix socket in [`unix(7)`](https://man7.org/linux/man-pages/man7/unix.7.html).
+
+## Runtime control channel
+
+`UnixAppRuntimeProvider` is the concrete Buildroot implementation of the core
+`AppRuntimeProvider` contract. It connects to `UnixRuntimeControlServer` over
+an absolute-path Unix stream socket. Both sides authenticate the peer UID,
+enforce read/write deadlines, bound every field and the complete request, and
+reject malformed or logically impossible responses.
+
+Protocol `RRP1` separates runtime preparation from activation:
+
+```text
+request  = magic[4] | operation:u8 | field_count:u8 |
+           repeated(field_length:u32-be | field_bytes)
+response = magic[4] | status:u8 | state:u8 | changed:u8
+```
+
+Operations are prepare, activate, state, deactivate, and remove. Prepare and
+activate carry the validated installation ID, app ID, publisher ID, version,
+runtime kind, and ordered entrypoint triples. Package paths remain relative;
+host paths, container IDs, arbitrary Docker options, environment variables,
+and secrets are not part of the protocol. Other operations carry only the
+installation ID.
+
+The supervisor target receives a typed `RuntimeInstallationSpec`. It must:
+
+- derive all concrete package and namespace paths from trusted platform
+  configuration and the installation ID;
+- compare the complete specification on prepare and activate replays;
+- create the namespace without executing app code during prepare;
+- start only a matching prepared runtime during activation;
+- report `Absent`, `Prepared`, or `Active` from the actual runtime engine;
+- make stop and remove idempotent, while rejecting removal of an active
+  runtime;
+- translate `ContainerArtifact` package paths into the image's selected OCI
+  engine without exposing that engine or its socket to the app.
+
+The older prototype's supervisor exposed Docker-shaped app metadata and
+combined creation with startup. This boundary keeps its useful lifecycle
+separation and stable per-app supervision model, while deliberately excluding
+Docker API access, host volume strings, caller-selected ports, and plaintext
+environment credentials.

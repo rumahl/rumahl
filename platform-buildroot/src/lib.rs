@@ -3,10 +3,17 @@
 #[cfg(not(any(target_os = "linux", target_os = "macos")))]
 compile_error!("rumahl-platform-buildroot requires Linux (or macOS for host tests)");
 
+mod runtime_provider;
 mod runtime_secret_server;
 mod runtime_secrets;
 mod tpm2_key_provider;
 
+pub use runtime_provider::{
+    RuntimeControlTarget, RuntimeControlTargetOutcome, RuntimeInstallationSpec,
+    UnixAppRuntimeProvider, UnixAppRuntimeProviderConfig, UnixAppRuntimeProviderConfigError,
+    UnixAppRuntimeProviderError, UnixRuntimeControlServer, UnixRuntimeControlServerConfig,
+    UnixRuntimeControlServerConfigError, UnixRuntimeControlServerError,
+};
 pub use runtime_secret_server::{
     RuntimeOidcClientSecret, RuntimeSecretRemoval, RuntimeSecretTarget, RuntimeSecretTargetOutcome,
     UnixRuntimeSecretServer, UnixRuntimeSecretServerConfig, UnixRuntimeSecretServerConfigError,
