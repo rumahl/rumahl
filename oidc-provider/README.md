@@ -23,6 +23,8 @@ that policy rather than treated as a web redirect exception.
 
 `OidcAppLifecycle` remains the in-process compatibility boundary for installing
 and uninstalling apps. The recovery-safe registrar is the OIDC participant for
-the general app-operation journal. The upcoming top-level coordinator will
-replace lifecycle-specific nesting, persist every participant transition, and
-publish the staged platform snapshot last.
+the general app-operation journal. `rumahl-app-operations` now provides the
+top-level restart-safe installation coordinator, persists every participant
+transition, delivers a recovered confidential secret through an idempotent
+runtime channel, and publishes the staged platform state only after the final
+snapshot and journal commit.

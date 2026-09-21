@@ -2,7 +2,7 @@ use crate::{
     AppIdentity, AppManifest, AppManifestValidator, InstallationId, InstalledApp, InstalledAppError,
 };
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct InstalledAppSnapshot {
     app: InstalledApp,
 }
@@ -30,7 +30,7 @@ impl InstalledAppSnapshot {
         self.app.manifest()
     }
 
-    pub(crate) fn installed_app(&self) -> &InstalledApp {
+    pub fn installed_app(&self) -> &InstalledApp {
         &self.app
     }
 }

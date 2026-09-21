@@ -1,7 +1,8 @@
 # App resource operations
 
-Status: durable operation state machine and SQLite journal implemented;
-resource execution and startup reconciliation remain to be connected.
+Status: durable operation state machine, SQLite journal, and restart-safe
+installation runner implemented. Update, uninstall, and terminal compensation
+execution remain to be connected.
 
 ## Purpose
 
@@ -73,23 +74,48 @@ Every state transition increments an operation revision. The
 against the immediately preceding revision. A stale process therefore cannot
 overwrite recovery progress made by another process.
 
-`SqliteAppOperationRepository` persists an operation and all ordered resource
-steps in one `IMMEDIATE` SQLite transaction with WAL and `synchronous=FULL`.
-It lists incomplete operations in stable start order for startup recovery.
-Stored identifiers and states are parsed back through the core constructors;
-invalid or unknown data fails closed.
+`SqliteAppOperationRepository` persists an operation, its validated target app,
+and all ordered resource steps in one `IMMEDIATE` SQLite transaction with WAL
+and `synchronous=FULL`. Persisting the target is essential: before the final
+platform snapshot exists, an `InstallationId` alone cannot reconstruct the
+manifest and derived registries after a process restart. Existing journals are
+migrated with a nullable target column; the install runner rejects legacy
+incomplete installs that have no target instead of guessing.
 
-## Remaining integration
+The repository lists incomplete operations in stable start order for startup
+recovery. Stored targets, identifiers, and states are parsed back through the
+core constructors; invalid or unknown data fails closed.
 
-The next runtime slice must:
+## Installation runner
+
+`rumahl-app-operations::AppOperationRunner` now:
 
 1. create the journal entry before the first external side effect;
 2. persist `applying` before and `applied` after each participant call;
 3. invoke the implemented idempotent SQLite database reconciliation and
    secret-safe OIDC registration recovery after startup;
-4. store the platform snapshot as the final resource step;
-5. publish cloned in-memory `PlatformState` only after the snapshot step;
-6. retain enough audit context without recording secrets or database queries.
+4. deliver a confidential OIDC secret through an idempotent privileged runtime
+   channel before marking the OIDC step applied;
+5. store the platform snapshot as the final resource step;
+6. commit the journal and only then publish cloned in-memory `PlatformState`.
+
+If a provider or delivery attempt fails, the operation remains in its durable
+`applying` state. Startup recovery reconstructs the staged installation from
+the journal target and replays the ambiguous participant. Runtime delivery is
+keyed by operation, installation, and client identity, so the same recovered
+secret is acknowledged while a changed value must fail closed.
+
+The SQLite integration test interrupts the first secret delivery, drops every
+repository, reopens the journal, database provider, OIDC repository, snapshot
+repository, and encrypted secret store, then completes the same installation
+with the same client identity and secret digest.
+
+## Remaining integration
+
+- operation-specific update and uninstall execution;
+- explicit terminal-failure classification and compensation policy;
+- runtime implementations of the secret-delivery contract;
+- audit events without secrets, credentials, or database queries.
 
 Provider-specific credentials, filesystem paths, and connection types remain
 outside this operation model.

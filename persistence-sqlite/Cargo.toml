@@ -20,4 +20,5 @@ serde_json = "1.0"
 zeroize = "1.9.0"
 
 [dev-dependencies]
+rumahl-app-operations = { path = "../app-operations" }
 rumahl-platform-api = { path = "../platform-api" }

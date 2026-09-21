@@ -101,13 +101,14 @@ Implemented:
 - retained databases are inaccessible until restored for the exact original
   `InstallationId`;
 - durable cross-resource operation state machine and SQLite journal, including
-  crash-visible apply/compensation steps and optimistic revisions.
+  crash-visible apply/compensation steps and optimistic revisions;
+- restart-safe installation runner connecting database provisioning, OIDC
+  recovery, runtime-secret delivery, and the final platform snapshot.
 
 Remaining:
 
 - explicit purge policy and audit workflow;
-- top-level provider execution and OIDC/startup reconciliation through the
-  operation journal;
+- update, uninstall, and terminal compensation execution through the journal;
 - quota and storage-health reporting;
 - audit events without credentials or query contents.
 

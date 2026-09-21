@@ -88,9 +88,16 @@ revision check and updates the operation plus all steps in one SQLite
 transaction. Incomplete operations remain queryable after restart, including
 steps interrupted while applying or compensating.
 
+Operations created for an app also persist the complete validated installation
+target. This lets the top-level installation runner reconstruct staged platform
+state even when interruption happened before the singleton platform snapshot
+was written. Legacy rows without a target remain readable, but cannot be
+resumed as installs and fail closed at the runner boundary.
+
 The journal is a recovery mechanism across independent providers, not a false
-cross-filesystem transaction. Provider execution and startup reconciliation
-are layered above this repository.
+cross-filesystem transaction. `rumahl-app-operations` layers provider execution,
+runtime-secret acknowledgement, and startup reconciliation above this
+repository.
 
 ## Encrypted secret store
 

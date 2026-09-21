@@ -77,20 +77,20 @@ impl WireSnapshot {
 
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
-struct WireInstalledApp {
+pub(crate) struct WireInstalledApp {
     identity: WireAppIdentity,
     manifest: WireManifest,
 }
 
 impl WireInstalledApp {
-    fn capture(snapshot: &InstalledAppSnapshot) -> Self {
+    pub(crate) fn capture(snapshot: &InstalledAppSnapshot) -> Self {
         Self {
             identity: WireAppIdentity::capture(snapshot.identity()),
             manifest: WireManifest::capture(snapshot.manifest()),
         }
     }
 
-    fn into_domain(self) -> Result<InstalledAppSnapshot, WireSnapshotError> {
+    pub(crate) fn into_domain(self) -> Result<InstalledAppSnapshot, WireSnapshotError> {
         InstalledAppSnapshot::new(self.identity.into_domain()?, self.manifest.into_domain()?)
             .map_err(|error| WireSnapshotError::invalid("installed app", error))
     }

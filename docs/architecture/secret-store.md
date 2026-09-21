@@ -1,8 +1,8 @@
 # Secret store
 
-Status: engine-neutral core contract, encrypted SQLite adapter, and recoverable
-OIDC client-secret registration implemented; Buildroot root-key provider and
-runtime delivery acknowledgement remain.
+Status: engine-neutral core contract, encrypted SQLite adapter, recoverable
+OIDC client-secret registration, and journalled runtime delivery acknowledgement
+implemented; the Buildroot root-key and runtime-channel providers remain.
 
 ## Boundary
 
@@ -60,8 +60,16 @@ For confidential OIDC clients, the implemented registration sequence is:
    and digest against the decrypted stored value;
 4. return the same client and secret for runtime delivery.
 
-The operation coordinator still needs to mark the OIDC step applied, deliver
-the value through the runtime secret channel, and persist an acknowledgement
-before applying the final retention/removal policy.
+`AppOperationRunner` now delivers the recovered value through the privileged
+`RuntimeSecretDelivery` contract before marking the OIDC journal step applied.
+If delivery fails or the process exits before that transition, recovery returns
+the same registered client and encrypted secret and safely repeats delivery.
+The runtime adapter must make a replay for the same operation, installation,
+client, and value idempotent and reject a changed value. The journal's applied
+transition is the durable delivery acknowledgement.
+
+Production Buildroot still needs the concrete runtime channel and the
+device-bound `SecretEncryptionKeyProvider`. Install compensation, uninstall
+revocation, and final secret removal remain operation-policy work.
 
 Public OIDC clients never create this secret.

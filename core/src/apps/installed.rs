@@ -5,7 +5,7 @@ use crate::{AppIdentity, InstallationId};
 
 use super::{AppManifest, AppManifestValidationError, AppManifestValidator};
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct InstalledApp {
     identity: AppIdentity,
     manifest: AppManifest,

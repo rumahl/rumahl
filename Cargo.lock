@@ -548,6 +548,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "rumahl-app-operations"
+version = "0.1.0"
+dependencies = [
+ "rumahl-core",
+ "rumahl-oidc-provider",
+]
+
+[[package]]
 name = "rumahl-core"
 version = "0.1.0"
 dependencies = [
@@ -575,6 +583,7 @@ dependencies = [
  "aes-gcm",
  "getrandom",
  "rumahl-account-auth",
+ "rumahl-app-operations",
  "rumahl-core",
  "rumahl-oidc-provider",
  "rumahl-platform-api",

@@ -212,12 +212,15 @@ resources is provided by the operation journal plus idempotent startup
 reconciliation. A shared SQLite transaction may optimize metadata stored in
 one database, but is not assumed across provider boundaries.
 
-The general `AppOperation` journal now records OIDC as an optional participant
+The general `AppOperation` journal records OIDC as an optional participant
 alongside app databases and the final platform snapshot. It does not make OIDC
-a prerequisite for installation. The remaining runtime coordinator will
-supersede `OidcAppLifecycle` as the top-level cross-resource boundary and use
-the journal for restart reconciliation; the OIDC registrar remains the
-provider-specific participant.
+a prerequisite for installation. `AppOperationRunner` is now the restart-safe
+top-level installation boundary: it persists the validated install target,
+replays the OIDC registrar after interruption, acknowledges confidential
+runtime-secret delivery through the same journal step, and publishes live
+platform state only after the final snapshot and commit. `OidcAppLifecycle`
+remains an in-process compatibility boundary for callers not yet migrated to
+the operation runner.
 
 - Container and server-side web apps such as Nextcloud are confidential
   clients. Their generated secret is injected through the runtime secret
@@ -286,8 +289,9 @@ device-bound key provider.
 confidential client secret before inserting its digest-only client record. A
 restart verifies and returns the same active client and decrypted secret;
 missing secrets or declaration mismatches fail closed. Public clients never
-create secret material. Runtime delivery acknowledgement remains part of the
-top-level operation coordinator.
+create secret material. The operation runner now persists successful runtime
+delivery by completing the OIDC journal step; the production Buildroot runtime
+channel remains to be implemented.
 
 ## Delivery phases
 

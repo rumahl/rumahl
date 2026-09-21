@@ -13,6 +13,8 @@ use rusqlite::{
     Connection, ErrorCode, OptionalExtension, Transaction, TransactionBehavior, params,
 };
 
+use crate::wire::WireInstalledApp;
+
 #[derive(Debug)]
 pub struct SqliteAppOperationRepository {
     connection: Mutex<Connection>,
@@ -34,6 +36,8 @@ pub enum SqliteAppOperationRepositoryError {
     InvalidResource(String),
     InvalidResourceState(String),
     InvalidStepPosition { expected: usize, actual: i64 },
+    Json(serde_json::Error),
+    InvalidTargetApp(String),
     InvalidOperation(AppOperationError),
 }
 
@@ -65,7 +69,8 @@ impl SqliteAppOperationRepository {
                      ),
                      revision INTEGER NOT NULL CHECK (revision >= 0),
                      started_at INTEGER NOT NULL CHECK (started_at >= 0),
-                     updated_at INTEGER NOT NULL CHECK (updated_at >= started_at)
+                     updated_at INTEGER NOT NULL CHECK (updated_at >= started_at),
+                     target_app TEXT
                  );
 
                  CREATE TABLE IF NOT EXISTS app_operation_step (
@@ -89,6 +94,21 @@ impl SqliteAppOperationRepository {
                  ON app_operation(phase, started_at);",
             )
             .map_err(Self::database_error)?;
+
+        let target_app_column_exists = connection
+            .query_row(
+                "SELECT EXISTS(
+                     SELECT 1 FROM pragma_table_info('app_operation') WHERE name = 'target_app'
+                 )",
+                [],
+                |row| row.get::<_, bool>(0),
+            )
+            .map_err(Self::database_error)?;
+        if !target_app_column_exists {
+            connection
+                .execute("ALTER TABLE app_operation ADD COLUMN target_app TEXT", [])
+                .map_err(Self::database_error)?;
+        }
 
         Ok(Self {
             connection: Mutex::new(connection),
@@ -142,7 +162,7 @@ impl SqliteAppOperationRepository {
         let row = connection
             .query_row(
                 "SELECT operation_id, installation_id, kind, phase, revision, started_at,
-                        updated_at
+                        updated_at, target_app
                  FROM app_operation
                  WHERE operation_id = ?1",
                 [id.to_string()],
@@ -155,6 +175,7 @@ impl SqliteAppOperationRepository {
                         revision: row.get(4)?,
                         started_at: row.get(5)?,
                         updated_at: row.get(6)?,
+                        target_app: row.get(7)?,
                     })
                 },
             )
@@ -206,18 +227,52 @@ impl SqliteAppOperationRepository {
             ));
         }
 
-        AppOperation::restore(
-            AppOperationId::parse(&stored.operation_id)
-                .map_err(SqliteAppOperationRepositoryError::InvalidOperationId)?,
-            InstallationId::parse(&stored.installation_id)
-                .map_err(SqliteAppOperationRepositoryError::InvalidInstallationId)?,
-            parse_kind(&stored.kind)?,
-            parse_phase(&stored.phase)?,
-            steps,
-            from_sql_integer("revision", stored.revision)?,
-            UnixTimestamp::from_seconds(from_sql_integer("started_at", stored.started_at)?),
-            UnixTimestamp::from_seconds(from_sql_integer("updated_at", stored.updated_at)?),
-        )
+        let target_app = stored
+            .target_app
+            .map(|payload| {
+                serde_json::from_str::<WireInstalledApp>(&payload)
+                    .map_err(SqliteAppOperationRepositoryError::Json)?
+                    .into_domain()
+                    .map_err(|error| {
+                        SqliteAppOperationRepositoryError::InvalidTargetApp(error.to_string())
+                    })
+            })
+            .transpose()?;
+        let id = AppOperationId::parse(&stored.operation_id)
+            .map_err(SqliteAppOperationRepositoryError::InvalidOperationId)?;
+        let installation_id = InstallationId::parse(&stored.installation_id)
+            .map_err(SqliteAppOperationRepositoryError::InvalidInstallationId)?;
+        let kind = parse_kind(&stored.kind)?;
+        let phase = parse_phase(&stored.phase)?;
+        let revision = from_sql_integer("revision", stored.revision)?;
+        let started_at =
+            UnixTimestamp::from_seconds(from_sql_integer("started_at", stored.started_at)?);
+        let updated_at =
+            UnixTimestamp::from_seconds(from_sql_integer("updated_at", stored.updated_at)?);
+
+        match target_app {
+            Some(target_app) => AppOperation::restore_for_app(
+                id,
+                installation_id,
+                kind,
+                phase,
+                steps,
+                revision,
+                started_at,
+                updated_at,
+                target_app,
+            ),
+            None => AppOperation::restore(
+                id,
+                installation_id,
+                kind,
+                phase,
+                steps,
+                revision,
+                started_at,
+                updated_at,
+            ),
+        }
         .map_err(SqliteAppOperationRepositoryError::InvalidOperation)
     }
 }
@@ -235,14 +290,22 @@ impl AppOperationRepository for SqliteAppOperationRepository {
         let revision = to_sql_integer("revision", operation.revision())?;
         let started_at = to_sql_integer("started_at", operation.started_at().as_seconds())?;
         let updated_at = to_sql_integer("updated_at", operation.updated_at().as_seconds())?;
+        let target_app = operation
+            .target_app()
+            .map(|target| {
+                serde_json::to_string(&WireInstalledApp::capture(target))
+                    .map_err(SqliteAppOperationRepositoryError::Json)
+            })
+            .transpose()?;
         let mut connection = self.connection()?;
         let transaction = connection
             .transaction_with_behavior(TransactionBehavior::Immediate)
             .map_err(Self::database_error)?;
         let inserted = transaction.execute(
             "INSERT INTO app_operation (
-                 operation_id, installation_id, kind, phase, revision, started_at, updated_at
-             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+                 operation_id, installation_id, kind, phase, revision, started_at, updated_at,
+                 target_app
+             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
             params![
                 operation.id().to_string(),
                 operation.installation_id().to_string(),
@@ -251,6 +314,7 @@ impl AppOperationRepository for SqliteAppOperationRepository {
                 revision,
                 started_at,
                 updated_at,
+                target_app,
             ],
         );
 
@@ -361,6 +425,7 @@ struct StoredOperation {
     revision: i64,
     started_at: i64,
     updated_at: i64,
+    target_app: Option<String>,
 }
 
 struct StoredStep {
@@ -507,6 +572,10 @@ impl fmt::Display for SqliteAppOperationRepositoryError {
                 f,
                 "stored app operation step position must be {expected}, found {actual}"
             ),
+            Self::Json(error) => write!(f, "app operation target JSON is invalid: {error}"),
+            Self::InvalidTargetApp(error) => {
+                write!(f, "stored app operation target is invalid: {error}")
+            }
             Self::InvalidOperation(error) => write!(f, "stored app operation is invalid: {error}"),
         }
     }
@@ -519,6 +588,7 @@ impl Error for SqliteAppOperationRepositoryError {
             Self::InvalidOperationId(error) => Some(error),
             Self::InvalidInstallationId(error) => Some(error),
             Self::InvalidOperation(error) => Some(error),
+            Self::Json(error) => Some(error),
             Self::LockPoisoned
             | Self::AlreadyExists
             | Self::InitialRevisionMustBeZero(_)
@@ -529,7 +599,8 @@ impl Error for SqliteAppOperationRepositoryError {
             | Self::InvalidPhase(_)
             | Self::InvalidResource(_)
             | Self::InvalidResourceState(_)
-            | Self::InvalidStepPosition { .. } => None,
+            | Self::InvalidStepPosition { .. }
+            | Self::InvalidTargetApp(_) => None,
         }
     }
 }
@@ -540,6 +611,10 @@ mod tests {
     use std::time::{SystemTime, UNIX_EPOCH};
 
     use super::*;
+    use rumahl_core::{
+        AppId, AppLifecycle, AppManifest, AppVersion, PackagePath, PlatformState, PublisherId,
+        RuntimeDescriptor, RuntimeEntrypoint, RuntimeEntrypointId,
+    };
 
     fn timestamp(value: u64) -> UnixTimestamp {
         UnixTimestamp::from_seconds(value)
@@ -567,6 +642,29 @@ mod tests {
         std::env::temp_dir().join(format!("rumahl-{test_name}-{nonce}.sqlite3"))
     }
 
+    fn install_operation() -> AppOperation {
+        let mut runtime = RuntimeDescriptor::web();
+        runtime
+            .add_entrypoint(RuntimeEntrypoint::web_asset(
+                RuntimeEntrypointId::parse("main").unwrap(),
+                PackagePath::parse("frontend/index.html").unwrap(),
+            ))
+            .unwrap();
+        let manifest = AppManifest::new(
+            AppId::parse("com.rumahl.notes").unwrap(),
+            PublisherId::parse("com.rumahl").unwrap(),
+            AppVersion::new(1, 0, 0),
+            "Notes",
+            runtime,
+        )
+        .unwrap();
+        let app = AppLifecycle::new()
+            .install(manifest, &mut PlatformState::new())
+            .unwrap();
+
+        AppOperation::for_app(&app, AppOperationKind::Install, timestamp(10)).unwrap()
+    }
+
     #[test]
     fn persists_in_progress_step_for_recovery_after_reopen() {
         let path = database_path("app-operation-journal");
@@ -588,6 +686,70 @@ mod tests {
         assert_eq!(repository.list_incomplete().unwrap(), vec![operation]);
 
         drop(repository);
+        fs::remove_file(path).unwrap();
+    }
+
+    #[test]
+    fn persists_install_target_for_process_restart_recovery() {
+        let path = database_path("app-operation-target");
+        let operation = install_operation();
+        let id = *operation.id();
+
+        {
+            let repository = SqliteAppOperationRepository::open(&path).unwrap();
+            repository.create(&operation).unwrap();
+        }
+
+        let repository = SqliteAppOperationRepository::open(&path).unwrap();
+        let recovered = repository.find(&id).unwrap().unwrap();
+
+        assert_eq!(recovered, operation);
+        assert_eq!(
+            recovered.target_app().unwrap().installation_id(),
+            operation.installation_id()
+        );
+
+        drop(repository);
+        fs::remove_file(path).unwrap();
+    }
+
+    #[test]
+    fn adds_target_column_to_existing_operation_journal() {
+        let path = database_path("app-operation-target-migration");
+        {
+            let connection = Connection::open(&path).unwrap();
+            connection
+                .execute_batch(
+                    "CREATE TABLE app_operation (
+                         operation_id TEXT PRIMARY KEY,
+                         installation_id TEXT NOT NULL,
+                         kind TEXT NOT NULL CHECK (kind IN ('install', 'update', 'uninstall')),
+                         phase TEXT NOT NULL CHECK (
+                             phase IN ('applying', 'committed', 'compensating', 'compensated')
+                         ),
+                         revision INTEGER NOT NULL CHECK (revision >= 0),
+                         started_at INTEGER NOT NULL CHECK (started_at >= 0),
+                         updated_at INTEGER NOT NULL CHECK (updated_at >= started_at)
+                     );",
+                )
+                .unwrap();
+        }
+
+        drop(SqliteAppOperationRepository::open(&path).unwrap());
+
+        let connection = Connection::open(&path).unwrap();
+        let target_columns = connection
+            .query_row(
+                "SELECT COUNT(*)
+                 FROM pragma_table_info('app_operation')
+                 WHERE name = 'target_app'",
+                [],
+                |row| row.get::<_, i64>(0),
+            )
+            .unwrap();
+        assert_eq!(target_columns, 1);
+
+        drop(connection);
         fs::remove_file(path).unwrap();
     }
 

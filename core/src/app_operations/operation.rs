@@ -2,7 +2,7 @@ use std::collections::HashSet;
 use std::error::Error;
 use std::fmt;
 
-use crate::{InstallationId, InstalledApp, UnixTimestamp};
+use crate::{InstallationId, InstalledApp, InstalledAppSnapshot, UnixTimestamp};
 
 use super::AppOperationId;
 
@@ -54,6 +54,7 @@ pub struct AppOperation {
     revision: u64,
     started_at: UnixTimestamp,
     updated_at: UnixTimestamp,
+    target_app: Option<InstalledAppSnapshot>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -78,6 +79,7 @@ pub enum AppOperationError {
     ResourcesNotApplied,
     CompensationIncomplete,
     InvalidRestoredState,
+    TargetInstallationMismatch,
 }
 
 impl AppOperation {
@@ -98,7 +100,9 @@ impl AppOperation {
 
         resources.push(AppOperationResource::PlatformSnapshot);
 
-        Self::new(*app.installation_id(), kind, resources, started_at)
+        let mut operation = Self::new(*app.installation_id(), kind, resources, started_at)?;
+        operation.target_app = Some(InstalledAppSnapshot::capture(app));
+        Ok(operation)
     }
 
     pub fn new(
@@ -115,7 +119,7 @@ impl AppOperation {
             })
             .collect();
 
-        Self::restore(
+        Self::restore_with_target(
             AppOperationId::new(),
             installation_id,
             kind,
@@ -124,6 +128,7 @@ impl AppOperation {
             0,
             started_at,
             started_at,
+            None,
         )
     }
 
@@ -138,6 +143,56 @@ impl AppOperation {
         started_at: UnixTimestamp,
         updated_at: UnixTimestamp,
     ) -> Result<Self, AppOperationError> {
+        Self::restore_with_target(
+            id,
+            installation_id,
+            kind,
+            phase,
+            steps,
+            revision,
+            started_at,
+            updated_at,
+            None,
+        )
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub fn restore_for_app(
+        id: AppOperationId,
+        installation_id: InstallationId,
+        kind: AppOperationKind,
+        phase: AppOperationPhase,
+        steps: Vec<AppOperationStep>,
+        revision: u64,
+        started_at: UnixTimestamp,
+        updated_at: UnixTimestamp,
+        target_app: InstalledAppSnapshot,
+    ) -> Result<Self, AppOperationError> {
+        Self::restore_with_target(
+            id,
+            installation_id,
+            kind,
+            phase,
+            steps,
+            revision,
+            started_at,
+            updated_at,
+            Some(target_app),
+        )
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn restore_with_target(
+        id: AppOperationId,
+        installation_id: InstallationId,
+        kind: AppOperationKind,
+        phase: AppOperationPhase,
+        steps: Vec<AppOperationStep>,
+        revision: u64,
+        started_at: UnixTimestamp,
+        updated_at: UnixTimestamp,
+        target_app: Option<InstalledAppSnapshot>,
+    ) -> Result<Self, AppOperationError> {
         Self::validate_plan(&steps)?;
 
         if updated_at < started_at {
@@ -146,6 +201,13 @@ impl AppOperation {
 
         if !Self::phase_matches_steps(phase, &steps) {
             return Err(AppOperationError::InvalidRestoredState);
+        }
+
+        if target_app
+            .as_ref()
+            .is_some_and(|app| app.installation_id() != &installation_id)
+        {
+            return Err(AppOperationError::TargetInstallationMismatch);
         }
 
         Ok(Self {
@@ -157,6 +219,7 @@ impl AppOperation {
             revision,
             started_at,
             updated_at,
+            target_app,
         })
     }
 
@@ -197,6 +260,10 @@ impl AppOperation {
 
     pub fn updated_at(&self) -> UnixTimestamp {
         self.updated_at
+    }
+
+    pub fn target_app(&self) -> Option<&InstalledAppSnapshot> {
+        self.target_app.as_ref()
     }
 
     pub fn is_terminal(&self) -> bool {
@@ -538,6 +605,9 @@ impl fmt::Display for AppOperationError {
                 write!(f, "app operation compensation is incomplete")
             }
             Self::InvalidRestoredState => write!(f, "restored app operation state is invalid"),
+            Self::TargetInstallationMismatch => {
+                write!(f, "app operation target has a different installation ID")
+            }
         }
     }
 }
@@ -629,6 +699,7 @@ mod tests {
                 .collect::<Vec<_>>(),
             vec![AppOperationResource::PlatformSnapshot]
         );
+        assert!(neither.target_app().is_some());
 
         let both = AppOperation::for_app(
             &installed_app(true, true),
@@ -646,6 +717,10 @@ mod tests {
                 AppOperationResource::OidcClient,
                 AppOperationResource::PlatformSnapshot,
             ]
+        );
+        assert_eq!(
+            both.target_app().unwrap().installation_id(),
+            both.installation_id()
         );
     }
 

@@ -51,7 +51,12 @@ impl AppLifecycle {
         self.register(app, state)
     }
 
-    pub(crate) fn restore(
+    /// Restores an already validated installation identity into staged state.
+    ///
+    /// This is used by snapshot and durable operation recovery. It performs
+    /// the same conflict checks and atomic derived-registry registration as a
+    /// new installation, but never generates a replacement installation ID.
+    pub fn restore(
         &self,
         app: InstalledApp,
         state: &mut PlatformState,
