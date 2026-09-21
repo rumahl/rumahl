@@ -104,11 +104,15 @@ Implemented:
   crash-visible apply/compensation steps and optimistic revisions;
 - restart-safe installation runner connecting database provisioning, OIDC
   recovery, runtime-secret delivery, and the final platform snapshot.
+- restart-safe uninstall execution that retains database data before removing
+  credentials and platform state;
+- resumable reverse-order install compensation after explicit terminal-failure
+  classification.
 
 Remaining:
 
 - explicit purge policy and audit workflow;
-- update, uninstall, and terminal compensation execution through the journal;
+- update execution with migration, health-check, backup, and rollback policy;
 - quota and storage-health reporting;
 - audit events without credentials or query contents.
 

@@ -4,9 +4,9 @@ use std::fmt;
 use rumahl_core::{
     AppDatabaseProvider, AppLifecycle, AppLifecycleError, AppManifest, AppOperation,
     AppOperationError, AppOperationId, AppOperationKind, AppOperationPhase, AppOperationRepository,
-    AppOperationResource, AppOperationResourceState, InMemoryGrantStore, InstalledApp,
-    PlatformSnapshot, PlatformSnapshotRepository, PlatformState, SecretStore, UnixTimestamp,
-    UnixTimestampError,
+    AppOperationResource, AppOperationResourceState, Identity, InMemoryGrantStore, InstallationId,
+    InstalledApp, PlatformSnapshot, PlatformSnapshotRepository, PlatformState, SecretStore,
+    UnixTimestamp, UnixTimestampError,
 };
 use rumahl_oidc_provider::{
     InstalledAppOriginResolver, OidcClientProvisioningError, OidcClientRegistrar,
@@ -23,10 +23,17 @@ pub struct AppInstallResult {
     app: InstalledApp,
 }
 
+#[derive(Debug, Clone)]
+pub struct AppUninstallResult {
+    operation_id: AppOperationId,
+    app: InstalledApp,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct AppOperationRecoveryReport {
     resumed: usize,
     committed: usize,
+    compensated: usize,
 }
 
 #[derive(Debug)]
@@ -39,6 +46,7 @@ pub enum AppOperationRunnerError {
     OidcProvisioning(BoxedError),
     SnapshotRepository(BoxedError),
     RuntimeSecretDelivery(BoxedError),
+    OperationNotFound(AppOperationId),
     MissingOperationTarget(AppOperationId),
     UnsupportedOperationKind(AppOperationKind),
     UnsupportedOperationPhase(AppOperationPhase),
@@ -49,7 +57,7 @@ pub enum AppOperationRunnerError {
     RecoveredTargetMismatch(AppOperationId),
 }
 
-/// Executes and resumes durable app installation plans.
+/// Executes and resumes durable app install and uninstall plans.
 ///
 /// Every participant call is bracketed by journal transitions. A participant
 /// left in `applying` is replayed after restart, so providers and runtime
@@ -120,10 +128,73 @@ where
         Ok(AppInstallResult { operation_id, app })
     }
 
+    pub fn uninstall(
+        &self,
+        installation_id: &InstallationId,
+        state: &mut PlatformState,
+        grant_store: &mut InMemoryGrantStore,
+    ) -> Result<AppUninstallResult, AppOperationRunnerError> {
+        let app = state
+            .installed_apps()
+            .get_by_installation_id(installation_id)
+            .cloned()
+            .ok_or(AppOperationRunnerError::AppLifecycle(
+                AppLifecycleError::InstallationNotFound,
+            ))?;
+        let mut staged_state = state.clone();
+        let mut staged_grants = grant_store.clone();
+        self.lifecycle
+            .uninstall(installation_id, &mut staged_state, &mut staged_grants)
+            .map_err(AppOperationRunnerError::AppLifecycle)?;
+        let started_at = UnixTimestamp::now().map_err(AppOperationRunnerError::Clock)?;
+        let operation = AppOperation::for_app(&app, AppOperationKind::Uninstall, started_at)
+            .map_err(AppOperationRunnerError::Operation)?;
+        let operation_id = *operation.id();
+
+        self.journal
+            .create(&operation)
+            .map_err(|error| AppOperationRunnerError::Journal(Box::new(error)))?;
+        self.apply_uninstall(operation, staged_state, staged_grants, state, grant_store)?;
+
+        Ok(AppUninstallResult { operation_id, app })
+    }
+
+    pub fn compensate_install(
+        &self,
+        operation_id: &AppOperationId,
+        state: &mut PlatformState,
+        grant_store: &mut InMemoryGrantStore,
+    ) -> Result<(), AppOperationRunnerError> {
+        let mut operation = self
+            .journal
+            .find(operation_id)
+            .map_err(|error| AppOperationRunnerError::Journal(Box::new(error)))?
+            .ok_or(AppOperationRunnerError::OperationNotFound(*operation_id))?;
+
+        if operation.kind() != AppOperationKind::Install {
+            return Err(AppOperationRunnerError::UnsupportedOperationKind(
+                operation.kind(),
+            ));
+        }
+        match operation.phase() {
+            AppOperationPhase::Applying => {
+                let at = transition_time(&operation)?;
+                operation
+                    .begin_compensation(at)
+                    .map_err(AppOperationRunnerError::Operation)?;
+                self.store_transition(&operation)?;
+            }
+            AppOperationPhase::Compensating => {}
+            phase => return Err(AppOperationRunnerError::UnsupportedOperationPhase(phase)),
+        }
+
+        self.compensate_install_operation(operation, state, grant_store)
+    }
+
     pub fn recover_incomplete(
         &self,
         state: &mut PlatformState,
-        grant_store: &InMemoryGrantStore,
+        grant_store: &mut InMemoryGrantStore,
     ) -> Result<AppOperationRecoveryReport, AppOperationRunnerError> {
         let operations = self
             .journal
@@ -131,47 +202,78 @@ where
             .map_err(|error| AppOperationRunnerError::Journal(Box::new(error)))?;
         let resumed = operations.len();
         let mut committed = 0;
+        let mut compensated = 0;
 
         for operation in operations {
-            if operation.kind() != AppOperationKind::Install {
-                return Err(AppOperationRunnerError::UnsupportedOperationKind(
-                    operation.kind(),
-                ));
-            }
-            if operation.phase() != AppOperationPhase::Applying {
-                return Err(AppOperationRunnerError::UnsupportedOperationPhase(
-                    operation.phase(),
-                ));
-            }
-
-            let target = operation
-                .target_app()
-                .ok_or_else(|| AppOperationRunnerError::MissingOperationTarget(*operation.id()))?;
-            let app = target.installed_app();
-            let mut staged = state.clone();
-
-            match staged
-                .installed_apps()
-                .get_by_installation_id(app.installation_id())
-            {
-                Some(existing) if existing == app => {}
-                Some(_) => {
-                    return Err(AppOperationRunnerError::RecoveredTargetMismatch(
-                        *operation.id(),
+            match (operation.kind(), operation.phase()) {
+                (AppOperationKind::Install, AppOperationPhase::Applying) => {
+                    let staged = self.stage_install_target(&operation, state)?;
+                    self.apply_install(operation, staged, state, grant_store)?;
+                    committed += 1;
+                }
+                (AppOperationKind::Install, AppOperationPhase::Compensating) => {
+                    self.compensate_install_operation(operation, state, grant_store)?;
+                    compensated += 1;
+                }
+                (AppOperationKind::Uninstall, AppOperationPhase::Applying) => {
+                    let (staged_state, staged_grants) =
+                        self.stage_without_target(&operation, state, grant_store)?;
+                    self.apply_uninstall(
+                        operation,
+                        staged_state,
+                        staged_grants,
+                        state,
+                        grant_store,
+                    )?;
+                    committed += 1;
+                }
+                (AppOperationKind::Update, _) => {
+                    return Err(AppOperationRunnerError::UnsupportedOperationKind(
+                        AppOperationKind::Update,
                     ));
                 }
-                None => {
-                    self.lifecycle
-                        .restore(app.clone(), &mut staged)
-                        .map_err(AppOperationRunnerError::AppLifecycle)?;
+                (_, phase) => {
+                    return Err(AppOperationRunnerError::UnsupportedOperationPhase(phase));
                 }
             }
-
-            self.apply_install(operation, staged, state, grant_store)?;
-            committed += 1;
         }
 
-        Ok(AppOperationRecoveryReport { resumed, committed })
+        Ok(AppOperationRecoveryReport {
+            resumed,
+            committed,
+            compensated,
+        })
+    }
+
+    fn stage_install_target(
+        &self,
+        operation: &AppOperation,
+        state: &PlatformState,
+    ) -> Result<PlatformState, AppOperationRunnerError> {
+        let target = operation
+            .target_app()
+            .ok_or_else(|| AppOperationRunnerError::MissingOperationTarget(*operation.id()))?;
+        let app = target.installed_app();
+        let mut staged = state.clone();
+
+        match staged
+            .installed_apps()
+            .get_by_installation_id(app.installation_id())
+        {
+            Some(existing) if existing == app => {}
+            Some(_) => {
+                return Err(AppOperationRunnerError::RecoveredTargetMismatch(
+                    *operation.id(),
+                ));
+            }
+            None => {
+                self.lifecycle
+                    .restore(app.clone(), &mut staged)
+                    .map_err(AppOperationRunnerError::AppLifecycle)?;
+            }
+        }
+
+        Ok(staged)
     }
 
     fn apply_install(
@@ -224,6 +326,172 @@ where
         *live = staged;
 
         Ok(())
+    }
+
+    fn apply_uninstall(
+        &self,
+        mut operation: AppOperation,
+        staged_state: PlatformState,
+        staged_grants: InMemoryGrantStore,
+        live_state: &mut PlatformState,
+        live_grants: &mut InMemoryGrantStore,
+    ) -> Result<(), AppOperationRunnerError> {
+        let app = operation
+            .target_app()
+            .ok_or_else(|| AppOperationRunnerError::MissingOperationTarget(*operation.id()))?
+            .installed_app()
+            .clone();
+        let steps = operation.steps().to_vec();
+
+        for step in steps {
+            match step.state() {
+                AppOperationResourceState::Applied => continue,
+                AppOperationResourceState::Pending => {
+                    let at = transition_time(&operation)?;
+                    operation
+                        .begin_resource(step.resource(), at)
+                        .map_err(AppOperationRunnerError::Operation)?;
+                    self.store_transition(&operation)?;
+                }
+                AppOperationResourceState::Applying => {}
+                state => {
+                    return Err(AppOperationRunnerError::UnexpectedResourceState {
+                        resource: step.resource(),
+                        state,
+                    });
+                }
+            }
+
+            self.apply_uninstall_resource(
+                &operation,
+                step.resource(),
+                &app,
+                &staged_state,
+                &staged_grants,
+            )?;
+
+            let at = transition_time(&operation)?;
+            operation
+                .complete_resource(step.resource(), at)
+                .map_err(AppOperationRunnerError::Operation)?;
+            self.store_transition(&operation)?;
+        }
+
+        let at = transition_time(&operation)?;
+        operation
+            .commit(at)
+            .map_err(AppOperationRunnerError::Operation)?;
+        self.store_transition(&operation)?;
+        *live_state = staged_state;
+        *live_grants = staged_grants;
+
+        Ok(())
+    }
+
+    fn compensate_install_operation(
+        &self,
+        mut operation: AppOperation,
+        live_state: &mut PlatformState,
+        live_grants: &mut InMemoryGrantStore,
+    ) -> Result<(), AppOperationRunnerError> {
+        let app = operation
+            .target_app()
+            .ok_or_else(|| AppOperationRunnerError::MissingOperationTarget(*operation.id()))?
+            .installed_app()
+            .clone();
+        let (staged_state, staged_grants) =
+            self.stage_without_target(&operation, live_state, live_grants)?;
+        let steps = operation.steps().iter().rev().cloned().collect::<Vec<_>>();
+
+        for step in steps {
+            match step.state() {
+                AppOperationResourceState::Pending | AppOperationResourceState::Compensated => {
+                    continue;
+                }
+                AppOperationResourceState::CompensationPending => {
+                    let at = transition_time(&operation)?;
+                    operation
+                        .begin_resource_compensation(step.resource(), at)
+                        .map_err(AppOperationRunnerError::Operation)?;
+                    self.store_transition(&operation)?;
+                }
+                AppOperationResourceState::Compensating => {}
+                state => {
+                    return Err(AppOperationRunnerError::UnexpectedResourceState {
+                        resource: step.resource(),
+                        state,
+                    });
+                }
+            }
+
+            self.compensate_install_resource(
+                &operation,
+                step.resource(),
+                &app,
+                &staged_state,
+                &staged_grants,
+            )?;
+
+            let at = transition_time(&operation)?;
+            operation
+                .complete_resource_compensation(step.resource(), at)
+                .map_err(AppOperationRunnerError::Operation)?;
+            self.store_transition(&operation)?;
+        }
+
+        let at = transition_time(&operation)?;
+        operation
+            .finish_compensation(at)
+            .map_err(AppOperationRunnerError::Operation)?;
+        self.store_transition(&operation)?;
+        *live_state = staged_state;
+        *live_grants = staged_grants;
+
+        Ok(())
+    }
+
+    fn stage_without_target(
+        &self,
+        operation: &AppOperation,
+        state: &PlatformState,
+        grant_store: &InMemoryGrantStore,
+    ) -> Result<(PlatformState, InMemoryGrantStore), AppOperationRunnerError> {
+        let app = operation
+            .target_app()
+            .ok_or_else(|| AppOperationRunnerError::MissingOperationTarget(*operation.id()))?
+            .installed_app();
+        let mut staged_state = state.clone();
+        let mut staged_grants = grant_store.clone();
+
+        match staged_state
+            .installed_apps()
+            .get_by_installation_id(app.installation_id())
+        {
+            Some(existing) if existing == app => {
+                self.lifecycle
+                    .uninstall(app.installation_id(), &mut staged_state, &mut staged_grants)
+                    .map_err(AppOperationRunnerError::AppLifecycle)?;
+            }
+            Some(_) => {
+                return Err(AppOperationRunnerError::RecoveredTargetMismatch(
+                    *operation.id(),
+                ));
+            }
+            None => {
+                if staged_state
+                    .installed_apps()
+                    .get_by_app_id(app.identity().app_id())
+                    .is_some()
+                {
+                    return Err(AppOperationRunnerError::RecoveredTargetMismatch(
+                        *operation.id(),
+                    ));
+                }
+                staged_grants.remove_for_subject(&Identity::App(app.identity().clone()));
+            }
+        }
+
+        Ok((staged_state, staged_grants))
     }
 
     fn apply_resource(
@@ -283,6 +551,68 @@ where
         }
     }
 
+    fn apply_uninstall_resource(
+        &self,
+        operation: &AppOperation,
+        resource: AppOperationResource,
+        app: &InstalledApp,
+        staged_state: &PlatformState,
+        staged_grants: &InMemoryGrantStore,
+    ) -> Result<(), AppOperationRunnerError> {
+        match resource {
+            AppOperationResource::AppDatabases => self
+                .database_provider
+                .retain_installation(app.installation_id())
+                .map(|_| ())
+                .map_err(|error| AppOperationRunnerError::DatabaseProvider(Box::new(error))),
+            AppOperationResource::OidcClient => self.remove_oidc_material(operation, app),
+            AppOperationResource::PlatformSnapshot => self
+                .snapshot_repository
+                .store(&PlatformSnapshot::capture(staged_state, staged_grants))
+                .map_err(|error| AppOperationRunnerError::SnapshotRepository(Box::new(error))),
+        }
+    }
+
+    fn compensate_install_resource(
+        &self,
+        operation: &AppOperation,
+        resource: AppOperationResource,
+        app: &InstalledApp,
+        staged_state: &PlatformState,
+        staged_grants: &InMemoryGrantStore,
+    ) -> Result<(), AppOperationRunnerError> {
+        match resource {
+            AppOperationResource::AppDatabases => self
+                .database_provider
+                .retain_installation(app.installation_id())
+                .map(|_| ())
+                .map_err(|error| AppOperationRunnerError::DatabaseProvider(Box::new(error))),
+            AppOperationResource::OidcClient => self.remove_oidc_material(operation, app),
+            AppOperationResource::PlatformSnapshot => self
+                .snapshot_repository
+                .store(&PlatformSnapshot::capture(staged_state, staged_grants))
+                .map_err(|error| AppOperationRunnerError::SnapshotRepository(Box::new(error))),
+        }
+    }
+
+    fn remove_oidc_material(
+        &self,
+        operation: &AppOperation,
+        app: &InstalledApp,
+    ) -> Result<(), AppOperationRunnerError> {
+        self.runtime_secrets
+            .remove_for_installation(operation.id(), app.installation_id())
+            .map_err(|error| AppOperationRunnerError::RuntimeSecretDelivery(Box::new(error)))?;
+        self.oidc_registrar
+            .repository()
+            .revoke_for_installation(app.installation_id(), operation.started_at())
+            .map_err(|error| AppOperationRunnerError::OidcProvisioning(Box::new(error)))?;
+        self.secret_store
+            .remove_for_installation(app.installation_id())
+            .map(|_| ())
+            .map_err(|error| AppOperationRunnerError::OidcProvisioning(Box::new(error)))
+    }
+
     fn store_transition(&self, operation: &AppOperation) -> Result<(), AppOperationRunnerError> {
         self.journal
             .store_transition(operation)
@@ -324,6 +654,16 @@ impl AppInstallResult {
     }
 }
 
+impl AppUninstallResult {
+    pub fn operation_id(&self) -> &AppOperationId {
+        &self.operation_id
+    }
+
+    pub fn app(&self) -> &InstalledApp {
+        &self.app
+    }
+}
+
 impl AppOperationRecoveryReport {
     pub fn resumed(&self) -> usize {
         self.resumed
@@ -331,6 +671,10 @@ impl AppOperationRecoveryReport {
 
     pub fn committed(&self) -> usize {
         self.committed
+    }
+
+    pub fn compensated(&self) -> usize {
+        self.compensated
     }
 }
 
@@ -350,19 +694,20 @@ impl fmt::Display for AppOperationRunnerError {
             Self::OidcProvisioning(_) => write!(f, "OIDC client provisioning failed"),
             Self::SnapshotRepository(_) => write!(f, "platform snapshot persistence failed"),
             Self::RuntimeSecretDelivery(_) => write!(f, "runtime secret delivery failed"),
+            Self::OperationNotFound(id) => write!(f, "app operation {id} was not found"),
             Self::MissingOperationTarget(id) => {
-                write!(f, "app operation {id} has no durable installation target")
+                write!(f, "app operation {id} has no durable app target")
             }
             Self::UnsupportedOperationKind(kind) => {
                 write!(
                     f,
-                    "app operation kind {kind:?} is not supported by the install runner"
+                    "app operation kind {kind:?} is not supported by the app operation runner"
                 )
             }
             Self::UnsupportedOperationPhase(phase) => {
                 write!(
                     f,
-                    "app operation phase {phase:?} is not supported by the install runner"
+                    "app operation phase {phase:?} is not supported by the app operation runner"
                 )
             }
             Self::UnexpectedResourceState { resource, state } => write!(
@@ -390,7 +735,8 @@ impl Error for AppOperationRunnerError {
             | Self::OidcProvisioning(error)
             | Self::SnapshotRepository(error)
             | Self::RuntimeSecretDelivery(error) => Some(error.as_ref()),
-            Self::MissingOperationTarget(_)
+            Self::OperationNotFound(_)
+            | Self::MissingOperationTarget(_)
             | Self::UnsupportedOperationKind(_)
             | Self::UnsupportedOperationPhase(_)
             | Self::UnexpectedResourceState { .. }
@@ -577,10 +923,14 @@ mod tests {
 
         fn revoke_for_installation(
             &self,
-            _installation_id: &InstallationId,
+            installation_id: &InstallationId,
             _revoked_at: UnixTimestamp,
         ) -> Result<usize, Self::Error> {
-            Ok(0)
+            let before = self.clients.borrow().len();
+            self.clients
+                .borrow_mut()
+                .retain(|client| client.installation_id() != installation_id);
+            Ok(before - self.clients.borrow().len())
         }
     }
 
@@ -693,7 +1043,9 @@ mod tests {
     #[derive(Default)]
     struct MemoryRuntimeSecrets {
         fail_next: Cell<bool>,
+        fail_next_removal: Cell<bool>,
         attempts: RefCell<Vec<DeliveryAttempt>>,
+        removals: RefCell<Vec<(AppOperationId, InstallationId)>>,
     }
 
     impl RuntimeSecretDelivery for MemoryRuntimeSecrets {
@@ -720,9 +1072,15 @@ mod tests {
 
         fn remove_for_installation(
             &self,
-            _operation_id: &AppOperationId,
-            _installation_id: &InstallationId,
+            operation_id: &AppOperationId,
+            installation_id: &InstallationId,
         ) -> Result<(), Self::Error> {
+            self.removals
+                .borrow_mut()
+                .push((*operation_id, *installation_id));
+            if self.fail_next_removal.replace(false) {
+                return Err(TestError("injected removal failure"));
+            }
             Ok(())
         }
     }
@@ -831,7 +1189,7 @@ mod tests {
         let runner = runner();
         runner.runtime_secrets().fail_next.set(true);
         let mut state = PlatformState::new();
-        let grants = InMemoryGrantStore::new();
+        let mut grants = InMemoryGrantStore::new();
 
         let error = runner
             .install(container_manifest(), &mut state, &grants)
@@ -851,10 +1209,11 @@ mod tests {
             .unwrap();
         assert_eq!(oidc_step.state(), AppOperationResourceState::Applying);
 
-        let report = runner.recover_incomplete(&mut state, &grants).unwrap();
+        let report = runner.recover_incomplete(&mut state, &mut grants).unwrap();
 
         assert_eq!(report.resumed(), 1);
         assert_eq!(report.committed(), 1);
+        assert_eq!(report.compensated(), 0);
         assert_eq!(state.installed_apps().len(), 1);
         let attempts = runner.runtime_secrets().attempts.borrow();
         assert_eq!(attempts.len(), 2);
@@ -862,5 +1221,119 @@ mod tests {
         assert_eq!(runner.oidc_repository().clients.borrow().len(), 1);
         assert_eq!(runner.secret_store().secrets.borrow().len(), 1);
         assert!(runner.journal().list_incomplete().unwrap().is_empty());
+    }
+
+    #[test]
+    fn uninstalls_all_resources_and_commits_removed_snapshot() {
+        let runner = runner();
+        let mut state = PlatformState::new();
+        let mut grants = InMemoryGrantStore::new();
+        let installed = runner
+            .install(container_manifest(), &mut state, &grants)
+            .unwrap();
+
+        let result = runner
+            .uninstall(installed.app().installation_id(), &mut state, &mut grants)
+            .unwrap();
+
+        assert_eq!(result.app(), installed.app());
+        assert!(state.installed_apps().is_empty());
+        assert!(runner.database_provider().provisioned.borrow().is_empty());
+        assert!(runner.oidc_repository().clients.borrow().is_empty());
+        assert!(runner.secret_store().secrets.borrow().is_empty());
+        assert_eq!(runner.runtime_secrets().removals.borrow().len(), 1);
+        assert!(
+            runner
+                .snapshot_repository()
+                .load()
+                .unwrap()
+                .unwrap()
+                .installed_apps()
+                .is_empty()
+        );
+        assert_eq!(
+            runner
+                .journal()
+                .find(result.operation_id())
+                .unwrap()
+                .unwrap()
+                .phase(),
+            AppOperationPhase::Committed
+        );
+    }
+
+    #[test]
+    fn compensates_failed_install_in_reverse_resource_order() {
+        let runner = runner();
+        runner.runtime_secrets().fail_next.set(true);
+        let mut state = PlatformState::new();
+        let mut grants = InMemoryGrantStore::new();
+
+        runner
+            .install(container_manifest(), &mut state, &grants)
+            .unwrap_err();
+        let operation_id = *runner.journal().list_incomplete().unwrap()[0].id();
+
+        runner
+            .compensate_install(&operation_id, &mut state, &mut grants)
+            .unwrap();
+
+        assert!(state.installed_apps().is_empty());
+        assert!(runner.database_provider().provisioned.borrow().is_empty());
+        assert!(runner.oidc_repository().clients.borrow().is_empty());
+        assert!(runner.secret_store().secrets.borrow().is_empty());
+        assert_eq!(runner.runtime_secrets().removals.borrow().len(), 1);
+        assert_eq!(
+            runner
+                .journal()
+                .find(&operation_id)
+                .unwrap()
+                .unwrap()
+                .phase(),
+            AppOperationPhase::Compensated
+        );
+        assert!(runner.journal().list_incomplete().unwrap().is_empty());
+    }
+
+    #[test]
+    fn resumes_interrupted_install_compensation() {
+        let runner = runner();
+        runner.runtime_secrets().fail_next.set(true);
+        let mut state = PlatformState::new();
+        let mut grants = InMemoryGrantStore::new();
+
+        runner
+            .install(container_manifest(), &mut state, &grants)
+            .unwrap_err();
+        let operation_id = *runner.journal().list_incomplete().unwrap()[0].id();
+        runner.runtime_secrets().fail_next_removal.set(true);
+
+        let error = runner
+            .compensate_install(&operation_id, &mut state, &mut grants)
+            .unwrap_err();
+        assert!(matches!(
+            error,
+            AppOperationRunnerError::RuntimeSecretDelivery(_)
+        ));
+
+        let report = runner.recover_incomplete(&mut state, &mut grants).unwrap();
+
+        assert_eq!(report.resumed(), 1);
+        assert_eq!(report.committed(), 0);
+        assert_eq!(report.compensated(), 1);
+        assert!(state.installed_apps().is_empty());
+        assert!(runner.database_provider().provisioned.borrow().is_empty());
+        assert!(runner.oidc_repository().clients.borrow().is_empty());
+        assert!(runner.secret_store().secrets.borrow().is_empty());
+        assert_eq!(runner.runtime_secrets().removals.borrow().len(), 2);
+        assert_eq!(
+            runner
+                .journal()
+                .find(&operation_id)
+                .unwrap()
+                .unwrap()
+                .phase(),
+            AppOperationPhase::Compensated
+        );
     }
 }

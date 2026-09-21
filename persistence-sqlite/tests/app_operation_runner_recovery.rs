@@ -8,11 +8,11 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use rumahl_app_operations::{AppOperationRunner, AppOperationRunnerError, RuntimeSecretDelivery};
 use rumahl_core::{
-    AppDatabaseDeclaration, AppDatabaseId, AppId, AppManifest, AppOperationRepository, AppVersion,
-    InMemoryGrantStore, InstalledApp, OidcCallbackPath, OidcClientDeclaration, OidcClientType,
-    OidcScope, PackagePath, PlatformSnapshotRepository, PlatformState, PublisherId,
-    RuntimeDescriptor, RuntimeEndpointId, RuntimeEntrypoint, RuntimeEntrypointId, SecretPurpose,
-    SecretStore,
+    AppDatabaseDeclaration, AppDatabaseId, AppDatabaseInstallationState, AppDatabaseProvider,
+    AppId, AppManifest, AppOperationPhase, AppOperationRepository, AppVersion, InMemoryGrantStore,
+    InstalledApp, OidcCallbackPath, OidcClientDeclaration, OidcClientType, OidcScope, PackagePath,
+    PlatformSnapshotRepository, PlatformState, PublisherId, RuntimeDescriptor, RuntimeEndpointId,
+    RuntimeEntrypoint, RuntimeEntrypointId, SecretPurpose, SecretStore,
 };
 use rumahl_oidc_provider::{
     InstalledAppOriginResolver, OIDC_CLIENT_SECRET_PURPOSE, OidcClientId, OidcClientRepository,
@@ -85,7 +85,9 @@ struct DeliveryAttempt {
 #[derive(Default)]
 struct DeliveryState {
     fail_next: bool,
+    fail_next_removal: bool,
     attempts: Vec<DeliveryAttempt>,
+    removals: Vec<(String, String)>,
 }
 
 #[derive(Clone)]
@@ -119,9 +121,17 @@ impl RuntimeSecretDelivery for TestRuntimeSecrets {
 
     fn remove_for_installation(
         &self,
-        _operation_id: &rumahl_core::AppOperationId,
-        _installation_id: &rumahl_core::InstallationId,
+        operation_id: &rumahl_core::AppOperationId,
+        installation_id: &rumahl_core::InstallationId,
     ) -> Result<(), Self::Error> {
+        let mut state = self.state.lock().map_err(|_| TestError("lock poisoned"))?;
+        state
+            .removals
+            .push((operation_id.to_string(), installation_id.to_string()));
+        if state.fail_next_removal {
+            state.fail_next_removal = false;
+            return Err(TestError("injected removal failure"));
+        }
         Ok(())
     }
 }
@@ -207,13 +217,15 @@ fn resumes_installation_across_reopened_sqlite_repositories() {
     let database_root = root.join("app-databases");
     let delivery_state = Arc::new(Mutex::new(DeliveryState {
         fail_next: true,
+        fail_next_removal: false,
         attempts: Vec::new(),
+        removals: Vec::new(),
     }));
     let delivery = TestRuntimeSecrets {
         state: Arc::clone(&delivery_state),
     };
     let mut state = PlatformState::new();
-    let grants = InMemoryGrantStore::new();
+    let mut grants = InMemoryGrantStore::new();
 
     {
         let runner = runner(&state_path, &database_root, delivery.clone());
@@ -228,9 +240,10 @@ fn resumes_installation_across_reopened_sqlite_repositories() {
 
     {
         let runner = runner(&state_path, &database_root, delivery);
-        let report = runner.recover_incomplete(&mut state, &grants).unwrap();
+        let report = runner.recover_incomplete(&mut state, &mut grants).unwrap();
         assert_eq!(report.resumed(), 1);
         assert_eq!(report.committed(), 1);
+        assert_eq!(report.compensated(), 0);
         assert!(runner.journal().list_incomplete().unwrap().is_empty());
         assert_eq!(state.installed_apps().len(), 1);
         assert_eq!(
@@ -263,6 +276,106 @@ fn resumes_installation_across_reopened_sqlite_repositories() {
         assert_eq!(attempts.attempts.len(), 2);
         assert!(attempts.attempts[0] == attempts.attempts[1]);
         assert_eq!(attempts.attempts[1].client_id, client.client_id().as_str());
+    }
+
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn resumes_uninstall_across_reopened_sqlite_repositories() {
+    let root = test_root();
+    fs::create_dir(&root).unwrap();
+    let state_path = root.join("platform.sqlite3");
+    let database_root = root.join("app-databases");
+    let delivery_state = Arc::new(Mutex::new(DeliveryState::default()));
+    let delivery = TestRuntimeSecrets {
+        state: Arc::clone(&delivery_state),
+    };
+    let mut state = PlatformState::new();
+    let mut grants = InMemoryGrantStore::new();
+    let installed_app;
+    let uninstall_operation_id;
+
+    {
+        let runner = runner(&state_path, &database_root, delivery.clone());
+        installed_app = runner
+            .install(manifest(), &mut state, &grants)
+            .unwrap()
+            .app()
+            .clone();
+        delivery_state.lock().unwrap().fail_next_removal = true;
+
+        let error = runner
+            .uninstall(installed_app.installation_id(), &mut state, &mut grants)
+            .unwrap_err();
+
+        assert!(matches!(
+            error,
+            AppOperationRunnerError::RuntimeSecretDelivery(_)
+        ));
+        assert_eq!(state.installed_apps().len(), 1);
+        let incomplete = runner.journal().list_incomplete().unwrap();
+        assert_eq!(incomplete.len(), 1);
+        uninstall_operation_id = *incomplete[0].id();
+        assert_eq!(
+            runner
+                .database_provider()
+                .installation_state(installed_app.installation_id())
+                .unwrap(),
+            AppDatabaseInstallationState::Retained
+        );
+    }
+
+    {
+        let runner = runner(&state_path, &database_root, delivery);
+        let report = runner.recover_incomplete(&mut state, &mut grants).unwrap();
+
+        assert_eq!(report.resumed(), 1);
+        assert_eq!(report.committed(), 1);
+        assert_eq!(report.compensated(), 0);
+        assert!(state.installed_apps().is_empty());
+        assert!(
+            runner
+                .snapshot_repository()
+                .load()
+                .unwrap()
+                .unwrap()
+                .installed_apps()
+                .is_empty()
+        );
+        assert_eq!(
+            runner
+                .database_provider()
+                .installation_state(installed_app.installation_id())
+                .unwrap(),
+            AppDatabaseInstallationState::Retained
+        );
+        assert!(
+            runner
+                .oidc_repository()
+                .find_active_by_installation(installed_app.installation_id())
+                .unwrap()
+                .is_none()
+        );
+        let purpose = SecretPurpose::parse(OIDC_CLIENT_SECRET_PURPOSE).unwrap();
+        assert!(
+            runner
+                .secret_store()
+                .find_by_owner_and_purpose(installed_app.identity(), &purpose)
+                .unwrap()
+                .is_none()
+        );
+        assert_eq!(
+            runner
+                .journal()
+                .find(&uninstall_operation_id)
+                .unwrap()
+                .unwrap()
+                .phase(),
+            AppOperationPhase::Committed
+        );
+        assert!(runner.journal().list_incomplete().unwrap().is_empty());
+        assert_eq!(delivery_state.lock().unwrap().removals.len(), 2);
     }
 
     fs::remove_dir_all(root).unwrap();

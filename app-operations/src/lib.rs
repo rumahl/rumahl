@@ -8,5 +8,6 @@ mod runtime_secrets;
 
 pub use runner::{
     AppInstallResult, AppOperationRecoveryReport, AppOperationRunner, AppOperationRunnerError,
+    AppUninstallResult,
 };
 pub use runtime_secrets::RuntimeSecretDelivery;

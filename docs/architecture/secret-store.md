@@ -47,9 +47,10 @@ and define backup/recovery behavior before encrypted secrets are relied upon.
 
 Secret values are zeroized when their domain wrappers are dropped, and debug
 output exposes only non-secret metadata. Removal by `InstallationId` is one
-atomic store statement. Higher-level app operations still decide whether an
-install failure removes a pending secret or whether uninstall revokes the
-dependent credential before deleting its encrypted delivery material.
+atomic store statement. The operation runner removes runtime material, revokes
+the dependent OIDC client, and then deletes the encrypted value during
+uninstall or install compensation. Each action is idempotent so an interrupted
+removal can resume from its journal state.
 
 For confidential OIDC clients, the implemented registration sequence is:
 
@@ -69,7 +70,7 @@ client, and value idempotent and reject a changed value. The journal's applied
 transition is the durable delivery acknowledgement.
 
 Production Buildroot still needs the concrete runtime channel and the
-device-bound `SecretEncryptionKeyProvider`. Install compensation, uninstall
-revocation, and final secret removal remain operation-policy work.
+device-bound `SecretEncryptionKeyProvider`. Update-time credential rotation
+and its rollback policy remain operation-policy work.
 
 Public OIDC clients never create this secret.

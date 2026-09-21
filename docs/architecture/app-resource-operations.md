@@ -1,8 +1,8 @@
 # App resource operations
 
-Status: durable operation state machine, SQLite journal, and restart-safe
-installation runner implemented. Update, uninstall, and terminal compensation
-execution remain to be connected.
+Status: durable operation state machine, SQLite journal, restart-safe install
+and uninstall execution, and resumable install compensation implemented. Update
+execution and production runtime adapters remain to be connected.
 
 ## Purpose
 
@@ -86,9 +86,9 @@ The repository lists incomplete operations in stable start order for startup
 recovery. Stored targets, identifiers, and states are parsed back through the
 core constructors; invalid or unknown data fails closed.
 
-## Installation runner
+## Operation runner
 
-`rumahl-app-operations::AppOperationRunner` now:
+For install, `rumahl-app-operations::AppOperationRunner`:
 
 1. create the journal entry before the first external side effect;
 2. persist `applying` before and `applied` after each participant call;
@@ -110,10 +110,32 @@ repository, reopens the journal, database provider, OIDC repository, snapshot
 repository, and encrypted secret store, then completes the same installation
 with the same client identity and secret digest.
 
+For uninstall, the runner stages removal from platform state and grants, then:
+
+1. moves app databases to retained, inaccessible storage;
+2. removes runtime OIDC material, revokes the active client, and deletes the
+   encrypted client secret;
+3. stores the removed platform snapshot;
+4. commits the journal before publishing the staged state and grants.
+
+An interrupted uninstall always resumes forward. Its provider actions are
+idempotent, including retained databases and already-removed credentials. The
+SQLite integration test injects a failure during runtime-secret removal,
+reopens every repository, and verifies that the same uninstall commits.
+
+Install failures remain `applying` until the caller either retries them or
+explicitly classifies them as terminal through `compensate_install`. That
+transition is durable. Compensation replays the touched resources in reverse
+order, stores each compensation transition, and publishes removed state only
+after the operation reaches `compensated`. Startup recovery also resumes an
+interrupted compensation.
+
 ## Remaining integration
 
-- operation-specific update and uninstall execution;
-- explicit terminal-failure classification and compensation policy;
+- update execution with version validation, database migration/backup, health
+  checks, and rollback;
+- the higher-level policy that classifies an install failure as retryable or
+  terminal before invoking compensation;
 - runtime implementations of the secret-delivery contract;
 - audit events without secrets, credentials, or database queries.
 
