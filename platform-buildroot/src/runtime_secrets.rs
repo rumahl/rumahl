@@ -302,7 +302,6 @@ mod tests {
     use std::fs;
     use std::os::unix::net::UnixListener;
     use std::thread;
-    use std::time::{SystemTime, UNIX_EPOCH};
 
     use rumahl_core::{
         AppId, AppManifest, AppManifestValidator, AppVersion, PackagePath, PublisherId,
@@ -312,11 +311,11 @@ mod tests {
     use super::*;
 
     fn test_root() -> PathBuf {
-        let nonce = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap()
-            .as_nanos();
-        PathBuf::from("/private/tmp").join(format!("rmh-rs-{}-{nonce}", std::process::id()))
+        PathBuf::from("/private/tmp").join(format!(
+            "rmh-rs-{}-{}",
+            std::process::id(),
+            AppOperationId::new()
+        ))
     }
 
     fn current_uid() -> u32 {

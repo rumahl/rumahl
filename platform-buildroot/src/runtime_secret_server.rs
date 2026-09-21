@@ -454,7 +454,6 @@ mod tests {
     use std::convert::Infallible;
     use std::sync::{Arc, Mutex};
     use std::thread;
-    use std::time::{SystemTime, UNIX_EPOCH};
 
     use rumahl_app_operations::RuntimeSecretDelivery;
     use rumahl_core::{
@@ -511,11 +510,11 @@ mod tests {
     }
 
     fn test_root() -> PathBuf {
-        let nonce = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap()
-            .as_nanos();
-        PathBuf::from("/private/tmp").join(format!("rmh-rss-{}-{nonce}", std::process::id()))
+        PathBuf::from("/private/tmp").join(format!(
+            "rmh-rss-{}-{}",
+            std::process::id(),
+            AppOperationId::new()
+        ))
     }
 
     fn current_uid() -> u32 {
