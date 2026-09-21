@@ -44,12 +44,14 @@ binding model in more detail:
 ## Runtime secret channel
 
 `UnixRuntimeSecretDelivery` sends OIDC runtime material to a local supervisor
-over an absolute pathname Unix stream socket. Before writing any request, the
-client authenticates the connected peer UID with Linux `SO_PEERCRED` (and
-`getpeereid` in macOS host tests). It applies read/write deadlines and uses a
+over an absolute pathname Unix stream socket. `UnixRuntimeSecretServer`
+provides the receiving side and delegates validated requests to a
+`RuntimeSecretTarget` implemented by the supervisor. Both endpoints
+authenticate the peer UID with Linux `SO_PEERCRED` (and `getpeereid` in macOS
+host tests). They apply read/write deadlines and use a bounded,
 length-prefixed binary protocol rather than command arguments, environment
-variables, or durable files. The request buffer holding a delivered secret is
-zeroized on drop.
+variables, or durable files. Buffers holding delivered secrets are zeroized on
+drop.
 
 Protocol `RSH1` request layout:
 
@@ -66,11 +68,15 @@ The supervisor replies with `RSH1` plus one status byte: `0` acknowledges the
 operation, `1` reports a conflicting replay, and `2` rejects it. Unknown or
 truncated responses fail closed.
 
-The supervisor must additionally:
+The server binds without removing an existing path, changes the socket mode to
+`0600`, rejects oversized, malformed, trailing, or domain-invalid fields, and
+maps the target's applied, idempotent, conflicting, or rejected result back to
+the client. The service manager must create a private, volatile parent
+directory and remove a stale socket before process startup.
 
-- create the socket under a volatile root-owned directory such as `/run` and
-  restrict its filesystem mode;
-- authenticate the connecting platform process from kernel peer credentials;
+The supervisor's `RuntimeSecretTarget` must additionally:
+
+- run the server socket under a volatile root-owned directory such as `/run`;
 - make delivery idempotent for operation ID, installation ID, client ID, and
   secret digest, returning conflict if the value changes;
 - inject material only into the target installation's runtime namespace;

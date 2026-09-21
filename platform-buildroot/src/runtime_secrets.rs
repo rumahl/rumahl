@@ -11,13 +11,13 @@ use rumahl_core::{AppOperationId, InstallationId, InstalledApp};
 use rumahl_oidc_provider::{OidcClientId, OidcClientSecret};
 use zeroize::Zeroizing;
 
-const PROTOCOL_MAGIC: &[u8; 4] = b"RSH1";
-const OP_DELIVER_OIDC: u8 = 1;
-const OP_REMOVE_INSTALLATION: u8 = 2;
-const STATUS_OK: u8 = 0;
-const STATUS_CONFLICT: u8 = 1;
-const STATUS_REJECTED: u8 = 2;
-const RESPONSE_LENGTH: usize = 5;
+pub(crate) const PROTOCOL_MAGIC: &[u8; 4] = b"RSH1";
+pub(crate) const OP_DELIVER_OIDC: u8 = 1;
+pub(crate) const OP_REMOVE_INSTALLATION: u8 = 2;
+pub(crate) const STATUS_OK: u8 = 0;
+pub(crate) const STATUS_CONFLICT: u8 = 1;
+pub(crate) const STATUS_REJECTED: u8 = 2;
+pub(crate) const RESPONSE_LENGTH: usize = 5;
 const DEFAULT_TIMEOUT: Duration = Duration::from_secs(5);
 
 #[derive(Debug, Clone)]
@@ -204,7 +204,7 @@ fn encode_request(
 }
 
 #[cfg(target_os = "linux")]
-fn peer_uid(stream: &UnixStream) -> io::Result<u32> {
+pub(crate) fn peer_uid(stream: &UnixStream) -> io::Result<u32> {
     let mut credentials = libc::ucred {
         pid: 0,
         uid: 0,
@@ -235,7 +235,7 @@ fn peer_uid(stream: &UnixStream) -> io::Result<u32> {
 }
 
 #[cfg(target_os = "macos")]
-fn peer_uid(stream: &UnixStream) -> io::Result<u32> {
+pub(crate) fn peer_uid(stream: &UnixStream) -> io::Result<u32> {
     let mut uid = 0;
     let mut gid = 0;
     // SAFETY: both output pointers are valid and the stream owns a valid fd.
