@@ -7,5 +7,6 @@ members = [
     "core",
     "oidc-provider",
     "persistence-sqlite",
+    "platform-buildroot",
     "platform-api",
 ]

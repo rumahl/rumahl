@@ -601,6 +601,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "rumahl-platform-buildroot"
+version = "0.1.0"
+dependencies = [
+ "libc",
+ "rumahl-app-operations",
+ "rumahl-core",
+ "rumahl-oidc-provider",
+ "rumahl-persistence-sqlite",
+ "zeroize",
+]
+
+[[package]]
 name = "rusqlite"
 version = "0.40.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"

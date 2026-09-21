@@ -136,7 +136,8 @@ interrupted compensation.
   checks, and rollback;
 - the higher-level policy that classifies an install failure as retryable or
   terminal before invoking compensation;
-- runtime implementations of the secret-delivery contract;
+- runtime-supervisor implementation of the authenticated secret-channel
+  protocol and namespace-specific injection;
 - audit events without secrets, credentials, or database queries.
 
 Provider-specific credentials, filesystem paths, and connection types remain

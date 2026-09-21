@@ -119,7 +119,8 @@ Remaining:
 ### D3 — runtime access
 
 - authenticated React/platform API adapter;
-- container secret-channel adapter and credential rotation;
+- runtime-supervisor endpoint for the implemented authenticated Unix-socket
+  secret-channel client, plus credential rotation;
 - no network exposure outside the app runtime namespace;
 - rate, connection, and resource limits per installation.
 
@@ -127,7 +128,8 @@ Remaining:
 
 - supervised database services and durable storage ownership;
 - transactional backup/restore and update rollback;
-- encrypted credential storage and root-key integration;
+- provisioned TPM sealing objects, PCR/update policy, and recovery workflow for
+  the implemented root-key adapter;
 - power-loss, low-disk, corruption, and recovery tests.
 
 ## Acceptance criteria

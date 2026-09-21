@@ -282,8 +282,9 @@ plain values.
 The first `SecretStore` implementation now encrypts installation-bound values
 with AES-256-GCM, authenticates their owner/purpose metadata, and resolves root
 keys through a separate key-provider contract. SQLite never contains the root
-key or reusable plaintext. Buildroot still needs to supply the production
-device-bound key provider.
+key or reusable plaintext. The Buildroot adapter resolves active and historical
+keys by unsealing device-bound TPM objects; device provisioning and measured
+boot/update policy remain part of image integration.
 
 `OidcClientRegistrar::register_or_recover_installed_app` now stores a
 confidential client secret before inserting its digest-only client record. A
@@ -292,8 +293,10 @@ missing secrets or declaration mismatches fail closed. Public clients never
 create secret material. The operation runner now persists successful runtime
 delivery by completing the OIDC journal step. Uninstall and install
 compensation remove runtime material, revoke the active registration, and
-delete the encrypted secret through replay-safe journal steps. The production
-Buildroot runtime channel remains to be implemented.
+delete the encrypted secret through replay-safe journal steps. The Buildroot
+client sends these operations over an authenticated Unix socket; the runtime
+supervisor endpoint and namespace-specific injection remain to be wired into
+the image.
 
 ## Delivery phases
 

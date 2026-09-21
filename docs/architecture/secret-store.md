@@ -1,8 +1,9 @@
 # Secret store
 
 Status: engine-neutral core contract, encrypted SQLite adapter, recoverable
-OIDC client-secret registration, and journalled runtime delivery acknowledgement
-implemented; the Buildroot root-key and runtime-channel providers remain.
+OIDC client-secret registration, journalled delivery acknowledgement, and
+Buildroot-facing TPM/runtime-channel adapters implemented. Device provisioning
+and the runtime supervisor endpoint remain deployment work.
 
 ## Boundary
 
@@ -39,9 +40,13 @@ written to the database. The active key encrypts new values; historical keys
 remain addressable by key ID for reads and later rotation. Missing keys and
 authentication failures fail closed.
 
-The local test provider uses an in-memory key only. Production Buildroot must
-provide a device-bound key source, preferably TPM-backed where hardware allows,
-and define backup/recovery behavior before encrypted secrets are relied upon.
+`Tpm2UnsealKeyProvider` maps active and historical key IDs to TPM-sealed object
+contexts and invokes a fixed absolute `tpm2_unseal` executable without a shell.
+It accepts exactly 32 bytes, supports policy-session authorization without
+placing a password in process arguments, zeroizes captured output, and fails
+closed on any tool or length error. Buildroot provisioning must create the
+device-bound objects, bind their policy to the intended measured-boot/update
+state, protect the configuration, and define backup/recovery behavior.
 
 ## Lifecycle
 
@@ -69,8 +74,15 @@ The runtime adapter must make a replay for the same operation, installation,
 client, and value idempotent and reject a changed value. The journal's applied
 transition is the durable delivery acknowledgement.
 
-Production Buildroot still needs the concrete runtime channel and the
-device-bound `SecretEncryptionKeyProvider`. Update-time credential rotation
-and its rollback policy remain operation-policy work.
+`UnixRuntimeSecretDelivery` is the concrete Buildroot-side client channel. It
+authenticates the local supervisor UID using kernel Unix-socket peer
+credentials before sending a length-prefixed request, uses bounded I/O waits,
+zeroizes secret-bearing request buffers, and fails closed on replay conflicts
+or malformed acknowledgements. The supervisor endpoint must enforce the other
+side of the protocol, target the correct runtime namespace, keep plaintext out
+of durable storage and logs, and make delivery/removal idempotent.
+
+Update-time credential rotation and its rollback policy remain
+operation-policy work.
 
 Public OIDC clients never create this secret.
