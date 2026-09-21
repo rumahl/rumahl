@@ -294,8 +294,9 @@ create secret material. The operation runner now persists successful runtime
 delivery by completing the OIDC journal step. Uninstall and install
 compensation remove runtime material, revoke the active registration, and
 delete the encrypted secret through replay-safe journal steps. The Buildroot
-client sends these operations over an authenticated Unix socket; the runtime
-supervisor endpoint and namespace-specific injection remain to be wired into
+client sends these operations to the authenticated Unix-socket server; its
+validated target is invoked only after the runtime provider has prepared the
+installation namespace. The concrete namespace target remains to be wired into
 the image.
 
 ## Delivery phases

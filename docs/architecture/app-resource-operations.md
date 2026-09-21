@@ -1,8 +1,9 @@
 # App resource operations
 
 Status: durable operation state machine, SQLite journal, restart-safe install
-and uninstall execution, and resumable install compensation implemented. Update
-execution and production runtime adapters remain to be connected.
+and uninstall execution, resumable install compensation, and the runtime
+provider boundary implemented. Update execution and production runtime
+adapters remain to be connected.
 
 ## Purpose
 
@@ -10,8 +11,8 @@ Installing, updating, or uninstalling an app crosses persistence boundaries:
 
 - the platform snapshot;
 - optional app databases;
-- an optional OIDC client;
-- later, runtime instances and secret delivery.
+- a prepared and activated runtime instance;
+- an optional OIDC client and runtime-secret delivery.
 
 These resources cannot share one database transaction. rumahl therefore uses
 a durable operation journal. The journal does not claim that independent
@@ -26,15 +27,22 @@ declarations. The current install order is:
 
 ```text
 optional app databases
+prepare runtime instance and secret namespace
 optional OIDC client
+activate runtime instance
 platform snapshot
 ```
 
-An app that declares neither optional feature receives only the platform
-snapshot step. Database use never creates an OIDC step, and OIDC use never
-creates a database step. The platform snapshot is always last, so live durable
-platform state cannot advertise resources whose provider step has not
-completed.
+Every app receives the two runtime steps. An app that declares neither optional
+feature is still prepared and activated before its platform snapshot is
+published. Database use never creates an OIDC step, and OIDC use never creates
+a database step. The platform snapshot is always last, so live durable platform
+state cannot advertise resources whose provider step has not completed.
+
+Uninstall uses its own safe order: stop the runtime, revoke and remove runtime
+secrets, remove the prepared runtime, retain databases, then persist the
+removed snapshot. Install compensation naturally performs the equivalent work
+in reverse install order.
 
 The same journal model supports install, update, and uninstall operations.
 Execution policy remains operation-specific: an install can compensate on a
@@ -79,8 +87,10 @@ and all ordered resource steps in one `IMMEDIATE` SQLite transaction with WAL
 and `synchronous=FULL`. Persisting the target is essential: before the final
 platform snapshot exists, an `InstallationId` alone cannot reconstruct the
 manifest and derived registries after a process restart. Existing journals are
-migrated with a nullable target column; the install runner rejects legacy
-incomplete installs that have no target instead of guessing.
+migrated with a nullable target column and an expanded runtime-resource
+constraint. The runner rejects incomplete legacy plans that lack the runtime
+preparation/activation boundary instead of delivering secrets to a namespace
+that may not exist.
 
 The repository lists incomplete operations in stable start order for startup
 recovery. Stored targets, identifiers, and states are parsed back through the
@@ -93,11 +103,12 @@ For install, `rumahl-app-operations::AppOperationRunner`:
 1. create the journal entry before the first external side effect;
 2. persist `applying` before and `applied` after each participant call;
 3. invoke the implemented idempotent SQLite database reconciliation and
-   secret-safe OIDC registration recovery after startup;
-4. deliver a confidential OIDC secret through an idempotent privileged runtime
-   channel before marking the OIDC step applied;
-5. store the platform snapshot as the final resource step;
-6. commit the journal and only then publish cloned in-memory `PlatformState`.
+   prepare an isolated runtime without starting app code;
+4. run secret-safe OIDC registration recovery and deliver a confidential OIDC
+   secret through an idempotent privileged runtime channel;
+5. activate the prepared runtime only after secret delivery succeeds;
+6. store the platform snapshot as the final resource step;
+7. commit the journal and only then publish cloned in-memory `PlatformState`.
 
 If a provider or delivery attempt fails, the operation remains in its durable
 `applying` state. Startup recovery reconstructs the staged installation from
@@ -112,11 +123,13 @@ with the same client identity and secret digest.
 
 For uninstall, the runner stages removal from platform state and grants, then:
 
-1. moves app databases to retained, inaccessible storage;
+1. deactivates the runtime so app code can no longer consume credentials;
 2. removes runtime OIDC material, revokes the active client, and deletes the
    encrypted client secret;
-3. stores the removed platform snapshot;
-4. commits the journal before publishing the staged state and grants.
+3. removes the prepared runtime and its namespace;
+4. moves app databases to retained, inaccessible storage;
+5. stores the removed platform snapshot;
+6. commits the journal before publishing the staged state and grants.
 
 An interrupted uninstall always resumes forward. Its provider actions are
 idempotent, including retained databases and already-removed credentials. The
@@ -136,8 +149,8 @@ interrupted compensation.
   checks, and rollback;
 - the higher-level policy that classifies an install failure as retryable or
   terminal before invoking compensation;
-- runtime-supervisor implementation of the authenticated secret-channel
-  protocol and namespace-specific injection;
+- production runtime-provider implementation and namespace-specific secret
+  target for the authenticated supervisor channel;
 - audit events without secrets, credentials, or database queries.
 
 Provider-specific credentials, filesystem paths, and connection types remain

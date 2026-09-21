@@ -4,9 +4,9 @@ use std::fmt;
 use rumahl_core::{
     AppDatabaseProvider, AppLifecycle, AppLifecycleError, AppManifest, AppOperation,
     AppOperationError, AppOperationId, AppOperationKind, AppOperationPhase, AppOperationRepository,
-    AppOperationResource, AppOperationResourceState, Identity, InMemoryGrantStore, InstallationId,
-    InstalledApp, PlatformSnapshot, PlatformSnapshotRepository, PlatformState, SecretStore,
-    UnixTimestamp, UnixTimestampError,
+    AppOperationResource, AppOperationResourceState, AppRuntimeProvider, Identity,
+    InMemoryGrantStore, InstallationId, InstalledApp, PlatformSnapshot, PlatformSnapshotRepository,
+    PlatformState, SecretStore, UnixTimestamp, UnixTimestampError,
 };
 use rumahl_oidc_provider::{
     InstalledAppOriginResolver, OidcClientProvisioningError, OidcClientRegistrar,
@@ -36,6 +36,11 @@ pub struct AppOperationRecoveryReport {
     compensated: usize,
 }
 
+pub struct AppRuntimeServices<U, T> {
+    provider: U,
+    secrets: T,
+}
+
 #[derive(Debug)]
 pub enum AppOperationRunnerError {
     Clock(UnixTimestampError),
@@ -43,11 +48,13 @@ pub enum AppOperationRunnerError {
     Operation(AppOperationError),
     Journal(BoxedError),
     DatabaseProvider(BoxedError),
+    RuntimeProvider(BoxedError),
     OidcProvisioning(BoxedError),
     SnapshotRepository(BoxedError),
     RuntimeSecretDelivery(BoxedError),
     OperationNotFound(AppOperationId),
     MissingOperationTarget(AppOperationId),
+    UnsupportedOperationPlan(AppOperationId),
     UnsupportedOperationKind(AppOperationKind),
     UnsupportedOperationPhase(AppOperationPhase),
     UnexpectedResourceState {
@@ -64,9 +71,10 @@ pub enum AppOperationRunnerError {
 /// delivery must honor their idempotency contracts. The platform snapshot is
 /// the final resource and live in-memory state is published only after the
 /// operation has been durably committed.
-pub struct AppOperationRunner<J, D, R, O, P, S, T> {
+pub struct AppOperationRunner<J, D, U, R, O, P, S, T> {
     journal: J,
     database_provider: D,
+    runtime_provider: U,
     oidc_registrar: OidcClientRegistrar<R, O>,
     snapshot_repository: P,
     secret_store: S,
@@ -74,10 +82,11 @@ pub struct AppOperationRunner<J, D, R, O, P, S, T> {
     lifecycle: AppLifecycle,
 }
 
-impl<J, D, R, O, P, S, T> AppOperationRunner<J, D, R, O, P, S, T>
+impl<J, D, U, R, O, P, S, T> AppOperationRunner<J, D, U, R, O, P, S, T>
 where
     J: AppOperationRepository,
     D: AppDatabaseProvider,
+    U: AppRuntimeProvider,
     R: OidcClientRepository,
     O: InstalledAppOriginResolver,
     P: PlatformSnapshotRepository,
@@ -87,19 +96,20 @@ where
     pub fn new(
         journal: J,
         database_provider: D,
+        runtime_services: AppRuntimeServices<U, T>,
         oidc_repository: R,
         origin_resolver: O,
         snapshot_repository: P,
         secret_store: S,
-        runtime_secrets: T,
     ) -> Self {
         Self {
             journal,
             database_provider,
+            runtime_provider: runtime_services.provider,
             oidc_registrar: OidcClientRegistrar::new(oidc_repository, origin_resolver),
             snapshot_repository,
             secret_store,
-            runtime_secrets,
+            runtime_secrets: runtime_services.secrets,
             lifecycle: AppLifecycle::new(),
         }
     }
@@ -288,6 +298,7 @@ where
             .ok_or_else(|| AppOperationRunnerError::MissingOperationTarget(*operation.id()))?
             .installed_app()
             .clone();
+        self.validate_operation_plan(&operation, &app)?;
         let steps = operation.steps().to_vec();
 
         for step in steps {
@@ -341,6 +352,7 @@ where
             .ok_or_else(|| AppOperationRunnerError::MissingOperationTarget(*operation.id()))?
             .installed_app()
             .clone();
+        self.validate_operation_plan(&operation, &app)?;
         let steps = operation.steps().to_vec();
 
         for step in steps {
@@ -399,6 +411,7 @@ where
             .ok_or_else(|| AppOperationRunnerError::MissingOperationTarget(*operation.id()))?
             .installed_app()
             .clone();
+        self.validate_operation_plan(&operation, &app)?;
         let (staged_state, staged_grants) =
             self.stage_without_target(&operation, live_state, live_grants)?;
         let steps = operation.steps().iter().rev().cloned().collect::<Vec<_>>();
@@ -514,6 +527,10 @@ where
                     .provision_installation(&bindings)
                     .map_err(|error| AppOperationRunnerError::DatabaseProvider(Box::new(error)))
             }
+            AppOperationResource::RuntimeInstance => self
+                .runtime_provider
+                .prepare_installation(app)
+                .map_err(|error| AppOperationRunnerError::RuntimeProvider(Box::new(error))),
             AppOperationResource::OidcClient => {
                 let registration = self
                     .oidc_registrar
@@ -544,6 +561,10 @@ where
 
                 Ok(())
             }
+            AppOperationResource::RuntimeActivation => self
+                .runtime_provider
+                .activate_installation(app)
+                .map_err(|error| AppOperationRunnerError::RuntimeProvider(Box::new(error))),
             AppOperationResource::PlatformSnapshot => self
                 .snapshot_repository
                 .store(&PlatformSnapshot::capture(staged, grant_store))
@@ -565,7 +586,17 @@ where
                 .retain_installation(app.installation_id())
                 .map(|_| ())
                 .map_err(|error| AppOperationRunnerError::DatabaseProvider(Box::new(error))),
+            AppOperationResource::RuntimeInstance => self
+                .runtime_provider
+                .remove_installation(app.installation_id())
+                .map(|_| ())
+                .map_err(|error| AppOperationRunnerError::RuntimeProvider(Box::new(error))),
             AppOperationResource::OidcClient => self.remove_oidc_material(operation, app),
+            AppOperationResource::RuntimeActivation => self
+                .runtime_provider
+                .deactivate_installation(app.installation_id())
+                .map(|_| ())
+                .map_err(|error| AppOperationRunnerError::RuntimeProvider(Box::new(error))),
             AppOperationResource::PlatformSnapshot => self
                 .snapshot_repository
                 .store(&PlatformSnapshot::capture(staged_state, staged_grants))
@@ -587,7 +618,17 @@ where
                 .retain_installation(app.installation_id())
                 .map(|_| ())
                 .map_err(|error| AppOperationRunnerError::DatabaseProvider(Box::new(error))),
+            AppOperationResource::RuntimeInstance => self
+                .runtime_provider
+                .remove_installation(app.installation_id())
+                .map(|_| ())
+                .map_err(|error| AppOperationRunnerError::RuntimeProvider(Box::new(error))),
             AppOperationResource::OidcClient => self.remove_oidc_material(operation, app),
+            AppOperationResource::RuntimeActivation => self
+                .runtime_provider
+                .deactivate_installation(app.installation_id())
+                .map(|_| ())
+                .map_err(|error| AppOperationRunnerError::RuntimeProvider(Box::new(error))),
             AppOperationResource::PlatformSnapshot => self
                 .snapshot_repository
                 .store(&PlatformSnapshot::capture(staged_state, staged_grants))
@@ -619,12 +660,41 @@ where
             .map_err(|error| AppOperationRunnerError::Journal(Box::new(error)))
     }
 
+    fn validate_operation_plan(
+        &self,
+        operation: &AppOperation,
+        app: &InstalledApp,
+    ) -> Result<(), AppOperationRunnerError> {
+        let expected = AppOperation::for_app(app, operation.kind(), operation.started_at())
+            .map_err(AppOperationRunnerError::Operation)?;
+        let actual_resources = operation
+            .steps()
+            .iter()
+            .map(|step| step.resource())
+            .collect::<Vec<_>>();
+        let expected_resources = expected
+            .steps()
+            .iter()
+            .map(|step| step.resource())
+            .collect::<Vec<_>>();
+        if actual_resources != expected_resources {
+            return Err(AppOperationRunnerError::UnsupportedOperationPlan(
+                *operation.id(),
+            ));
+        }
+        Ok(())
+    }
+
     pub fn journal(&self) -> &J {
         &self.journal
     }
 
     pub fn database_provider(&self) -> &D {
         &self.database_provider
+    }
+
+    pub fn runtime_provider(&self) -> &U {
+        &self.runtime_provider
     }
 
     pub fn oidc_repository(&self) -> &R {
@@ -641,6 +711,20 @@ where
 
     pub fn runtime_secrets(&self) -> &T {
         &self.runtime_secrets
+    }
+}
+
+impl<U, T> AppRuntimeServices<U, T> {
+    pub fn new(provider: U, secrets: T) -> Self {
+        Self { provider, secrets }
+    }
+
+    pub fn provider(&self) -> &U {
+        &self.provider
+    }
+
+    pub fn secrets(&self) -> &T {
+        &self.secrets
     }
 }
 
@@ -691,12 +775,16 @@ impl fmt::Display for AppOperationRunnerError {
             Self::Operation(error) => write!(f, "app operation transition failed: {error}"),
             Self::Journal(_) => write!(f, "app operation journal failed"),
             Self::DatabaseProvider(_) => write!(f, "app database provisioning failed"),
+            Self::RuntimeProvider(_) => write!(f, "app runtime provisioning failed"),
             Self::OidcProvisioning(_) => write!(f, "OIDC client provisioning failed"),
             Self::SnapshotRepository(_) => write!(f, "platform snapshot persistence failed"),
             Self::RuntimeSecretDelivery(_) => write!(f, "runtime secret delivery failed"),
             Self::OperationNotFound(id) => write!(f, "app operation {id} was not found"),
             Self::MissingOperationTarget(id) => {
                 write!(f, "app operation {id} has no durable app target")
+            }
+            Self::UnsupportedOperationPlan(id) => {
+                write!(f, "app operation {id} uses an unsupported resource plan")
             }
             Self::UnsupportedOperationKind(kind) => {
                 write!(
@@ -732,11 +820,13 @@ impl Error for AppOperationRunnerError {
             Self::Operation(error) => Some(error),
             Self::Journal(error)
             | Self::DatabaseProvider(error)
+            | Self::RuntimeProvider(error)
             | Self::OidcProvisioning(error)
             | Self::SnapshotRepository(error)
             | Self::RuntimeSecretDelivery(error) => Some(error.as_ref()),
             Self::OperationNotFound(_)
             | Self::MissingOperationTarget(_)
+            | Self::UnsupportedOperationPlan(_)
             | Self::UnsupportedOperationKind(_)
             | Self::UnsupportedOperationPhase(_)
             | Self::UnexpectedResourceState { .. }
@@ -749,15 +839,16 @@ impl Error for AppOperationRunnerError {
 mod tests {
     use rumahl_core::{
         AppDatabaseBinding, AppDatabaseDeclaration, AppDatabaseId, AppDatabaseInstallationState,
-        AppId, AppOperationStep, AppVersion, InstallationId, OidcCallbackPath,
-        OidcClientDeclaration, OidcClientType, OidcScope, PackagePath, PublisherId,
-        RuntimeDescriptor, RuntimeEndpointId, RuntimeEntrypoint, RuntimeEntrypointId, SecretId,
-        SecretPurpose, SecretRecord, SecretValue,
+        AppId, AppManifestValidator, AppOperationStep, AppRuntimeInstallationState, AppVersion,
+        InstallationId, InstalledAppSnapshot, OidcCallbackPath, OidcClientDeclaration,
+        OidcClientType, OidcScope, PackagePath, PublisherId, RuntimeDescriptor, RuntimeEndpointId,
+        RuntimeEntrypoint, RuntimeEntrypointId, SecretId, SecretPurpose, SecretRecord, SecretValue,
     };
     use rumahl_oidc_provider::{
         OidcClientId, OidcClientRecord, OidcClientSecret, OidcClientSecretDigest,
     };
     use std::cell::{Cell, RefCell};
+    use std::rc::Rc;
 
     use super::*;
 
@@ -881,6 +972,94 @@ mod tests {
             _installation_id: &InstallationId,
         ) -> Result<bool, Self::Error> {
             Ok(false)
+        }
+    }
+
+    #[derive(Default)]
+    struct MemoryRuntimeProvider {
+        runtimes: RefCell<Vec<(InstalledApp, AppRuntimeInstallationState)>>,
+        trace: Rc<RefCell<Vec<&'static str>>>,
+    }
+
+    impl AppRuntimeProvider for MemoryRuntimeProvider {
+        type Error = TestError;
+
+        fn prepare_installation(&self, app: &InstalledApp) -> Result<(), Self::Error> {
+            self.trace.borrow_mut().push("runtime-prepared");
+            let mut runtimes = self.runtimes.borrow_mut();
+            if let Some((existing, _)) = runtimes
+                .iter()
+                .find(|(existing, _)| existing.installation_id() == app.installation_id())
+            {
+                return if existing == app {
+                    Ok(())
+                } else {
+                    Err(TestError("conflicting runtime"))
+                };
+            }
+            runtimes.push((app.clone(), AppRuntimeInstallationState::Prepared));
+            Ok(())
+        }
+
+        fn activate_installation(&self, app: &InstalledApp) -> Result<(), Self::Error> {
+            self.trace.borrow_mut().push("runtime-activated");
+            let mut runtimes = self.runtimes.borrow_mut();
+            let (existing, state) = runtimes
+                .iter_mut()
+                .find(|(existing, _)| existing.installation_id() == app.installation_id())
+                .ok_or(TestError("runtime is not prepared"))?;
+            if existing != app {
+                return Err(TestError("conflicting runtime"));
+            }
+            *state = AppRuntimeInstallationState::Active;
+            Ok(())
+        }
+
+        fn installation_state(
+            &self,
+            installation_id: &InstallationId,
+        ) -> Result<AppRuntimeInstallationState, Self::Error> {
+            Ok(self
+                .runtimes
+                .borrow()
+                .iter()
+                .find(|(app, _)| app.installation_id() == installation_id)
+                .map(|(_, state)| *state)
+                .unwrap_or(AppRuntimeInstallationState::Absent))
+        }
+
+        fn deactivate_installation(
+            &self,
+            installation_id: &InstallationId,
+        ) -> Result<bool, Self::Error> {
+            self.trace.borrow_mut().push("runtime-deactivated");
+            let mut runtimes = self.runtimes.borrow_mut();
+            let Some((_, state)) = runtimes
+                .iter_mut()
+                .find(|(app, _)| app.installation_id() == installation_id)
+            else {
+                return Ok(false);
+            };
+            if *state == AppRuntimeInstallationState::Active {
+                *state = AppRuntimeInstallationState::Prepared;
+                return Ok(true);
+            }
+            Ok(false)
+        }
+
+        fn remove_installation(
+            &self,
+            installation_id: &InstallationId,
+        ) -> Result<bool, Self::Error> {
+            self.trace.borrow_mut().push("runtime-removed");
+            if self.installation_state(installation_id)? == AppRuntimeInstallationState::Active {
+                return Err(TestError("runtime is active"));
+            }
+            let before = self.runtimes.borrow().len();
+            self.runtimes
+                .borrow_mut()
+                .retain(|(app, _)| app.installation_id() != installation_id);
+            Ok(before != self.runtimes.borrow().len())
         }
     }
 
@@ -1046,6 +1225,7 @@ mod tests {
         fail_next_removal: Cell<bool>,
         attempts: RefCell<Vec<DeliveryAttempt>>,
         removals: RefCell<Vec<(AppOperationId, InstallationId)>>,
+        trace: Rc<RefCell<Vec<&'static str>>>,
     }
 
     impl RuntimeSecretDelivery for MemoryRuntimeSecrets {
@@ -1058,6 +1238,7 @@ mod tests {
             client_id: &OidcClientId,
             client_secret: &OidcClientSecret,
         ) -> Result<(), Self::Error> {
+            self.trace.borrow_mut().push("secret-delivered");
             self.attempts.borrow_mut().push(DeliveryAttempt {
                 operation_id: *operation_id,
                 installation_id: *app.installation_id(),
@@ -1075,6 +1256,7 @@ mod tests {
             operation_id: &AppOperationId,
             installation_id: &InstallationId,
         ) -> Result<(), Self::Error> {
+            self.trace.borrow_mut().push("secret-removed");
             self.removals
                 .borrow_mut()
                 .push((*operation_id, *installation_id));
@@ -1088,6 +1270,7 @@ mod tests {
     type TestRunner = AppOperationRunner<
         MemoryJournal,
         MemoryDatabaseProvider,
+        MemoryRuntimeProvider,
         MemoryOidcRepository,
         MemoryOriginResolver,
         MemorySnapshotRepository,
@@ -1096,14 +1279,28 @@ mod tests {
     >;
 
     fn runner() -> TestRunner {
+        let trace = Rc::new(RefCell::new(Vec::new()));
+        let runtime_services = AppRuntimeServices::new(
+            MemoryRuntimeProvider {
+                runtimes: RefCell::new(Vec::new()),
+                trace: Rc::clone(&trace),
+            },
+            MemoryRuntimeSecrets {
+                fail_next: Cell::new(false),
+                fail_next_removal: Cell::new(false),
+                attempts: RefCell::new(Vec::new()),
+                removals: RefCell::new(Vec::new()),
+                trace,
+            },
+        );
         AppOperationRunner::new(
             MemoryJournal::default(),
             MemoryDatabaseProvider::default(),
+            runtime_services,
             MemoryOidcRepository::default(),
             MemoryOriginResolver,
             MemorySnapshotRepository::default(),
             MemorySecretStore::default(),
-            MemoryRuntimeSecrets::default(),
         )
     }
 
@@ -1160,9 +1357,20 @@ mod tests {
 
         assert_eq!(state.installed_apps().len(), 1);
         assert_eq!(runner.database_provider().provisioned.borrow().len(), 1);
+        assert_eq!(
+            runner
+                .runtime_provider()
+                .installation_state(result.app().installation_id())
+                .unwrap(),
+            AppRuntimeInstallationState::Active
+        );
         assert_eq!(runner.oidc_repository().clients.borrow().len(), 1);
         assert_eq!(runner.secret_store().secrets.borrow().len(), 1);
         assert_eq!(runner.runtime_secrets().attempts.borrow().len(), 1);
+        assert_eq!(
+            runner.runtime_provider().trace.borrow().as_slice(),
+            ["runtime-prepared", "secret-delivered", "runtime-activated"]
+        );
         assert_eq!(
             runner
                 .journal()
@@ -1224,6 +1432,60 @@ mod tests {
     }
 
     #[test]
+    fn rejects_legacy_recovery_plan_without_runtime_before_side_effects() {
+        let runner = runner();
+        let app = InstalledApp::create(container_manifest(), &AppManifestValidator::new()).unwrap();
+        let timestamp = UnixTimestamp::from_seconds(10);
+        let operation = AppOperation::restore_for_app(
+            AppOperationId::new(),
+            *app.installation_id(),
+            AppOperationKind::Install,
+            AppOperationPhase::Applying,
+            vec![
+                AppOperation::restored_step(
+                    AppOperationResource::AppDatabases,
+                    AppOperationResourceState::Pending,
+                ),
+                AppOperation::restored_step(
+                    AppOperationResource::OidcClient,
+                    AppOperationResourceState::Pending,
+                ),
+                AppOperation::restored_step(
+                    AppOperationResource::PlatformSnapshot,
+                    AppOperationResourceState::Pending,
+                ),
+            ],
+            0,
+            timestamp,
+            timestamp,
+            InstalledAppSnapshot::capture(&app),
+        )
+        .unwrap();
+        let operation_id = *operation.id();
+        runner.journal().create(&operation).unwrap();
+        let mut state = PlatformState::new();
+        let mut grants = InMemoryGrantStore::new();
+
+        let error = runner
+            .recover_incomplete(&mut state, &mut grants)
+            .unwrap_err();
+
+        assert!(matches!(
+            error,
+            AppOperationRunnerError::UnsupportedOperationPlan(id) if id == operation_id
+        ));
+        assert!(runner.database_provider().provisioned.borrow().is_empty());
+        assert_eq!(
+            runner
+                .runtime_provider()
+                .installation_state(app.installation_id())
+                .unwrap(),
+            AppRuntimeInstallationState::Absent
+        );
+        assert!(runner.oidc_repository().clients.borrow().is_empty());
+    }
+
+    #[test]
     fn uninstalls_all_resources_and_commits_removed_snapshot() {
         let runner = runner();
         let mut state = PlatformState::new();
@@ -1239,9 +1501,27 @@ mod tests {
         assert_eq!(result.app(), installed.app());
         assert!(state.installed_apps().is_empty());
         assert!(runner.database_provider().provisioned.borrow().is_empty());
+        assert_eq!(
+            runner
+                .runtime_provider()
+                .installation_state(installed.app().installation_id())
+                .unwrap(),
+            AppRuntimeInstallationState::Absent
+        );
         assert!(runner.oidc_repository().clients.borrow().is_empty());
         assert!(runner.secret_store().secrets.borrow().is_empty());
         assert_eq!(runner.runtime_secrets().removals.borrow().len(), 1);
+        assert_eq!(
+            runner.runtime_provider().trace.borrow().as_slice(),
+            [
+                "runtime-prepared",
+                "secret-delivered",
+                "runtime-activated",
+                "runtime-deactivated",
+                "secret-removed",
+                "runtime-removed",
+            ]
+        );
         assert!(
             runner
                 .snapshot_repository()
@@ -1272,7 +1552,9 @@ mod tests {
         runner
             .install(container_manifest(), &mut state, &grants)
             .unwrap_err();
-        let operation_id = *runner.journal().list_incomplete().unwrap()[0].id();
+        let incomplete = runner.journal().list_incomplete().unwrap();
+        let operation_id = *incomplete[0].id();
+        let installation_id = *incomplete[0].installation_id();
 
         runner
             .compensate_install(&operation_id, &mut state, &mut grants)
@@ -1280,6 +1562,13 @@ mod tests {
 
         assert!(state.installed_apps().is_empty());
         assert!(runner.database_provider().provisioned.borrow().is_empty());
+        assert_eq!(
+            runner
+                .runtime_provider()
+                .installation_state(&installation_id)
+                .unwrap(),
+            AppRuntimeInstallationState::Absent
+        );
         assert!(runner.oidc_repository().clients.borrow().is_empty());
         assert!(runner.secret_store().secrets.borrow().is_empty());
         assert_eq!(runner.runtime_secrets().removals.borrow().len(), 1);

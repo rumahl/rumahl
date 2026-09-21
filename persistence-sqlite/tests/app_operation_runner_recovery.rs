@@ -6,13 +6,16 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use rumahl_app_operations::{AppOperationRunner, AppOperationRunnerError, RuntimeSecretDelivery};
+use rumahl_app_operations::{
+    AppOperationRunner, AppOperationRunnerError, AppRuntimeServices, RuntimeSecretDelivery,
+};
 use rumahl_core::{
     AppDatabaseDeclaration, AppDatabaseId, AppDatabaseInstallationState, AppDatabaseProvider,
-    AppId, AppManifest, AppOperationPhase, AppOperationRepository, AppVersion, InMemoryGrantStore,
-    InstalledApp, OidcCallbackPath, OidcClientDeclaration, OidcClientType, OidcScope, PackagePath,
-    PlatformSnapshotRepository, PlatformState, PublisherId, RuntimeDescriptor, RuntimeEndpointId,
-    RuntimeEntrypoint, RuntimeEntrypointId, SecretPurpose, SecretStore,
+    AppId, AppManifest, AppOperationPhase, AppOperationRepository, AppRuntimeInstallationState,
+    AppRuntimeProvider, AppVersion, InMemoryGrantStore, InstalledApp, OidcCallbackPath,
+    OidcClientDeclaration, OidcClientType, OidcScope, PackagePath, PlatformSnapshotRepository,
+    PlatformState, PublisherId, RuntimeDescriptor, RuntimeEndpointId, RuntimeEntrypoint,
+    RuntimeEntrypointId, SecretPurpose, SecretStore,
 };
 use rumahl_oidc_provider::{
     InstalledAppOriginResolver, OIDC_CLIENT_SECRET_PURPOSE, OidcClientId, OidcClientRepository,
@@ -93,6 +96,89 @@ struct DeliveryState {
 #[derive(Clone)]
 struct TestRuntimeSecrets {
     state: Arc<Mutex<DeliveryState>>,
+}
+
+#[derive(Clone)]
+struct TestRuntimeProvider {
+    state: Arc<Mutex<Vec<(InstalledApp, AppRuntimeInstallationState)>>>,
+}
+
+impl AppRuntimeProvider for TestRuntimeProvider {
+    type Error = TestError;
+
+    fn prepare_installation(&self, app: &InstalledApp) -> Result<(), Self::Error> {
+        let mut runtimes = self.state.lock().map_err(|_| TestError("lock poisoned"))?;
+        if let Some((existing, _)) = runtimes
+            .iter()
+            .find(|(existing, _)| existing.installation_id() == app.installation_id())
+        {
+            return if existing == app {
+                Ok(())
+            } else {
+                Err(TestError("conflicting runtime"))
+            };
+        }
+        runtimes.push((app.clone(), AppRuntimeInstallationState::Prepared));
+        Ok(())
+    }
+
+    fn activate_installation(&self, app: &InstalledApp) -> Result<(), Self::Error> {
+        let mut runtimes = self.state.lock().map_err(|_| TestError("lock poisoned"))?;
+        let (existing, state) = runtimes
+            .iter_mut()
+            .find(|(existing, _)| existing.installation_id() == app.installation_id())
+            .ok_or(TestError("runtime is not prepared"))?;
+        if existing != app {
+            return Err(TestError("conflicting runtime"));
+        }
+        *state = AppRuntimeInstallationState::Active;
+        Ok(())
+    }
+
+    fn installation_state(
+        &self,
+        installation_id: &rumahl_core::InstallationId,
+    ) -> Result<AppRuntimeInstallationState, Self::Error> {
+        Ok(self
+            .state
+            .lock()
+            .map_err(|_| TestError("lock poisoned"))?
+            .iter()
+            .find(|(app, _)| app.installation_id() == installation_id)
+            .map(|(_, state)| *state)
+            .unwrap_or(AppRuntimeInstallationState::Absent))
+    }
+
+    fn deactivate_installation(
+        &self,
+        installation_id: &rumahl_core::InstallationId,
+    ) -> Result<bool, Self::Error> {
+        let mut runtimes = self.state.lock().map_err(|_| TestError("lock poisoned"))?;
+        let Some((_, state)) = runtimes
+            .iter_mut()
+            .find(|(app, _)| app.installation_id() == installation_id)
+        else {
+            return Ok(false);
+        };
+        if *state == AppRuntimeInstallationState::Active {
+            *state = AppRuntimeInstallationState::Prepared;
+            return Ok(true);
+        }
+        Ok(false)
+    }
+
+    fn remove_installation(
+        &self,
+        installation_id: &rumahl_core::InstallationId,
+    ) -> Result<bool, Self::Error> {
+        if self.installation_state(installation_id)? == AppRuntimeInstallationState::Active {
+            return Err(TestError("runtime is active"));
+        }
+        let mut runtimes = self.state.lock().map_err(|_| TestError("lock poisoned"))?;
+        let before = runtimes.len();
+        runtimes.retain(|(app, _)| app.installation_id() != installation_id);
+        Ok(before != runtimes.len())
+    }
 }
 
 impl RuntimeSecretDelivery for TestRuntimeSecrets {
@@ -188,10 +274,12 @@ fn manifest() -> AppManifest {
 fn runner(
     state_path: &Path,
     database_root: &Path,
+    runtime_provider: TestRuntimeProvider,
     delivery: TestRuntimeSecrets,
 ) -> AppOperationRunner<
     SqliteAppOperationRepository,
     SqliteAppDatabaseProvider,
+    TestRuntimeProvider,
     SqliteOidcClientRepository,
     TestOriginResolver,
     SqliteSnapshotRepository,
@@ -201,11 +289,11 @@ fn runner(
     AppOperationRunner::new(
         SqliteAppOperationRepository::open(state_path).unwrap(),
         SqliteAppDatabaseProvider::open(database_root).unwrap(),
+        AppRuntimeServices::new(runtime_provider, delivery),
         SqliteOidcClientRepository::open(state_path).unwrap(),
         TestOriginResolver,
         SqliteSnapshotRepository::open(state_path).unwrap(),
         SqliteSecretStore::open(state_path, TestKeyProvider).unwrap(),
-        delivery,
     )
 }
 
@@ -224,11 +312,19 @@ fn resumes_installation_across_reopened_sqlite_repositories() {
     let delivery = TestRuntimeSecrets {
         state: Arc::clone(&delivery_state),
     };
+    let runtime_provider = TestRuntimeProvider {
+        state: Arc::new(Mutex::new(Vec::new())),
+    };
     let mut state = PlatformState::new();
     let mut grants = InMemoryGrantStore::new();
 
     {
-        let runner = runner(&state_path, &database_root, delivery.clone());
+        let runner = runner(
+            &state_path,
+            &database_root,
+            runtime_provider.clone(),
+            delivery.clone(),
+        );
         let error = runner.install(manifest(), &mut state, &grants).unwrap_err();
         assert!(matches!(
             error,
@@ -239,7 +335,7 @@ fn resumes_installation_across_reopened_sqlite_repositories() {
     }
 
     {
-        let runner = runner(&state_path, &database_root, delivery);
+        let runner = runner(&state_path, &database_root, runtime_provider, delivery);
         let report = runner.recover_incomplete(&mut state, &mut grants).unwrap();
         assert_eq!(report.resumed(), 1);
         assert_eq!(report.committed(), 1);
@@ -291,13 +387,21 @@ fn resumes_uninstall_across_reopened_sqlite_repositories() {
     let delivery = TestRuntimeSecrets {
         state: Arc::clone(&delivery_state),
     };
+    let runtime_provider = TestRuntimeProvider {
+        state: Arc::new(Mutex::new(Vec::new())),
+    };
     let mut state = PlatformState::new();
     let mut grants = InMemoryGrantStore::new();
     let installed_app;
     let uninstall_operation_id;
 
     {
-        let runner = runner(&state_path, &database_root, delivery.clone());
+        let runner = runner(
+            &state_path,
+            &database_root,
+            runtime_provider.clone(),
+            delivery.clone(),
+        );
         installed_app = runner
             .install(manifest(), &mut state, &grants)
             .unwrap()
@@ -322,12 +426,19 @@ fn resumes_uninstall_across_reopened_sqlite_repositories() {
                 .database_provider()
                 .installation_state(installed_app.installation_id())
                 .unwrap(),
-            AppDatabaseInstallationState::Retained
+            AppDatabaseInstallationState::Active
+        );
+        assert_eq!(
+            runner
+                .runtime_provider()
+                .installation_state(installed_app.installation_id())
+                .unwrap(),
+            AppRuntimeInstallationState::Prepared
         );
     }
 
     {
-        let runner = runner(&state_path, &database_root, delivery);
+        let runner = runner(&state_path, &database_root, runtime_provider, delivery);
         let report = runner.recover_incomplete(&mut state, &mut grants).unwrap();
 
         assert_eq!(report.resumed(), 1);
@@ -349,6 +460,13 @@ fn resumes_uninstall_across_reopened_sqlite_repositories() {
                 .installation_state(installed_app.installation_id())
                 .unwrap(),
             AppDatabaseInstallationState::Retained
+        );
+        assert_eq!(
+            runner
+                .runtime_provider()
+                .installation_state(installed_app.installation_id())
+                .unwrap(),
+            AppRuntimeInstallationState::Absent
         );
         assert!(
             runner

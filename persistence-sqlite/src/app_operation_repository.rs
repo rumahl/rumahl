@@ -50,7 +50,9 @@ impl SqliteAppOperationRepository {
         Self::from_connection(Connection::open_in_memory().map_err(Self::database_error)?)
     }
 
-    fn from_connection(connection: Connection) -> Result<Self, SqliteAppOperationRepositoryError> {
+    fn from_connection(
+        mut connection: Connection,
+    ) -> Result<Self, SqliteAppOperationRepositoryError> {
         connection
             .busy_timeout(Duration::from_secs(5))
             .map_err(Self::database_error)?;
@@ -78,7 +80,10 @@ impl SqliteAppOperationRepository {
                          ON DELETE CASCADE,
                      position INTEGER NOT NULL CHECK (position >= 0),
                      resource TEXT NOT NULL CHECK (
-                         resource IN ('app-databases', 'oidc-client', 'platform-snapshot')
+                         resource IN (
+                             'app-databases', 'runtime-instance', 'oidc-client',
+                             'runtime-activation', 'platform-snapshot'
+                         )
                      ),
                      state TEXT NOT NULL CHECK (
                          state IN (
@@ -108,6 +113,52 @@ impl SqliteAppOperationRepository {
             connection
                 .execute("ALTER TABLE app_operation ADD COLUMN target_app TEXT", [])
                 .map_err(Self::database_error)?;
+        }
+
+        let step_schema_supports_runtime = connection
+            .query_row(
+                "SELECT sql FROM sqlite_master
+                 WHERE type = 'table' AND name = 'app_operation_step'",
+                [],
+                |row| row.get::<_, String>(0),
+            )
+            .map_err(Self::database_error)?
+            .contains("runtime-instance");
+        if !step_schema_supports_runtime {
+            let transaction = connection.transaction().map_err(Self::database_error)?;
+            transaction
+                .execute_batch(
+                    "CREATE TABLE app_operation_step_v2 (
+                         operation_id TEXT NOT NULL REFERENCES app_operation(operation_id)
+                             ON DELETE CASCADE,
+                         position INTEGER NOT NULL CHECK (position >= 0),
+                         resource TEXT NOT NULL CHECK (
+                             resource IN (
+                                 'app-databases', 'runtime-instance', 'oidc-client',
+                                 'runtime-activation', 'platform-snapshot'
+                             )
+                         ),
+                         state TEXT NOT NULL CHECK (
+                             state IN (
+                                 'pending', 'applying', 'applied', 'compensation-pending',
+                                 'compensating', 'compensated'
+                             )
+                         ),
+                         PRIMARY KEY (operation_id, position),
+                         UNIQUE (operation_id, resource)
+                     );
+
+                     INSERT INTO app_operation_step_v2 (
+                         operation_id, position, resource, state
+                     )
+                     SELECT operation_id, position, resource, state
+                     FROM app_operation_step;
+
+                     DROP TABLE app_operation_step;
+                     ALTER TABLE app_operation_step_v2 RENAME TO app_operation_step;",
+                )
+                .map_err(Self::database_error)?;
+            transaction.commit().map_err(Self::database_error)?;
         }
 
         Ok(Self {
@@ -477,7 +528,9 @@ fn parse_phase(value: &str) -> Result<AppOperationPhase, SqliteAppOperationRepos
 fn resource_name(resource: AppOperationResource) -> &'static str {
     match resource {
         AppOperationResource::AppDatabases => "app-databases",
+        AppOperationResource::RuntimeInstance => "runtime-instance",
         AppOperationResource::OidcClient => "oidc-client",
+        AppOperationResource::RuntimeActivation => "runtime-activation",
         AppOperationResource::PlatformSnapshot => "platform-snapshot",
     }
 }
@@ -485,7 +538,9 @@ fn resource_name(resource: AppOperationResource) -> &'static str {
 fn parse_resource(value: &str) -> Result<AppOperationResource, SqliteAppOperationRepositoryError> {
     match value {
         "app-databases" => Ok(AppOperationResource::AppDatabases),
+        "runtime-instance" => Ok(AppOperationResource::RuntimeInstance),
         "oidc-client" => Ok(AppOperationResource::OidcClient),
+        "runtime-activation" => Ok(AppOperationResource::RuntimeActivation),
         "platform-snapshot" => Ok(AppOperationResource::PlatformSnapshot),
         value => Err(SqliteAppOperationRepositoryError::InvalidResource(
             value.to_owned(),
@@ -750,6 +805,54 @@ mod tests {
         assert_eq!(target_columns, 1);
 
         drop(connection);
+        fs::remove_file(path).unwrap();
+    }
+
+    #[test]
+    fn expands_existing_resource_constraint_for_runtime_steps() {
+        let path = database_path("app-operation-resource-migration");
+        {
+            let connection = Connection::open(&path).unwrap();
+            connection
+                .execute_batch(
+                    "CREATE TABLE app_operation (
+                         operation_id TEXT PRIMARY KEY,
+                         installation_id TEXT NOT NULL,
+                         kind TEXT NOT NULL CHECK (kind IN ('install', 'update', 'uninstall')),
+                         phase TEXT NOT NULL CHECK (
+                             phase IN ('applying', 'committed', 'compensating', 'compensated')
+                         ),
+                         revision INTEGER NOT NULL CHECK (revision >= 0),
+                         started_at INTEGER NOT NULL CHECK (started_at >= 0),
+                         updated_at INTEGER NOT NULL CHECK (updated_at >= started_at),
+                         target_app TEXT
+                     );
+                     CREATE TABLE app_operation_step (
+                         operation_id TEXT NOT NULL REFERENCES app_operation(operation_id)
+                             ON DELETE CASCADE,
+                         position INTEGER NOT NULL CHECK (position >= 0),
+                         resource TEXT NOT NULL CHECK (
+                             resource IN ('app-databases', 'oidc-client', 'platform-snapshot')
+                         ),
+                         state TEXT NOT NULL CHECK (
+                             state IN (
+                                 'pending', 'applying', 'applied', 'compensation-pending',
+                                 'compensating', 'compensated'
+                             )
+                         ),
+                         PRIMARY KEY (operation_id, position),
+                         UNIQUE (operation_id, resource)
+                     );",
+                )
+                .unwrap();
+        }
+
+        let repository = SqliteAppOperationRepository::open(&path).unwrap();
+        let operation = install_operation();
+        repository.create(&operation).unwrap();
+
+        assert_eq!(repository.find(operation.id()).unwrap(), Some(operation));
+        drop(repository);
         fs::remove_file(path).unwrap();
     }
 

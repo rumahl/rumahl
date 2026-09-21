@@ -2,8 +2,8 @@
 
 Status: engine-neutral core contract, encrypted SQLite adapter, recoverable
 OIDC client-secret registration, journalled delivery acknowledgement, and
-Buildroot-facing TPM/runtime-channel adapters implemented. Device provisioning
-and the runtime supervisor endpoint remain deployment work.
+Buildroot-facing TPM/runtime-channel endpoints implemented. Device provisioning
+and the namespace-specific supervisor target remain deployment work.
 
 ## Boundary
 
@@ -78,9 +78,11 @@ transition is the durable delivery acknowledgement.
 authenticates the local supervisor UID using kernel Unix-socket peer
 credentials before sending a length-prefixed request, uses bounded I/O waits,
 zeroizes secret-bearing request buffers, and fails closed on replay conflicts
-or malformed acknowledgements. The supervisor endpoint must enforce the other
-side of the protocol, target the correct runtime namespace, keep plaintext out
-of durable storage and logs, and make delivery/removal idempotent.
+or malformed acknowledgements. `UnixRuntimeSecretServer` enforces the receiving
+side, validates bounded domain fields, and delegates only authenticated
+requests to `RuntimeSecretTarget`. The concrete target must bind delivery to
+the prepared installation namespace, keep plaintext out of durable storage and
+logs, and make delivery/removal idempotent.
 
 Update-time credential rotation and its rollback policy remain
 operation-policy work.

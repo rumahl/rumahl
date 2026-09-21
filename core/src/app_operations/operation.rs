@@ -24,7 +24,9 @@ pub enum AppOperationPhase {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum AppOperationResource {
     AppDatabases,
+    RuntimeInstance,
     OidcClient,
+    RuntimeActivation,
     PlatformSnapshot,
 }
 
@@ -88,15 +90,31 @@ impl AppOperation {
         kind: AppOperationKind,
         started_at: UnixTimestamp,
     ) -> Result<Self, AppOperationError> {
-        let mut resources = Vec::new();
-
-        if !app.manifest().databases().is_empty() {
-            resources.push(AppOperationResource::AppDatabases);
-        }
-
-        if app.manifest().oidc_client().is_some() {
-            resources.push(AppOperationResource::OidcClient);
-        }
+        let mut resources = match kind {
+            AppOperationKind::Install | AppOperationKind::Update => {
+                let mut resources = Vec::new();
+                if !app.manifest().databases().is_empty() {
+                    resources.push(AppOperationResource::AppDatabases);
+                }
+                resources.push(AppOperationResource::RuntimeInstance);
+                if app.manifest().oidc_client().is_some() {
+                    resources.push(AppOperationResource::OidcClient);
+                }
+                resources.push(AppOperationResource::RuntimeActivation);
+                resources
+            }
+            AppOperationKind::Uninstall => {
+                let mut resources = vec![AppOperationResource::RuntimeActivation];
+                if app.manifest().oidc_client().is_some() {
+                    resources.push(AppOperationResource::OidcClient);
+                }
+                resources.push(AppOperationResource::RuntimeInstance);
+                if !app.manifest().databases().is_empty() {
+                    resources.push(AppOperationResource::AppDatabases);
+                }
+                resources
+            }
+        };
 
         resources.push(AppOperationResource::PlatformSnapshot);
 
@@ -697,7 +715,11 @@ mod tests {
                 .iter()
                 .map(AppOperationStep::resource)
                 .collect::<Vec<_>>(),
-            vec![AppOperationResource::PlatformSnapshot]
+            vec![
+                AppOperationResource::RuntimeInstance,
+                AppOperationResource::RuntimeActivation,
+                AppOperationResource::PlatformSnapshot,
+            ]
         );
         assert!(neither.target_app().is_some());
 
@@ -714,13 +736,40 @@ mod tests {
                 .collect::<Vec<_>>(),
             vec![
                 AppOperationResource::AppDatabases,
+                AppOperationResource::RuntimeInstance,
                 AppOperationResource::OidcClient,
+                AppOperationResource::RuntimeActivation,
                 AppOperationResource::PlatformSnapshot,
             ]
         );
         assert_eq!(
             both.target_app().unwrap().installation_id(),
             both.installation_id()
+        );
+    }
+
+    #[test]
+    fn uninstall_plan_stops_runtime_before_revoking_secrets_and_removing_resources() {
+        let operation = AppOperation::for_app(
+            &installed_app(true, true),
+            AppOperationKind::Uninstall,
+            timestamp(10),
+        )
+        .unwrap();
+
+        assert_eq!(
+            operation
+                .steps()
+                .iter()
+                .map(AppOperationStep::resource)
+                .collect::<Vec<_>>(),
+            vec![
+                AppOperationResource::RuntimeActivation,
+                AppOperationResource::OidcClient,
+                AppOperationResource::RuntimeInstance,
+                AppOperationResource::AppDatabases,
+                AppOperationResource::PlatformSnapshot,
+            ]
         );
     }
 

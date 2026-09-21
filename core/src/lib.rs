@@ -63,11 +63,11 @@ pub use secrets::{
 };
 
 pub use runtime::{
-    PackagePath, PackagePathError, RuntimeAdapter, RuntimeAdapterError, RuntimeAdapterRegistry,
-    RuntimeAdapterRegistryError, RuntimeDescriptor, RuntimeDescriptorError, RuntimeEndpointId,
-    RuntimeEndpointIdError, RuntimeEntrypoint, RuntimeEntrypointId, RuntimeEntrypointIdError,
-    RuntimeEntrypointKind, RuntimeEntrypointTarget, RuntimeKind, RuntimeRouter,
-    RuntimeRoutingError, RuntimeStatus,
+    AppRuntimeInstallationState, AppRuntimeProvider, PackagePath, PackagePathError, RuntimeAdapter,
+    RuntimeAdapterError, RuntimeAdapterRegistry, RuntimeAdapterRegistryError, RuntimeDescriptor,
+    RuntimeDescriptorError, RuntimeEndpointId, RuntimeEndpointIdError, RuntimeEntrypoint,
+    RuntimeEntrypointId, RuntimeEntrypointIdError, RuntimeEntrypointKind, RuntimeEntrypointTarget,
+    RuntimeKind, RuntimeRouter, RuntimeRoutingError, RuntimeStatus,
 };
 
 pub use permissions::{

@@ -6,6 +6,7 @@ mod entrypoint;
 mod entrypoint_id;
 mod kind;
 mod package_path;
+mod provider;
 mod router;
 mod status;
 
@@ -17,5 +18,6 @@ pub use entrypoint::{RuntimeEntrypoint, RuntimeEntrypointKind, RuntimeEntrypoint
 pub use entrypoint_id::{RuntimeEntrypointId, RuntimeEntrypointIdError};
 pub use kind::RuntimeKind;
 pub use package_path::{PackagePath, PackagePathError};
+pub use provider::{AppRuntimeInstallationState, AppRuntimeProvider};
 pub use router::{RuntimeRouter, RuntimeRoutingError};
 pub use status::RuntimeStatus;

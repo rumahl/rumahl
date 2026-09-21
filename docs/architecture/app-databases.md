@@ -119,8 +119,8 @@ Remaining:
 ### D3 — runtime access
 
 - authenticated React/platform API adapter;
-- runtime-supervisor endpoint for the implemented authenticated Unix-socket
-  secret-channel client, plus credential rotation;
+- namespace-specific target for the implemented authenticated Unix-socket
+  secret channel, plus credential rotation;
 - no network exposure outside the app runtime namespace;
 - rate, connection, and resource limits per installation.
 
