@@ -609,6 +609,7 @@ dependencies = [
  "rumahl-core",
  "rumahl-oidc-provider",
  "rumahl-persistence-sqlite",
+ "sha2",
  "zeroize",
 ]
 

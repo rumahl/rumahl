@@ -21,7 +21,6 @@ jobs:
     env:
       CARGO_TERM_COLOR: always
       RUMAHL_CONTAINER_E2E_DOCKER: /usr/bin/docker
-      RUMAHL_CONTAINER_E2E_IMAGE: busybox@sha256:9db7b59979c38555a39def84a31fb98b5296952f9e3afd4f6f11f05b07adfab0
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -31,9 +30,15 @@ jobs:
       - name: Verify Docker daemon
         run: docker version
       - name: Pull immutable E2E image
-        run: docker pull "$RUMAHL_CONTAINER_E2E_IMAGE"
-      - name: Run real container lifecycle
+        run: docker pull busybox@sha256:9db7b59979c38555a39def84a31fb98b5296952f9e3afd4f6f11f05b07adfab0
+      - name: Build real container app fixture
         run: >-
-          cargo test --locked -p rumahl-platform-buildroot
-          --test container_app_e2e
-          -- --ignored --exact installs_runs_and_uninstalls_real_container_app
+          docker build --tag rumahl-container-e2e:local
+          platform-buildroot/tests/fixtures/container-app
+      - name: Run real container lifecycle
+        run: |
+          image_id="$(docker image inspect --format '{{.Id}}' rumahl-container-e2e:local)"
+          RUMAHL_CONTAINER_E2E_IMAGE="$image_id" \
+            cargo test --locked -p rumahl-platform-buildroot \
+              --test container_app_e2e \
+              -- --ignored --exact installs_runs_and_uninstalls_real_container_app

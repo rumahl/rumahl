@@ -3,6 +3,7 @@
 #[cfg(not(any(target_os = "linux", target_os = "macos")))]
 compile_error!("rumahl-platform-buildroot requires Linux (or macOS for host tests)");
 
+mod docker_runtime_target;
 mod runtime_provider;
 mod runtime_secret_server;
 mod runtime_secrets;
@@ -10,6 +11,10 @@ mod runtime_secrets;
 mod test_support;
 mod tpm2_key_provider;
 
+pub use docker_runtime_target::{
+    DockerImageReference, DockerImageReferenceError, DockerImageResolver, DockerRuntimeTarget,
+    DockerRuntimeTargetConfig, DockerRuntimeTargetConfigError, DockerRuntimeTargetError,
+};
 pub use runtime_provider::{
     RuntimeControlTarget, RuntimeControlTargetOutcome, RuntimeInstallationSpec,
     UnixAppRuntimeProvider, UnixAppRuntimeProviderConfig, UnixAppRuntimeProviderConfigError,

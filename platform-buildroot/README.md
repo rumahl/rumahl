@@ -2,8 +2,8 @@
 
 `rumahl-platform-buildroot` contains the Linux-facing adapters used by the
 privileged rumahl platform service and its runtime supervisor. It does not
-provision a TPM object or implement an OCI engine; those remain image- and
-device-lifecycle work.
+provision TPM objects or import app packages into an OCI engine; those remain
+image- and device-lifecycle work.
 
 ## TPM-sealed secret-store root keys
 
@@ -129,14 +129,39 @@ separation and stable per-app supervision model, while deliberately excluding
 Docker API access, host volume strings, caller-selected ports, and plaintext
 environment credentials.
 
+### Modular Docker target
+
+`DockerRuntimeTarget` is one concrete supervisor-side implementation. Docker
+remains behind the engine-neutral `RuntimeControlTarget` contract, so an image
+can replace it with containerd, Podman, or another OCI backend without changing
+the platform service or operation journal. Package verification and image
+import are separated again behind `DockerImageResolver`; the target accepts
+only immutable SHA-256 image references.
+
+The target invokes one fixed absolute Docker executable without a shell, clears
+its environment, bounds command output and execution time, and derives names,
+labels, secret-namespace mounts, and resource policy only from trusted
+supervisor configuration. Containers are read-only, non-root, capability-free,
+`no-new-privileges`, PID- and memory-limited, and attached only to the
+supervisor-selected network. Complete runtime specs are fingerprinted for
+conflict-safe replay.
+
+The runtime supervisor is intended to run as its own service. Loss or restart
+of Docker or this supervisor therefore makes runtime operations fail closed at
+the Unix-socket boundary; it does not terminate the platform service. The
+durable operation journal keeps ambiguous work recoverable, and the service
+manager can restart the supervisor before reconciliation repeats the same
+idempotent operation. Non-container platform functions do not depend on the
+Docker process.
+
 ## Real-container end-to-end test
 
 `tests/container_app_e2e.rs` exercises the full install and uninstall path with
 a real container process. It connects `AppOperationRunner` through
-`UnixAppRuntimeProvider` and `UnixRuntimeControlServer` to a deliberately
-test-local Docker target. The target prepares a stopped container, starts it
-only during runtime activation, waits for an in-container readiness marker,
-then verifies ordered stop and removal during uninstall.
+`UnixAppRuntimeProvider` and `UnixRuntimeControlServer` to the production
+`DockerRuntimeTarget`. The target prepares a stopped container, starts it only
+during runtime activation, waits for an in-container readiness marker, then
+verifies ordered stop and removal during uninstall.
 
 The fixture runs read-only, without networking or Linux capabilities, with
 `no-new-privileges`, a PID and memory limit, an unprivileged UID, and only a
@@ -150,6 +175,7 @@ cargo test -p rumahl-platform-buildroot --test container_app_e2e \
   -- --ignored --exact installs_runs_and_uninstalls_real_container_app
 ```
 
-The Docker target is test infrastructure, not the production OCI target. This
-keeps the end-to-end lifecycle executable while the Buildroot image's final
-OCI engine and package-import mechanism remain an explicit deployment choice.
+The fixture image is built from the pinned base and addressed by its resulting
+immutable image ID. A Buildroot image may use this Docker target or replace it
+through `RuntimeControlTarget`; its package-import implementation remains a
+separate deployment choice.

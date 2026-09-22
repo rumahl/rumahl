@@ -2,10 +2,8 @@ use std::convert::Infallible;
 use std::error::Error;
 use std::fmt;
 use std::fs;
-use std::io;
-use std::path::PathBuf;
-use std::process::{Command, Output};
-use std::sync::{Arc, Mutex};
+use std::path::{Path, PathBuf};
+use std::process::Command;
 use std::thread;
 use std::time::{Duration, Instant};
 
@@ -13,7 +11,7 @@ use rumahl_app_operations::{AppOperationRunner, AppRuntimeServices, RuntimeSecre
 use rumahl_core::{
     AppId, AppManifest, AppRuntimeInstallationState, AppVersion, InMemoryGrantStore,
     InstallationId, InstalledApp, PackagePath, PlatformState, PublisherId, RuntimeDescriptor,
-    RuntimeEntrypoint, RuntimeEntrypointId, RuntimeEntrypointTarget, RuntimeKind,
+    RuntimeEntrypoint, RuntimeEntrypointId,
 };
 use rumahl_oidc_provider::{InstalledAppOriginResolver, OidcClientId, OidcClientSecret};
 use rumahl_persistence_sqlite::{
@@ -22,6 +20,7 @@ use rumahl_persistence_sqlite::{
     SqliteSecretStore, SqliteSnapshotRepository,
 };
 use rumahl_platform_buildroot::{
+    DockerImageReference, DockerImageResolver, DockerRuntimeTarget, DockerRuntimeTargetConfig,
     RuntimeControlTarget, RuntimeControlTargetOutcome, RuntimeInstallationSpec,
     UnixAppRuntimeProvider, UnixAppRuntimeProviderConfig, UnixRuntimeControlServer,
     UnixRuntimeControlServerConfig,
@@ -29,387 +28,76 @@ use rumahl_platform_buildroot::{
 
 const E2E_IMAGE_ENV: &str = "RUMAHL_CONTAINER_E2E_IMAGE";
 const E2E_DOCKER_ENV: &str = "RUMAHL_CONTAINER_E2E_DOCKER";
-const SPEC_LABEL: &str = "io.rumahl.e2e.spec";
-const INSTALLATION_LABEL: &str = "io.rumahl.installation";
 const EXPECTED_ARTIFACT: &str = "runtime/server.oci";
+const INSTANCE_LABEL: &str = "io.rumahl.supervisor";
 
 #[derive(Debug)]
-enum E2eError {
-    Io(io::Error),
-    DockerCommand(&'static str),
-    InvalidDockerOutput(&'static str),
-    InvalidRuntimeSpec,
-    OriginResolutionWasUnexpected,
-}
+struct UnexpectedCall;
 
-impl fmt::Display for E2eError {
+impl fmt::Display for UnexpectedCall {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::Io(_) => write!(f, "container E2E I/O failed"),
-            Self::DockerCommand(operation) => {
-                write!(f, "Docker operation '{operation}' failed")
-            }
-            Self::InvalidDockerOutput(operation) => {
-                write!(f, "Docker operation '{operation}' returned invalid output")
-            }
-            Self::InvalidRuntimeSpec => write!(f, "runtime specification is not the E2E app"),
-            Self::OriginResolutionWasUnexpected => {
-                write!(f, "OIDC origin resolution was unexpectedly requested")
-            }
-        }
+        write!(f, "an undeclared OIDC operation was attempted")
     }
 }
 
-impl Error for E2eError {
-    fn source(&self) -> Option<&(dyn Error + 'static)> {
-        match self {
-            Self::Io(error) => Some(error),
-            _ => None,
-        }
+impl Error for UnexpectedCall {}
+
+#[derive(Debug, Clone)]
+struct PinnedImageResolver {
+    image: DockerImageReference,
+}
+
+#[derive(Debug)]
+struct ImageResolutionError;
+
+impl fmt::Display for ImageResolutionError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "the E2E manifest referenced an unexpected artifact")
     }
 }
 
-impl From<io::Error> for E2eError {
-    fn from(error: io::Error) -> Self {
-        Self::Io(error)
-    }
-}
+impl Error for ImageResolutionError {}
 
-#[derive(Clone)]
-struct DockerE2eTarget {
-    executable: PathBuf,
-    image: String,
-    managed_containers: Arc<Mutex<Vec<String>>>,
-}
+impl DockerImageResolver for PinnedImageResolver {
+    type Error = ImageResolutionError;
 
-impl DockerE2eTarget {
-    fn new(executable: PathBuf, image: String) -> Result<Self, E2eError> {
-        if !executable.is_absolute() || image.trim().is_empty() {
-            return Err(E2eError::InvalidRuntimeSpec);
-        }
-        let target = Self {
-            executable,
-            image,
-            managed_containers: Arc::new(Mutex::new(Vec::new())),
-        };
-        target.run_checked(
-            "daemon probe",
-            &["version", "--format", "{{.Server.Version}}"],
-        )?;
-        target.run_checked("image probe", &["image", "inspect", target.image.as_str()])?;
-        Ok(target)
-    }
-
-    fn run(&self, arguments: &[&str]) -> Result<Output, E2eError> {
-        Command::new(&self.executable)
-            .args(arguments)
-            .env_clear()
-            .env("PATH", "/usr/bin:/bin")
-            .output()
-            .map_err(E2eError::Io)
-    }
-
-    fn run_checked(&self, operation: &'static str, arguments: &[&str]) -> Result<String, E2eError> {
-        let output = self.run(arguments)?;
-        if !output.status.success() {
-            return Err(E2eError::DockerCommand(operation));
-        }
-        String::from_utf8(output.stdout)
-            .map(|value| value.trim().to_owned())
-            .map_err(|_| E2eError::InvalidDockerOutput(operation))
-    }
-
-    fn container_name(installation_id: &InstallationId) -> String {
-        format!("rumahl-e2e-{installation_id}")
-    }
-
-    fn spec_fingerprint(spec: &RuntimeInstallationSpec) -> Result<String, E2eError> {
-        if spec.runtime().kind() != RuntimeKind::Container {
-            return Err(E2eError::InvalidRuntimeSpec);
-        }
-
-        let mut artifact_count = 0;
-        let mut fingerprint = format!(
-            "{}|{}|{}|container",
-            spec.identity().app_id(),
-            spec.identity().publisher_id(),
-            spec.version()
-        );
-        for entrypoint in spec.runtime().entrypoints() {
-            match entrypoint.target() {
-                RuntimeEntrypointTarget::ContainerArtifact(path) => {
-                    artifact_count += 1;
-                    if path.as_str() != EXPECTED_ARTIFACT {
-                        return Err(E2eError::InvalidRuntimeSpec);
-                    }
-                    fingerprint.push_str(&format!(
-                        "|{}:container-artifact:{}",
-                        entrypoint.id(),
-                        path
-                    ));
-                }
-                RuntimeEntrypointTarget::Endpoint(endpoint) => {
-                    fingerprint.push_str(&format!("|{}:endpoint:{}", entrypoint.id(), endpoint))
-                }
-                RuntimeEntrypointTarget::WebAsset(_) => {
-                    return Err(E2eError::InvalidRuntimeSpec);
-                }
-            }
-        }
-        if artifact_count != 1 {
-            return Err(E2eError::InvalidRuntimeSpec);
-        }
-        Ok(fingerprint)
-    }
-
-    fn find_container(&self, installation_id: &InstallationId) -> Result<Option<String>, E2eError> {
-        let label = format!("label={INSTALLATION_LABEL}={installation_id}");
-        let output = self.run_checked(
-            "container lookup",
-            &[
-                "container",
-                "ls",
-                "--all",
-                "--filter",
-                &label,
-                "--format",
-                "{{.Names}}",
-            ],
-        )?;
-        let names = output
-            .lines()
-            .filter(|name| !name.is_empty())
-            .collect::<Vec<_>>();
-        match names.as_slice() {
-            [] => Ok(None),
-            [name] => Ok(Some((*name).to_owned())),
-            _ => Err(E2eError::InvalidDockerOutput("container lookup")),
-        }
-    }
-
-    fn container_state(
+    fn resolve_image(
         &self,
-        installation_id: &InstallationId,
-    ) -> Result<AppRuntimeInstallationState, E2eError> {
-        let Some(name) = self.find_container(installation_id)? else {
-            return Ok(AppRuntimeInstallationState::Absent);
-        };
-        let running = self.run_checked(
-            "container state",
-            &[
-                "container",
-                "inspect",
-                "--format",
-                "{{.State.Running}}",
-                &name,
-            ],
-        )?;
-        match running.as_str() {
-            "true" => Ok(AppRuntimeInstallationState::Active),
-            "false" => Ok(AppRuntimeInstallationState::Prepared),
-            _ => Err(E2eError::InvalidDockerOutput("container state")),
+        _spec: &RuntimeInstallationSpec,
+        artifact: &PackagePath,
+    ) -> Result<DockerImageReference, Self::Error> {
+        if artifact.as_str() != EXPECTED_ARTIFACT {
+            return Err(ImageResolutionError);
         }
-    }
-
-    fn fingerprint_for_container(&self, name: &str) -> Result<String, E2eError> {
-        self.run_checked(
-            "container fingerprint",
-            &[
-                "container",
-                "inspect",
-                "--format",
-                "{{index .Config.Labels \"io.rumahl.e2e.spec\"}}",
-                name,
-            ],
-        )
-    }
-
-    fn wait_until_ready(&self, installation_id: &InstallationId) -> Result<(), E2eError> {
-        let name = Self::container_name(installation_id);
-        let deadline = Instant::now() + Duration::from_secs(10);
-        while Instant::now() < deadline {
-            let output = self.run(&[
-                "container",
-                "exec",
-                &name,
-                "/bin/sh",
-                "-c",
-                "test -f /tmp/rumahl-ready",
-            ])?;
-            if output.status.success() {
-                return Ok(());
-            }
-            thread::sleep(Duration::from_millis(100));
-        }
-        Err(E2eError::DockerCommand("container readiness"))
-    }
-
-    fn cleanup(&self) {
-        let names = self
-            .managed_containers
-            .lock()
-            .map(|names| names.clone())
-            .unwrap_or_default();
-        for name in names {
-            let _ = self.run(&["container", "rm", "--force", &name]);
-        }
-    }
-}
-
-impl RuntimeControlTarget for DockerE2eTarget {
-    type Error = E2eError;
-
-    fn prepare(
-        &self,
-        spec: RuntimeInstallationSpec,
-    ) -> Result<RuntimeControlTargetOutcome, Self::Error> {
-        let expected_fingerprint = DockerE2eTarget::spec_fingerprint(&spec)?;
-        let installation_id = spec.identity().installation_id();
-        if let Some(name) = self.find_container(installation_id)? {
-            if name != DockerE2eTarget::container_name(installation_id)
-                || self.fingerprint_for_container(&name)? != expected_fingerprint
-            {
-                return Ok(RuntimeControlTargetOutcome::Conflict);
-            }
-            return Ok(RuntimeControlTargetOutcome::Accepted {
-                state: self.container_state(installation_id)?,
-                changed: false,
-            });
-        }
-
-        let name = DockerE2eTarget::container_name(installation_id);
-        let installation_label = format!("{INSTALLATION_LABEL}={installation_id}");
-        let spec_label = format!("{SPEC_LABEL}={expected_fingerprint}");
-        self.run_checked(
-            "container create",
-            &[
-                "container",
-                "create",
-                "--name",
-                &name,
-                "--label",
-                &installation_label,
-                "--label",
-                &spec_label,
-                "--read-only",
-                "--network",
-                "none",
-                "--cap-drop",
-                "ALL",
-                "--security-opt",
-                "no-new-privileges=true",
-                "--pids-limit",
-                "64",
-                "--memory",
-                "64m",
-                "--tmpfs",
-                "/tmp:rw,noexec,nosuid,nodev,size=16m,mode=1777",
-                "--user",
-                "65534:65534",
-                "--entrypoint",
-                "/bin/sh",
-                self.image.as_str(),
-                "-c",
-                "printf ready >/tmp/rumahl-ready; trap 'exit 0' TERM INT; while :; do sleep 1; done",
-            ],
-        )?;
-        self.managed_containers.lock().unwrap().push(name);
-        Ok(RuntimeControlTargetOutcome::Accepted {
-            state: AppRuntimeInstallationState::Prepared,
-            changed: true,
-        })
-    }
-
-    fn activate(
-        &self,
-        spec: RuntimeInstallationSpec,
-    ) -> Result<RuntimeControlTargetOutcome, Self::Error> {
-        let expected_fingerprint = DockerE2eTarget::spec_fingerprint(&spec)?;
-        let installation_id = spec.identity().installation_id();
-        let Some(name) = self.find_container(installation_id)? else {
-            return Ok(RuntimeControlTargetOutcome::Rejected);
-        };
-        if self.fingerprint_for_container(&name)? != expected_fingerprint {
-            return Ok(RuntimeControlTargetOutcome::Conflict);
-        }
-        if self.container_state(installation_id)? == AppRuntimeInstallationState::Active {
-            return Ok(RuntimeControlTargetOutcome::Accepted {
-                state: AppRuntimeInstallationState::Active,
-                changed: false,
-            });
-        }
-        self.run_checked("container start", &["container", "start", &name])?;
-        Ok(RuntimeControlTargetOutcome::Accepted {
-            state: AppRuntimeInstallationState::Active,
-            changed: true,
-        })
-    }
-
-    fn installation_state(
-        &self,
-        installation_id: InstallationId,
-    ) -> Result<RuntimeControlTargetOutcome, Self::Error> {
-        Ok(RuntimeControlTargetOutcome::Accepted {
-            state: self.container_state(&installation_id)?,
-            changed: false,
-        })
-    }
-
-    fn deactivate(
-        &self,
-        installation_id: InstallationId,
-    ) -> Result<RuntimeControlTargetOutcome, Self::Error> {
-        let state = self.container_state(&installation_id)?;
-        if state != AppRuntimeInstallationState::Active {
-            return Ok(RuntimeControlTargetOutcome::Accepted {
-                state,
-                changed: false,
-            });
-        }
-        let name = DockerE2eTarget::container_name(&installation_id);
-        self.run_checked(
-            "container stop",
-            &["container", "stop", "--time", "2", &name],
-        )?;
-        Ok(RuntimeControlTargetOutcome::Accepted {
-            state: AppRuntimeInstallationState::Prepared,
-            changed: true,
-        })
-    }
-
-    fn remove(
-        &self,
-        installation_id: InstallationId,
-    ) -> Result<RuntimeControlTargetOutcome, Self::Error> {
-        match self.container_state(&installation_id)? {
-            AppRuntimeInstallationState::Absent => {
-                return Ok(RuntimeControlTargetOutcome::Accepted {
-                    state: AppRuntimeInstallationState::Absent,
-                    changed: false,
-                });
-            }
-            AppRuntimeInstallationState::Active => {
-                return Ok(RuntimeControlTargetOutcome::Rejected);
-            }
-            AppRuntimeInstallationState::Prepared => {}
-        }
-        let name = DockerE2eTarget::container_name(&installation_id);
-        self.run_checked("container remove", &["container", "rm", &name])?;
-        Ok(RuntimeControlTargetOutcome::Accepted {
-            state: AppRuntimeInstallationState::Absent,
-            changed: true,
-        })
+        Ok(self.image.clone())
     }
 }
 
 struct Cleanup {
     root: PathBuf,
-    target: DockerE2eTarget,
+    docker: PathBuf,
+    supervisor_instance: String,
 }
 
 impl Drop for Cleanup {
     fn drop(&mut self) {
-        self.target.cleanup();
+        let filter = format!("label={INSTANCE_LABEL}={}", self.supervisor_instance);
+        if let Ok(output) = docker_output(
+            &self.docker,
+            &[
+                "container",
+                "ls",
+                "--all",
+                "--filter",
+                &filter,
+                "--format",
+                "{{.Names}}",
+            ],
+        ) {
+            for name in output.lines().filter(|name| !name.is_empty()) {
+                let _ = docker_output(&self.docker, &["container", "rm", "--force", name]);
+            }
+        }
         let _ = fs::remove_dir_all(&self.root);
     }
 }
@@ -442,21 +130,21 @@ fn test_key() -> SecretEncryptionKey {
 struct NoOidcOrigin;
 
 impl InstalledAppOriginResolver for NoOidcOrigin {
-    type Error = E2eError;
+    type Error = UnexpectedCall;
 
     fn resolve_origin(
         &self,
         _app: &InstalledApp,
         _entrypoint: &RuntimeEntrypointId,
     ) -> Result<String, Self::Error> {
-        Err(E2eError::OriginResolutionWasUnexpected)
+        Err(UnexpectedCall)
     }
 }
 
 struct NoRuntimeSecrets;
 
 impl RuntimeSecretDelivery for NoRuntimeSecrets {
-    type Error = E2eError;
+    type Error = UnexpectedCall;
 
     fn deliver_oidc_client_secret(
         &self,
@@ -465,7 +153,7 @@ impl RuntimeSecretDelivery for NoRuntimeSecrets {
         _client_id: &OidcClientId,
         _client_secret: &OidcClientSecret,
     ) -> Result<(), Self::Error> {
-        Err(E2eError::OriginResolutionWasUnexpected)
+        Err(UnexpectedCall)
     }
 
     fn remove_for_installation(
@@ -473,7 +161,7 @@ impl RuntimeSecretDelivery for NoRuntimeSecrets {
         _operation_id: &rumahl_core::AppOperationId,
         _installation_id: &InstallationId,
     ) -> Result<(), Self::Error> {
-        Err(E2eError::OriginResolutionWasUnexpected)
+        Err(UnexpectedCall)
     }
 }
 
@@ -486,6 +174,45 @@ fn test_root() -> PathBuf {
     let root = std::env::temp_dir().join(format!("re2e-{}", InstallationId::new()));
     fs::create_dir(&root).unwrap();
     root
+}
+
+fn docker_output(docker: &Path, arguments: &[&str]) -> Result<String, UnexpectedCall> {
+    let output = Command::new(docker)
+        .args(arguments)
+        .env_clear()
+        .env("PATH", "/usr/bin:/bin")
+        .output()
+        .map_err(|_| UnexpectedCall)?;
+    if !output.status.success() {
+        return Err(UnexpectedCall);
+    }
+    String::from_utf8(output.stdout)
+        .map(|value| value.trim().to_owned())
+        .map_err(|_| UnexpectedCall)
+}
+
+fn wait_until_ready(docker: &Path, installation_id: &InstallationId) -> Result<(), UnexpectedCall> {
+    let name = format!("rumahl-app-{installation_id}");
+    let deadline = Instant::now() + Duration::from_secs(10);
+    while Instant::now() < deadline {
+        if docker_output(
+            docker,
+            &[
+                "container",
+                "exec",
+                &name,
+                "/bin/sh",
+                "-c",
+                "test -f /tmp/rumahl-ready",
+            ],
+        )
+        .is_ok()
+        {
+            return Ok(());
+        }
+        thread::sleep(Duration::from_millis(100));
+    }
+    Err(UnexpectedCall)
 }
 
 fn container_manifest() -> AppManifest {
@@ -516,26 +243,38 @@ fn assert_state(outcome: RuntimeControlTargetOutcome, expected: AppRuntimeInstal
 #[test]
 #[ignore = "requires a Docker daemon and RUMAHL_CONTAINER_E2E_IMAGE"]
 fn installs_runs_and_uninstalls_real_container_app() {
-    let image = std::env::var(E2E_IMAGE_ENV)
-        .unwrap_or_else(|_| panic!("{E2E_IMAGE_ENV} must name a pre-pulled immutable image"));
+    let image = DockerImageReference::parse(
+        std::env::var(E2E_IMAGE_ENV)
+            .unwrap_or_else(|_| panic!("{E2E_IMAGE_ENV} must name a pre-pulled immutable image")),
+    )
+    .unwrap();
     let docker = std::env::var_os(E2E_DOCKER_ENV)
         .map(PathBuf::from)
         .unwrap_or_else(|| PathBuf::from("/usr/bin/docker"));
-    let target = DockerE2eTarget::new(docker, image).unwrap();
     let root = test_root();
+    let runtime_root = root.join("runtime");
+    fs::create_dir(&runtime_root).unwrap();
+    let supervisor_instance = format!("e2e-{}", InstallationId::new());
     let _cleanup = Cleanup {
         root: root.clone(),
-        target: target.clone(),
+        docker: docker.clone(),
+        supervisor_instance: supervisor_instance.clone(),
     };
+    let config =
+        DockerRuntimeTargetConfig::new(&docker, &runtime_root, "none", supervisor_instance)
+            .unwrap();
+    let target = DockerRuntimeTarget::new(config, PinnedImageResolver { image });
+    target.probe().unwrap();
+
     let socket_path = root.join("runtime.sock");
-    let server = UnixRuntimeControlServer::bind(
+    let install_server = UnixRuntimeControlServer::bind(
         UnixRuntimeControlServerConfig::new(&socket_path, current_uid()).unwrap(),
         target.clone(),
     )
     .unwrap();
-    let server_thread = thread::spawn(move || {
-        for _ in 0..4 {
-            server.serve_once().unwrap();
+    let install_server_thread = thread::spawn(move || {
+        for _ in 0..2 {
+            install_server.serve_once().unwrap();
         }
     });
     let provider = UnixAppRuntimeProvider::new(
@@ -559,9 +298,8 @@ fn installs_runs_and_uninstalls_real_container_app() {
         .unwrap()
         .app()
         .clone();
-    target
-        .wait_until_ready(installed.installation_id())
-        .unwrap();
+    install_server_thread.join().unwrap();
+    wait_until_ready(&docker, installed.installation_id()).unwrap();
     assert_state(
         target
             .installation_state(*installed.installation_id())
@@ -570,10 +308,25 @@ fn installs_runs_and_uninstalls_real_container_app() {
     );
     assert_eq!(state.installed_apps().len(), 1);
 
+    // The runtime supervisor is independently restartable. Docker and the
+    // platform operation runner retain their state while its socket is
+    // replaced by the service-manager startup sequence.
+    fs::remove_file(&socket_path).unwrap();
+    let uninstall_server = UnixRuntimeControlServer::bind(
+        UnixRuntimeControlServerConfig::new(&socket_path, current_uid()).unwrap(),
+        target.clone(),
+    )
+    .unwrap();
+    let uninstall_server_thread = thread::spawn(move || {
+        for _ in 0..2 {
+            uninstall_server.serve_once().unwrap();
+        }
+    });
+
     runner
         .uninstall(installed.installation_id(), &mut state, &mut grants)
         .unwrap();
-    server_thread.join().unwrap();
+    uninstall_server_thread.join().unwrap();
     assert_state(
         target
             .installation_state(*installed.installation_id())

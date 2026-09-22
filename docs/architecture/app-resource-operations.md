@@ -1,9 +1,10 @@
 # App resource operations
 
 Status: durable operation state machine, SQLite journal, restart-safe install
-and uninstall execution, resumable install compensation, and the authenticated
-Buildroot runtime-provider channel implemented. Update execution and the
-image-specific OCI target remain to be connected.
+and uninstall execution, resumable install compensation, authenticated
+Buildroot runtime-provider channel, and a replaceable hardened Docker target
+implemented. Update execution, package-to-image import, and runtime-secret
+namespace materialization remain to be connected.
 
 ## Purpose
 
@@ -149,8 +150,8 @@ interrupted compensation.
   checks, and rollback;
 - the higher-level policy that classifies an install failure as retryable or
   terminal before invoking compensation;
-- production OCI-engine target and namespace-specific secret target behind the
-  authenticated Buildroot supervisor channels;
+- package verification/import resolver and namespace-specific secret target
+  behind the authenticated Buildroot supervisor channels;
 - audit events without secrets, credentials, or database queries.
 
 Provider-specific credentials, filesystem paths, and connection types remain
