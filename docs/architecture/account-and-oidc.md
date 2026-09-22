@@ -14,6 +14,11 @@ OAuth security best current practice.
 
 ## Terms and boundaries
 
+- `LocalAccount` belongs to the rumahl OS identity plane. It is not a web
+  account, an app-owned user, or a mandatory rumahl cloud identity.
+- Multi-user isolation is an OS responsibility: sessions, home/profile data,
+  permissions, background work, audit attribution, and app authorizations stay
+  attached to the originating `UserId`.
 - A `UserIdentity` is the stable local platform principal.
 - A local account contains login, profile, status, and recovery metadata for
   one `UserIdentity`.
@@ -22,6 +27,12 @@ OAuth security best current practice.
 - An installed app is not an account and cannot issue identity tokens.
 - Linking a future rumahl cloud identity must remain optional. Local sign-in
   and local OIDC continue to work without Internet access.
+
+The OpenID Provider is likewise an OS platform service rather than a
+Nextcloud-specific bridge. Any installed app can become a relying party through
+the same install-time client-registration policy. Nextcloud is one required
+interoperability target, not a special identity authority or architectural
+dependency.
 
 Account profile data, credentials, sessions, OAuth grants, tokens, and signing
 keys are not app-manifest fields. Password hashes, refresh tokens, client
@@ -60,9 +71,35 @@ Credential implementations are adapters. Password verifiers, passkey private
 material, TOTP secrets, recovery codes, and equivalent secrets do not enter the
 domain model as plain strings.
 
+The first login adapter uses Argon2id password verifiers with a unique random
+salt and PHC-encoded parameters. Password enrollment normalizes Unicode to NFC,
+accepts spaces and Unicode without composition rules, requires at least 15
+characters for the single-factor flow, and requires an offline blocklist
+implementation. Failed attempts and temporary lockout state are persisted per
+account. Unknown users, wrong passwords, missing credentials, locked accounts,
+and throttled accounts return the same public authentication failure.
+
+Password is not the account model. Passkeys and future device-backed methods
+can establish the same verified local-account result and enter the identical
+OS-session issuance path without changing `LocalAccount` or OIDC semantics.
+
+Creating a password-backed account is one persistence transaction: the active
+local account and its verifier either both become durable or neither does. A
+password change consumes a fresh, non-copyable authentication result (five
+minutes by default), replaces the verifier, and revokes every live OS session
+and its opaque transport credentials in the same transaction. The in-memory
+account state is committed only after durable persistence succeeds; a storage
+or revocation failure leaves the previous password and sessions intact.
+
 Multiple accounts can have live sessions at the same time. Switching the
 desktop account selects another session; it does not reassign existing app
 tokens, grants, background jobs, or audit entries to that account.
+
+An internal `SessionId` identifies a session but is not itself a bearer secret.
+HTTP cookies, IPC peer credentials, device-bound tokens, and future native
+transports resolve their own opaque credentials to a session at the transport
+boundary. Every request then revalidates the current OS account status, session
+expiry, and revocation state before creating an `OperationContext`.
 
 ## OpenID Provider
 
@@ -146,6 +183,45 @@ The platform resolves the endpoint through the installed runtime descriptor.
 The manifest cannot choose an external issuer, arbitrary host port, wildcard
 redirect, or host filesystem path.
 
+The first implementation persists the logical declaration as part of the app
+snapshot and creates the concrete registration in a dedicated OIDC repository.
+The declaration is optional: an app without it receives no OIDC client and the
+client repository is not touched. Other optional resources, including managed
+app databases, do not implicitly enable OIDC.
+Only an `InstallationId` currently present in `PlatformState` can be
+registered. Static web runtimes must declare a public client; container
+runtimes must declare a confidential client whose callback references a
+declared runtime endpoint. The platform origin resolver supplies the HTTPS
+origin, while the manifest supplies only a strictly parsed absolute path.
+
+Each installation receives a random 192-bit `client_id`. Confidential clients
+also receive a random 256-bit secret exactly once for delivery through the
+runtime secret channel; SQLite stores only its SHA-256 digest. Public clients
+receive no secret. Both client types require Authorization Code with PKCE
+`S256`, and authorization requests are accepted only when the supplied redirect
+URI is byte-for-byte equal to the canonical registered URI. Native callback
+exceptions are deferred until the native runtime trust policy exists.
+
+`OidcAppLifecycle` is the current integration boundary above the core
+`AppLifecycle`. Installation and uninstallation first run against cloned
+platform state and grants. The live state is replaced only after the atomic
+OIDC repository insert or revocation succeeds, so repository failures roll the
+in-process lifecycle back without publishing partial state. Durable crash
+consistency between the platform snapshot, OIDC metadata, and external app
+resources is provided by the operation journal plus idempotent startup
+reconciliation. A shared SQLite transaction may optimize metadata stored in
+one database, but is not assumed across provider boundaries.
+
+The general `AppOperation` journal records OIDC as an optional participant
+alongside app databases and the final platform snapshot. It does not make OIDC
+a prerequisite for installation. `AppOperationRunner` is now the restart-safe
+top-level install and uninstall boundary: it persists the validated app target,
+replays OIDC registration or revocation after interruption, acknowledges
+confidential runtime-secret delivery/removal through the same journal step,
+and publishes live platform state only after the final snapshot and commit.
+`OidcAppLifecycle` remains an in-process compatibility boundary for callers not
+yet migrated to the operation runner.
+
 - Container and server-side web apps such as Nextcloud are confidential
   clients. Their generated secret is injected through the runtime secret
   channel and is never written into the manifest or React bundle.
@@ -203,6 +279,26 @@ platform facility. Databases contain hashes for authorization codes, refresh
 tokens, recovery codes, and confidential client secrets rather than reusable
 plain values.
 
+The first `SecretStore` implementation now encrypts installation-bound values
+with AES-256-GCM, authenticates their owner/purpose metadata, and resolves root
+keys through a separate key-provider contract. SQLite never contains the root
+key or reusable plaintext. The Buildroot adapter resolves active and historical
+keys by unsealing device-bound TPM objects; device provisioning and measured
+boot/update policy remain part of image integration.
+
+`OidcClientRegistrar::register_or_recover_installed_app` now stores a
+confidential client secret before inserting its digest-only client record. A
+restart verifies and returns the same active client and decrypted secret;
+missing secrets or declaration mismatches fail closed. Public clients never
+create secret material. The operation runner now persists successful runtime
+delivery by completing the OIDC journal step. Uninstall and install
+compensation remove runtime material, revoke the active registration, and
+delete the encrypted secret through replay-safe journal steps. The Buildroot
+client sends these operations to the authenticated Unix-socket server; its
+validated target is invoked only after the runtime provider has prepared the
+installation namespace. The concrete namespace target remains to be wired into
+the image.
+
 ## Delivery phases
 
 ### P3 extension — account persistence
@@ -210,8 +306,11 @@ plain values.
 - local account registry and uniqueness rules;
 - account/session repository contracts;
 - account and session recovery;
-- dedicated encrypted secret-store contract;
+- atomic account-plus-credential provisioning;
+- dedicated encrypted secret-store contract and SQLite adapter;
 - OIDC client, consent, subject, code, and token-family persistence;
+- transactional verifier replacement and session-credential revocation on
+  password change;
 - transactional revocation on account disable, password reset, and uninstall.
 
 ### P4A — account authentication
@@ -269,3 +368,4 @@ The account and OIDC milestone is complete only when:
 - [RFC 8414 — OAuth 2.0 Authorization Server Metadata](https://www.rfc-editor.org/rfc/rfc8414.html)
 - [RFC 8252 — OAuth 2.0 for Native Apps](https://www.rfc-editor.org/rfc/rfc8252.html)
 - [RFC 9700 — OAuth 2.0 Security Best Current Practice](https://www.rfc-editor.org/rfc/rfc9700.html)
+- [RFC 10017 — OAuth 2.0 for Browser-Based Applications](https://www.rfc-editor.org/rfc/rfc10017.html)

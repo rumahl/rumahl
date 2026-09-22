@@ -1,8 +1,10 @@
 pub mod accounts;
+pub mod app_operations;
 pub mod apps;
 pub mod capabilities;
 pub mod context;
 pub mod contributions;
+pub mod databases;
 pub mod events;
 pub mod identity;
 pub mod permissions;
@@ -10,6 +12,7 @@ pub mod persistence;
 pub mod platform;
 pub mod resources;
 pub mod runtime;
+pub mod secrets;
 
 pub use accounts::{
     AccountRegistry, AccountRegistryError, AccountSession, AccountSessionError,
@@ -18,16 +21,30 @@ pub use accounts::{
     LocalAccountError, UnixTimestamp, UnixTimestampError,
 };
 
+pub use app_operations::{
+    AppOperation, AppOperationError, AppOperationId, AppOperationIdError, AppOperationKind,
+    AppOperationPhase, AppOperationRepository, AppOperationResource, AppOperationResourceState,
+    AppOperationStep,
+};
+
 pub use apps::{
     AppLifecycle, AppLifecycleError, AppManifest, AppManifestError, AppManifestValidationError,
     AppManifestValidator, AppUninstallResult, AppVersion, AppVersionError,
     CommandContributionDeclaration, CommandContributionDeclarationError, ContributionDeclaration,
     InstalledApp, InstalledAppError, InstalledAppRegistry, InstalledAppRegistryError,
-    PlatformDeregistrationReport, PlatformRegistrar, PlatformRegistrarError, PlatformRegistration,
-    PlatformRegistrationError, SearchContributionDeclaration,
+    OidcCallbackPath, OidcCallbackPathError, OidcClientDeclaration, OidcClientDeclarationError,
+    OidcClientType, OidcScope, PlatformDeregistrationReport, PlatformRegistrar,
+    PlatformRegistrarError, PlatformRegistration, PlatformRegistrationError,
+    SearchContributionDeclaration,
 };
 
 pub use context::{CorrelationId, CorrelationIdError, OperationContext};
+
+pub use databases::{
+    AppDatabaseBinding, AppDatabaseDeclaration, AppDatabaseId, AppDatabaseIdError,
+    AppDatabaseInstallationState, AppDatabaseProvider, AppDatabaseRegistry,
+    AppDatabaseRegistryError,
+};
 
 pub use identity::{
     AppId, AppIdError, AppIdentity, Identity, InstallationId, InstallationIdError, PublisherId,
@@ -40,12 +57,17 @@ pub use resources::{
     ResourceNamespaceError, ResourceRef,
 };
 
+pub use secrets::{
+    SecretId, SecretIdError, SecretPurpose, SecretPurposeError, SecretRecord, SecretStore,
+    SecretValue, SecretValueError,
+};
+
 pub use runtime::{
-    PackagePath, PackagePathError, RuntimeAdapter, RuntimeAdapterError, RuntimeAdapterRegistry,
-    RuntimeAdapterRegistryError, RuntimeDescriptor, RuntimeDescriptorError, RuntimeEndpointId,
-    RuntimeEndpointIdError, RuntimeEntrypoint, RuntimeEntrypointId, RuntimeEntrypointIdError,
-    RuntimeEntrypointKind, RuntimeEntrypointTarget, RuntimeKind, RuntimeRouter,
-    RuntimeRoutingError, RuntimeStatus,
+    AppRuntimeInstallationState, AppRuntimeProvider, PackagePath, PackagePathError, RuntimeAdapter,
+    RuntimeAdapterError, RuntimeAdapterRegistry, RuntimeAdapterRegistryError, RuntimeDescriptor,
+    RuntimeDescriptorError, RuntimeEndpointId, RuntimeEndpointIdError, RuntimeEntrypoint,
+    RuntimeEntrypointId, RuntimeEntrypointIdError, RuntimeEntrypointKind, RuntimeEntrypointTarget,
+    RuntimeKind, RuntimeRouter, RuntimeRoutingError, RuntimeStatus,
 };
 
 pub use permissions::{

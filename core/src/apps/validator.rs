@@ -1,7 +1,10 @@
 use std::error::Error;
 use std::fmt;
 
-use crate::{CapabilityId, ContributionId, RuntimeEntrypointKind, RuntimeKind};
+use crate::{
+    CapabilityId, ContributionId, OidcClientType, RuntimeEntrypointId, RuntimeEntrypointKind,
+    RuntimeKind,
+};
 
 use super::{AppManifest, ContributionDeclaration};
 
@@ -19,6 +22,16 @@ pub enum AppManifestValidationError {
         contribution: ContributionId,
         capability: CapabilityId,
     },
+    OidcClientTypeIncompatible {
+        runtime: RuntimeKind,
+        client_type: OidcClientType,
+    },
+    OidcCallbackEntrypointMissing(RuntimeEntrypointId),
+    OidcCallbackEntrypointIncompatible {
+        runtime: RuntimeKind,
+        entrypoint: RuntimeEntrypointId,
+        kind: RuntimeEntrypointKind,
+    },
 }
 
 impl AppManifestValidator {
@@ -28,9 +41,58 @@ impl AppManifestValidator {
 
     pub fn validate(&self, manifest: &AppManifest) -> Result<(), AppManifestValidationError> {
         self.validate_runtime(manifest)?;
+        self.validate_oidc(manifest)?;
 
         for contribution in manifest.contributions() {
             self.validate_contribution(manifest, contribution)?;
+        }
+
+        Ok(())
+    }
+
+    fn validate_oidc(&self, manifest: &AppManifest) -> Result<(), AppManifestValidationError> {
+        let Some(declaration) = manifest.oidc_client() else {
+            return Ok(());
+        };
+        let runtime = manifest.runtime();
+        let expected_client_type = match runtime.kind() {
+            RuntimeKind::Web => OidcClientType::Public,
+            RuntimeKind::Container => OidcClientType::Confidential,
+            RuntimeKind::Native => {
+                return Err(AppManifestValidationError::NativeRuntimeUnsupported);
+            }
+        };
+
+        if declaration.client_type() != expected_client_type {
+            return Err(AppManifestValidationError::OidcClientTypeIncompatible {
+                runtime: runtime.kind(),
+                client_type: declaration.client_type(),
+            });
+        }
+
+        let entrypoint = runtime
+            .entrypoint(declaration.callback_entrypoint())
+            .ok_or_else(|| {
+                AppManifestValidationError::OidcCallbackEntrypointMissing(
+                    declaration.callback_entrypoint().clone(),
+                )
+            })?;
+        let expected_kind = match runtime.kind() {
+            RuntimeKind::Web => RuntimeEntrypointKind::WebAsset,
+            RuntimeKind::Container => RuntimeEntrypointKind::Endpoint,
+            RuntimeKind::Native => {
+                return Err(AppManifestValidationError::NativeRuntimeUnsupported);
+            }
+        };
+
+        if entrypoint.kind() != expected_kind {
+            return Err(
+                AppManifestValidationError::OidcCallbackEntrypointIncompatible {
+                    runtime: runtime.kind(),
+                    entrypoint: entrypoint.id().clone(),
+                    kind: entrypoint.kind(),
+                },
+            );
         }
 
         Ok(())
@@ -113,6 +175,25 @@ impl fmt::Display for AppManifestValidationError {
                     "search contribution '{contribution}' references capability '{capability}' that the app does not provide"
                 )
             }
+            Self::OidcClientTypeIncompatible {
+                runtime,
+                client_type,
+            } => write!(
+                f,
+                "OIDC client type '{client_type:?}' is incompatible with runtime '{runtime:?}'"
+            ),
+            Self::OidcCallbackEntrypointMissing(entrypoint) => write!(
+                f,
+                "OIDC callback references missing runtime entrypoint '{entrypoint}'"
+            ),
+            Self::OidcCallbackEntrypointIncompatible {
+                runtime,
+                entrypoint,
+                kind,
+            } => write!(
+                f,
+                "OIDC callback entrypoint '{entrypoint}' of kind '{kind:?}' is incompatible with runtime '{runtime:?}'"
+            ),
         }
     }
 }
@@ -125,8 +206,9 @@ mod tests {
 
     use crate::{
         AppId, AppVersion, CapabilityId, CommandAction, CommandContributionDeclaration,
-        ContributionId, PackagePath, PublisherId, RuntimeDescriptor, RuntimeEndpointId,
-        RuntimeEntrypoint, RuntimeEntrypointId, SearchContributionDeclaration,
+        ContributionId, OidcCallbackPath, OidcClientDeclaration, OidcScope, PackagePath,
+        PublisherId, RuntimeDescriptor, RuntimeEndpointId, RuntimeEntrypoint, RuntimeEntrypointId,
+        SearchContributionDeclaration,
     };
 
     fn manifest() -> AppManifest {
@@ -296,5 +378,106 @@ mod tests {
         let validator = AppManifestValidator::new();
 
         assert!(validator.validate(&manifest).is_ok());
+    }
+
+    #[test]
+    fn accepts_public_web_oidc_callback_bound_to_web_entrypoint() {
+        let mut manifest = manifest();
+        manifest
+            .declare_oidc_client(
+                OidcClientDeclaration::new(
+                    OidcClientType::Public,
+                    RuntimeEntrypointId::parse("main").unwrap(),
+                    OidcCallbackPath::parse("/oidc/callback").unwrap(),
+                    vec![OidcScope::OpenId, OidcScope::Profile],
+                )
+                .unwrap(),
+            )
+            .unwrap();
+
+        assert!(AppManifestValidator::new().validate(&manifest).is_ok());
+    }
+
+    #[test]
+    fn rejects_confidential_client_for_static_web_runtime() {
+        let mut manifest = manifest();
+        manifest
+            .declare_oidc_client(
+                OidcClientDeclaration::new(
+                    OidcClientType::Confidential,
+                    RuntimeEntrypointId::parse("main").unwrap(),
+                    OidcCallbackPath::parse("/oidc/callback").unwrap(),
+                    vec![OidcScope::OpenId],
+                )
+                .unwrap(),
+            )
+            .unwrap();
+
+        assert_eq!(
+            AppManifestValidator::new().validate(&manifest).unwrap_err(),
+            AppManifestValidationError::OidcClientTypeIncompatible {
+                runtime: RuntimeKind::Web,
+                client_type: OidcClientType::Confidential,
+            }
+        );
+    }
+
+    #[test]
+    fn accepts_confidential_container_callback_bound_to_endpoint() {
+        let mut runtime = RuntimeDescriptor::container();
+        runtime
+            .add_entrypoint(RuntimeEntrypoint::container_artifact(
+                RuntimeEntrypointId::parse("service").unwrap(),
+                PackagePath::parse("runtime/server.oci").unwrap(),
+            ))
+            .unwrap();
+        runtime
+            .add_entrypoint(RuntimeEntrypoint::endpoint(
+                RuntimeEntrypointId::parse("main").unwrap(),
+                RuntimeEndpointId::parse("web").unwrap(),
+            ))
+            .unwrap();
+        let mut manifest = AppManifest::new(
+            AppId::parse("com.rumahl.cloud").unwrap(),
+            PublisherId::parse("com.rumahl").unwrap(),
+            AppVersion::new(1, 0, 0),
+            "Cloud",
+            runtime,
+        )
+        .unwrap();
+        manifest
+            .declare_oidc_client(
+                OidcClientDeclaration::new(
+                    OidcClientType::Confidential,
+                    RuntimeEntrypointId::parse("main").unwrap(),
+                    OidcCallbackPath::parse("/apps/oidc/callback").unwrap(),
+                    vec![OidcScope::OpenId, OidcScope::Profile],
+                )
+                .unwrap(),
+            )
+            .unwrap();
+
+        assert!(AppManifestValidator::new().validate(&manifest).is_ok());
+    }
+
+    #[test]
+    fn rejects_oidc_callback_for_missing_entrypoint() {
+        let mut manifest = manifest();
+        manifest
+            .declare_oidc_client(
+                OidcClientDeclaration::new(
+                    OidcClientType::Public,
+                    RuntimeEntrypointId::parse("missing").unwrap(),
+                    OidcCallbackPath::parse("/oidc/callback").unwrap(),
+                    vec![OidcScope::OpenId],
+                )
+                .unwrap(),
+            )
+            .unwrap();
+
+        assert!(matches!(
+            AppManifestValidator::new().validate(&manifest),
+            Err(AppManifestValidationError::OidcCallbackEntrypointMissing(_))
+        ));
     }
 }

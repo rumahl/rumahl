@@ -137,6 +137,26 @@ impl AccountState {
         Ok(())
     }
 
+    pub fn revoke_sessions_for_user(
+        &mut self,
+        user_id: &UserId,
+        revoked_at: UnixTimestamp,
+    ) -> Result<usize, AccountStateError> {
+        if self.accounts.get(user_id).is_none() {
+            return Err(AccountStateError::AccountNotFound);
+        }
+
+        let mut staged = self.clone();
+        let revoked = staged
+            .sessions
+            .revoke_for_user(user_id, revoked_at)
+            .map_err(AccountStateError::SessionRegistry)?;
+
+        *self = staged;
+
+        Ok(revoked)
+    }
+
     pub fn accounts(&self) -> &AccountRegistry {
         &self.accounts
     }
@@ -309,6 +329,34 @@ mod tests {
                 .sessions()
                 .sessions_for_user(&kai)
                 .all(|session| session.revoked_at().is_none())
+        );
+    }
+
+    #[test]
+    fn revoking_sessions_does_not_change_account_availability() {
+        let mut state = AccountState::new();
+        let kai = state.create_account("kai", "Kai").unwrap();
+        let session_id = state
+            .start_session(
+                &kai,
+                UnixTimestamp::from_seconds(100),
+                UnixTimestamp::from_seconds(300),
+            )
+            .unwrap();
+
+        assert_eq!(
+            state
+                .revoke_sessions_for_user(&kai, UnixTimestamp::from_seconds(200))
+                .unwrap(),
+            1
+        );
+        assert_eq!(
+            state.accounts().get(&kai).unwrap().status(),
+            AccountStatus::Active
+        );
+        assert_eq!(
+            state.sessions().get(&session_id).unwrap().revoked_at(),
+            Some(UnixTimestamp::from_seconds(200))
         );
     }
 }

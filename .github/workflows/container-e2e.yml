@@ -1,0 +1,45 @@
+name: Container app E2E
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: container-e2e-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  container-app:
+    name: Real container lifecycle
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      CARGO_TERM_COLOR: always
+      RUMAHL_CONTAINER_E2E_DOCKER: /usr/bin/docker
+      RUMAHL_CONTAINER_E2E_PLATFORM_USER: runner
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Install pinned Rust toolchain
+        run: rustup show active-toolchain
+      - name: Verify Docker daemon
+        run: docker version
+      - name: Pull immutable E2E image
+        run: docker pull busybox@sha256:9db7b59979c38555a39def84a31fb98b5296952f9e3afd4f6f11f05b07adfab0
+      - name: Build real container app fixture
+        run: >-
+          docker build --tag rumahl-container-e2e:local
+          platform-buildroot/tests/fixtures/container-app
+      - name: Run real container lifecycle
+        run: |
+          image_id="$(docker image inspect --format '{{.Id}}' rumahl-container-e2e:local)"
+          RUMAHL_CONTAINER_E2E_IMAGE="$image_id" \
+            cargo test --locked -p rumahl-platform-buildroot \
+              --test container_app_e2e \
+              -- --ignored --exact installs_runs_and_uninstalls_real_container_app

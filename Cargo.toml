@@ -2,7 +2,11 @@
 resolver = "2"
 
 members = [
+    "account-auth",
+    "app-operations",
     "core",
+    "oidc-provider",
     "persistence-sqlite",
+    "platform-buildroot",
     "platform-api",
 ]

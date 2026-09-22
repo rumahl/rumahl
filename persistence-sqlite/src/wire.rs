@@ -2,13 +2,14 @@ use std::error::Error;
 use std::fmt;
 
 use rumahl_core::{
-    AppId, AppIdentity, AppManifest, AppVersion, CapabilityId, CommandAction,
-    CommandContributionDeclaration, ContributionDeclaration, ContributionId, EventName, GrantId,
-    Identity, InstallationId, InstalledAppSnapshot, PackagePath, PermissionGrantSnapshot,
-    PermissionId, PermissionRequest, PermissionScope, PlatformSnapshot, PublisherId, ResourceKey,
-    ResourceKind, ResourceNamespace, ResourceRef, RuntimeDescriptor, RuntimeEndpointId,
-    RuntimeEntrypoint, RuntimeEntrypointId, RuntimeEntrypointTarget, RuntimeKind, ServiceId,
-    ServiceIdentity, UserId, UserIdentity,
+    AppDatabaseDeclaration, AppDatabaseId, AppId, AppIdentity, AppManifest, AppVersion,
+    CapabilityId, CommandAction, CommandContributionDeclaration, ContributionDeclaration,
+    ContributionId, EventName, GrantId, Identity, InstallationId, InstalledAppSnapshot,
+    OidcCallbackPath, OidcClientDeclaration, OidcClientType, OidcScope, PackagePath,
+    PermissionGrantSnapshot, PermissionId, PermissionRequest, PermissionScope, PlatformSnapshot,
+    PublisherId, ResourceKey, ResourceKind, ResourceNamespace, ResourceRef, RuntimeDescriptor,
+    RuntimeEndpointId, RuntimeEntrypoint, RuntimeEntrypointId, RuntimeEntrypointTarget,
+    RuntimeKind, ServiceId, ServiceIdentity, UserId, UserIdentity,
 };
 use serde::{Deserialize, Serialize};
 
@@ -76,20 +77,20 @@ impl WireSnapshot {
 
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
-struct WireInstalledApp {
+pub(crate) struct WireInstalledApp {
     identity: WireAppIdentity,
     manifest: WireManifest,
 }
 
 impl WireInstalledApp {
-    fn capture(snapshot: &InstalledAppSnapshot) -> Self {
+    pub(crate) fn capture(snapshot: &InstalledAppSnapshot) -> Self {
         Self {
             identity: WireAppIdentity::capture(snapshot.identity()),
             manifest: WireManifest::capture(snapshot.manifest()),
         }
     }
 
-    fn into_domain(self) -> Result<InstalledAppSnapshot, WireSnapshotError> {
+    pub(crate) fn into_domain(self) -> Result<InstalledAppSnapshot, WireSnapshotError> {
         InstalledAppSnapshot::new(self.identity.into_domain()?, self.manifest.into_domain()?)
             .map_err(|error| WireSnapshotError::invalid("installed app", error))
     }
@@ -137,6 +138,10 @@ struct WireManifest {
     provided_capabilities: Vec<String>,
     contributions: Vec<WireContribution>,
     event_subscriptions: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    databases: Vec<WireAppDatabase>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    oidc_client: Option<WireOidcClient>,
 }
 
 impl WireManifest {
@@ -167,6 +172,12 @@ impl WireManifest {
                 .iter()
                 .map(|event| event.as_str().to_owned())
                 .collect(),
+            databases: manifest
+                .databases()
+                .iter()
+                .map(WireAppDatabase::capture)
+                .collect(),
+            oidc_client: manifest.oidc_client().map(WireOidcClient::capture),
         }
     }
 
@@ -217,7 +228,132 @@ impl WireManifest {
                 })?;
         }
 
+        for database in self.databases {
+            manifest
+                .add_database(database.into_domain()?)
+                .map_err(|error| WireSnapshotError::invalid("manifest database", error))?;
+        }
+
+        if let Some(oidc_client) = self.oidc_client {
+            manifest
+                .declare_oidc_client(oidc_client.into_domain()?)
+                .map_err(|error| WireSnapshotError::invalid("manifest OIDC client", error))?;
+        }
+
         Ok(manifest)
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct WireAppDatabase {
+    id: String,
+}
+
+impl WireAppDatabase {
+    fn capture(declaration: &AppDatabaseDeclaration) -> Self {
+        Self {
+            id: declaration.id().as_str().to_owned(),
+        }
+    }
+
+    fn into_domain(self) -> Result<AppDatabaseDeclaration, WireSnapshotError> {
+        AppDatabaseId::parse(self.id)
+            .map(AppDatabaseDeclaration::new)
+            .map_err(|error| WireSnapshotError::invalid("app database id", error))
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct WireOidcClient {
+    client_type: WireOidcClientType,
+    callback_entrypoint: String,
+    callback_path: String,
+    scopes: Vec<WireOidcScope>,
+}
+
+impl WireOidcClient {
+    fn capture(declaration: &OidcClientDeclaration) -> Self {
+        Self {
+            client_type: declaration.client_type().into(),
+            callback_entrypoint: declaration.callback_entrypoint().as_str().to_owned(),
+            callback_path: declaration.callback_path().as_str().to_owned(),
+            scopes: declaration
+                .scopes()
+                .iter()
+                .copied()
+                .map(Into::into)
+                .collect(),
+        }
+    }
+
+    fn into_domain(self) -> Result<OidcClientDeclaration, WireSnapshotError> {
+        OidcClientDeclaration::new(
+            self.client_type.into(),
+            RuntimeEntrypointId::parse(self.callback_entrypoint)
+                .map_err(|error| WireSnapshotError::invalid("OIDC callback entrypoint", error))?,
+            OidcCallbackPath::parse(self.callback_path)
+                .map_err(|error| WireSnapshotError::invalid("OIDC callback path", error))?,
+            self.scopes.into_iter().map(Into::into).collect(),
+        )
+        .map_err(|error| WireSnapshotError::invalid("OIDC client declaration", error))
+    }
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+enum WireOidcClientType {
+    Public,
+    Confidential,
+}
+
+impl From<OidcClientType> for WireOidcClientType {
+    fn from(value: OidcClientType) -> Self {
+        match value {
+            OidcClientType::Public => Self::Public,
+            OidcClientType::Confidential => Self::Confidential,
+        }
+    }
+}
+
+impl From<WireOidcClientType> for OidcClientType {
+    fn from(value: WireOidcClientType) -> Self {
+        match value {
+            WireOidcClientType::Public => Self::Public,
+            WireOidcClientType::Confidential => Self::Confidential,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+enum WireOidcScope {
+    OpenId,
+    Profile,
+    Email,
+    OfflineAccess,
+}
+
+impl From<OidcScope> for WireOidcScope {
+    fn from(value: OidcScope) -> Self {
+        match value {
+            OidcScope::OpenId => Self::OpenId,
+            OidcScope::Profile => Self::Profile,
+            OidcScope::Email => Self::Email,
+            OidcScope::OfflineAccess => Self::OfflineAccess,
+        }
+    }
+}
+
+impl From<WireOidcScope> for OidcScope {
+    fn from(value: WireOidcScope) -> Self {
+        match value {
+            WireOidcScope::OpenId => Self::OpenId,
+            WireOidcScope::Profile => Self::Profile,
+            WireOidcScope::Email => Self::Email,
+            WireOidcScope::OfflineAccess => Self::OfflineAccess,
+        }
     }
 }
 

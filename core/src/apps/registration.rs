@@ -2,8 +2,9 @@ use std::error::Error;
 use std::fmt;
 
 use crate::{
-    CapabilityProvider, CapabilityProviderError, CommandContribution, CommandContributionError,
-    Contribution, ContributionError, EventSubscription, EventSubscriptionError, SearchContribution,
+    AppDatabaseBinding, CapabilityProvider, CapabilityProviderError, CommandContribution,
+    CommandContributionError, Contribution, ContributionError, EventSubscription,
+    EventSubscriptionError, SearchContribution,
 };
 
 use super::{ContributionDeclaration, InstalledApp};
@@ -15,6 +16,7 @@ pub struct PlatformRegistration {
     commands: Vec<CommandContribution>,
     searches: Vec<SearchContribution>,
     event_subscriptions: Vec<EventSubscription>,
+    databases: Vec<AppDatabaseBinding>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -40,6 +42,8 @@ impl PlatformRegistration {
         let mut searches = Vec::new();
 
         let mut event_subscriptions = Vec::new();
+
+        let mut databases = Vec::new();
 
         /*
          * Provided capabilities.
@@ -98,12 +102,25 @@ impl PlatformRegistration {
             event_subscriptions.push(subscription);
         }
 
+        /*
+         * Logical app databases. Physical providers and credentials are
+         * selected later by the OS runtime integration.
+         */
+
+        for declaration in manifest.databases() {
+            databases.push(AppDatabaseBinding::new(
+                identity.clone(),
+                declaration.clone(),
+            ));
+        }
+
         Ok(Self {
             capability_providers,
             contributions,
             commands,
             searches,
             event_subscriptions,
+            databases,
         })
     }
 
@@ -125,6 +142,10 @@ impl PlatformRegistration {
 
     pub fn event_subscriptions(&self) -> &[EventSubscription] {
         &self.event_subscriptions
+    }
+
+    pub fn databases(&self) -> &[AppDatabaseBinding] {
+        &self.databases
     }
 }
 
@@ -169,9 +190,9 @@ mod tests {
     use super::*;
 
     use crate::{
-        AppId, AppManifest, AppManifestValidator, AppVersion, CapabilityId, CommandAction,
-        CommandContributionDeclaration, ContributionId, EventName, PublisherId,
-        SearchContributionDeclaration,
+        AppDatabaseDeclaration, AppDatabaseId, AppId, AppManifest, AppManifestValidator,
+        AppVersion, CapabilityId, CommandAction, CommandContributionDeclaration, ContributionId,
+        EventName, PublisherId, SearchContributionDeclaration,
     };
 
     fn web_runtime() -> crate::RuntimeDescriptor {
@@ -233,6 +254,12 @@ mod tests {
             .add_event_subscription(EventName::parse("rumahl.files.changed").unwrap())
             .unwrap();
 
+        manifest
+            .add_database(AppDatabaseDeclaration::new(
+                AppDatabaseId::parse("primary").unwrap(),
+            ))
+            .unwrap();
+
         InstalledApp::create(manifest, &AppManifestValidator::new()).unwrap()
     }
 
@@ -251,6 +278,8 @@ mod tests {
         assert_eq!(registration.searches().len(), 1);
 
         assert_eq!(registration.event_subscriptions().len(), 1);
+
+        assert_eq!(registration.databases().len(), 1);
     }
 
     #[test]
@@ -287,6 +316,13 @@ mod tests {
                 .event_subscriptions()
                 .iter()
                 .all(|subscription| { subscription.subscriber() == &identity })
+        );
+
+        assert!(
+            registration
+                .databases()
+                .iter()
+                .all(|database| database.owner() == app.identity())
         );
     }
 

@@ -1,9 +1,9 @@
 use rumahl_core::{
-    AppId, AppLifecycle, AppLifecycleError, AppManifest, AppVersion, CapabilityId, CommandAction,
-    CommandContributionDeclaration, ContributionId, EventName, Identity, InMemoryGrantStore,
-    InstalledAppRegistryError, PackagePath, PermissionId, PermissionRequest, PermissionScope,
-    PlatformState, PublisherId, RuntimeDescriptor, RuntimeEntrypoint, RuntimeEntrypointId,
-    RuntimeKind, SearchContributionDeclaration,
+    AppDatabaseDeclaration, AppDatabaseId, AppId, AppLifecycle, AppLifecycleError, AppManifest,
+    AppVersion, CapabilityId, CommandAction, CommandContributionDeclaration, ContributionId,
+    EventName, Identity, InMemoryGrantStore, InstalledAppRegistryError, PackagePath, PermissionId,
+    PermissionRequest, PermissionScope, PlatformState, PublisherId, RuntimeDescriptor,
+    RuntimeEntrypoint, RuntimeEntrypointId, RuntimeKind, SearchContributionDeclaration,
 };
 
 fn notes_manifest() -> AppManifest {
@@ -71,6 +71,12 @@ fn notes_manifest() -> AppManifest {
         .unwrap();
 
     manifest
+        .add_database(AppDatabaseDeclaration::new(
+            AppDatabaseId::parse("primary").unwrap(),
+        ))
+        .unwrap();
+
+    manifest
 }
 
 #[test]
@@ -121,6 +127,8 @@ fn complete_app_lifecycle_flow() {
 
     assert_eq!(stored.manifest().event_subscriptions().len(), 1);
 
+    assert_eq!(stored.manifest().databases().len(), 1);
+
     assert_eq!(stored.manifest().runtime().kind(), RuntimeKind::Web);
 
     /*
@@ -137,6 +145,16 @@ fn complete_app_lifecycle_flow() {
         state
             .capability_registry()
             .provider(&search_capability, &identity,)
+            .is_some()
+    );
+
+    assert!(
+        state
+            .database_registry()
+            .database(
+                installed.identity(),
+                &AppDatabaseId::parse("primary").unwrap(),
+            )
             .is_some()
     );
 
@@ -221,6 +239,8 @@ fn complete_app_lifecycle_flow() {
 
     assert_eq!(state.event_bus().len(), 1);
 
+    assert_eq!(state.database_registry().len(), 1);
+
     /*
      * Uninstall.
      */
@@ -244,6 +264,8 @@ fn complete_app_lifecycle_flow() {
 
     assert_eq!(result.deregistration().event_subscriptions(), 1);
 
+    assert_eq!(result.deregistration().databases(), 1);
+
     /*
      * Entire platform state is clean again.
      */
@@ -259,6 +281,8 @@ fn complete_app_lifecycle_flow() {
     assert!(state.search_registry().is_empty());
 
     assert!(state.event_bus().is_empty());
+
+    assert!(state.database_registry().is_empty());
 
     /*
      * Public uninstall semantics:

@@ -1,0 +1,9 @@
+[package]
+name = "rumahl-app-operations"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[dependencies]
+rumahl-core = { path = "../core" }
+rumahl-oidc-provider = { path = "../oidc-provider" }

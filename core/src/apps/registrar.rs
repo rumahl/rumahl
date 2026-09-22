@@ -2,8 +2,8 @@ use std::error::Error;
 use std::fmt;
 
 use crate::{
-    CapabilityRegistryError, CommandRegistryError, ContributionRegistryError, EventBusError,
-    PlatformState, SearchRegistryError,
+    AppDatabaseRegistryError, CapabilityRegistryError, CommandRegistryError,
+    ContributionRegistryError, EventBusError, PlatformState, SearchRegistryError,
 };
 
 use super::{InstalledApp, PlatformRegistration};
@@ -18,6 +18,7 @@ pub enum PlatformRegistrarError {
     CommandConflict(CommandRegistryError),
     SearchConflict(SearchRegistryError),
     EventSubscriptionConflict(EventBusError),
+    DatabaseConflict(AppDatabaseRegistryError),
 }
 
 impl PlatformRegistrar {
@@ -65,6 +66,13 @@ impl PlatformRegistrar {
                 .map_err(PlatformRegistrarError::EventSubscriptionConflict)?;
         }
 
+        for database in registration.databases() {
+            state
+                .database_registry()
+                .can_register(database)
+                .map_err(PlatformRegistrarError::DatabaseConflict)?;
+        }
+
         Ok(())
     }
 
@@ -108,6 +116,13 @@ impl PlatformRegistrar {
                 .map_err(PlatformRegistrarError::EventSubscriptionConflict)?;
         }
 
+        for database in registration.databases() {
+            state
+                .database_registry_mut()
+                .register(database.clone())
+                .map_err(PlatformRegistrarError::DatabaseConflict)?;
+        }
+
         Ok(())
     }
 
@@ -132,12 +147,17 @@ impl PlatformRegistrar {
 
         let event_subscriptions = state.event_bus_mut().unsubscribe_all(&identity);
 
+        let databases = state
+            .database_registry_mut()
+            .remove_for_owner(app.identity());
+
         PlatformDeregistrationReport {
             capability_providers,
             contributions,
             commands,
             searches,
             event_subscriptions,
+            databases,
         }
     }
 }
@@ -149,6 +169,7 @@ pub struct PlatformDeregistrationReport {
     commands: usize,
     searches: usize,
     event_subscriptions: usize,
+    databases: usize,
 }
 
 impl PlatformDeregistrationReport {
@@ -172,12 +193,17 @@ impl PlatformDeregistrationReport {
         self.event_subscriptions
     }
 
+    pub fn databases(&self) -> usize {
+        self.databases
+    }
+
     pub fn is_empty(&self) -> bool {
         self.capability_providers == 0
             && self.contributions == 0
             && self.commands == 0
             && self.searches == 0
             && self.event_subscriptions == 0
+            && self.databases == 0
     }
 }
 
@@ -203,6 +229,9 @@ impl fmt::Display for PlatformRegistrarError {
             Self::EventSubscriptionConflict(error) => {
                 write!(f, "event subscription conflict: {error}")
             }
+            Self::DatabaseConflict(error) => {
+                write!(f, "app database registration conflict: {error}")
+            }
         }
     }
 }
@@ -219,6 +248,7 @@ impl Error for PlatformRegistrarError {
             Self::SearchConflict(error) => Some(error),
 
             Self::EventSubscriptionConflict(error) => Some(error),
+            Self::DatabaseConflict(error) => Some(error),
         }
     }
 }
@@ -228,9 +258,9 @@ mod tests {
     use super::*;
 
     use crate::{
-        AppId, AppManifest, AppManifestValidator, AppVersion, CapabilityId, CommandAction,
-        CommandContributionDeclaration, ContributionId, EventName, InstalledApp, PublisherId,
-        SearchContributionDeclaration,
+        AppDatabaseDeclaration, AppDatabaseId, AppId, AppManifest, AppManifestValidator,
+        AppVersion, CapabilityId, CommandAction, CommandContributionDeclaration, ContributionId,
+        EventName, InstalledApp, PublisherId, SearchContributionDeclaration,
     };
 
     fn web_runtime() -> crate::RuntimeDescriptor {
@@ -286,6 +316,12 @@ mod tests {
             .add_event_subscription(EventName::parse("rumahl.files.changed").unwrap())
             .unwrap();
 
+        manifest
+            .add_database(AppDatabaseDeclaration::new(
+                AppDatabaseId::parse("primary").unwrap(),
+            ))
+            .unwrap();
+
         InstalledApp::create(manifest, &AppManifestValidator::new()).unwrap()
     }
 
@@ -311,6 +347,7 @@ mod tests {
         assert!(state.command_registry().is_empty());
         assert!(state.search_registry().is_empty());
         assert!(state.event_bus().is_empty());
+        assert!(state.database_registry().is_empty());
     }
 
     #[test]
@@ -421,6 +458,23 @@ mod tests {
     }
 
     #[test]
+    fn detects_database_conflict() {
+        let registration = registration();
+        let mut state = PlatformState::new();
+        state
+            .database_registry_mut()
+            .register(registration.databases()[0].clone())
+            .unwrap();
+
+        assert_eq!(
+            PlatformRegistrar::new()
+                .can_register(&registration, &state)
+                .unwrap_err(),
+            PlatformRegistrarError::DatabaseConflict(AppDatabaseRegistryError::AlreadyRegistered)
+        );
+    }
+
+    #[test]
     fn registers_platform_registration_atomically() {
         let registration = registration();
 
@@ -452,6 +506,11 @@ mod tests {
         assert_eq!(
             state.event_bus().len(),
             registration.event_subscriptions().len()
+        );
+
+        assert_eq!(
+            state.database_registry().len(),
+            registration.databases().len()
         );
     }
 
@@ -537,6 +596,7 @@ mod tests {
             report.event_subscriptions(),
             registration.event_subscriptions().len()
         );
+        assert_eq!(report.databases(), registration.databases().len());
 
         assert!(state.capability_registry().is_empty());
 
@@ -547,6 +607,7 @@ mod tests {
         assert!(state.search_registry().is_empty());
 
         assert!(state.event_bus().is_empty());
+        assert!(state.database_registry().is_empty());
     }
 
     #[test]
@@ -614,6 +675,13 @@ mod tests {
                 .filter(|subscription| subscription.subscriber() == &second_identity)
                 .count(),
             second_registration.event_subscriptions().len()
+        );
+        assert_eq!(
+            state
+                .database_registry()
+                .databases_for_owner(second.identity())
+                .len(),
+            second_registration.databases().len()
         );
     }
 

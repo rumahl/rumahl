@@ -9,7 +9,16 @@ default = ["bundled"]
 bundled = ["rusqlite/bundled"]
 
 [dependencies]
+aes-gcm = "0.11.1"
+getrandom = "0.4.3"
+rumahl-account-auth = { path = "../account-auth" }
 rumahl-core = { path = "../core" }
+rumahl-oidc-provider = { path = "../oidc-provider" }
 rusqlite = { version = "0.40.2", default-features = false }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
+zeroize = "1.9.0"
+
+[dev-dependencies]
+rumahl-app-operations = { path = "../app-operations" }
+rumahl-platform-api = { path = "../platform-api" }
