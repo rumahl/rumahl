@@ -1,7 +1,7 @@
 {
   "manifestVersion": 1,
   "uiContractVersion": 1,
-  "id": "org.rumahl.stock",
+  "id": "com.rumahl.stock",
   "name": "rumahl",
   "tokens": {},
   "variants": {

@@ -29,7 +29,7 @@ const E2E_IMAGE_ENV: &str = "RUMAHL_CONTAINER_E2E_IMAGE";
 const E2E_DOCKER_ENV: &str = "RUMAHL_CONTAINER_E2E_DOCKER";
 const E2E_PLATFORM_USER_ENV: &str = "RUMAHL_CONTAINER_E2E_PLATFORM_USER";
 const EXPECTED_ARTIFACT: &str = "runtime/server.oci";
-const INSTANCE_LABEL: &str = "io.rumahl.supervisor";
+const INSTANCE_LABEL: &str = "com.rumahl.supervisor";
 
 #[derive(Debug)]
 struct UnexpectedCall;

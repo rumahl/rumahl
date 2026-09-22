@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://contracts.rumahl.org/ui/theme-manifest-v1.schema.json",
+  "$id": "https://contracts.rumahl.com/ui/theme-manifest-v1.schema.json",
   "title": "rumahl Theme Manifest v1",
   "type": "object",
   "additionalProperties": false,

@@ -229,7 +229,7 @@ impl ThemeManifest {
 impl ResolvedTheme {
     pub fn stock() -> Self {
         Self {
-            id: "org.rumahl.stock".to_owned(),
+            id: "com.rumahl.stock".to_owned(),
             name: "rumahl".to_owned(),
             tokens: stock_tokens(),
             window_chrome: WindowChromeVariant::Standard,

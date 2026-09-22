@@ -1,7 +1,7 @@
 {
   "manifestVersion": 1,
   "uiContractVersion": 1,
-  "id": "org.rumahl.contrast",
+  "id": "com.rumahl.contrast",
   "name": "rumahl Contrast",
   "tokens": {
     "color.canvas.background": "#050505",

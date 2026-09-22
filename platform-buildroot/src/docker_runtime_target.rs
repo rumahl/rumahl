@@ -21,11 +21,11 @@ const DEFAULT_STOP_TIMEOUT_SECONDS: u8 = 10;
 const WAIT_INTERVAL: Duration = Duration::from_millis(10);
 const MAX_COMMAND_OUTPUT: usize = 64 * 1024;
 const CONTAINER_NAME_PREFIX: &str = "rumahl-app-";
-const MANAGED_LABEL: &str = "io.rumahl.managed";
-const INSTALLATION_LABEL: &str = "io.rumahl.installation";
-const INSTANCE_LABEL: &str = "io.rumahl.supervisor";
-const SPEC_LABEL: &str = "io.rumahl.runtime-spec";
-const IMAGE_LABEL: &str = "io.rumahl.image-id";
+const MANAGED_LABEL: &str = "com.rumahl.managed";
+const INSTALLATION_LABEL: &str = "com.rumahl.installation";
+const INSTANCE_LABEL: &str = "com.rumahl.supervisor";
+const SPEC_LABEL: &str = "com.rumahl.runtime-spec";
+const IMAGE_LABEL: &str = "com.rumahl.image-id";
 const SECRET_MOUNT_PATH: &str = "/run/rumahl/secrets";
 const SECRET_DIRECTORY: &str = "secrets";
 
