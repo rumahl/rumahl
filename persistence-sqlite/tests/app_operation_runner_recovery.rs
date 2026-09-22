@@ -2,9 +2,10 @@ use std::convert::Infallible;
 use std::error::Error;
 use std::fmt;
 use std::fs;
+use std::io::ErrorKind;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
-use std::time::{SystemTime, UNIX_EPOCH};
 
 use rumahl_app_operations::{
     AppOperationRunner, AppOperationRunnerError, AppRuntimeServices, RuntimeSecretDelivery,
@@ -26,6 +27,8 @@ use rumahl_persistence_sqlite::{
     SqliteAppDatabaseProvider, SqliteAppOperationRepository, SqliteOidcClientRepository,
     SqliteSecretStore, SqliteSnapshotRepository,
 };
+
+static NEXT_TEST_DIRECTORY: AtomicU64 = AtomicU64::new(0);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct TestError(&'static str);
@@ -223,11 +226,18 @@ impl RuntimeSecretDelivery for TestRuntimeSecrets {
 }
 
 fn test_root() -> PathBuf {
-    let nonce = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap()
-        .as_nanos();
-    std::env::temp_dir().join(format!("rumahl-operation-runner-{nonce}"))
+    loop {
+        let sequence = NEXT_TEST_DIRECTORY.fetch_add(1, Ordering::Relaxed);
+        let root = std::env::temp_dir().join(format!(
+            "rumahl-operation-runner-{}-{sequence}",
+            std::process::id()
+        ));
+        match fs::create_dir(&root) {
+            Ok(()) => return root,
+            Err(error) if error.kind() == ErrorKind::AlreadyExists => continue,
+            Err(error) => panic!("failed to reserve test directory: {error}"),
+        }
+    }
 }
 
 fn manifest() -> AppManifest {
@@ -300,7 +310,6 @@ fn runner(
 #[test]
 fn resumes_installation_across_reopened_sqlite_repositories() {
     let root = test_root();
-    fs::create_dir(&root).unwrap();
     let state_path = root.join("platform.sqlite3");
     let database_root = root.join("app-databases");
     let delivery_state = Arc::new(Mutex::new(DeliveryState {
@@ -380,7 +389,6 @@ fn resumes_installation_across_reopened_sqlite_repositories() {
 #[test]
 fn resumes_uninstall_across_reopened_sqlite_repositories() {
     let root = test_root();
-    fs::create_dir(&root).unwrap();
     let state_path = root.join("platform.sqlite3");
     let database_root = root.join("app-databases");
     let delivery_state = Arc::new(Mutex::new(DeliveryState::default()));
