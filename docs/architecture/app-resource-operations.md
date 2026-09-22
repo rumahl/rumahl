@@ -3,9 +3,9 @@
 Status: durable operation state machine, SQLite journal, restart-safe install
 and uninstall execution, resumable install compensation, authenticated
 Buildroot runtime-provider channel, a replaceable hardened Docker target, and
-an independently restarted runtime-supervisor process implemented. Update
-execution, package-to-image import, and runtime-secret namespace
-materialization remain to be connected.
+an independently restarted runtime-supervisor process with installation-bound
+runtime-secret materialization implemented. Update execution and
+package-to-image import remain to be connected.
 
 ## Purpose
 
@@ -151,8 +151,7 @@ interrupted compensation.
   checks, and rollback;
 - the higher-level policy that classifies an install failure as retryable or
   terminal before invoking compensation;
-- package verification/import resolver and namespace-specific secret target
-  behind the authenticated Buildroot supervisor channels;
+- package verification and import behind the existing image resolver;
 - audit events without secrets, credentials, or database queries.
 
 Provider-specific credentials, filesystem paths, and connection types remain

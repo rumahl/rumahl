@@ -7,19 +7,23 @@ use std::process::{Child, Command, Stdio};
 use std::thread;
 use std::time::{Duration, Instant};
 
-use rumahl_app_operations::{AppOperationRunner, AppRuntimeServices, RuntimeSecretDelivery};
+use rumahl_app_operations::{AppOperationRunner, AppRuntimeServices};
 use rumahl_core::{
     AppId, AppManifest, AppOperationRepository, AppVersion, InMemoryGrantStore, InstallationId,
-    InstalledApp, PackagePath, PlatformState, PublisherId, RuntimeDescriptor, RuntimeEntrypoint,
+    InstalledApp, OidcCallbackPath, OidcClientDeclaration, OidcClientType, OidcScope, PackagePath,
+    PlatformState, PublisherId, RuntimeDescriptor, RuntimeEndpointId, RuntimeEntrypoint,
     RuntimeEntrypointId,
 };
-use rumahl_oidc_provider::{InstalledAppOriginResolver, OidcClientId, OidcClientSecret};
+use rumahl_oidc_provider::InstalledAppOriginResolver;
 use rumahl_persistence_sqlite::{
     SecretEncryptionKey, SecretEncryptionKeyId, SecretEncryptionKeyProvider,
     SqliteAppDatabaseProvider, SqliteAppOperationRepository, SqliteOidcClientRepository,
     SqliteSecretStore, SqliteSnapshotRepository,
 };
-use rumahl_platform_buildroot::{UnixAppRuntimeProvider, UnixAppRuntimeProviderConfig};
+use rumahl_platform_buildroot::{
+    UnixAppRuntimeProvider, UnixAppRuntimeProviderConfig, UnixRuntimeSecretDelivery,
+    UnixRuntimeSecretDeliveryConfig,
+};
 
 const E2E_IMAGE_ENV: &str = "RUMAHL_CONTAINER_E2E_IMAGE";
 const E2E_DOCKER_ENV: &str = "RUMAHL_CONTAINER_E2E_DOCKER";
@@ -115,9 +119,9 @@ fn test_key() -> SecretEncryptionKey {
     )
 }
 
-struct NoOidcOrigin;
+struct TestOidcOrigin;
 
-impl InstalledAppOriginResolver for NoOidcOrigin {
+impl InstalledAppOriginResolver for TestOidcOrigin {
     type Error = UnexpectedCall;
 
     fn resolve_origin(
@@ -125,31 +129,7 @@ impl InstalledAppOriginResolver for NoOidcOrigin {
         _app: &InstalledApp,
         _entrypoint: &RuntimeEntrypointId,
     ) -> Result<String, Self::Error> {
-        Err(UnexpectedCall)
-    }
-}
-
-struct NoRuntimeSecrets;
-
-impl RuntimeSecretDelivery for NoRuntimeSecrets {
-    type Error = UnexpectedCall;
-
-    fn deliver_oidc_client_secret(
-        &self,
-        _operation_id: &rumahl_core::AppOperationId,
-        _app: &InstalledApp,
-        _client_id: &OidcClientId,
-        _client_secret: &OidcClientSecret,
-    ) -> Result<(), Self::Error> {
-        Err(UnexpectedCall)
-    }
-
-    fn remove_for_installation(
-        &self,
-        _operation_id: &rumahl_core::AppOperationId,
-        _installation_id: &InstallationId,
-    ) -> Result<(), Self::Error> {
-        Err(UnexpectedCall)
+        Ok("https://container-e2e.rumahl.local".to_owned())
     }
 }
 
@@ -183,7 +163,8 @@ fn start_supervisor(
     docker: &Path,
     runtime_root: &Path,
     image_root: &Path,
-    socket_path: &Path,
+    control_socket: &Path,
+    secret_socket: &Path,
     supervisor_instance: &str,
     platform_user: &str,
 ) -> SupervisorProcess {
@@ -199,7 +180,9 @@ fn start_supervisor(
         .arg("--instance")
         .arg(supervisor_instance)
         .arg("--control-socket")
-        .arg(socket_path)
+        .arg(control_socket)
+        .arg("--secret-socket")
+        .arg(secret_socket)
         .arg("--platform-user")
         .arg(platform_user)
         .env_clear()
@@ -212,7 +195,7 @@ fn start_supervisor(
     let mut process = SupervisorProcess { child: Some(child) };
     let deadline = Instant::now() + Duration::from_secs(10);
     while Instant::now() < deadline {
-        if socket_path.exists() {
+        if control_socket.exists() && secret_socket.exists() {
             return process;
         }
         if let Some(status) = process.child.as_mut().unwrap().try_wait().unwrap() {
@@ -265,14 +248,32 @@ fn container_manifest() -> AppManifest {
             PackagePath::parse(EXPECTED_ARTIFACT).unwrap(),
         ))
         .unwrap();
-    AppManifest::new(
+    runtime
+        .add_entrypoint(RuntimeEntrypoint::endpoint(
+            RuntimeEntrypointId::parse("main").unwrap(),
+            RuntimeEndpointId::parse("web").unwrap(),
+        ))
+        .unwrap();
+    let mut manifest = AppManifest::new(
         AppId::parse("com.rumahl.container-e2e").unwrap(),
         PublisherId::parse("com.rumahl").unwrap(),
         AppVersion::new(1, 0, 0),
         "Container E2E",
         runtime,
     )
-    .unwrap()
+    .unwrap();
+    manifest
+        .declare_oidc_client(
+            OidcClientDeclaration::new(
+                OidcClientType::Confidential,
+                RuntimeEntrypointId::parse("main").unwrap(),
+                OidcCallbackPath::parse("/oidc/callback").unwrap(),
+                vec![OidcScope::OpenId, OidcScope::Profile],
+            )
+            .unwrap(),
+        )
+        .unwrap();
+    manifest
 }
 
 #[test]
@@ -290,7 +291,8 @@ fn installs_runs_and_uninstalls_real_container_app() {
     let image_root = root.join("images");
     fs::create_dir(&runtime_root).unwrap();
     fs::create_dir(&image_root).unwrap();
-    let socket_path = root.join("runtime.sock");
+    let control_socket = root.join("runtime.sock");
+    let secret_socket = root.join("secrets.sock");
     let supervisor_instance = format!("e2e-{}", InstallationId::new());
     let _cleanup = Cleanup {
         root: root.clone(),
@@ -301,20 +303,24 @@ fn installs_runs_and_uninstalls_real_container_app() {
         &docker,
         &runtime_root,
         &image_root,
-        &socket_path,
+        &control_socket,
+        &secret_socket,
         &supervisor_instance,
         &platform_user,
     );
     let provider = UnixAppRuntimeProvider::new(
-        UnixAppRuntimeProviderConfig::new(&socket_path, current_uid()).unwrap(),
+        UnixAppRuntimeProviderConfig::new(&control_socket, current_uid()).unwrap(),
+    );
+    let secret_delivery = UnixRuntimeSecretDelivery::new(
+        UnixRuntimeSecretDeliveryConfig::new(&secret_socket, current_uid()).unwrap(),
     );
     let state_path = root.join("platform.sqlite3");
     let runner = AppOperationRunner::new(
         SqliteAppOperationRepository::open(&state_path).unwrap(),
         SqliteAppDatabaseProvider::open(root.join("databases")).unwrap(),
-        AppRuntimeServices::new(provider, NoRuntimeSecrets),
+        AppRuntimeServices::new(provider, secret_delivery),
         SqliteOidcClientRepository::open(&state_path).unwrap(),
-        NoOidcOrigin,
+        TestOidcOrigin,
         SqliteSnapshotRepository::open(&state_path).unwrap(),
         SqliteSecretStore::open(&state_path, TestKeyProvider).unwrap(),
     );
@@ -338,6 +344,19 @@ fn installs_runs_and_uninstalls_real_container_app() {
     assert_eq!(report.committed(), 1);
     let installed = state.installed_apps().apps()[0].clone();
     wait_until_ready(&docker, installed.installation_id()).unwrap();
+    let container_name = format!("rumahl-app-{installation_id}");
+    docker_output(
+        &docker,
+        &[
+            "container",
+            "exec",
+            &container_name,
+            "/bin/sh",
+            "-c",
+            "test -s /run/rumahl/secrets/oidc-client-id && test -s /run/rumahl/secrets/oidc-client-secret",
+        ],
+    )
+    .unwrap();
     assert_eq!(
         docker_output(
             &docker,
@@ -356,12 +375,14 @@ fn installs_runs_and_uninstalls_real_container_app() {
     // Simulate the service manager replacing only the runtime supervisor. The
     // platform runner, SQLite journal, and Docker container remain alive.
     supervisor.stop();
-    fs::remove_file(&socket_path).unwrap();
+    fs::remove_file(&control_socket).unwrap();
+    fs::remove_file(&secret_socket).unwrap();
     let _restarted_supervisor = start_supervisor(
         &docker,
         &runtime_root,
         &image_root,
-        &socket_path,
+        &control_socket,
+        &secret_socket,
         &supervisor_instance,
         &platform_user,
     );
@@ -370,6 +391,7 @@ fn installs_runs_and_uninstalls_real_container_app() {
         .uninstall(installed.installation_id(), &mut state, &mut grants)
         .unwrap();
     assert!(state.installed_apps().is_empty());
+    assert!(!runtime_root.join(installation_id.to_string()).exists());
     assert!(
         docker_output(
             &docker,

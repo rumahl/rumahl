@@ -17,7 +17,8 @@ use crate::runtime_secrets::{
 };
 
 const DEFAULT_TIMEOUT: Duration = Duration::from_secs(5);
-const SOCKET_MODE: u32 = 0o600;
+const OWNER_ONLY_SOCKET_MODE: u32 = 0o600;
+const OWNER_GROUP_SOCKET_MODE: u32 = 0o660;
 const MAX_FIELD_LENGTH: usize = 1024;
 const MAX_REQUEST_LENGTH: usize = 4096;
 const DELIVER_FIELD_COUNT: u8 = 6;
@@ -28,12 +29,14 @@ pub struct UnixRuntimeSecretServerConfig {
     socket_path: PathBuf,
     expected_peer_uid: u32,
     timeout: Duration,
+    socket_mode: u32,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum UnixRuntimeSecretServerConfigError {
     SocketPathMustBeAbsolute,
     ZeroTimeout,
+    InvalidSocketMode,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -132,6 +135,7 @@ impl UnixRuntimeSecretServerConfig {
             socket_path,
             expected_peer_uid,
             timeout,
+            socket_mode: OWNER_ONLY_SOCKET_MODE,
         })
     }
 
@@ -146,9 +150,45 @@ impl UnixRuntimeSecretServerConfig {
     pub fn timeout(&self) -> Duration {
         self.timeout
     }
+
+    pub fn with_socket_mode(
+        mut self,
+        socket_mode: u32,
+    ) -> Result<Self, UnixRuntimeSecretServerConfigError> {
+        if !matches!(
+            socket_mode,
+            OWNER_ONLY_SOCKET_MODE | OWNER_GROUP_SOCKET_MODE
+        ) {
+            return Err(UnixRuntimeSecretServerConfigError::InvalidSocketMode);
+        }
+        self.socket_mode = socket_mode;
+        Ok(self)
+    }
+
+    pub fn socket_mode(&self) -> u32 {
+        self.socket_mode
+    }
 }
 
 impl RuntimeOidcClientSecret {
+    pub fn new(
+        operation_id: AppOperationId,
+        installation_id: InstallationId,
+        app_id: AppId,
+        publisher_id: PublisherId,
+        client_id: OidcClientId,
+        client_secret: OidcClientSecret,
+    ) -> Self {
+        Self {
+            operation_id,
+            installation_id,
+            app_id,
+            publisher_id,
+            client_id,
+            client_secret,
+        }
+    }
+
     pub fn operation_id(&self) -> &AppOperationId {
         &self.operation_id
     }
@@ -175,6 +215,13 @@ impl RuntimeOidcClientSecret {
 }
 
 impl RuntimeSecretRemoval {
+    pub fn new(operation_id: AppOperationId, installation_id: InstallationId) -> Self {
+        Self {
+            operation_id,
+            installation_id,
+        }
+    }
+
     pub fn operation_id(&self) -> &AppOperationId {
         &self.operation_id
     }
@@ -199,9 +246,10 @@ where
     ) -> Result<Self, UnixRuntimeSecretServerError> {
         let listener =
             UnixListener::bind(&config.socket_path).map_err(UnixRuntimeSecretServerError::Bind)?;
-        if let Err(error) =
-            fs::set_permissions(&config.socket_path, fs::Permissions::from_mode(SOCKET_MODE))
-        {
+        if let Err(error) = fs::set_permissions(
+            &config.socket_path,
+            fs::Permissions::from_mode(config.socket_mode),
+        ) {
             drop(listener);
             let _ = fs::remove_file(&config.socket_path);
             return Err(UnixRuntimeSecretServerError::SetSocketPermissions(error));
@@ -402,6 +450,9 @@ impl fmt::Display for UnixRuntimeSecretServerConfigError {
                 write!(f, "runtime secret server socket path must be absolute")
             }
             Self::ZeroTimeout => write!(f, "runtime secret server timeout must be non-zero"),
+            Self::InvalidSocketMode => {
+                write!(f, "runtime secret server socket mode must be 0600 or 0660")
+            }
         }
     }
 }
@@ -539,6 +590,22 @@ mod tests {
     }
 
     #[test]
+    fn permits_only_owner_or_owner_group_socket_access() {
+        let owner_only =
+            UnixRuntimeSecretServerConfig::new("/run/rumahl/secrets.sock", 1000).unwrap();
+        assert_eq!(owner_only.socket_mode(), 0o600);
+        let shared = owner_only.with_socket_mode(0o660).unwrap();
+        assert_eq!(shared.socket_mode(), 0o660);
+        assert_eq!(
+            UnixRuntimeSecretServerConfig::new("/run/rumahl/secrets.sock", 1000)
+                .unwrap()
+                .with_socket_mode(0o666)
+                .unwrap_err(),
+            UnixRuntimeSecretServerConfigError::InvalidSocketMode
+        );
+    }
+
+    #[test]
     fn receives_and_validates_oidc_delivery() {
         let root = test_root();
         let socket_path = root.join("runtime.sock");
@@ -571,7 +638,7 @@ mod tests {
         assert_eq!(deliveries[0].3, expected_secret.as_str());
         assert_eq!(
             fs::metadata(&socket_path).unwrap().permissions().mode() & 0o777,
-            SOCKET_MODE
+            OWNER_ONLY_SOCKET_MODE
         );
 
         fs::remove_dir_all(root).unwrap();

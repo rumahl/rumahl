@@ -27,6 +27,7 @@ const INSTANCE_LABEL: &str = "io.rumahl.supervisor";
 const SPEC_LABEL: &str = "io.rumahl.runtime-spec";
 const IMAGE_LABEL: &str = "io.rumahl.image-id";
 const SECRET_MOUNT_PATH: &str = "/run/rumahl/secrets";
+const SECRET_DIRECTORY: &str = "secrets";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DockerImageReference(String);
@@ -98,6 +99,7 @@ pub enum DockerRuntimeTargetError<E> {
         expected: u32,
         actual: u32,
     },
+    NamespacePermissions(u32),
     Spawn(io::Error),
     Read(io::Error),
     Wait(io::Error),
@@ -373,9 +375,30 @@ where
                 actual: metadata.uid(),
             });
         }
+        let mode = metadata.mode() & 0o777;
+        if !created && mode & 0o022 != 0 {
+            return Err(DockerRuntimeTargetError::NamespacePermissions(mode));
+        }
         if created {
-            fs::set_permissions(&path, fs::Permissions::from_mode(0o755))
+            fs::set_permissions(&path, fs::Permissions::from_mode(0o700))
                 .map_err(DockerRuntimeTargetError::Namespace)?;
+        }
+        let secret_path = path.join(SECRET_DIRECTORY);
+        match fs::create_dir(&secret_path) {
+            Ok(()) => fs::set_permissions(&secret_path, fs::Permissions::from_mode(0o755))
+                .map_err(DockerRuntimeTargetError::Namespace)?,
+            Err(error) if error.kind() == io::ErrorKind::AlreadyExists => {
+                let metadata = fs::symlink_metadata(&secret_path)
+                    .map_err(DockerRuntimeTargetError::Namespace)?;
+                if !metadata.file_type().is_dir()
+                    || metadata.file_type().is_symlink()
+                    || metadata.uid() != expected
+                    || metadata.mode() & 0o022 != 0
+                {
+                    return Err(DockerRuntimeTargetError::NamespaceIsNotDirectory);
+                }
+            }
+            Err(error) => return Err(DockerRuntimeTargetError::Namespace(error)),
         }
         Ok((path, created))
     }
@@ -529,7 +552,7 @@ where
         let image_label = format!("{IMAGE_LABEL}={image_id}");
         let mount = format!(
             "type=bind,src={},dst={SECRET_MOUNT_PATH},readonly,bind-propagation=rprivate",
-            namespace.display()
+            namespace.join(SECRET_DIRECTORY).display()
         );
         let stop_timeout = self.config.stop_timeout_seconds.to_string();
         let result = self.run_checked(
@@ -572,6 +595,7 @@ where
             ],
         );
         if result.is_err() && namespace_created {
+            let _ = fs::remove_dir(namespace.join(SECRET_DIRECTORY));
             let _ = fs::remove_dir(&namespace);
         }
         result?;
@@ -835,6 +859,11 @@ fn validate_image_id<E>(value: &str) -> Result<(), DockerRuntimeTargetError<E>> 
 }
 
 fn remove_namespace_if_empty<E>(path: &Path) -> Result<(), DockerRuntimeTargetError<E>> {
+    match fs::remove_dir(path.join(SECRET_DIRECTORY)) {
+        Ok(()) => {}
+        Err(error) if error.kind() == io::ErrorKind::NotFound => {}
+        Err(error) => return Err(DockerRuntimeTargetError::Namespace(error)),
+    }
     match fs::remove_dir(path) {
         Ok(()) => Ok(()),
         Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(()),
@@ -904,6 +933,10 @@ where
                 f,
                 "runtime namespace owner UID {actual} does not match supervisor UID {expected}"
             ),
+            Self::NamespacePermissions(mode) => write!(
+                f,
+                "runtime namespace permissions {mode:o} allow non-owner writes"
+            ),
             Self::Spawn(_) => write!(f, "failed to execute Docker CLI"),
             Self::Read(_) => write!(f, "failed to read Docker CLI output"),
             Self::Wait(_) => write!(f, "failed while waiting for Docker CLI"),
@@ -956,6 +989,20 @@ mod tests {
         AppId, AppIdentity, AppVersion, InstallationId, PublisherId, RuntimeDescriptor,
         RuntimeEntrypoint, RuntimeEntrypointId,
     };
+
+    struct UnusedImageResolver;
+
+    impl DockerImageResolver for UnusedImageResolver {
+        type Error = Infallible;
+
+        fn resolve_image(
+            &self,
+            _spec: &RuntimeInstallationSpec,
+            _artifact: &PackagePath,
+        ) -> Result<DockerImageReference, Self::Error> {
+            unreachable!("namespace tests do not resolve images")
+        }
+    }
 
     fn container_spec(version: AppVersion, artifact: &str) -> RuntimeInstallationSpec {
         let mut runtime = RuntimeDescriptor::container();
@@ -1053,6 +1100,38 @@ mod tests {
                 .unwrap()
                 .0
         );
+    }
+
+    #[test]
+    fn creates_private_secret_namespace_and_rejects_insecure_replay() {
+        let root = unique_test_root('m');
+        let target = DockerRuntimeTarget::new(
+            DockerRuntimeTargetConfig::new("/usr/bin/docker", &root, "rumahl-apps", "system")
+                .unwrap(),
+            UnusedImageResolver,
+        );
+        let installation_id = InstallationId::new();
+        let (namespace, created) = target.ensure_namespace(&installation_id).unwrap();
+        assert!(created);
+        assert_eq!(
+            fs::metadata(&namespace).unwrap().permissions().mode() & 0o777,
+            0o700
+        );
+        assert_eq!(
+            fs::metadata(namespace.join(SECRET_DIRECTORY))
+                .unwrap()
+                .permissions()
+                .mode()
+                & 0o777,
+            0o755
+        );
+
+        fs::set_permissions(&namespace, fs::Permissions::from_mode(0o770)).unwrap();
+        assert!(matches!(
+            target.ensure_namespace(&installation_id),
+            Err(DockerRuntimeTargetError::NamespacePermissions(0o770))
+        ));
+        fs::remove_dir_all(root).unwrap();
     }
 
     #[test]

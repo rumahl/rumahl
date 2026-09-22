@@ -69,13 +69,14 @@ The supervisor replies with `RSH1` plus one status byte: `0` acknowledges the
 operation, `1` reports a conflicting replay, and `2` rejects it. Unknown or
 truncated responses fail closed.
 
-The server binds without removing an existing path, changes the socket mode to
-`0600`, rejects oversized, malformed, trailing, or domain-invalid fields, and
-maps the target's applied, idempotent, conflicting, or rejected result back to
-the client. The service manager must create a private, volatile parent
-directory and remove a stale socket before process startup.
+The server binds without removing an existing path, uses owner-only `0600` by
+default (the production supervisor explicitly selects `0660`), rejects
+oversized, malformed, trailing, or domain-invalid fields, and maps the target's
+applied, idempotent, conflicting, or rejected result back to the client. The
+service manager must create a private, volatile parent directory and remove a
+stale socket before process startup.
 
-The supervisor's `RuntimeSecretTarget` must additionally:
+`NamespaceRuntimeSecretTarget` is the concrete supervisor implementation. It:
 
 - run the server socket under a volatile root-owned directory such as `/run`;
 - make delivery idempotent for operation ID, installation ID, client ID, and
@@ -83,6 +84,16 @@ The supervisor's `RuntimeSecretTarget` must additionally:
 - inject material only into the target installation's runtime namespace;
 - never log or persist the plaintext, and zeroize its receive buffer;
 - make removal idempotent before acknowledging it.
+
+It writes the OIDC client ID and secret beneath
+`<runtime-root>/<installation-id>/secrets/` and keeps replay metadata beside
+that directory. Files are published atomically with bounded reads, symlink and
+ownership checks, non-owner-write rejection, and zeroizing buffers. Docker
+mounts only the installation's `secrets` directory read-only at
+`/run/rumahl/secrets`; no engine socket or unrelated installation namespace is
+exposed to the app. A changed operation, identity, client, or secret digest is
+reported as a conflict, while an interrupted partial publication is completed
+on replay.
 
 Linux documents that `SO_PEERCRED` returns credentials captured for the peer of
 a connected Unix socket in [`unix(7)`](https://man7.org/linux/man-pages/man7/unix.7.html).
@@ -156,15 +167,16 @@ Docker process.
 
 ### Runtime supervisor process
 
-The `rumahl-runtime-supervisor` binary hosts the runtime-control socket in a
-separate, unprivileged process. Its configuration is entirely explicit: fixed
-Docker executable, volatile runtime root, staged-image root, supervisor-owned
-network, instance name, socket path, and the platform service account whose UID
-is authenticated through `SO_PEERCRED`. It probes both the Docker daemon and
-configured network before accepting requests. Individual malformed requests,
-Docker command failures, and timeouts are rejected without terminating the
-accept loop; an unrecoverable listener failure exits so the service manager can
-replace the process.
+The `rumahl-runtime-supervisor` binary hosts the runtime-control and
+runtime-secret sockets in a separate, unprivileged process. Its configuration
+is entirely explicit: fixed Docker executable, volatile runtime root,
+staged-image root, supervisor-owned network, instance name, both socket paths,
+and the platform service account whose UID is authenticated through
+`SO_PEERCRED`. It probes both the Docker daemon and configured network before
+accepting requests. Individual malformed requests, Docker command failures,
+and timeouts are rejected without terminating the accept loops; an
+unrecoverable listener failure exits so the service manager can replace the
+process.
 
 The production service creates the socket as `0660` in a `0750` runtime
 directory owned by the dedicated `rumahl-runtime-control` group. Only

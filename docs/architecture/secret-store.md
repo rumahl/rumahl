@@ -2,8 +2,8 @@
 
 Status: engine-neutral core contract, encrypted SQLite adapter, recoverable
 OIDC client-secret registration, journalled delivery acknowledgement, and
-Buildroot-facing TPM/runtime-channel endpoints implemented. Device provisioning
-and the namespace-specific supervisor target remain deployment work.
+Buildroot-facing TPM/runtime-channel endpoints plus namespace-specific runtime
+materialization implemented. Device provisioning remains deployment work.
 
 ## Boundary
 
@@ -80,9 +80,13 @@ credentials before sending a length-prefixed request, uses bounded I/O waits,
 zeroizes secret-bearing request buffers, and fails closed on replay conflicts
 or malformed acknowledgements. `UnixRuntimeSecretServer` enforces the receiving
 side, validates bounded domain fields, and delegates only authenticated
-requests to `RuntimeSecretTarget`. The concrete target must bind delivery to
-the prepared installation namespace, keep plaintext out of durable storage and
-logs, and make delivery/removal idempotent.
+requests to `RuntimeSecretTarget`. `NamespaceRuntimeSecretTarget` binds each
+delivery to its prepared installation namespace under the volatile runtime
+root. It atomically publishes only the OIDC client ID and secret into the
+container's read-only secret mount, records non-secret replay metadata outside
+that mount, rejects untrusted paths or changed replays, and removes all runtime
+material idempotently. Plaintext remains outside SQLite, logs, arguments, and
+environment variables.
 
 Update-time credential rotation and its rollback policy remain
 operation-policy work.

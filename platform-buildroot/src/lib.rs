@@ -4,6 +4,7 @@
 compile_error!("rumahl-platform-buildroot requires Linux (or macOS for host tests)");
 
 mod docker_runtime_target;
+mod namespace_secret_target;
 mod runtime_provider;
 mod runtime_secret_server;
 mod runtime_secrets;
@@ -15,6 +16,10 @@ mod tpm2_key_provider;
 pub use docker_runtime_target::{
     DockerImageReference, DockerImageReferenceError, DockerImageResolver, DockerRuntimeTarget,
     DockerRuntimeTargetConfig, DockerRuntimeTargetConfigError, DockerRuntimeTargetError,
+};
+pub use namespace_secret_target::{
+    NamespaceRuntimeSecretTarget, NamespaceRuntimeSecretTargetConfig,
+    NamespaceRuntimeSecretTargetConfigError, NamespaceRuntimeSecretTargetError,
 };
 pub use runtime_provider::{
     RuntimeControlTarget, RuntimeControlTargetOutcome, RuntimeInstallationSpec,

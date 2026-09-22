@@ -7,10 +7,13 @@ use std::process::ExitCode;
 
 use rumahl_platform_buildroot::{
     DockerRuntimeTarget, DockerRuntimeTargetConfig, DockerRuntimeTargetConfigError,
-    DockerRuntimeTargetError, StagedDockerImageResolver, StagedDockerImageResolverConfig,
-    StagedDockerImageResolverConfigError, StagedDockerImageResolverError, UnixRuntimeControlServer,
-    UnixRuntimeControlServerConfig, UnixRuntimeControlServerConfigError,
-    UnixRuntimeControlServerError,
+    DockerRuntimeTargetError, NamespaceRuntimeSecretTarget, NamespaceRuntimeSecretTargetConfig,
+    NamespaceRuntimeSecretTargetConfigError, StagedDockerImageResolver,
+    StagedDockerImageResolverConfig, StagedDockerImageResolverConfigError,
+    StagedDockerImageResolverError, UnixRuntimeControlServer, UnixRuntimeControlServerConfig,
+    UnixRuntimeControlServerConfigError, UnixRuntimeControlServerError, UnixRuntimeSecretServer,
+    UnixRuntimeSecretServerConfig, UnixRuntimeSecretServerConfigError,
+    UnixRuntimeSecretServerError,
 };
 
 const HELP: &str = "\
@@ -21,6 +24,7 @@ Usage: rumahl-runtime-supervisor \\
   --network NAME \\
   --instance NAME \\
   --control-socket PATH \\
+  --secret-socket PATH \\
   --platform-user NAME
 ";
 const MAX_PASSWD_BUFFER: usize = 1024 * 1024;
@@ -33,6 +37,7 @@ struct SupervisorArgs {
     network: String,
     instance: String,
     control_socket: PathBuf,
+    secret_socket: PathBuf,
     platform_user: String,
 }
 
@@ -56,7 +61,10 @@ enum SupervisorError {
     TargetProbe(DockerRuntimeTargetError<StagedDockerImageResolverError>),
     ServerConfig(UnixRuntimeControlServerConfigError),
     ServerBind(UnixRuntimeControlServerError),
-    ServerAccept(UnixRuntimeControlServerError),
+    SecretTargetConfig(NamespaceRuntimeSecretTargetConfigError),
+    SecretServerConfig(UnixRuntimeSecretServerConfigError),
+    SecretServerBind(UnixRuntimeSecretServerError),
+    SecretServerAccept(UnixRuntimeSecretServerError),
 }
 
 fn main() -> ExitCode {
@@ -80,8 +88,9 @@ fn run(arguments: impl IntoIterator<Item = OsString>) -> Result<(), SupervisorEr
         StagedDockerImageResolverConfig::new(args.image_root)
             .map_err(SupervisorError::ImageResolverConfig)?,
     );
+    let runtime_root = args.runtime_root;
     let target = DockerRuntimeTarget::new(
-        DockerRuntimeTargetConfig::new(args.docker, args.runtime_root, args.network, args.instance)
+        DockerRuntimeTargetConfig::new(args.docker, &runtime_root, args.network, args.instance)
             .map_err(SupervisorError::TargetConfig)?,
         resolver,
     );
@@ -92,16 +101,37 @@ fn run(arguments: impl IntoIterator<Item = OsString>) -> Result<(), SupervisorEr
     let server = UnixRuntimeControlServer::bind(server_config, target)
         .map_err(SupervisorError::ServerBind)?;
 
+    let secret_target = NamespaceRuntimeSecretTarget::new(
+        NamespaceRuntimeSecretTargetConfig::new(runtime_root)
+            .map_err(SupervisorError::SecretTargetConfig)?,
+    );
+    let secret_server_config = UnixRuntimeSecretServerConfig::new(args.secret_socket, platform_uid)
+        .and_then(|config| config.with_socket_mode(0o660))
+        .map_err(SupervisorError::SecretServerConfig)?;
+    let secret_server = UnixRuntimeSecretServer::bind(secret_server_config, secret_target)
+        .map_err(SupervisorError::SecretServerBind)?;
+
+    std::thread::spawn(move || {
+        loop {
+            match server.serve_once() {
+                Ok(()) => {}
+                Err(UnixRuntimeControlServerError::Accept(_)) => {
+                    eprintln!("runtime supervisor control listener failed");
+                    std::process::exit(1);
+                }
+                Err(error) => eprintln!("runtime supervisor rejected one control request: {error}"),
+            }
+        }
+    });
+
     loop {
-        match server.serve_once() {
+        match secret_server.serve_once() {
             Ok(()) => {}
-            Err(error @ UnixRuntimeControlServerError::Accept(_)) => {
-                return Err(SupervisorError::ServerAccept(error));
+            Err(error @ UnixRuntimeSecretServerError::Accept(_)) => {
+                return Err(SupervisorError::SecretServerAccept(error));
             }
             Err(error) => {
-                // The protocol errors contain no app secrets. A bad request or
-                // unavailable engine must not take down this long-lived service.
-                eprintln!("runtime supervisor rejected one request: {error}");
+                eprintln!("runtime supervisor rejected one secret request: {error}");
             }
         }
     }
@@ -116,6 +146,7 @@ fn parse_args(
     let mut network = None;
     let mut instance = None;
     let mut control_socket = None;
+    let mut secret_socket = None;
     let mut platform_user = None;
     let mut arguments = arguments.into_iter();
 
@@ -139,6 +170,7 @@ fn parse_args(
                     .map_err(|_| SupervisorArgsError::NonUtf8Value("--instance"))?,
             )?,
             "--control-socket" => set_once(&mut control_socket, PathBuf::from(value))?,
+            "--secret-socket" => set_once(&mut secret_socket, PathBuf::from(value))?,
             "--platform-user" => set_once(
                 &mut platform_user,
                 value
@@ -157,6 +189,8 @@ fn parse_args(
         instance: instance.ok_or(SupervisorArgsError::MissingOption("--instance"))?,
         control_socket: control_socket
             .ok_or(SupervisorArgsError::MissingOption("--control-socket"))?,
+        secret_socket: secret_socket
+            .ok_or(SupervisorArgsError::MissingOption("--secret-socket"))?,
         platform_user: platform_user
             .ok_or(SupervisorArgsError::MissingOption("--platform-user"))?,
     })
@@ -236,7 +270,14 @@ impl fmt::Display for SupervisorError {
             Self::TargetProbe(_) => write!(f, "Docker runtime target probe failed"),
             Self::ServerConfig(_) => write!(f, "runtime control server configuration failed"),
             Self::ServerBind(_) => write!(f, "runtime control server startup failed"),
-            Self::ServerAccept(_) => write!(f, "runtime control server accept loop failed"),
+            Self::SecretTargetConfig(_) => {
+                write!(f, "runtime secret target configuration failed")
+            }
+            Self::SecretServerConfig(_) => {
+                write!(f, "runtime secret server configuration failed")
+            }
+            Self::SecretServerBind(_) => write!(f, "runtime secret server startup failed"),
+            Self::SecretServerAccept(_) => write!(f, "runtime secret server accept loop failed"),
         }
     }
 }
@@ -250,7 +291,10 @@ impl Error for SupervisorError {
             Self::TargetConfig(error) => Some(error),
             Self::TargetProbe(error) => Some(error),
             Self::ServerConfig(error) => Some(error),
-            Self::ServerBind(error) | Self::ServerAccept(error) => Some(error),
+            Self::ServerBind(error) => Some(error),
+            Self::SecretTargetConfig(error) => Some(error),
+            Self::SecretServerConfig(error) => Some(error),
+            Self::SecretServerBind(error) | Self::SecretServerAccept(error) => Some(error),
             Self::PlatformUserContainsNul | Self::UnknownPlatformUser => None,
         }
     }
@@ -276,6 +320,8 @@ mod tests {
             "system",
             "--control-socket",
             "/run/rumahl-runtime-supervisor/control.sock",
+            "--secret-socket",
+            "/run/rumahl-runtime-supervisor/secrets.sock",
             "--platform-user",
             "rumahl-platform",
         ]
