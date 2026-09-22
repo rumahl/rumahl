@@ -1,9 +1,10 @@
 import type { ShellSnapshotV1 } from "@rumahl/contracts";
 
 export const SHELL_SNAPSHOT_ENDPOINT = "/api/v1/shell/snapshot";
+export type ShellRequest = (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
 
 export async function fetchShellSnapshot(
-  request: typeof fetch = globalThis.fetch
+  request: ShellRequest = globalThis.fetch
 ): Promise<ShellSnapshotV1> {
   const response = await request(SHELL_SNAPSHOT_ENDPOINT, {
     cache: "no-store",

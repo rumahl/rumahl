@@ -1,4 +1,5 @@
-import { renderShell } from "../bootstrap";
-import { demoSnapshot } from "./snapshot";
+import { startShell } from "../runtime";
+import { DemoBackend } from "./backend";
 
-renderShell(demoSnapshot);
+const backend = new DemoBackend();
+await startShell({ request: backend.request });

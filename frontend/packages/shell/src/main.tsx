@@ -1,8 +1,3 @@
-import { renderShell, renderStartupFailure } from "./bootstrap";
-import { fetchShellSnapshot } from "./snapshot-client";
+import { startShell } from "./runtime";
 
-try {
-  renderShell(await fetchShellSnapshot());
-} catch {
-  renderStartupFailure();
-}
+await startShell();
