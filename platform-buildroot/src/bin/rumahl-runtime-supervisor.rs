@@ -64,7 +64,7 @@ enum SupervisorError {
     SecretTargetConfig(NamespaceRuntimeSecretTargetConfigError),
     SecretServerConfig(UnixRuntimeSecretServerConfigError),
     SecretServerBind(UnixRuntimeSecretServerError),
-    SecretServerAccept(UnixRuntimeSecretServerError),
+    SecretServerAccept,
 }
 
 fn main() -> ExitCode {
@@ -127,8 +127,8 @@ fn run(arguments: impl IntoIterator<Item = OsString>) -> Result<(), SupervisorEr
     loop {
         match secret_server.serve_once() {
             Ok(()) => {}
-            Err(error @ UnixRuntimeSecretServerError::Accept(_)) => {
-                return Err(SupervisorError::SecretServerAccept(error));
+            Err(UnixRuntimeSecretServerError::Accept(_)) => {
+                return Err(SupervisorError::SecretServerAccept);
             }
             Err(error) => {
                 eprintln!("runtime supervisor rejected one secret request: {error}");
@@ -277,7 +277,7 @@ impl fmt::Display for SupervisorError {
                 write!(f, "runtime secret server configuration failed")
             }
             Self::SecretServerBind(_) => write!(f, "runtime secret server startup failed"),
-            Self::SecretServerAccept(_) => write!(f, "runtime secret server accept loop failed"),
+            Self::SecretServerAccept => write!(f, "runtime secret server accept loop failed"),
         }
     }
 }
@@ -294,8 +294,10 @@ impl Error for SupervisorError {
             Self::ServerBind(error) => Some(error),
             Self::SecretTargetConfig(error) => Some(error),
             Self::SecretServerConfig(error) => Some(error),
-            Self::SecretServerBind(error) | Self::SecretServerAccept(error) => Some(error),
-            Self::PlatformUserContainsNul | Self::UnknownPlatformUser => None,
+            Self::SecretServerBind(error) => Some(error),
+            Self::PlatformUserContainsNul
+            | Self::UnknownPlatformUser
+            | Self::SecretServerAccept => None,
         }
     }
 }
