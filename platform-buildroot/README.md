@@ -128,3 +128,28 @@ combined creation with startup. This boundary keeps its useful lifecycle
 separation and stable per-app supervision model, while deliberately excluding
 Docker API access, host volume strings, caller-selected ports, and plaintext
 environment credentials.
+
+## Real-container end-to-end test
+
+`tests/container_app_e2e.rs` exercises the full install and uninstall path with
+a real container process. It connects `AppOperationRunner` through
+`UnixAppRuntimeProvider` and `UnixRuntimeControlServer` to a deliberately
+test-local Docker target. The target prepares a stopped container, starts it
+only during runtime activation, waits for an in-container readiness marker,
+then verifies ordered stop and removal during uninstall.
+
+The fixture runs read-only, without networking or Linux capabilities, with
+`no-new-privileges`, a PID and memory limit, an unprivileged UID, and only a
+small volatile `/tmp`. The CI workflow pins the multi-architecture BusyBox
+image by digest. The test is ignored in the normal suite because it requires a
+Linux container daemon and an explicitly pre-pulled image:
+
+```text
+RUMAHL_CONTAINER_E2E_IMAGE=busybox@sha256:<digest> \
+cargo test -p rumahl-platform-buildroot --test container_app_e2e \
+  -- --ignored --exact installs_runs_and_uninstalls_real_container_app
+```
+
+The Docker target is test infrastructure, not the production OCI target. This
+keeps the end-to-end lifecycle executable while the Buildroot image's final
+OCI engine and package-import mechanism remain an explicit deployment choice.
