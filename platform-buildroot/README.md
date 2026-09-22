@@ -154,14 +154,62 @@ manager can restart the supervisor before reconciliation repeats the same
 idempotent operation. Non-container platform functions do not depend on the
 Docker process.
 
+### Runtime supervisor process
+
+The `rumahl-runtime-supervisor` binary hosts the runtime-control socket in a
+separate, unprivileged process. Its configuration is entirely explicit: fixed
+Docker executable, volatile runtime root, staged-image root, supervisor-owned
+network, instance name, socket path, and the platform service account whose UID
+is authenticated through `SO_PEERCRED`. It probes both the Docker daemon and
+configured network before accepting requests. Individual malformed requests,
+Docker command failures, and timeouts are rejected without terminating the
+accept loop; an unrecoverable listener failure exits so the service manager can
+replace the process.
+
+The production service creates the socket as `0660` in a `0750` runtime
+directory owned by the dedicated `rumahl-runtime-control` group. Only
+`rumahl-runtime` and `rumahl-platform` belong to that group; socket access is
+still insufficient on its own because the server also requires the exact
+configured platform UID. Library users keep the owner-only `0600` default.
+
+`StagedDockerImageResolver` is the handoff from a future package importer. For
+installation `<id>`, the importer must atomically create the supervisor-owned
+file `<image-root>/<id>/image-reference` with mode `0600` or `0640`
+and this exact bounded format:
+
+```text
+RDI1
+runtime/server.oci
+sha256:<64 lowercase hexadecimal digits>
+```
+
+The resolver rejects symlinked files, non-regular files, unexpected ownership,
+group/world-writable paths, oversized or non-canonical metadata, mismatched
+artifact paths, and mutable image references. The importer remains separately
+replaceable and is responsible for signature verification and loading the
+image before publishing this file.
+
+`systemd/rumahl-runtime-supervisor.service` runs the process as the dedicated
+`rumahl-runtime` account, grants only Docker-group access, creates protected
+runtime/state directories, applies service sandboxing, and uses
+`Restart=always`. `systemd/docker.service.d/10-rumahl-restart.conf` gives the
+selected Docker engine the same bounded restart policy. A different OCI engine
+ships its own target and service/drop-in while leaving the platform service
+unchanged. The Buildroot image must create `rumahl-runtime`, `rumahl-platform`,
+and the `rumahl-runtime-control` group, add only those two accounts to that
+group, install both units, create the `rumahl-apps` network, and enable the
+supervisor.
+
 ## Real-container end-to-end test
 
 `tests/container_app_e2e.rs` exercises the full install and uninstall path with
-a real container process. It connects `AppOperationRunner` through
-`UnixAppRuntimeProvider` and `UnixRuntimeControlServer` to the production
-`DockerRuntimeTarget`. The target prepares a stopped container, starts it only
-during runtime activation, waits for an in-container readiness marker, then
-verifies ordered stop and removal during uninstall.
+a real container process and the standalone `rumahl-runtime-supervisor`
+binary. It first verifies retryable failure before the immutable image is
+staged, resumes the journaled installation, starts the prepared container only
+during activation, and waits for an in-container readiness marker. It then
+kills and replaces only the supervisor process before verifying ordered stop
+and removal during uninstall; the platform runner, journal, and container stay
+alive across that restart.
 
 The fixture runs read-only, without networking or Linux capabilities, with
 `no-new-privileges`, a PID and memory limit, an unprivileged UID, and only a

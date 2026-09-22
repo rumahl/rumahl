@@ -2,9 +2,10 @@
 
 Status: durable operation state machine, SQLite journal, restart-safe install
 and uninstall execution, resumable install compensation, authenticated
-Buildroot runtime-provider channel, and a replaceable hardened Docker target
-implemented. Update execution, package-to-image import, and runtime-secret
-namespace materialization remain to be connected.
+Buildroot runtime-provider channel, a replaceable hardened Docker target, and
+an independently restarted runtime-supervisor process implemented. Update
+execution, package-to-image import, and runtime-secret namespace
+materialization remain to be connected.
 
 ## Purpose
 

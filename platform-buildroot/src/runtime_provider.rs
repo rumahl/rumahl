@@ -34,7 +34,8 @@ const ID_FIELD_COUNT: u8 = 1;
 const MAX_ENTRYPOINTS: usize = 64;
 const MAX_FIELD_LENGTH: usize = 1024;
 const MAX_REQUEST_LENGTH: usize = 64 * 1024;
-const SOCKET_MODE: u32 = 0o600;
+const OWNER_ONLY_SOCKET_MODE: u32 = 0o600;
+const OWNER_GROUP_SOCKET_MODE: u32 = 0o660;
 const DEFAULT_TIMEOUT: Duration = Duration::from_secs(5);
 
 #[derive(Debug, Clone)]
@@ -126,12 +127,14 @@ pub struct UnixRuntimeControlServerConfig {
     socket_path: PathBuf,
     expected_peer_uid: u32,
     timeout: Duration,
+    socket_mode: u32,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum UnixRuntimeControlServerConfigError {
     SocketPathMustBeAbsolute,
     ZeroTimeout,
+    InvalidSocketMode,
 }
 
 pub struct UnixRuntimeControlServer<T> {
@@ -390,6 +393,7 @@ impl UnixRuntimeControlServerConfig {
             socket_path,
             expected_peer_uid,
             timeout,
+            socket_mode: OWNER_ONLY_SOCKET_MODE,
         })
     }
 
@@ -404,6 +408,26 @@ impl UnixRuntimeControlServerConfig {
     pub fn timeout(&self) -> Duration {
         self.timeout
     }
+
+    /// Allows a service manager to grant one trusted group access while peer
+    /// credentials still authenticate the exact platform UID.
+    pub fn with_socket_mode(
+        mut self,
+        socket_mode: u32,
+    ) -> Result<Self, UnixRuntimeControlServerConfigError> {
+        if !matches!(
+            socket_mode,
+            OWNER_ONLY_SOCKET_MODE | OWNER_GROUP_SOCKET_MODE
+        ) {
+            return Err(UnixRuntimeControlServerConfigError::InvalidSocketMode);
+        }
+        self.socket_mode = socket_mode;
+        Ok(self)
+    }
+
+    pub fn socket_mode(&self) -> u32 {
+        self.socket_mode
+    }
 }
 
 impl<T> UnixRuntimeControlServer<T>
@@ -417,9 +441,10 @@ where
     ) -> Result<Self, UnixRuntimeControlServerError> {
         let listener =
             UnixListener::bind(&config.socket_path).map_err(UnixRuntimeControlServerError::Bind)?;
-        if let Err(error) =
-            fs::set_permissions(&config.socket_path, fs::Permissions::from_mode(SOCKET_MODE))
-        {
+        if let Err(error) = fs::set_permissions(
+            &config.socket_path,
+            fs::Permissions::from_mode(config.socket_mode),
+        ) {
             drop(listener);
             let _ = fs::remove_file(&config.socket_path);
             return Err(UnixRuntimeControlServerError::SetSocketPermissions(error));
@@ -837,6 +862,9 @@ impl fmt::Display for UnixRuntimeControlServerConfigError {
                 write!(f, "runtime control server socket path must be absolute")
             }
             Self::ZeroTimeout => write!(f, "runtime control server timeout must be non-zero"),
+            Self::InvalidSocketMode => {
+                write!(f, "runtime control server socket mode must be 0600 or 0660")
+            }
         }
     }
 }
@@ -1051,6 +1079,22 @@ mod tests {
         )
         .unwrap();
         InstalledApp::create(manifest, &AppManifestValidator::new()).unwrap()
+    }
+
+    #[test]
+    fn permits_only_owner_or_owner_group_socket_access() {
+        let owner_only =
+            UnixRuntimeControlServerConfig::new("/run/rumahl/control.sock", 1000).unwrap();
+        assert_eq!(owner_only.socket_mode(), 0o600);
+        let shared = owner_only.with_socket_mode(0o660).unwrap();
+        assert_eq!(shared.socket_mode(), 0o660);
+        assert_eq!(
+            UnixRuntimeControlServerConfig::new("/run/rumahl/control.sock", 1000)
+                .unwrap()
+                .with_socket_mode(0o666)
+                .unwrap_err(),
+            UnixRuntimeControlServerConfigError::InvalidSocketMode
+        );
     }
 
     #[test]

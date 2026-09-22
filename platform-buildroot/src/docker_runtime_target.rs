@@ -289,6 +289,16 @@ where
             "daemon probe",
             ["version", "--format", "{{.Server.Version}}"],
         )?;
+        self.run_checked(
+            "network probe",
+            [
+                "network",
+                "inspect",
+                "--format",
+                "{{.Id}}",
+                self.config.network.as_str(),
+            ],
+        )?;
         Ok(())
     }
 

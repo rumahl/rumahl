@@ -7,6 +7,7 @@ mod docker_runtime_target;
 mod runtime_provider;
 mod runtime_secret_server;
 mod runtime_secrets;
+mod staged_docker_image_resolver;
 #[cfg(test)]
 mod test_support;
 mod tpm2_key_provider;
@@ -29,6 +30,10 @@ pub use runtime_secret_server::{
 pub use runtime_secrets::{
     UnixRuntimeSecretDelivery, UnixRuntimeSecretDeliveryConfig,
     UnixRuntimeSecretDeliveryConfigError, UnixRuntimeSecretDeliveryError,
+};
+pub use staged_docker_image_resolver::{
+    StagedDockerImageResolver, StagedDockerImageResolverConfig,
+    StagedDockerImageResolverConfigError, StagedDockerImageResolverError,
 };
 pub use tpm2_key_provider::{
     Tpm2Authorization, Tpm2SealedKey, Tpm2SealedKeyError, Tpm2UnsealKeyProvider,

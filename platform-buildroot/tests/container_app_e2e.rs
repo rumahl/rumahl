@@ -3,15 +3,15 @@ use std::error::Error;
 use std::fmt;
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::process::Command;
+use std::process::{Child, Command, Stdio};
 use std::thread;
 use std::time::{Duration, Instant};
 
 use rumahl_app_operations::{AppOperationRunner, AppRuntimeServices, RuntimeSecretDelivery};
 use rumahl_core::{
-    AppId, AppManifest, AppRuntimeInstallationState, AppVersion, InMemoryGrantStore,
-    InstallationId, InstalledApp, PackagePath, PlatformState, PublisherId, RuntimeDescriptor,
-    RuntimeEntrypoint, RuntimeEntrypointId,
+    AppId, AppManifest, AppOperationRepository, AppVersion, InMemoryGrantStore, InstallationId,
+    InstalledApp, PackagePath, PlatformState, PublisherId, RuntimeDescriptor, RuntimeEntrypoint,
+    RuntimeEntrypointId,
 };
 use rumahl_oidc_provider::{InstalledAppOriginResolver, OidcClientId, OidcClientSecret};
 use rumahl_persistence_sqlite::{
@@ -19,15 +19,11 @@ use rumahl_persistence_sqlite::{
     SqliteAppDatabaseProvider, SqliteAppOperationRepository, SqliteOidcClientRepository,
     SqliteSecretStore, SqliteSnapshotRepository,
 };
-use rumahl_platform_buildroot::{
-    DockerImageReference, DockerImageResolver, DockerRuntimeTarget, DockerRuntimeTargetConfig,
-    RuntimeControlTarget, RuntimeControlTargetOutcome, RuntimeInstallationSpec,
-    UnixAppRuntimeProvider, UnixAppRuntimeProviderConfig, UnixRuntimeControlServer,
-    UnixRuntimeControlServerConfig,
-};
+use rumahl_platform_buildroot::{UnixAppRuntimeProvider, UnixAppRuntimeProviderConfig};
 
 const E2E_IMAGE_ENV: &str = "RUMAHL_CONTAINER_E2E_IMAGE";
 const E2E_DOCKER_ENV: &str = "RUMAHL_CONTAINER_E2E_DOCKER";
+const E2E_PLATFORM_USER_ENV: &str = "RUMAHL_CONTAINER_E2E_PLATFORM_USER";
 const EXPECTED_ARTIFACT: &str = "runtime/server.oci";
 const INSTANCE_LABEL: &str = "io.rumahl.supervisor";
 
@@ -36,40 +32,32 @@ struct UnexpectedCall;
 
 impl fmt::Display for UnexpectedCall {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "an undeclared OIDC operation was attempted")
+        write!(f, "an unexpected E2E operation failed")
     }
 }
 
 impl Error for UnexpectedCall {}
 
-#[derive(Debug, Clone)]
-struct PinnedImageResolver {
-    image: DockerImageReference,
+struct SupervisorProcess {
+    child: Option<Child>,
 }
 
-#[derive(Debug)]
-struct ImageResolutionError;
+impl SupervisorProcess {
+    fn stop(mut self) {
+        self.terminate();
+    }
 
-impl fmt::Display for ImageResolutionError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "the E2E manifest referenced an unexpected artifact")
+    fn terminate(&mut self) {
+        if let Some(mut child) = self.child.take() {
+            let _ = child.kill();
+            let _ = child.wait();
+        }
     }
 }
 
-impl Error for ImageResolutionError {}
-
-impl DockerImageResolver for PinnedImageResolver {
-    type Error = ImageResolutionError;
-
-    fn resolve_image(
-        &self,
-        _spec: &RuntimeInstallationSpec,
-        artifact: &PackagePath,
-    ) -> Result<DockerImageReference, Self::Error> {
-        if artifact.as_str() != EXPECTED_ARTIFACT {
-            return Err(ImageResolutionError);
-        }
-        Ok(self.image.clone())
+impl Drop for SupervisorProcess {
+    fn drop(&mut self) {
+        self.terminate();
     }
 }
 
@@ -191,6 +179,50 @@ fn docker_output(docker: &Path, arguments: &[&str]) -> Result<String, Unexpected
         .map_err(|_| UnexpectedCall)
 }
 
+fn start_supervisor(
+    docker: &Path,
+    runtime_root: &Path,
+    image_root: &Path,
+    socket_path: &Path,
+    supervisor_instance: &str,
+    platform_user: &str,
+) -> SupervisorProcess {
+    let child = Command::new(env!("CARGO_BIN_EXE_rumahl-runtime-supervisor"))
+        .arg("--docker")
+        .arg(docker)
+        .arg("--runtime-root")
+        .arg(runtime_root)
+        .arg("--image-root")
+        .arg(image_root)
+        .arg("--network")
+        .arg("none")
+        .arg("--instance")
+        .arg(supervisor_instance)
+        .arg("--control-socket")
+        .arg(socket_path)
+        .arg("--platform-user")
+        .arg(platform_user)
+        .env_clear()
+        .env("PATH", "/usr/bin:/bin")
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::inherit())
+        .spawn()
+        .unwrap();
+    let mut process = SupervisorProcess { child: Some(child) };
+    let deadline = Instant::now() + Duration::from_secs(10);
+    while Instant::now() < deadline {
+        if socket_path.exists() {
+            return process;
+        }
+        if let Some(status) = process.child.as_mut().unwrap().try_wait().unwrap() {
+            panic!("runtime supervisor exited during startup with {status}");
+        }
+        thread::sleep(Duration::from_millis(50));
+    }
+    panic!("runtime supervisor did not create its control socket")
+}
+
 fn wait_until_ready(docker: &Path, installation_id: &InstallationId) -> Result<(), UnexpectedCall> {
     let name = format!("rumahl-app-{installation_id}");
     let deadline = Instant::now() + Duration::from_secs(10);
@@ -215,6 +247,16 @@ fn wait_until_ready(docker: &Path, installation_id: &InstallationId) -> Result<(
     Err(UnexpectedCall)
 }
 
+fn stage_image(image_root: &Path, installation_id: &InstallationId, image: &str) {
+    let installation_root = image_root.join(installation_id.to_string());
+    fs::create_dir(&installation_root).unwrap();
+    fs::write(
+        installation_root.join("image-reference"),
+        format!("RDI1\n{EXPECTED_ARTIFACT}\n{image}\n"),
+    )
+    .unwrap();
+}
+
 fn container_manifest() -> AppManifest {
     let mut runtime = RuntimeDescriptor::container();
     runtime
@@ -233,50 +275,36 @@ fn container_manifest() -> AppManifest {
     .unwrap()
 }
 
-fn assert_state(outcome: RuntimeControlTargetOutcome, expected: AppRuntimeInstallationState) {
-    assert!(matches!(
-        outcome,
-        RuntimeControlTargetOutcome::Accepted { state, .. } if state == expected
-    ));
-}
-
 #[test]
 #[ignore = "requires a Docker daemon and RUMAHL_CONTAINER_E2E_IMAGE"]
 fn installs_runs_and_uninstalls_real_container_app() {
-    let image = DockerImageReference::parse(
-        std::env::var(E2E_IMAGE_ENV)
-            .unwrap_or_else(|_| panic!("{E2E_IMAGE_ENV} must name a pre-pulled immutable image")),
-    )
-    .unwrap();
+    let image = std::env::var(E2E_IMAGE_ENV)
+        .unwrap_or_else(|_| panic!("{E2E_IMAGE_ENV} must name a pre-pulled immutable image"));
     let docker = std::env::var_os(E2E_DOCKER_ENV)
         .map(PathBuf::from)
         .unwrap_or_else(|| PathBuf::from("/usr/bin/docker"));
+    let platform_user = std::env::var(E2E_PLATFORM_USER_ENV)
+        .unwrap_or_else(|_| panic!("{E2E_PLATFORM_USER_ENV} must name the current test user"));
     let root = test_root();
     let runtime_root = root.join("runtime");
+    let image_root = root.join("images");
     fs::create_dir(&runtime_root).unwrap();
+    fs::create_dir(&image_root).unwrap();
+    let socket_path = root.join("runtime.sock");
     let supervisor_instance = format!("e2e-{}", InstallationId::new());
     let _cleanup = Cleanup {
         root: root.clone(),
         docker: docker.clone(),
         supervisor_instance: supervisor_instance.clone(),
     };
-    let config =
-        DockerRuntimeTargetConfig::new(&docker, &runtime_root, "none", supervisor_instance)
-            .unwrap();
-    let target = DockerRuntimeTarget::new(config, PinnedImageResolver { image });
-    target.probe().unwrap();
-
-    let socket_path = root.join("runtime.sock");
-    let install_server = UnixRuntimeControlServer::bind(
-        UnixRuntimeControlServerConfig::new(&socket_path, current_uid()).unwrap(),
-        target.clone(),
-    )
-    .unwrap();
-    let install_server_thread = thread::spawn(move || {
-        for _ in 0..2 {
-            install_server.serve_once().unwrap();
-        }
-    });
+    let supervisor = start_supervisor(
+        &docker,
+        &runtime_root,
+        &image_root,
+        &socket_path,
+        &supervisor_instance,
+        &platform_user,
+    );
     let provider = UnixAppRuntimeProvider::new(
         UnixAppRuntimeProviderConfig::new(&socket_path, current_uid()).unwrap(),
     );
@@ -293,45 +321,69 @@ fn installs_runs_and_uninstalls_real_container_app() {
     let mut state = PlatformState::new();
     let mut grants = InMemoryGrantStore::new();
 
-    let installed = runner
+    // Image publication is intentionally a separate participant. The first
+    // attempt fails closed and leaves an operation that can be resumed after
+    // the package importer publishes its immutable image reference.
+    runner
         .install(container_manifest(), &mut state, &grants)
-        .unwrap()
-        .app()
-        .clone();
-    install_server_thread.join().unwrap();
-    wait_until_ready(&docker, installed.installation_id()).unwrap();
-    assert_state(
-        target
-            .installation_state(*installed.installation_id())
-            .unwrap(),
-        AppRuntimeInstallationState::Active,
-    );
-    assert_eq!(state.installed_apps().len(), 1);
+        .unwrap_err();
+    assert!(state.installed_apps().is_empty());
+    let incomplete = runner.journal().list_incomplete().unwrap();
+    assert_eq!(incomplete.len(), 1);
+    let installation_id = *incomplete[0].target_app().unwrap().installation_id();
+    stage_image(&image_root, &installation_id, &image);
 
-    // The runtime supervisor is independently restartable. Docker and the
-    // platform operation runner retain their state while its socket is
-    // replaced by the service-manager startup sequence.
+    let report = runner.recover_incomplete(&mut state, &mut grants).unwrap();
+    assert_eq!(report.resumed(), 1);
+    assert_eq!(report.committed(), 1);
+    let installed = state.installed_apps().apps()[0].clone();
+    wait_until_ready(&docker, installed.installation_id()).unwrap();
+    assert_eq!(
+        docker_output(
+            &docker,
+            &[
+                "container",
+                "inspect",
+                "--format",
+                "{{.State.Status}}",
+                &format!("rumahl-app-{installation_id}"),
+            ],
+        )
+        .unwrap(),
+        "running"
+    );
+
+    // Simulate the service manager replacing only the runtime supervisor. The
+    // platform runner, SQLite journal, and Docker container remain alive.
+    supervisor.stop();
     fs::remove_file(&socket_path).unwrap();
-    let uninstall_server = UnixRuntimeControlServer::bind(
-        UnixRuntimeControlServerConfig::new(&socket_path, current_uid()).unwrap(),
-        target.clone(),
-    )
-    .unwrap();
-    let uninstall_server_thread = thread::spawn(move || {
-        for _ in 0..2 {
-            uninstall_server.serve_once().unwrap();
-        }
-    });
+    let _restarted_supervisor = start_supervisor(
+        &docker,
+        &runtime_root,
+        &image_root,
+        &socket_path,
+        &supervisor_instance,
+        &platform_user,
+    );
 
     runner
         .uninstall(installed.installation_id(), &mut state, &mut grants)
         .unwrap();
-    uninstall_server_thread.join().unwrap();
-    assert_state(
-        target
-            .installation_state(*installed.installation_id())
-            .unwrap(),
-        AppRuntimeInstallationState::Absent,
-    );
     assert!(state.installed_apps().is_empty());
+    assert!(
+        docker_output(
+            &docker,
+            &[
+                "container",
+                "ls",
+                "--all",
+                "--filter",
+                &format!("name=^/rumahl-app-{installation_id}$"),
+                "--format",
+                "{{.Names}}",
+            ],
+        )
+        .unwrap()
+        .is_empty()
+    );
 }

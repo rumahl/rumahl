@@ -21,6 +21,7 @@ jobs:
     env:
       CARGO_TERM_COLOR: always
       RUMAHL_CONTAINER_E2E_DOCKER: /usr/bin/docker
+      RUMAHL_CONTAINER_E2E_PLATFORM_USER: runner
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
