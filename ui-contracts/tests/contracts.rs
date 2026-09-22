@@ -85,10 +85,27 @@ fn parses_and_canonically_serializes_authenticated_snapshot() {
 
     assert_eq!(snapshot.shell_build_id(), "shell-build-001");
     assert_eq!(snapshot.user().locale(), "de-DE");
+    assert_eq!(snapshot.system_status().installed_app_count(), 12);
+    assert_eq!(
+        snapshot.system_status().last_activity_at_unix_ms(),
+        Some(1_790_105_880_000)
+    );
     assert_eq!(snapshot.contributions().len(), 3);
     assert_eq!(
         ShellSnapshot::from_json(snapshot.to_json().unwrap().as_bytes()).unwrap(),
         snapshot
+    );
+}
+
+#[test]
+fn rejects_inconsistent_system_status_timestamps() {
+    let mut value: serde_json::Value =
+        serde_json::from_slice(&fixture("snapshots/authenticated.json")).unwrap();
+    value["systemStatus"]["lastActivityAtUnixMs"] = 1_790_106_120_001_u64.into();
+
+    assert_eq!(
+        ShellSnapshot::from_json(&serde_json::to_vec(&value).unwrap()).unwrap_err(),
+        ShellSnapshotError::InvalidSystemStatus
     );
 }
 

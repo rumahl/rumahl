@@ -10,12 +10,20 @@ const MAX_BUILD_ID_BYTES: usize = 128;
 const MAX_REVISION_BYTES: usize = 128;
 const MAX_DISPLAY_NAME_CHARS: usize = 128;
 const MAX_CONTRIBUTIONS: usize = 512;
+const MAX_JAVASCRIPT_SAFE_INTEGER: u64 = 9_007_199_254_740_991;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum WindowChromeVariant {
     Standard,
     Compact,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SystemProtectionStatus {
+    Active,
+    Attention,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -30,6 +38,15 @@ pub struct ShellUser {
 pub struct ShellTheme {
     stylesheet_url: String,
     window_chrome: WindowChromeVariant,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ShellSystemStatus {
+    protection: SystemProtectionStatus,
+    installed_app_count: u32,
+    observed_at_unix_ms: u64,
+    last_activity_at_unix_ms: Option<u64>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
@@ -69,6 +86,7 @@ pub struct ShellSnapshot {
     revision: String,
     user: ShellUser,
     theme: ShellTheme,
+    system_status: ShellSystemStatus,
     contributions: Vec<ExtensionContribution>,
 }
 
@@ -84,6 +102,7 @@ pub enum ShellSnapshotError {
     InvalidDisplayName,
     InvalidLocale,
     InvalidStylesheetUrl,
+    InvalidSystemStatus,
     TooManyContributions,
     InvalidContributionId,
     InvalidContributionTitle,
@@ -103,6 +122,7 @@ struct WireShellSnapshot {
     revision: String,
     user: WireShellUser,
     theme: WireShellTheme,
+    system_status: WireShellSystemStatus,
     contributions: Vec<WireExtensionContribution>,
 }
 
@@ -118,6 +138,15 @@ struct WireShellUser {
 struct WireShellTheme {
     stylesheet_url: String,
     window_chrome: String,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct WireShellSystemStatus {
+    protection: String,
+    installed_app_count: u32,
+    observed_at_unix_ms: u64,
+    last_activity_at_unix_ms: Option<u64>,
 }
 
 #[derive(Deserialize)]
@@ -155,6 +184,63 @@ impl WindowChromeVariant {
             "compact" => Some(Self::Compact),
             _ => None,
         }
+    }
+}
+
+impl SystemProtectionStatus {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Active => "active",
+            Self::Attention => "attention",
+        }
+    }
+
+    fn parse(value: &str) -> Option<Self> {
+        match value {
+            "active" => Some(Self::Active),
+            "attention" => Some(Self::Attention),
+            _ => None,
+        }
+    }
+}
+
+impl ShellSystemStatus {
+    pub fn new(
+        protection: SystemProtectionStatus,
+        installed_app_count: u32,
+        observed_at_unix_ms: u64,
+        last_activity_at_unix_ms: Option<u64>,
+    ) -> Result<Self, ShellSnapshotError> {
+        if observed_at_unix_ms == 0
+            || observed_at_unix_ms > MAX_JAVASCRIPT_SAFE_INTEGER
+            || last_activity_at_unix_ms.is_some_and(|value| {
+                value > observed_at_unix_ms || value > MAX_JAVASCRIPT_SAFE_INTEGER
+            })
+        {
+            return Err(ShellSnapshotError::InvalidSystemStatus);
+        }
+        Ok(Self {
+            protection,
+            installed_app_count,
+            observed_at_unix_ms,
+            last_activity_at_unix_ms,
+        })
+    }
+
+    pub fn protection(&self) -> SystemProtectionStatus {
+        self.protection
+    }
+
+    pub fn installed_app_count(&self) -> u32 {
+        self.installed_app_count
+    }
+
+    pub fn observed_at_unix_ms(&self) -> u64 {
+        self.observed_at_unix_ms
+    }
+
+    pub fn last_activity_at_unix_ms(&self) -> Option<u64> {
+        self.last_activity_at_unix_ms
     }
 }
 
@@ -287,6 +373,7 @@ impl ShellSnapshot {
         revision: impl Into<String>,
         user: ShellUser,
         theme: ShellTheme,
+        system_status: ShellSystemStatus,
         contributions: Vec<ExtensionContribution>,
     ) -> Result<Self, ShellSnapshotError> {
         let shell_build_id = shell_build_id.into();
@@ -316,6 +403,7 @@ impl ShellSnapshot {
             revision,
             user,
             theme,
+            system_status,
             contributions,
         })
     }
@@ -345,6 +433,14 @@ impl ShellSnapshot {
         let window_chrome = WindowChromeVariant::parse(&wire.theme.window_chrome)
             .ok_or(ShellSnapshotError::InvalidJson)?;
         let theme = ShellTheme::new(wire.theme.stylesheet_url, window_chrome)?;
+        let protection = SystemProtectionStatus::parse(&wire.system_status.protection)
+            .ok_or(ShellSnapshotError::InvalidSystemStatus)?;
+        let system_status = ShellSystemStatus::new(
+            protection,
+            wire.system_status.installed_app_count,
+            wire.system_status.observed_at_unix_ms,
+            wire.system_status.last_activity_at_unix_ms,
+        )?;
         let contributions = wire
             .contributions
             .into_iter()
@@ -377,6 +473,7 @@ impl ShellSnapshot {
             wire.revision,
             user,
             theme,
+            system_status,
             contributions,
         )
     }
@@ -407,6 +504,10 @@ impl ShellSnapshot {
 
     pub fn theme(&self) -> &ShellTheme {
         &self.theme
+    }
+
+    pub fn system_status(&self) -> &ShellSystemStatus {
+        &self.system_status
     }
 
     pub fn contributions(&self) -> &[ExtensionContribution] {
@@ -502,6 +603,7 @@ impl fmt::Display for ShellSnapshotError {
             Self::InvalidDisplayName => write!(f, "shell user display name is invalid"),
             Self::InvalidLocale => write!(f, "shell user locale is invalid"),
             Self::InvalidStylesheetUrl => write!(f, "shell theme stylesheet URL is invalid"),
+            Self::InvalidSystemStatus => write!(f, "shell system status is invalid"),
             Self::TooManyContributions => write!(f, "shell has too many contributions"),
             Self::InvalidContributionId => write!(f, "shell contribution ID is invalid"),
             Self::InvalidContributionTitle => write!(f, "shell contribution title is invalid"),

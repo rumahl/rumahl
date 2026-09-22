@@ -36,6 +36,15 @@ export interface ShellTheme {
   windowChrome: WindowChromeVariant;
 }
 
+export type SystemProtectionStatus = "active" | "attention";
+
+export interface ShellSystemStatus {
+  protection: SystemProtectionStatus;
+  installedAppCount: number;
+  observedAtUnixMs: number;
+  lastActivityAtUnixMs: number | null;
+}
+
 export type ExtensionContribution =
   | {
       kind: "command";
@@ -65,6 +74,7 @@ export interface ShellSnapshotV1 {
   revision: string;
   user: ShellUser;
   theme: ShellTheme;
+  systemStatus: ShellSystemStatus;
   contributions: readonly ExtensionContribution[];
 }
 "#;

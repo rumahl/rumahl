@@ -3,8 +3,8 @@ mod theme;
 mod typescript;
 
 pub use snapshot::{
-    ExtensionContribution, ExtensionSlot, ShellSnapshot, ShellSnapshotError, ShellTheme, ShellUser,
-    WindowChromeVariant,
+    ExtensionContribution, ExtensionSlot, ShellSnapshot, ShellSnapshotError, ShellSystemStatus,
+    ShellTheme, ShellUser, SystemProtectionStatus, WindowChromeVariant,
 };
 pub use theme::{ResolvedTheme, ThemeManifest, ThemeManifestError, ThemeToken, ThemeTokenValue};
 pub use typescript::typescript_contracts_v1;

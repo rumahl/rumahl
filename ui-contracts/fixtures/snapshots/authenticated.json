@@ -12,6 +12,12 @@
     "stylesheetUrl": "/shell/themes/sha256-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.css",
     "windowChrome": "compact"
   },
+  "systemStatus": {
+    "protection": "active",
+    "installedAppCount": 12,
+    "observedAtUnixMs": 1790106120000,
+    "lastActivityAtUnixMs": 1790105880000
+  },
   "contributions": [
     {
       "kind": "command",
