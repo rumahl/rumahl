@@ -1,7 +1,7 @@
 import { fireEvent, render, screen, within } from "@testing-library/react";
 import { describe, expect, test } from "vitest";
 import { App } from "./App";
-import { fixtureSnapshot } from "./fixture";
+import { demoSnapshot as fixtureSnapshot } from "./demo/snapshot";
 
 describe("protected shell behavior", () => {
   test("navigates without allowing contributions to own shell navigation", () => {

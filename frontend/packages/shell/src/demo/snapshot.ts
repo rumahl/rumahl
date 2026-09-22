@@ -1,11 +1,11 @@
 import type { ShellSnapshotV1 } from "@rumahl/contracts";
 
-export const fixtureSnapshot = {
+export const demoSnapshot = {
   snapshotVersion: 1,
   uiContractVersion: 1,
   extensionApiVersion: 1,
-  shellBuildId: "shell-build-f1",
-  revision: "fixture-revision-001",
+  shellBuildId: "shell-build-demo-only",
+  revision: "demo-only-revision-001",
   user: {
     displayName: "Kaim",
     locale: "en-US"

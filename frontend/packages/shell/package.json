@@ -4,8 +4,9 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "build": "tsc --noEmit && vite build",
+    "build": "tsc --noEmit && vite build && node scripts/verify-production-bundle.js",
     "dev": "vite",
+    "dev:demo": "vite --mode demo --open /demo.html",
     "test": "vitest run",
     "typecheck": "tsc --noEmit"
   },

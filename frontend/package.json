@@ -7,6 +7,7 @@
   "scripts": {
     "build": "pnpm --filter @rumahl/shell build",
     "dev": "pnpm --filter @rumahl/shell dev",
+    "dev:demo": "pnpm --filter @rumahl/shell dev:demo",
     "lint": "eslint .",
     "test": "pnpm --filter @rumahl/shell test",
     "typecheck": "pnpm --filter @rumahl/shell typecheck"

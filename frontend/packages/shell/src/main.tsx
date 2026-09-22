@@ -1,16 +1,8 @@
-import { StrictMode } from "react";
-import { createRoot } from "react-dom/client";
-import { App } from "./App";
-import { fixtureSnapshot } from "./fixture";
-import "./styles.css";
+import { renderShell, renderStartupFailure } from "./bootstrap";
+import { fetchShellSnapshot } from "./snapshot-client";
 
-const root = document.getElementById("root");
-if (!root) {
-  throw new Error("rumahl shell root element is missing");
+try {
+  renderShell(await fetchShellSnapshot());
+} catch {
+  renderStartupFailure();
 }
-
-createRoot(root).render(
-  <StrictMode>
-    <App snapshot={fixtureSnapshot} />
-  </StrictMode>
-);

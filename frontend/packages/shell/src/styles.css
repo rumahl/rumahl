@@ -750,3 +750,17 @@ button.contribution-card:hover {
     transition: 160ms ease;
   }
 }
+/* Bootstrap state is deliberately independent from demo data and shell snapshots. */
+.startup-message {
+  align-items: center;
+  color: #4d5c52;
+  display: flex;
+  font: 500 0.95rem/1.5 Inter, ui-sans-serif, system-ui, sans-serif;
+  justify-content: center;
+  min-height: 100vh;
+  margin: 0;
+}
+
+.startup-message--error {
+  color: #8a3d32;
+}
