@@ -6,3 +6,4 @@ publish = false
 
 [dependencies]
 rumahl-core = { path = "../core" }
+rumahl-ui-contracts = { path = "../ui-contracts" }

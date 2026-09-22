@@ -598,6 +598,7 @@ name = "rumahl-platform-api"
 version = "0.1.0"
 dependencies = [
  "rumahl-core",
+ "rumahl-ui-contracts",
 ]
 
 [[package]]

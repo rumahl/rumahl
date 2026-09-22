@@ -8,6 +8,7 @@ mod authentication;
 mod gateway;
 mod local_session;
 mod request;
+mod shell_snapshot;
 
 pub use authentication::{AuthenticatedPrincipal, RequestAuthenticator, RequestContextFactory};
 pub use gateway::{PlatformRequestAuthenticationError, PlatformRequestGateway};
@@ -16,3 +17,7 @@ pub use local_session::{
     SessionCredentialResolver, SystemAuthenticationClock,
 };
 pub use request::PlatformRequest;
+pub use shell_snapshot::{
+    AuthenticatedShellSnapshotService, ShellSnapshotProvider, ShellSnapshotQuery,
+    ShellSnapshotRequestError, ShellSnapshotSubject,
+};
