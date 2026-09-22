@@ -309,13 +309,10 @@ mod tests {
     };
 
     use super::*;
+    use crate::test_support::unique_test_root;
 
     fn test_root() -> PathBuf {
-        PathBuf::from("/private/tmp").join(format!(
-            "rmh-rs-{}-{}",
-            std::process::id(),
-            AppOperationId::new()
-        ))
+        unique_test_root('s')
     }
 
     fn current_uid() -> u32 {
@@ -378,7 +375,6 @@ mod tests {
     #[test]
     fn sends_oidc_secret_only_inside_authenticated_socket_frame() {
         let root = test_root();
-        fs::create_dir(&root).unwrap();
         let socket_path = root.join("runtime.sock");
         let server = receive_one(socket_path.clone(), STATUS_OK);
         let delivery = UnixRuntimeSecretDelivery::new(
@@ -412,7 +408,6 @@ mod tests {
     #[test]
     fn maps_supervisor_replay_conflict_to_closed_failure() {
         let root = test_root();
-        fs::create_dir(&root).unwrap();
         let socket_path = root.join("runtime.sock");
         let server = receive_one(socket_path.clone(), STATUS_CONFLICT);
         let delivery = UnixRuntimeSecretDelivery::new(
@@ -437,7 +432,6 @@ mod tests {
     #[test]
     fn rejects_unexpected_socket_peer_uid_before_sending_secret() {
         let root = test_root();
-        fs::create_dir(&root).unwrap();
         let socket_path = root.join("runtime.sock");
         let listener = UnixListener::bind(&socket_path).unwrap();
         let server = thread::spawn(move || {

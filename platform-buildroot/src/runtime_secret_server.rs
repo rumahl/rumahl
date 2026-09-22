@@ -462,6 +462,7 @@ mod tests {
     };
 
     use super::*;
+    use crate::test_support::unique_test_root;
     use crate::{UnixRuntimeSecretDelivery, UnixRuntimeSecretDeliveryConfig};
 
     type RecordedDelivery = (AppOperationId, InstallationId, String, String);
@@ -510,11 +511,7 @@ mod tests {
     }
 
     fn test_root() -> PathBuf {
-        PathBuf::from("/private/tmp").join(format!(
-            "rmh-rss-{}-{}",
-            std::process::id(),
-            AppOperationId::new()
-        ))
+        unique_test_root('v')
     }
 
     fn current_uid() -> u32 {
@@ -544,7 +541,6 @@ mod tests {
     #[test]
     fn receives_and_validates_oidc_delivery() {
         let root = test_root();
-        fs::create_dir(&root).unwrap();
         let socket_path = root.join("runtime.sock");
         let target = RecordingTarget::default();
         let server = UnixRuntimeSecretServer::bind(
@@ -584,7 +580,6 @@ mod tests {
     #[test]
     fn maps_target_conflict_to_client_failure() {
         let root = test_root();
-        fs::create_dir(&root).unwrap();
         let socket_path = root.join("runtime.sock");
         let target = RecordingTarget::default();
         *target.outcome.lock().unwrap() = Some(RuntimeSecretTargetOutcome::Conflict);
@@ -615,7 +610,6 @@ mod tests {
     #[test]
     fn rejects_malformed_domain_values_without_calling_target() {
         let root = test_root();
-        fs::create_dir(&root).unwrap();
         let socket_path = root.join("runtime.sock");
         let target = RecordingTarget::default();
         let server = UnixRuntimeSecretServer::bind(

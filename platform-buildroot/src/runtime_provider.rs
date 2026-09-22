@@ -897,6 +897,7 @@ mod tests {
     use std::thread;
 
     use super::*;
+    use crate::test_support::unique_test_root;
     use rumahl_core::{AppManifest, AppManifestValidator};
 
     #[derive(Default)]
@@ -1019,11 +1020,7 @@ mod tests {
     }
 
     fn test_root() -> PathBuf {
-        PathBuf::from("/private/tmp").join(format!(
-            "rmh-runtime-provider-{}-{}",
-            std::process::id(),
-            InstallationId::new()
-        ))
+        unique_test_root('p')
     }
 
     fn current_uid() -> u32 {
@@ -1059,7 +1056,6 @@ mod tests {
     #[test]
     fn controls_runtime_through_authenticated_replay_safe_server() {
         let root = test_root();
-        fs::create_dir(&root).unwrap();
         let socket_path = root.join("control.sock");
         let target = Arc::new(MemoryTarget::default());
         let server = UnixRuntimeControlServer::bind(
@@ -1104,7 +1100,6 @@ mod tests {
     #[test]
     fn rejects_conflicting_runtime_for_same_installation() {
         let root = test_root();
-        fs::create_dir(&root).unwrap();
         let socket_path = root.join("control.sock");
         let target = Arc::new(MemoryTarget::default());
         let server = UnixRuntimeControlServer::bind(
@@ -1139,7 +1134,6 @@ mod tests {
     #[test]
     fn rejects_unexpected_supervisor_uid_before_sending_request() {
         let root = test_root();
-        fs::create_dir(&root).unwrap();
         let socket_path = root.join("control.sock");
         let listener = UnixListener::bind(&socket_path).unwrap();
         let server_thread = thread::spawn(move || {

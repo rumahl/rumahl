@@ -6,6 +6,8 @@ compile_error!("rumahl-platform-buildroot requires Linux (or macOS for host test
 mod runtime_provider;
 mod runtime_secret_server;
 mod runtime_secrets;
+#[cfg(test)]
+mod test_support;
 mod tpm2_key_provider;
 
 pub use runtime_provider::{
