@@ -1,0 +1,36 @@
+{
+  "snapshotVersion": 1,
+  "uiContractVersion": 1,
+  "extensionApiVersion": 1,
+  "shellBuildId": "shell-build-001",
+  "revision": "revision-001",
+  "user": {
+    "displayName": "Ada Example",
+    "locale": "de-DE"
+  },
+  "theme": {
+    "stylesheetUrl": "/shell/themes/sha256-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.css",
+    "windowChrome": "compact"
+  },
+  "contributions": [
+    {
+      "kind": "command",
+      "id": "com.example.notes.new-note",
+      "title": "Neue Notiz",
+      "capability": "com.example.notes.create"
+    },
+    {
+      "kind": "search_provider",
+      "id": "com.example.notes.search",
+      "title": "Notizen",
+      "capability": "com.example.notes.search"
+    },
+    {
+      "kind": "widget",
+      "id": "com.example.weather.dashboard",
+      "title": "Wetter",
+      "slot": "dashboard_widgets",
+      "entrypoint": "dashboard"
+    }
+  ]
+}

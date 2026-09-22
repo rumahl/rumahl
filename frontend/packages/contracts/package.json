@@ -1,0 +1,9 @@
+{
+  "name": "@rumahl/contracts",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/v1.ts"
+  }
+}

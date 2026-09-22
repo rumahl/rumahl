@@ -1,0 +1,111 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.rumahl.org/ui/shell-snapshot-v1.schema.json",
+  "title": "rumahl Shell Snapshot v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "snapshotVersion",
+    "uiContractVersion",
+    "extensionApiVersion",
+    "shellBuildId",
+    "revision",
+    "user",
+    "theme",
+    "contributions"
+  ],
+  "properties": {
+    "snapshotVersion": { "const": 1 },
+    "uiContractVersion": { "const": 1 },
+    "extensionApiVersion": { "const": 1 },
+    "shellBuildId": { "$ref": "#/$defs/opaqueId" },
+    "revision": { "$ref": "#/$defs/opaqueId" },
+    "user": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["displayName", "locale"],
+      "properties": {
+        "displayName": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "locale": {
+          "type": "string",
+          "pattern": "^[a-z]{2,3}(-([A-Z]{2}|[A-Za-z0-9]{4,8}))*$"
+        }
+      }
+    },
+    "theme": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["stylesheetUrl", "windowChrome"],
+      "properties": {
+        "stylesheetUrl": {
+          "type": "string",
+          "pattern": "^/shell/themes/sha256-[0-9a-f]{64}\\.css$"
+        },
+        "windowChrome": { "enum": ["standard", "compact"] }
+      }
+    },
+    "contributions": {
+      "type": "array",
+      "maxItems": 512,
+      "items": {
+        "oneOf": [
+          { "$ref": "#/$defs/command" },
+          { "$ref": "#/$defs/searchProvider" },
+          { "$ref": "#/$defs/widget" }
+        ]
+      }
+    }
+  },
+  "$defs": {
+    "opaqueId": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128,
+      "pattern": "^[A-Za-z0-9._-]+$"
+    },
+    "namespacedId": {
+      "type": "string",
+      "maxLength": 192,
+      "pattern": "^[a-z](?:[a-z0-9]|-(?=[a-z0-9]))*(\\.[a-z](?:[a-z0-9]|-(?=[a-z0-9]))*){2,}$"
+    },
+    "title": { "type": "string", "minLength": 1, "maxLength": 128 },
+    "command": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "id", "title", "capability"],
+      "properties": {
+        "kind": { "const": "command" },
+        "id": { "$ref": "#/$defs/namespacedId" },
+        "title": { "$ref": "#/$defs/title" },
+        "capability": { "$ref": "#/$defs/namespacedId" }
+      }
+    },
+    "searchProvider": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "id", "title", "capability"],
+      "properties": {
+        "kind": { "const": "search_provider" },
+        "id": { "$ref": "#/$defs/namespacedId" },
+        "title": { "$ref": "#/$defs/title" },
+        "capability": { "$ref": "#/$defs/namespacedId" }
+      }
+    },
+    "widget": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "id", "title", "slot", "entrypoint"],
+      "properties": {
+        "kind": { "const": "widget" },
+        "id": { "$ref": "#/$defs/namespacedId" },
+        "title": { "$ref": "#/$defs/title" },
+        "slot": { "const": "dashboard_widgets" },
+        "entrypoint": {
+          "type": "string",
+          "maxLength": 64,
+          "pattern": "^[a-z](?:[a-z0-9]|-(?=[a-z0-9]))*$"
+        }
+      }
+    }
+  }
+}

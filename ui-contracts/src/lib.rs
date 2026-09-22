@@ -1,0 +1,15 @@
+mod snapshot;
+mod theme;
+mod typescript;
+
+pub use snapshot::{
+    ExtensionContribution, ExtensionSlot, ShellSnapshot, ShellSnapshotError, ShellTheme, ShellUser,
+    WindowChromeVariant,
+};
+pub use theme::{ResolvedTheme, ThemeManifest, ThemeManifestError, ThemeToken, ThemeTokenValue};
+pub use typescript::typescript_contracts_v1;
+
+pub const MANIFEST_VERSION: u16 = 1;
+pub const UI_CONTRACT_VERSION: u16 = 1;
+pub const EXTENSION_API_VERSION: u16 = 1;
+pub const SNAPSHOT_VERSION: u16 = 1;
