@@ -1,10 +1,11 @@
 import { StrictMode } from "react";
-import { createRoot } from "react-dom/client";
+import { createRoot, hydrateRoot } from "react-dom/client";
 import type { ShellSnapshotV1 } from "@rumahl/contracts";
 import { App } from "./App";
+import type { ShellLiveSource } from "./live-updates";
 import "./styles.css";
 
-export function renderShell(snapshot: ShellSnapshotV1): void {
+export function renderShell(snapshot: ShellSnapshotV1, live?: ShellLiveSource): void {
   const root = document.getElementById("root");
   if (!root) {
     throw new Error("rumahl shell root element is missing");
@@ -12,7 +13,20 @@ export function renderShell(snapshot: ShellSnapshotV1): void {
 
   createRoot(root).render(
     <StrictMode>
-      <App snapshot={snapshot} />
+      <App live={live} snapshot={snapshot} />
+    </StrictMode>
+  );
+}
+
+export function hydrateShell(snapshot: ShellSnapshotV1, live?: ShellLiveSource): ReturnType<typeof hydrateRoot> {
+  const root = document.getElementById("root");
+  if (!root || root.dataset.shellSsr !== "1" || !root.hasChildNodes()) {
+    throw new Error("server-rendered shell root is missing");
+  }
+  return hydrateRoot(
+    root,
+    <StrictMode>
+      <App live={live} snapshot={snapshot} />
     </StrictMode>
   );
 }

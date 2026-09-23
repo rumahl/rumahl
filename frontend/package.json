@@ -5,12 +5,12 @@
   "type": "module",
   "packageManager": "pnpm@11.19.0",
   "scripts": {
-    "build": "pnpm --filter @rumahl/shell build",
+    "build": "pnpm --filter @rumahl/shell build && pnpm --filter @rumahl/ssr build",
     "dev": "pnpm --filter @rumahl/shell dev",
     "dev:demo": "pnpm --filter @rumahl/shell dev:demo",
     "lint": "eslint .",
-    "test": "pnpm --filter @rumahl/shell test",
-    "typecheck": "pnpm --filter @rumahl/shell typecheck"
+    "test": "pnpm --filter @rumahl/shell test && pnpm --filter @rumahl/ssr test",
+    "typecheck": "pnpm --filter @rumahl/shell typecheck && pnpm --filter @rumahl/ssr typecheck"
   },
   "devDependencies": {
     "@eslint/js": "10.0.1",

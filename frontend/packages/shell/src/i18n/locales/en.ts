@@ -21,6 +21,9 @@ export const english = {
   "contribution.source": "From your apps",
   "contribution.title": "Quick access",
   "contribution.widget": "Isolated widget slot",
+  "contribution.widgetLoading": "Loading widget…",
+  "contribution.widgetUnavailable": "Widget unavailable. The rest of the system remains ready.",
+  "session.expired": "Your session has ended. Sign in again to continue.",
   "dashboard.greeting": "Good evening, {name}",
   "dashboard.intro":
     "Your local system runs quietly in the background. Apps, data, and identities stay where they belong.",

@@ -1,10 +1,11 @@
 import type { ShellSnapshotV1 } from "@rumahl/contracts";
+import { SHELL_BUILD_ID } from "../build-id";
 
 export const demoSnapshot = {
   snapshotVersion: 1,
   uiContractVersion: 1,
   extensionApiVersion: 1,
-  shellBuildId: "shell-build-demo-only",
+  shellBuildId: SHELL_BUILD_ID,
   revision: "demo-only-revision-001",
   user: {
     displayName: "Kaim",

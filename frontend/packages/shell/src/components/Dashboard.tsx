@@ -1,19 +1,27 @@
 import type { ExtensionContribution, ShellSystemStatus } from "@rumahl/contracts";
 import { ArrowIcon, GridIcon, PulseIcon, ShieldIcon } from "../icons";
 import { useI18n } from "../i18n";
+import type { ShellRequest } from "../snapshot-client";
+import { WidgetFrame } from "./WidgetFrame";
 
 interface DashboardProps {
   contributions: readonly ExtensionContribution[];
   displayName: string;
+  revision: string;
   onOpenApps: () => void;
   systemStatus: ShellSystemStatus;
+  widgetRequest?: ShellRequest | undefined;
+  allowDevelopmentLoopback?: boolean | undefined;
 }
 
 export function Dashboard({
   contributions,
   displayName,
+  revision,
   onOpenApps,
-  systemStatus
+  systemStatus,
+  widgetRequest,
+  allowDevelopmentLoopback
 }: DashboardProps) {
   const { formatRelativeTime, t } = useI18n();
   const commands = contributions.filter((item) => item.kind === "command");
@@ -96,12 +104,17 @@ export function Dashboard({
             </button>
           ))}
           {widgets.map((widget) => (
-            <article className="contribution-card contribution-card--widget" key={widget.id}>
+            <article className="contribution-card contribution-card--widget" key={`${widget.id}:${revision}`}>
               <span className="contribution-card__monogram">⌂</span>
               <span>
                 <strong>{widget.title}</strong>
                 <small>{t("contribution.widget")}</small>
               </span>
+              <WidgetFrame
+                allowDevelopmentLoopback={allowDevelopmentLoopback}
+                request={widgetRequest}
+                widget={widget}
+              />
             </article>
           ))}
         </div>

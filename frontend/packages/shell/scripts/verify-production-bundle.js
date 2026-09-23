@@ -1,7 +1,8 @@
-import { readdir, readFile } from "node:fs/promises";
+import { readdir, readFile, writeFile } from "node:fs/promises";
 import { extname, join } from "node:path";
+import { shellBuildId } from "./build-id.js";
 
-const forbiddenDemoMarkers = ["demo-only-revision-001", "shell-build-demo-only", "/src/demo/"];
+const forbiddenDemoMarkers = ["demo-only-revision-001", "/src/demo/"];
 const files = await collectFiles("dist");
 
 for (const file of files) {
@@ -12,6 +13,7 @@ for (const file of files) {
     throw new Error(`production bundle contains demo marker ${marker} in ${file}`);
   }
 }
+await writeFile("dist/build-id.json", JSON.stringify({ shellBuildId: shellBuildId() }));
 
 async function collectFiles(directory) {
   const entries = await readdir(directory, { withFileTypes: true });

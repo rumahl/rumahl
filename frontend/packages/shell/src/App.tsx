@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useReducer } from "react";
+import { useEffect, useMemo, useReducer, useState } from "react";
 import type { ShellSnapshotV1 } from "@rumahl/contracts";
 import { Dashboard } from "./components/Dashboard";
 import { Navigation } from "./components/Navigation";
@@ -6,27 +6,53 @@ import { ProtectedWindow } from "./components/ProtectedWindow";
 import { SectionPlaceholder } from "./components/SectionPlaceholder";
 import { SearchIcon } from "./icons";
 import { I18nProvider, resolveLocale, useI18n } from "./i18n";
+import { watchShellUpdates, type ShellLiveSource } from "./live-updates";
 import { initialShellState, shellReducer } from "./shell-state";
 
-export function App({ snapshot }: { snapshot: ShellSnapshotV1 }) {
+export function App({ snapshot, live }: { snapshot: ShellSnapshotV1; live?: ShellLiveSource | undefined }) {
+  const [current, setCurrent] = useState(snapshot);
+  const [sessionExpired, setSessionExpired] = useState(false);
+
+  useEffect(() => {
+    if (!live) return;
+    return watchShellUpdates(snapshot.revision, live, setCurrent, () => setSessionExpired(true));
+  }, [live, snapshot.revision]);
+
   return (
-    <I18nProvider locale={snapshot.user.locale}>
-      <Shell snapshot={snapshot} />
+    <I18nProvider locale={current.user.locale}>
+      {sessionExpired ? <SessionExpired /> : (
+        <Shell
+          allowDevelopmentLoopback={live?.allowDevelopmentLoopback}
+          snapshot={current}
+          widgetRequest={live?.request}
+        />
+      )}
     </I18nProvider>
   );
 }
 
-function Shell({ snapshot }: { snapshot: ShellSnapshotV1 }) {
+function SessionExpired() {
+  const { t } = useI18n();
+  return <main className="startup-message" role="status">{t("session.expired")}</main>;
+}
+
+function Shell({ snapshot, widgetRequest, allowDevelopmentLoopback }: {
+  snapshot: ShellSnapshotV1;
+  widgetRequest?: ShellLiveSource["request"] | undefined;
+  allowDevelopmentLoopback?: boolean | undefined;
+}) {
   const [state, dispatch] = useReducer(shellReducer, initialShellState);
   const locale = resolveLocale(snapshot.user.locale);
   const { t } = useI18n();
+  const [timeZone, setTimeZone] = useState("UTC");
   const formatter = useMemo(
-    () => new Intl.DateTimeFormat(locale, { hour: "2-digit", minute: "2-digit" }),
-    [locale]
+    () => new Intl.DateTimeFormat(locale, { hour: "2-digit", minute: "2-digit", timeZone }),
+    [locale, timeZone]
   );
 
   useEffect(() => {
     document.documentElement.lang = locale;
+    setTimeZone(Intl.DateTimeFormat().resolvedOptions().timeZone);
   }, [locale]);
 
   useEffect(() => {
@@ -83,8 +109,11 @@ function Shell({ snapshot }: { snapshot: ShellSnapshotV1 }) {
           <Dashboard
             contributions={snapshot.contributions}
             displayName={snapshot.user.displayName}
+            revision={snapshot.revision}
             onOpenApps={openAppManager}
             systemStatus={snapshot.systemStatus}
+            widgetRequest={widgetRequest}
+            allowDevelopmentLoopback={allowDevelopmentLoopback}
           />
         ) : (
           <SectionPlaceholder section={state.section} />

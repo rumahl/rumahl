@@ -16,6 +16,9 @@ export const german = {
   "contribution.source": "Von deinen Apps",
   "contribution.title": "Schnellzugriff",
   "contribution.widget": "Isolierter Widget-Platz",
+  "contribution.widgetLoading": "Widget wird geladen…",
+  "contribution.widgetUnavailable": "Widget nicht verfügbar. Das übrige System bleibt bereit.",
+  "session.expired": "Deine Sitzung ist beendet. Melde dich erneut an, um fortzufahren.",
   "dashboard.greeting": "Guten Abend, {name}",
   "dashboard.intro":
     "Dein lokales System läuft ruhig im Hintergrund. Apps, Daten und Identitäten bleiben dort, wo sie hingehören.",

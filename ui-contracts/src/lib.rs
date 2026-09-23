@@ -1,3 +1,4 @@
+mod event;
 mod snapshot;
 mod theme;
 mod typescript;
@@ -13,3 +14,4 @@ pub const MANIFEST_VERSION: u16 = 1;
 pub const UI_CONTRACT_VERSION: u16 = 1;
 pub const EXTENSION_API_VERSION: u16 = 1;
 pub const SNAPSHOT_VERSION: u16 = 1;
+pub use event::{MAX_SHELL_EVENT_BYTES, SHELL_EVENT_VERSION, ShellEvent, ShellEventError};

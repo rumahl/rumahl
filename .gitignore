@@ -7,3 +7,4 @@
 /frontend/packages/*/dist
 /frontend/coverage
 *.tsbuildinfo
+/frontend/packages/ssr/node_modules

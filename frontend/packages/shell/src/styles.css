@@ -407,6 +407,18 @@ button.contribution-card:hover {
   background: #59736c;
 }
 
+.contribution-card--widget {
+  flex-wrap: wrap;
+}
+
+.contribution-card__frame {
+  width: 100%;
+  height: 180px;
+  border: 0;
+  border-radius: 12px;
+  background: var(--rumahl-color-panel-background);
+}
+
 .section-placeholder {
   padding-top: 110px;
 }

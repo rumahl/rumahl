@@ -11,9 +11,13 @@ describe("shared shell runtime", () => {
     const renderFailure = vi.fn<() => void>();
 
     await expect(
-      startShell({ request: backend.request, render, renderFailure })
+      startShell({ request: backend.request, openEvents: backend.openEvents, render, renderFailure })
     ).resolves.toBe(true);
-    expect(render).toHaveBeenCalledWith(demoSnapshot);
+    expect(render).toHaveBeenCalledWith(demoSnapshot, {
+      request: backend.request,
+      openEvents: backend.openEvents,
+      allowDevelopmentLoopback: false
+    });
     expect(renderFailure).not.toHaveBeenCalled();
   });
 
