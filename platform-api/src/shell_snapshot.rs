@@ -32,6 +32,13 @@ pub enum ShellSnapshotRequestError<E> {
 }
 
 impl ShellSnapshotSubject {
+    pub(crate) fn new(user_id: UserId, correlation_id: CorrelationId) -> Self {
+        Self {
+            user_id,
+            correlation_id,
+        }
+    }
+
     pub fn user_id(&self) -> &UserId {
         &self.user_id
     }
@@ -61,10 +68,7 @@ where
             return Err(ShellSnapshotRequestError::DirectUserSessionRequired);
         }
 
-        let subject = ShellSnapshotSubject {
-            user_id: *identity.id(),
-            correlation_id: *context.correlation_id(),
-        };
+        let subject = ShellSnapshotSubject::new(*identity.id(), *context.correlation_id());
         self.provider
             .load_for_user(&subject)
             .map_err(ShellSnapshotRequestError::Provider)

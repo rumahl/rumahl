@@ -110,6 +110,49 @@ fn rejects_inconsistent_system_status_timestamps() {
 }
 
 #[test]
+fn rejects_oversized_composed_snapshot() {
+    use rumahl_ui_contracts::{
+        ExtensionContribution, ShellSystemStatus, ShellTheme, ShellUser, SystemProtectionStatus,
+    };
+
+    let contributions = (0..512)
+        .map(|index| {
+            ExtensionContribution::command(
+                format!(
+                    "com.{}.{}.{}-{index:04}",
+                    "a".repeat(64),
+                    "b".repeat(64),
+                    "c".repeat(47)
+                ),
+                "A".repeat(128),
+                format!(
+                    "com.{}.{}.{}-{index:04}",
+                    "d".repeat(64),
+                    "e".repeat(64),
+                    "f".repeat(47)
+                ),
+            )
+            .unwrap()
+        })
+        .collect();
+    let error = ShellSnapshot::new(
+        "shell-build-001",
+        "revision-001",
+        ShellUser::new("Ada", "en-US").unwrap(),
+        ShellTheme::new(
+            "/shell/themes/sha256-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.css",
+            WindowChromeVariant::Standard,
+        )
+        .unwrap(),
+        ShellSystemStatus::new(SystemProtectionStatus::Active, 0, 1, None).unwrap(),
+        contributions,
+    )
+    .unwrap_err();
+
+    assert_eq!(error, ShellSnapshotError::TooLarge);
+}
+
+#[test]
 fn rejects_unknown_snapshot_fields_and_contract_versions() {
     let unknown = br##"{
       "snapshotVersion": 1,

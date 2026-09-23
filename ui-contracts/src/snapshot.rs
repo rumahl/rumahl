@@ -395,7 +395,7 @@ impl ShellSnapshot {
         if ids.windows(2).any(|pair| pair[0] == pair[1]) {
             return Err(ShellSnapshotError::DuplicateContribution);
         }
-        Ok(Self {
+        let snapshot = Self {
             snapshot_version: SNAPSHOT_VERSION,
             ui_contract_version: UI_CONTRACT_VERSION,
             extension_api_version: EXTENSION_API_VERSION,
@@ -405,7 +405,15 @@ impl ShellSnapshot {
             theme,
             system_status,
             contributions,
-        })
+        };
+        if serde_json::to_vec(&snapshot)
+            .map_err(|_| ShellSnapshotError::Serialize)?
+            .len()
+            > MAX_SNAPSHOT_BYTES
+        {
+            return Err(ShellSnapshotError::TooLarge);
+        }
+        Ok(snapshot)
     }
 
     pub fn from_json(bytes: &[u8]) -> Result<Self, ShellSnapshotError> {
