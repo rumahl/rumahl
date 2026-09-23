@@ -202,15 +202,13 @@ receive no secret. Both client types require Authorization Code with PKCE
 URI is byte-for-byte equal to the canonical registered URI. Native callback
 exceptions are deferred until the native runtime trust policy exists.
 
-`OidcAppLifecycle` is the current integration boundary above the core
-`AppLifecycle`. Installation and uninstallation first run against cloned
-platform state and grants. The live state is replaced only after the atomic
-OIDC repository insert or revocation succeeds, so repository failures roll the
-in-process lifecycle back without publishing partial state. Durable crash
+The recovery-safe registrar is the only OIDC registration boundary. The
+in-process `OidcAppLifecycle` compatibility path was removed; installation
+and uninstallation run through the general operation journal. Durable crash
 consistency between the platform snapshot, OIDC metadata, and external app
-resources is provided by the operation journal plus idempotent startup
-reconciliation. A shared SQLite transaction may optimize metadata stored in
-one database, but is not assumed across provider boundaries.
+resources is provided by idempotent startup reconciliation. A shared SQLite
+transaction may optimize metadata stored in one database, but is not assumed
+across provider boundaries.
 
 The general `AppOperation` journal records OIDC as an optional participant
 alongside app databases and the final platform snapshot. It does not make OIDC
@@ -219,8 +217,7 @@ top-level install and uninstall boundary: it persists the validated app target,
 replays OIDC registration or revocation after interruption, acknowledges
 confidential runtime-secret delivery/removal through the same journal step,
 and publishes live platform state only after the final snapshot and commit.
-`OidcAppLifecycle` remains an in-process compatibility boundary for callers not
-yet migrated to the operation runner.
+There is no second, non-recoverable registration path.
 
 - Container and server-side web apps such as Nextcloud are confidential
   clients. Their generated secret is injected through the runtime secret

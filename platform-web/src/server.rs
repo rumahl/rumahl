@@ -30,6 +30,7 @@ use zeroize::Zeroizing;
 
 use crate::backend::{ShellBackend, ShellBackendError, ShellIdentity};
 use crate::events::ShellEventSource;
+use crate::oidc;
 use crate::ssr;
 use crate::streams::{StreamAccess, StreamEndpoint, StreamProviderError, frame_path};
 
@@ -88,6 +89,8 @@ pub struct GatewayState {
     pub widgets: Arc<dyn WidgetFrameResolver>,
     /// None keeps core Shell and recovery paths available without an engine.
     pub streams: Option<Arc<StreamAccess>>,
+    /// None leaves the Shell and recovery routes usable while OIDC is offline.
+    pub oidc: Option<Arc<dyn oidc::OidcGateway>>,
 }
 
 pub fn router(state: GatewayState) -> Router {
@@ -105,6 +108,7 @@ pub fn router(state: GatewayState) -> Router {
         .route("/api/v1/shell/streams/{id}/", get(stream_root))
         .route("/api/v1/shell/streams/{id}/{*tail}", get(stream_asset))
         .route("/recovery", get(recovery))
+        .merge(oidc::routes())
         .with_state(Arc::new(state))
 }
 
@@ -627,7 +631,7 @@ async fn recovery(headers: HeaderMap) -> Response {
     response
 }
 
-fn credential(headers: &HeaderMap) -> Result<Zeroizing<String>, ()> {
+pub(super) fn credential(headers: &HeaderMap) -> Result<Zeroizing<String>, ()> {
     if headers.get_all(COOKIE).iter().count() != 1 {
         return Err(());
     }
@@ -655,13 +659,13 @@ fn credential(headers: &HeaderMap) -> Result<Zeroizing<String>, ()> {
     found.ok_or(())
 }
 
-fn valid_origin(headers: &HeaderMap, expected: &Url) -> bool {
+pub(super) fn valid_origin(headers: &HeaderMap, expected: &Url) -> bool {
     headers.get_all(ORIGIN).iter().count() == 1
         && headers.get(ORIGIN).and_then(|value| value.to_str().ok())
             == Some(expected.origin().ascii_serialization().as_str())
 }
 
-async fn authenticate(
+pub(super) async fn authenticate(
     state: &Arc<GatewayState>,
     credential: &str,
 ) -> Result<ShellIdentity, ShellBackendError> {
@@ -731,7 +735,7 @@ fn frame_origins(
     origins.into_iter().take(32).collect()
 }
 
-fn secure_headers(response: &mut Response) {
+pub(super) fn secure_headers(response: &mut Response) {
     response
         .headers_mut()
         .insert(CACHE_CONTROL, HeaderValue::from_static("private, no-store"));
@@ -832,6 +836,7 @@ mod tests {
             events: Arc::new(crate::InMemoryShellEvents::new(4)),
             widgets: Arc::new(TestWidgets(widget_url)),
             streams: None,
+            oidc: None,
         }
     }
 
@@ -952,6 +957,7 @@ mod tests {
             events: Arc::new(crate::InMemoryShellEvents::new(4)),
             widgets: Arc::new(TestWidgets("https://weather.apps.rumahl.dev/widget")),
             streams: Some(Arc::new(StreamAccess::new(provider))),
+            oidc: None,
         });
         let list = app
             .clone()
@@ -1077,6 +1083,7 @@ mod tests {
             events: Arc::new(crate::InMemoryShellEvents::new(4)),
             widgets: Arc::new(TestWidgets("https://weather.apps.rumahl.dev/widget")),
             streams: Some(Arc::new(StreamAccess::new(provider))),
+            oidc: None,
         });
         let grant = Request::builder()
             .method("POST")

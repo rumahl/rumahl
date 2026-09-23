@@ -170,19 +170,40 @@ impl OidcClientRepository for SqliteOidcClientRepository {
         revoked_at: UnixTimestamp,
     ) -> Result<usize, Self::Error> {
         let revoked_at = write_timestamp("revoked_at", revoked_at)?;
-        let connection = self
+        let mut connection = self
             .connection
             .lock()
             .map_err(|_| SqliteOidcClientRepositoryError::LockPoisoned)?;
-
-        connection
+        let transaction = connection
+            .transaction_with_behavior(TransactionBehavior::Immediate)
+            .map_err(Self::database_error)?;
+        let revoked = transaction
             .execute(
                 "UPDATE oidc_client
                  SET revoked_at = ?2
                  WHERE installation_id = ?1 AND revoked_at IS NULL",
                 params![installation_id.to_string(), revoked_at],
             )
-            .map_err(Self::database_error)
+            .map_err(Self::database_error)?;
+        for table in [
+            "oidc_authorization_transaction",
+            "oidc_authorization_code",
+            "oidc_consent",
+            "oidc_token_family",
+            "oidc_access_token",
+        ] {
+            transaction
+                .execute(
+                    &format!(
+                        "UPDATE {table} SET revoked_at = ?2
+                         WHERE installation_id = ?1 AND revoked_at IS NULL"
+                    ),
+                    params![installation_id.to_string(), revoked_at],
+                )
+                .map_err(Self::database_error)?;
+        }
+        transaction.commit().map_err(Self::database_error)?;
+        Ok(revoked)
     }
 }
 
@@ -361,8 +382,7 @@ mod tests {
         RuntimeDescriptor, RuntimeEndpointId, RuntimeEntrypoint, RuntimeEntrypointId,
     };
     use rumahl_oidc_provider::{
-        InstalledAppOriginResolver, OidcAppLifecycle, OidcClientRegistrar, OidcClientSecret,
-        OidcClientSecretDigest,
+        InstalledAppOriginResolver, OidcClientRegistrar, OidcClientSecret, OidcClientSecretDigest,
     };
 
     use super::*;
@@ -583,43 +603,49 @@ mod tests {
     }
 
     #[test]
-    fn sqlite_registry_participates_in_oidc_aware_app_lifecycle() {
-        let lifecycle = OidcAppLifecycle::new(
+    fn sqlite_registry_uses_recovery_safe_registration_and_revocation() {
+        let registrar = OidcClientRegistrar::new(
             SqliteOidcClientRepository::open_in_memory().unwrap(),
             FixedOriginResolver,
         );
         let mut state = PlatformState::new();
-        let installed = lifecycle
-            .install(
-                public_web_manifest(),
-                &mut state,
+        let installed = AppLifecycle::new()
+            .install(public_web_manifest(), &mut state)
+            .unwrap();
+        let installation_id = *installed.installation_id();
+        let secret_store = SqliteSecretStore::open_in_memory(FixedSecretKeyProvider).unwrap();
+        registrar
+            .register_or_recover_installed_app(
+                &state,
+                &installation_id,
                 UnixTimestamp::from_seconds(100),
+                &secret_store,
             )
             .unwrap();
-        let installation_id = *installed.app().installation_id();
 
         assert!(
-            lifecycle
-                .client_repository()
+            registrar
+                .repository()
                 .find_active_by_installation(&installation_id)
                 .unwrap()
                 .is_some()
         );
 
-        let result = lifecycle
-            .uninstall(
-                &installation_id,
-                &mut state,
-                &mut InMemoryGrantStore::new(),
-                UnixTimestamp::from_seconds(200),
-            )
+        let result = AppLifecycle::new()
+            .uninstall(&installation_id, &mut state, &mut InMemoryGrantStore::new())
             .unwrap();
-
-        assert_eq!(result.revoked_oidc_clients(), 1);
+        assert_eq!(*result.app().installation_id(), installation_id);
+        assert_eq!(
+            registrar
+                .repository()
+                .revoke_for_installation(&installation_id, UnixTimestamp::from_seconds(200),)
+                .unwrap(),
+            1
+        );
         assert!(state.installed_apps().is_empty());
         assert!(
-            lifecycle
-                .client_repository()
+            registrar
+                .repository()
                 .find_active_by_installation(&installation_id)
                 .unwrap()
                 .is_none()
