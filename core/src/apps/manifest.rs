@@ -6,7 +6,7 @@ use crate::{
     RuntimeDescriptor,
 };
 
-use super::{AppVersion, ContributionDeclaration, OidcClientDeclaration};
+use super::{AppVersion, ContributionDeclaration, OidcClientDeclaration, StreamPresentation};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AppManifest {
@@ -21,6 +21,7 @@ pub struct AppManifest {
     event_subscriptions: Vec<EventName>,
     databases: Vec<AppDatabaseDeclaration>,
     oidc_client: Option<OidcClientDeclaration>,
+    stream_presentation: Option<StreamPresentation>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -34,6 +35,7 @@ pub enum AppManifestError {
     DuplicateDatabaseDeclaration,
     TooManyDatabaseDeclarations,
     DuplicateOidcClientDeclaration,
+    DuplicateStreamPresentation,
 }
 
 impl AppManifest {
@@ -70,6 +72,7 @@ impl AppManifest {
             event_subscriptions: Vec::new(),
             databases: Vec::new(),
             oidc_client: None,
+            stream_presentation: None,
         })
     }
 
@@ -215,6 +218,29 @@ impl AppManifest {
     pub fn oidc_client(&self) -> Option<&OidcClientDeclaration> {
         self.oidc_client.as_ref()
     }
+
+    pub fn declare_stream_presentation(
+        &mut self,
+        presentation: StreamPresentation,
+    ) -> Result<(), AppManifestError> {
+        if self.stream_presentation.is_some() {
+            return Err(AppManifestError::DuplicateStreamPresentation);
+        }
+        self.stream_presentation = Some(presentation);
+        Ok(())
+    }
+
+    pub fn stream_presentation(&self) -> Option<&StreamPresentation> {
+        self.stream_presentation.as_ref()
+    }
+
+    /// System component requirements are resolved by the installer, not by an
+    /// app at runtime. Multiple engine implementations may provide the same API.
+    pub fn required_system_capabilities(&self) -> impl Iterator<Item = CapabilityId> + '_ {
+        self.stream_presentation
+            .iter()
+            .map(StreamPresentation::required_engine_capability)
+    }
 }
 
 impl fmt::Display for AppManifestError {
@@ -266,6 +292,12 @@ impl fmt::Display for AppManifestError {
             ),
             Self::DuplicateOidcClientDeclaration => {
                 write!(f, "app manifest cannot declare more than one OIDC client")
+            }
+            Self::DuplicateStreamPresentation => {
+                write!(
+                    f,
+                    "app manifest cannot declare more than one stream presentation"
+                )
             }
         }
     }

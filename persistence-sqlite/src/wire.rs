@@ -7,9 +7,10 @@ use rumahl_core::{
     ContributionId, EventName, GrantId, Identity, InstallationId, InstalledAppSnapshot,
     OidcCallbackPath, OidcClientDeclaration, OidcClientType, OidcScope, PackagePath,
     PermissionGrantSnapshot, PermissionId, PermissionRequest, PermissionScope, PlatformSnapshot,
-    PublisherId, ResourceKey, ResourceKind, ResourceNamespace, ResourceRef, RuntimeDescriptor,
-    RuntimeEndpointId, RuntimeEntrypoint, RuntimeEntrypointId, RuntimeEntrypointTarget,
-    RuntimeKind, ServiceId, ServiceIdentity, UserId, UserIdentity,
+    PreferredStreamSize, PublisherId, ResourceKey, ResourceKind, ResourceNamespace, ResourceRef,
+    RuntimeDescriptor, RuntimeEndpointId, RuntimeEntrypoint, RuntimeEntrypointId,
+    RuntimeEntrypointTarget, RuntimeKind, ServiceId, ServiceIdentity, StreamPresentation, UserId,
+    UserIdentity,
 };
 use serde::{Deserialize, Serialize};
 
@@ -142,6 +143,8 @@ struct WireManifest {
     databases: Vec<WireAppDatabase>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     oidc_client: Option<WireOidcClient>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    stream_presentation: Option<WireStreamPresentation>,
 }
 
 impl WireManifest {
@@ -178,6 +181,9 @@ impl WireManifest {
                 .map(WireAppDatabase::capture)
                 .collect(),
             oidc_client: manifest.oidc_client().map(WireOidcClient::capture),
+            stream_presentation: manifest
+                .stream_presentation()
+                .map(WireStreamPresentation::capture),
         }
     }
 
@@ -240,7 +246,64 @@ impl WireManifest {
                 .map_err(|error| WireSnapshotError::invalid("manifest OIDC client", error))?;
         }
 
+        if let Some(stream_presentation) = self.stream_presentation {
+            manifest
+                .declare_stream_presentation(stream_presentation.into_domain()?)
+                .map_err(|error| {
+                    WireSnapshotError::invalid("manifest stream presentation", error)
+                })?;
+        }
+
         Ok(manifest)
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct WireStreamPresentation {
+    app_entrypoint: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    preferred_size: Option<WirePreferredStreamSize>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    preferred_frame_rate: Option<u8>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct WirePreferredStreamSize {
+    width: u16,
+    height: u16,
+}
+
+impl WireStreamPresentation {
+    fn capture(presentation: &StreamPresentation) -> Self {
+        Self {
+            app_entrypoint: presentation.app_entrypoint().as_str().to_owned(),
+            preferred_size: presentation
+                .preferred_size()
+                .map(|size| WirePreferredStreamSize {
+                    width: size.width(),
+                    height: size.height(),
+                }),
+            preferred_frame_rate: presentation.preferred_frame_rate(),
+        }
+    }
+
+    fn into_domain(self) -> Result<StreamPresentation, WireSnapshotError> {
+        let size = self
+            .preferred_size
+            .map(|size| {
+                PreferredStreamSize::new(size.width, size.height)
+                    .map_err(|error| WireSnapshotError::invalid("preferred stream size", error))
+            })
+            .transpose()?;
+        StreamPresentation::new(
+            RuntimeEntrypointId::parse(self.app_entrypoint)
+                .map_err(|error| WireSnapshotError::invalid("stream app entrypoint", error))?,
+            size,
+            self.preferred_frame_rate,
+        )
+        .map_err(|error| WireSnapshotError::invalid("stream presentation", error))
     }
 }
 
@@ -760,5 +823,79 @@ impl WireResource {
             ResourceKey::parse(&self.key)
                 .map_err(|error| WireSnapshotError::invalid("resource key", error))?,
         ))
+    }
+}
+
+#[cfg(test)]
+mod stream_presentation_tests {
+    use super::*;
+
+    fn container_manifest() -> AppManifest {
+        let mut runtime = RuntimeDescriptor::container();
+        runtime
+            .add_entrypoint(RuntimeEntrypoint::container_artifact(
+                RuntimeEntrypointId::parse("browser").unwrap(),
+                PackagePath::parse("runtime/browser.oci").unwrap(),
+            ))
+            .unwrap();
+        AppManifest::new(
+            AppId::parse("com.rumahl.browser").unwrap(),
+            PublisherId::parse("com.rumahl").unwrap(),
+            AppVersion::new(1, 0, 0),
+            "Browser",
+            runtime,
+        )
+        .unwrap()
+    }
+
+    #[test]
+    fn stream_presentation_survives_manifest_wire_roundtrip() {
+        let mut manifest = container_manifest();
+        manifest
+            .declare_stream_presentation(
+                StreamPresentation::new(
+                    RuntimeEntrypointId::parse("browser").unwrap(),
+                    Some(PreferredStreamSize::new(1920, 1080).unwrap()),
+                    Some(60),
+                )
+                .unwrap(),
+            )
+            .unwrap();
+        let json = serde_json::to_vec(&WireManifest::capture(&manifest)).unwrap();
+        let restored: WireManifest = serde_json::from_slice(&json).unwrap();
+        assert_eq!(restored.into_domain().unwrap(), manifest);
+    }
+
+    #[test]
+    fn old_manifest_without_stream_field_stays_valid() {
+        let manifest = container_manifest();
+        let json = serde_json::to_vec(&WireManifest::capture(&manifest)).unwrap();
+        assert!(!String::from_utf8_lossy(&json).contains("stream_presentation"));
+        let restored: WireManifest = serde_json::from_slice(&json).unwrap();
+        assert_eq!(restored.into_domain().unwrap(), manifest);
+    }
+
+    #[test]
+    fn malformed_stream_preferences_fail_closed() {
+        let manifest = container_manifest();
+        let mut json = serde_json::to_value(WireManifest::capture(&manifest)).unwrap();
+        json["stream_presentation"] = serde_json::json!({
+            "app_entrypoint": "browser",
+            "preferred_frame_rate": 0,
+        });
+        let wire: WireManifest = serde_json::from_value(json).unwrap();
+        assert!(wire.into_domain().is_err());
+    }
+
+    #[test]
+    fn app_cannot_declare_stream_transport_or_codec() {
+        let manifest = container_manifest();
+        let mut json = serde_json::to_value(WireManifest::capture(&manifest)).unwrap();
+        json["stream_presentation"] = serde_json::json!({
+            "app_entrypoint": "browser",
+            "transport": "webrtc",
+            "codec": "h264",
+        });
+        assert!(serde_json::from_value::<WireManifest>(json).is_err());
     }
 }
