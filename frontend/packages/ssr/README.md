@@ -6,4 +6,4 @@ Set `RUMAHL_SSR_SOCKET` to an absolute path in a private, pre-created directory.
 
 The gateway must authenticate the browser session and authorize visibility **before** constructing the snapshot. It sends `{ "snapshot": ..., "nonce": ..., "frameOrigins": [...] }` to `POST /render`, without browser cookies or identity headers. `frameOrigins` is an optional allowlist of exact HTTPS origins resolved from authorized app contributions; it is used only for CSP. The gateway applies response caching and security headers at the public edge. A Unix peer identity proves only which service connected; it is not a user identity. The renderer has no database, container engine, or secret-store access.
 
-The public HTTP adapter and Buildroot service deployment are not implemented here yet. In particular, the renderer is not a substitute for the independent `/recovery` route.
+The local Rust HTTP adapter now lives in `platform-web`; Buildroot service deployment, the public HTTPS edge, and immutable client asset serving are still pending. The renderer is not a substitute for the independent `/recovery` route.
