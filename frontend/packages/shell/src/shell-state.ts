@@ -4,6 +4,7 @@ export interface ShellWindow {
   id: string;
   title: string;
   subtitle: string;
+  streamId?: string;
   minimized: boolean;
 }
 

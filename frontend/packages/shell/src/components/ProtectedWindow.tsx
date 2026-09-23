@@ -9,6 +9,7 @@ interface ProtectedWindowProps extends PropsWithChildren {
   onFocus: () => void;
   onMinimize: () => void;
   subtitle: string;
+  stream?: boolean;
   title: string;
   variant: WindowChromeVariant;
 }
@@ -21,6 +22,7 @@ export function ProtectedWindow({
   onFocus,
   onMinimize,
   subtitle,
+  stream = false,
   title,
   variant
 }: ProtectedWindowProps) {
@@ -28,7 +30,7 @@ export function ProtectedWindow({
   return (
     <section
       aria-label={title}
-      className={`shell-window shell-window--${variant}${focused ? " is-focused" : ""}`}
+      className={`shell-window shell-window--${variant}${stream ? " shell-window--stream" : ""}${focused ? " is-focused" : ""}`}
       data-window-id={id}
       onMouseDown={onFocus}
     >

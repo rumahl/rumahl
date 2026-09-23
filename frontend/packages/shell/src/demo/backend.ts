@@ -20,6 +20,13 @@ export class DemoBackend {
       });
     }
 
+    if (url === "/api/v1/shell/streams" && method === "GET") {
+      return Response.json({ sessions: [] }, {
+        headers: { "Cache-Control": "no-store" },
+        status: 200
+      });
+    }
+
     const widget = url.match(/^\/api\/v1\/shell\/widgets\/([^/]+)\/frame$/);
     if (widget?.[1] && method === "GET") {
       const contributionId = decodeURIComponent(widget[1]);

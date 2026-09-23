@@ -450,6 +450,51 @@ button.contribution-card:hover {
   transform: translateX(-50%) scale(1);
 }
 
+.shell-window--stream {
+  top: 8%;
+  width: min(1100px, calc(100% - 48px));
+  min-width: min(480px, calc(100% - 48px));
+  height: min(76vh, 800px);
+  resize: both;
+}
+
+.shell-window--stream .shell-window__content {
+  height: calc(100% - 76px);
+  padding: 0;
+}
+
+.stream-frame {
+  display: block;
+  width: 100%;
+  height: 100%;
+  border: 0;
+  background: #101613;
+}
+
+.stream-status {
+  display: grid;
+  place-items: center;
+  height: 100%;
+  padding: 24px;
+  color: var(--rumahl-color-text-muted);
+  text-align: center;
+}
+
+.stream-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.stream-list button {
+  padding: 9px 12px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--rumahl-color-panel-background);
+  color: var(--rumahl-color-text-primary);
+}
+
 .shell-window__titlebar {
   display: flex;
   align-items: center;

@@ -5,9 +5,14 @@ mod backend;
 mod events;
 mod server;
 mod ssr;
+mod streams;
 
 pub use backend::{
     PlatformShellBackend, ShellAuthenticationError, ShellBackend, ShellBackendError, ShellIdentity,
 };
 pub use events::{InMemoryShellEvents, ShellEventSource};
 pub use server::{GatewayConfig, GatewayError, GatewayState, WidgetFrameResolver, router, serve};
+pub use streams::{
+    RegisteredStreamProvider, StreamAccess, StreamDescriptor, StreamEndpoint, StreamEndpointError,
+    StreamProvider, StreamProviderError,
+};

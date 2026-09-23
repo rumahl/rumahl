@@ -7,25 +7,36 @@ use std::time::Duration;
 use axum::Router;
 use axum::body::Body;
 use axum::extract::ws::{Message, WebSocket, WebSocketUpgrade};
-use axum::extract::{Path as UrlPath, State};
-use axum::http::header::{CACHE_CONTROL, CONTENT_SECURITY_POLICY, CONTENT_TYPE, COOKIE, ORIGIN};
-use axum::http::{HeaderMap, HeaderValue, StatusCode};
+use axum::extract::{OriginalUri, Path as UrlPath, State};
+use axum::http::header::{
+    CACHE_CONTROL, CONTENT_SECURITY_POLICY, CONTENT_TYPE, COOKIE, ORIGIN, SET_COOKIE,
+};
+use axum::http::{HeaderMap, HeaderValue, StatusCode, Uri};
 use axum::response::{IntoResponse, Response};
-use axum::routing::get;
+use axum::routing::{get, post};
+use futures_util::{SinkExt, StreamExt};
+use http_body_util::{BodyExt, Full, Limited};
+use hyper::client::conn::http1;
+use hyper::{Request, StatusCode as UpstreamStatus};
+use hyper_util::rt::TokioIo;
 use rand::RngCore;
 use rumahl_core::UserId;
 use rumahl_ui_contracts::{ExtensionContribution, ShellEvent, ShellSnapshot};
-use tokio::net::UnixListener;
+use tokio::net::{UnixListener, UnixStream};
 use tokio::sync::broadcast;
+use tokio_tungstenite::tungstenite;
 use url::Url;
 use zeroize::Zeroizing;
 
 use crate::backend::{ShellBackend, ShellBackendError, ShellIdentity};
 use crate::events::ShellEventSource;
 use crate::ssr;
+use crate::streams::{StreamAccess, StreamEndpoint, StreamProviderError, frame_path};
 
 const SESSION_COOKIE: &str = "__Host-rumahl_session";
 const MAX_COOKIE_BYTES: usize = 4096;
+const STREAM_COOKIE: &str = "__Secure-rumahl_stream";
+const STREAM_FRAME_CSP: &str = "default-src 'self'; script-src 'self' blob:; worker-src 'self' blob:; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' blob:; connect-src 'self' wss:; frame-ancestors 'self'; base-uri 'none'; object-src 'none'";
 
 /// App routing owns this decision. The gateway verifies the resolved URL again
 /// before exposing it to a browser or including its origin in the SSR CSP.
@@ -75,6 +86,8 @@ pub struct GatewayState {
     pub backend: Arc<dyn ShellBackend>,
     pub events: Arc<dyn ShellEventSource>,
     pub widgets: Arc<dyn WidgetFrameResolver>,
+    /// None keeps core Shell and recovery paths available without an engine.
+    pub streams: Option<Arc<StreamAccess>>,
 }
 
 pub fn router(state: GatewayState) -> Router {
@@ -83,6 +96,14 @@ pub fn router(state: GatewayState) -> Router {
         .route("/api/v1/shell/snapshot", get(snapshot))
         .route("/api/v1/shell/events", get(events))
         .route("/api/v1/shell/widgets/{id}/frame", get(widget_frame))
+        .route("/api/v1/shell/streams", get(stream_list))
+        .route("/api/v1/shell/streams/{id}/grant", post(stream_grant))
+        .route(
+            "/api/v1/shell/streams/{id}/api/websockets",
+            get(stream_socket),
+        )
+        .route("/api/v1/shell/streams/{id}/", get(stream_root))
+        .route("/api/v1/shell/streams/{id}/{*tail}", get(stream_asset))
         .route("/recovery", get(recovery))
         .with_state(Arc::new(state))
 }
@@ -214,6 +235,311 @@ async fn widget_frame(
     );
     secure_headers(&mut response);
     response
+}
+
+async fn stream_list(State(state): State<Arc<GatewayState>>, headers: HeaderMap) -> Response {
+    let Ok(credential) = credential(&headers) else {
+        return error(StatusCode::UNAUTHORIZED);
+    };
+    let identity = match authenticate(&state, &credential).await {
+        Ok(identity) => identity,
+        Err(cause) => return backend_error(cause),
+    };
+    let Some(streams) = &state.streams else {
+        return json_response(serde_json::json!({"sessions": []}));
+    };
+    let sessions = match streams.provider.list(identity) {
+        Ok(sessions) => sessions,
+        Err(_) => return error(StatusCode::SERVICE_UNAVAILABLE),
+    };
+    json_response(serde_json::json!({
+        "sessions": sessions.into_iter().map(|session| {
+            serde_json::json!({"id": session.id, "title": session.title})
+        }).collect::<Vec<_>>()
+    }))
+}
+
+async fn stream_grant(
+    State(state): State<Arc<GatewayState>>,
+    UrlPath(id): UrlPath<String>,
+    headers: HeaderMap,
+) -> Response {
+    if !valid_origin(&headers, &state.config.public_origin) {
+        return error(StatusCode::FORBIDDEN);
+    }
+    let Ok(credential) = credential(&headers) else {
+        return error(StatusCode::UNAUTHORIZED);
+    };
+    let identity = match authenticate(&state, &credential).await {
+        Ok(identity) => identity,
+        Err(cause) => return backend_error(cause),
+    };
+    let Some(streams) = &state.streams else {
+        return error(StatusCode::NOT_FOUND);
+    };
+    let ticket = match streams.issue(identity, &id) {
+        Ok(ticket) => ticket,
+        Err(StreamProviderError::NotFound) => return error(StatusCode::NOT_FOUND),
+        Err(_) => return error(StatusCode::SERVICE_UNAVAILABLE),
+    };
+    let mut response = json_response(serde_json::json!({"frameUrl": frame_path(&id)}));
+    let cookie = format!(
+        "{STREAM_COOKIE}={ticket}; Path={}; Max-Age=60; HttpOnly; Secure; SameSite=Strict",
+        frame_path(&id)
+    );
+    match HeaderValue::from_str(&cookie) {
+        Ok(value) => {
+            response.headers_mut().insert(SET_COOKIE, value);
+            response
+        }
+        Err(_) => error(StatusCode::SERVICE_UNAVAILABLE),
+    }
+}
+
+async fn authorized_stream(
+    state: &Arc<GatewayState>,
+    headers: &HeaderMap,
+    id: &str,
+) -> Result<(StreamEndpoint, Zeroizing<String>, ShellIdentity), Response> {
+    let credential = credential(headers).map_err(|()| error(StatusCode::UNAUTHORIZED))?;
+    let identity = authenticate(state, &credential)
+        .await
+        .map_err(backend_error)?;
+    let ticket = stream_ticket(headers).ok_or_else(|| error(StatusCode::FORBIDDEN))?;
+    let streams = state
+        .streams
+        .as_ref()
+        .ok_or_else(|| error(StatusCode::NOT_FOUND))?;
+    let endpoint = streams
+        .authorize(identity, id, ticket)
+        .map_err(|_| error(StatusCode::SERVICE_UNAVAILABLE))?
+        .ok_or_else(|| error(StatusCode::FORBIDDEN))?;
+    Ok((endpoint, credential, identity))
+}
+
+fn stream_ticket(headers: &HeaderMap) -> Option<&str> {
+    let cookie = headers.get(COOKIE)?.to_str().ok()?;
+    let mut found = None;
+    for pair in cookie.split(';') {
+        let (name, value) = pair.trim().split_once('=')?;
+        if name == STREAM_COOKIE {
+            if found.is_some()
+                || value.len() != 64
+                || !value.bytes().all(|byte| byte.is_ascii_hexdigit())
+            {
+                return None;
+            }
+            found = Some(value);
+        }
+    }
+    found
+}
+
+fn json_response(value: serde_json::Value) -> Response {
+    let mut response = Response::new(Body::from(value.to_string()));
+    response.headers_mut().insert(
+        CONTENT_TYPE,
+        HeaderValue::from_static("application/json; charset=utf-8"),
+    );
+    secure_headers(&mut response);
+    response
+}
+
+async fn stream_root(
+    State(state): State<Arc<GatewayState>>,
+    UrlPath(id): UrlPath<String>,
+    OriginalUri(uri): OriginalUri,
+    headers: HeaderMap,
+) -> Response {
+    proxy_stream_asset(&state, &id, &uri, &headers).await
+}
+
+async fn stream_asset(
+    State(state): State<Arc<GatewayState>>,
+    UrlPath((id, _tail)): UrlPath<(String, String)>,
+    OriginalUri(uri): OriginalUri,
+    headers: HeaderMap,
+) -> Response {
+    proxy_stream_asset(&state, &id, &uri, &headers).await
+}
+
+async fn proxy_stream_asset(
+    state: &Arc<GatewayState>,
+    id: &str,
+    uri: &Uri,
+    headers: &HeaderMap,
+) -> Response {
+    let endpoint = match authorized_stream(state, headers, id).await {
+        Ok((endpoint, _, _)) => endpoint,
+        Err(response) => return response,
+    };
+    let prefix = frame_path(id);
+    if !uri.path().starts_with(&prefix) || uri.to_string().len() > 2048 || uri.query().is_some() {
+        return error(StatusCode::NOT_FOUND);
+    }
+    let tail = &uri.path()[prefix.len()..];
+    if tail
+        .split('/')
+        .any(|segment| segment == ".." || segment.eq_ignore_ascii_case("%2e%2e"))
+        || tail.starts_with("api/")
+    {
+        return error(StatusCode::NOT_FOUND);
+    }
+    let endpoint_uri = uri
+        .path_and_query()
+        .map_or_else(|| uri.path().to_owned(), ToString::to_string);
+    let result = tokio::time::timeout(Duration::from_secs(10), async {
+        let stream = UnixStream::connect(&endpoint.socket)
+            .await
+            .map_err(|_| ())?;
+        let (mut sender, connection) = http1::handshake(TokioIo::new(stream))
+            .await
+            .map_err(|_| ())?;
+        tokio::spawn(async move {
+            let _ = connection.await;
+        });
+        let request = Request::builder()
+            .method("GET")
+            .uri(endpoint_uri)
+            .header("host", "localhost")
+            .header("authorization", format!("Bearer {}", endpoint.token()))
+            .body(Full::new(hyper::body::Bytes::new()))
+            .map_err(|_| ())?;
+        let upstream = sender.send_request(request).await.map_err(|_| ())?;
+        let status = upstream.status();
+        let content_type = upstream.headers().get(CONTENT_TYPE).cloned();
+        let body = Limited::new(upstream.into_body(), 16 * 1024 * 1024)
+            .collect()
+            .await
+            .map_err(|_| ())?
+            .to_bytes();
+        Ok::<_, ()>((status, content_type, body))
+    })
+    .await;
+    let Ok(Ok((status, content_type, body))) = result else {
+        return error(StatusCode::SERVICE_UNAVAILABLE);
+    };
+    if status != UpstreamStatus::OK && status != UpstreamStatus::NOT_FOUND {
+        return error(StatusCode::SERVICE_UNAVAILABLE);
+    }
+    let mut response = Response::new(Body::from(body));
+    *response.status_mut() = status;
+    if let Some(value) = content_type {
+        response.headers_mut().insert(CONTENT_TYPE, value);
+    }
+    response.headers_mut().insert(
+        CONTENT_SECURITY_POLICY,
+        HeaderValue::from_static(STREAM_FRAME_CSP),
+    );
+    secure_headers(&mut response);
+    response
+}
+
+async fn stream_socket(
+    State(state): State<Arc<GatewayState>>,
+    UrlPath(id): UrlPath<String>,
+    headers: HeaderMap,
+    upgrade: WebSocketUpgrade,
+) -> Response {
+    if !valid_origin(&headers, &state.config.public_origin) {
+        return error(StatusCode::FORBIDDEN);
+    }
+    let (endpoint, credential, identity) = match authorized_stream(&state, &headers, &id).await {
+        Ok(values) => values,
+        Err(response) => return response,
+    };
+    let upstream = match connect_stream_socket(&endpoint).await {
+        Ok(socket) => socket,
+        Err(()) => return error(StatusCode::SERVICE_UNAVAILABLE),
+    };
+    upgrade
+        .max_message_size(16 * 1024 * 1024)
+        .max_frame_size(16 * 1024 * 1024)
+        .on_upgrade(move |browser| {
+            relay_stream(browser, upstream, state, credential, identity, endpoint)
+        })
+        .into_response()
+}
+
+async fn connect_stream_socket(
+    endpoint: &StreamEndpoint,
+) -> Result<tokio_tungstenite::WebSocketStream<UnixStream>, ()> {
+    use tungstenite::client::IntoClientRequest;
+
+    let url = format!(
+        "ws://localhost{}api/websockets?token={}",
+        frame_path(&endpoint.id),
+        endpoint.token()
+    );
+    let mut request = url.into_client_request().map_err(|_| ())?;
+    request
+        .headers_mut()
+        .insert(ORIGIN, HeaderValue::from_static("http://localhost"));
+    let stream = tokio::time::timeout(
+        Duration::from_secs(5),
+        UnixStream::connect(&endpoint.socket),
+    )
+    .await
+    .map_err(|_| ())?
+    .map_err(|_| ())?;
+    let (socket, _) = tokio::time::timeout(
+        Duration::from_secs(5),
+        tokio_tungstenite::client_async(request, stream),
+    )
+    .await
+    .map_err(|_| ())?
+    .map_err(|_| ())?;
+    Ok(socket)
+}
+
+async fn relay_stream(
+    mut browser: WebSocket,
+    mut upstream: tokio_tungstenite::WebSocketStream<UnixStream>,
+    state: Arc<GatewayState>,
+    credential: Zeroizing<String>,
+    identity: ShellIdentity,
+    endpoint: StreamEndpoint,
+) {
+    let mut recheck = tokio::time::interval(Duration::from_secs(30));
+    recheck.tick().await;
+    loop {
+        tokio::select! {
+            _ = recheck.tick() => {
+                let active = authenticate(&state, &credential).await == Ok(identity)
+                    && state.streams.as_ref().is_some_and(|streams| {
+                        streams.provider.resolve(identity, &endpoint.id).ok().flatten()
+                            .is_some_and(|current| current.socket == endpoint.socket
+                                && current.token() == endpoint.token())
+                    });
+                if !active { break; }
+            }
+            message = browser.recv() => {
+                let Some(Ok(message)) = message else { break; };
+                let upstream_message = match message {
+                    Message::Text(text) => tungstenite::Message::Text(text.to_string().into()),
+                    Message::Binary(bytes) => tungstenite::Message::Binary(bytes),
+                    Message::Ping(bytes) => tungstenite::Message::Ping(bytes),
+                    Message::Pong(bytes) => tungstenite::Message::Pong(bytes),
+                    Message::Close(_) => break,
+                };
+                if upstream.send(upstream_message).await.is_err() { break; }
+            }
+            message = upstream.next() => {
+                let Some(Ok(message)) = message else { break; };
+                let browser_message = match message {
+                    tungstenite::Message::Text(text) => Message::Text(text.to_string().into()),
+                    tungstenite::Message::Binary(bytes) => Message::Binary(bytes),
+                    tungstenite::Message::Ping(bytes) => Message::Ping(bytes),
+                    tungstenite::Message::Pong(bytes) => Message::Pong(bytes),
+                    tungstenite::Message::Close(_) => break,
+                    tungstenite::Message::Frame(_) => continue,
+                };
+                if browser.send(browser_message).await.is_err() { break; }
+            }
+        }
+    }
+    let _ = upstream.send(tungstenite::Message::Close(None)).await;
+    let _ = browser.send(Message::Close(None)).await;
 }
 
 async fn events(
@@ -448,6 +774,7 @@ mod tests {
     use rumahl_ui_contracts::{
         ShellSystemStatus, ShellTheme, ShellUser, SystemProtectionStatus, WindowChromeVariant,
     };
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
     use tower::ServiceExt;
 
     const TOKEN: &str = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA";
@@ -504,6 +831,7 @@ mod tests {
             }),
             events: Arc::new(crate::InMemoryShellEvents::new(4)),
             widgets: Arc::new(TestWidgets(widget_url)),
+            streams: None,
         }
     }
 
@@ -548,6 +876,257 @@ mod tests {
             app.oneshot(duplicate).await.unwrap().status(),
             StatusCode::UNAUTHORIZED
         );
+    }
+
+    async fn read_http(stream: &mut UnixStream) -> String {
+        let mut request = Vec::new();
+        let mut buffer = [0_u8; 2048];
+        loop {
+            let read = stream.read(&mut buffer).await.unwrap();
+            assert!(read > 0);
+            request.extend_from_slice(&buffer[..read]);
+            if let Some(end) = request.windows(4).position(|bytes| bytes == b"\r\n\r\n") {
+                let head = String::from_utf8_lossy(&request[..end]);
+                let length: usize = head
+                    .lines()
+                    .find_map(|line| {
+                        line.to_ascii_lowercase()
+                            .strip_prefix("content-length: ")
+                            .and_then(|value| value.parse().ok())
+                    })
+                    .unwrap_or(0);
+                if request.len() >= end + 4 + length {
+                    return String::from_utf8(request).unwrap();
+                }
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn stream_grants_and_proxy_keep_engine_credentials_server_side() {
+        let directory = tempfile::tempdir().unwrap();
+        let socket = directory.path().join("engine.sock");
+        let listener = UnixListener::bind(&socket).unwrap();
+        let id = "4485f47e-a1cd-4b7b-a7c2-203086be13f5";
+        let identity = ShellIdentity {
+            user_id: UserId::new(),
+            session_id: SessionId::new(),
+        };
+        let endpoint = StreamEndpoint::new(id, "Firefox", identity, &socket).unwrap();
+        let engine_token = endpoint.token().to_owned();
+        let engine = tokio::spawn(async move {
+            let (mut provisioning, _) = listener.accept().await.unwrap();
+            let request = read_http(&mut provisioning).await;
+            assert!(request.starts_with(&format!(
+                "POST /api/v1/shell/streams/{id}/api/tokens HTTP/1.1"
+            )));
+            assert!(request.contains("authorization: Bearer "));
+            assert!(request.contains(&engine_token));
+            provisioning
+                .write_all(b"HTTP/1.1 200 OK\r\ncontent-length: 2\r\n\r\nOK")
+                .await
+                .unwrap();
+            let (mut asset, _) = listener.accept().await.unwrap();
+            let request = read_http(&mut asset).await;
+            assert!(request.starts_with(&format!("GET /api/v1/shell/streams/{id}/ HTTP/1.1")));
+            assert!(request.contains(&format!("authorization: Bearer {engine_token}")));
+            assert!(!request.to_ascii_lowercase().contains("cookie:"));
+            let body = "<html>stream core</html>";
+            asset.write_all(format!(
+                "HTTP/1.1 200 OK\r\ncontent-type: text/html\r\ncontent-length: {}\r\n\r\n{body}",
+                body.len()
+            ).as_bytes()).await.unwrap();
+        });
+        let provider = Arc::new(crate::RegisteredStreamProvider::new());
+        provider
+            .register_selkies(endpoint, &"M".repeat(48))
+            .await
+            .unwrap();
+        let app = router(GatewayState {
+            config: GatewayConfig::new("https://rumahl.dev", "/private/run/rumahl-ssr.sock")
+                .unwrap(),
+            backend: Arc::new(TestBackend {
+                identity,
+                available: true,
+            }),
+            events: Arc::new(crate::InMemoryShellEvents::new(4)),
+            widgets: Arc::new(TestWidgets("https://weather.apps.rumahl.dev/widget")),
+            streams: Some(Arc::new(StreamAccess::new(provider))),
+        });
+        let list = app
+            .clone()
+            .oneshot(request("/api/v1/shell/streams"))
+            .await
+            .unwrap();
+        assert_eq!(list.status(), StatusCode::OK);
+        let body = list.into_body().collect().await.unwrap().to_bytes();
+        assert!(std::str::from_utf8(&body).unwrap().contains("Firefox"));
+        let rejected = Request::builder()
+            .method("POST")
+            .uri(format!("/api/v1/shell/streams/{id}/grant"))
+            .header(COOKIE, format!("{SESSION_COOKIE}={TOKEN}"))
+            .body(Body::empty())
+            .unwrap();
+        assert_eq!(
+            app.clone().oneshot(rejected).await.unwrap().status(),
+            StatusCode::FORBIDDEN
+        );
+        let grant = Request::builder()
+            .method("POST")
+            .uri(format!("/api/v1/shell/streams/{id}/grant"))
+            .header(COOKIE, format!("{SESSION_COOKIE}={TOKEN}"))
+            .header(ORIGIN, "https://rumahl.dev")
+            .body(Body::empty())
+            .unwrap();
+        let response = app.clone().oneshot(grant).await.unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        let cookie = response.headers()[SET_COOKIE].to_str().unwrap().to_owned();
+        assert!(cookie.contains("HttpOnly; Secure; SameSite=Strict"));
+        assert!(!cookie.contains(&"M".repeat(48)));
+        let body = response.into_body().collect().await.unwrap().to_bytes();
+        assert_eq!(
+            String::from_utf8(body.to_vec()).unwrap(),
+            format!("{{\"frameUrl\":\"/api/v1/shell/streams/{id}/\"}}")
+        );
+        let ticket = cookie.split(';').next().unwrap();
+        let frame = Request::builder()
+            .uri(format!("/api/v1/shell/streams/{id}/"))
+            .header(COOKIE, format!("{SESSION_COOKIE}={TOKEN}; {ticket}"))
+            .body(Body::empty())
+            .unwrap();
+        let frame = app.clone().oneshot(frame).await.unwrap();
+        assert_eq!(frame.status(), StatusCode::OK);
+        assert_eq!(frame.headers()[CONTENT_SECURITY_POLICY], STREAM_FRAME_CSP);
+        let body = frame.into_body().collect().await.unwrap().to_bytes();
+        assert_eq!(&body[..], b"<html>stream core</html>");
+        let still_alive = app
+            .oneshot(request("/api/v1/shell/snapshot"))
+            .await
+            .unwrap();
+        assert_eq!(still_alive.status(), StatusCode::OK);
+        engine.await.unwrap();
+    }
+
+    #[tokio::test]
+    #[expect(
+        clippy::result_large_err,
+        reason = "tokio-tungstenite handshake callback uses a large response error"
+    )]
+    async fn websocket_relay_uses_server_only_token_over_unix_sockets() {
+        use tokio_tungstenite::tungstenite::client::IntoClientRequest;
+
+        let directory = tempfile::tempdir().unwrap();
+        let engine_socket = directory.path().join("engine.sock");
+        let engine_listener = UnixListener::bind(&engine_socket).unwrap();
+        let id = "4d5a0ec1-6846-44c9-a9c9-b61315119cdf";
+        let identity = ShellIdentity {
+            user_id: UserId::new(),
+            session_id: SessionId::new(),
+        };
+        let endpoint = StreamEndpoint::new(id, "Browser", identity, &engine_socket).unwrap();
+        let engine_token = endpoint.token().to_owned();
+        let engine = tokio::spawn(async move {
+            let (mut provisioning, _) = engine_listener.accept().await.unwrap();
+            let _ = read_http(&mut provisioning).await;
+            provisioning
+                .write_all(b"HTTP/1.1 200 OK\r\ncontent-length: 2\r\n\r\nOK")
+                .await
+                .unwrap();
+            let (socket, _) = engine_listener.accept().await.unwrap();
+            let mut upstream = tokio_tungstenite::accept_hdr_async(
+                socket,
+                move |request: &tungstenite::handshake::server::Request,
+                      response: tungstenite::handshake::server::Response| {
+                    assert_eq!(
+                        request.uri().path(),
+                        format!("/api/v1/shell/streams/{id}/api/websockets")
+                    );
+                    assert_eq!(
+                        request.uri().query(),
+                        Some(format!("token={engine_token}").as_str())
+                    );
+                    assert_eq!(request.headers()[ORIGIN], "http://localhost");
+                    Ok(response)
+                },
+            )
+            .await
+            .unwrap();
+            upstream
+                .send(tungstenite::Message::Text("ready".into()))
+                .await
+                .unwrap();
+            let message = upstream.next().await.unwrap().unwrap();
+            assert_eq!(message.into_text().unwrap(), "hello");
+            upstream
+                .send(tungstenite::Message::Text("echo".into()))
+                .await
+                .unwrap();
+        });
+        let provider = Arc::new(crate::RegisteredStreamProvider::new());
+        provider
+            .register_selkies(endpoint, &"M".repeat(48))
+            .await
+            .unwrap();
+        let app = router(GatewayState {
+            config: GatewayConfig::new("https://rumahl.dev", "/private/run/rumahl-ssr.sock")
+                .unwrap(),
+            backend: Arc::new(TestBackend {
+                identity,
+                available: true,
+            }),
+            events: Arc::new(crate::InMemoryShellEvents::new(4)),
+            widgets: Arc::new(TestWidgets("https://weather.apps.rumahl.dev/widget")),
+            streams: Some(Arc::new(StreamAccess::new(provider))),
+        });
+        let grant = Request::builder()
+            .method("POST")
+            .uri(format!("/api/v1/shell/streams/{id}/grant"))
+            .header(COOKIE, format!("{SESSION_COOKIE}={TOKEN}"))
+            .header(ORIGIN, "https://rumahl.dev")
+            .body(Body::empty())
+            .unwrap();
+        let response = app.clone().oneshot(grant).await.unwrap();
+        let ticket = response.headers()[SET_COOKIE]
+            .to_str()
+            .unwrap()
+            .split(';')
+            .next()
+            .unwrap()
+            .to_owned();
+        let gateway_socket = directory.path().join("gateway.sock");
+        let listener = UnixListener::bind(&gateway_socket).unwrap();
+        let gateway = tokio::spawn(async move {
+            let _ = axum::serve(listener, app).await;
+        });
+        let browser_stream = UnixStream::connect(&gateway_socket).await.unwrap();
+        let mut request = format!("ws://localhost/api/v1/shell/streams/{id}/api/websockets")
+            .into_client_request()
+            .unwrap();
+        request
+            .headers_mut()
+            .insert(ORIGIN, HeaderValue::from_static("https://rumahl.dev"));
+        request.headers_mut().insert(
+            COOKIE,
+            HeaderValue::from_str(&format!("{SESSION_COOKIE}={TOKEN}; {ticket}")).unwrap(),
+        );
+        assert!(request.uri().query().is_none());
+        let (mut browser, _) = tokio_tungstenite::client_async(request, browser_stream)
+            .await
+            .unwrap();
+        assert_eq!(
+            browser.next().await.unwrap().unwrap().into_text().unwrap(),
+            "ready"
+        );
+        browser
+            .send(tungstenite::Message::Text("hello".into()))
+            .await
+            .unwrap();
+        assert_eq!(
+            browser.next().await.unwrap().unwrap().into_text().unwrap(),
+            "echo"
+        );
+        gateway.abort();
+        engine.await.unwrap();
     }
 
     #[tokio::test]

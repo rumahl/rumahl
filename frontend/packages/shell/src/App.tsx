@@ -3,11 +3,13 @@ import type { ShellSnapshotV1 } from "@rumahl/contracts";
 import { Dashboard } from "./components/Dashboard";
 import { Navigation } from "./components/Navigation";
 import { ProtectedWindow } from "./components/ProtectedWindow";
+import { StreamRenderer } from "./components/StreamRenderer";
 import { SectionPlaceholder } from "./components/SectionPlaceholder";
 import { SearchIcon } from "./icons";
 import { I18nProvider, resolveLocale, useI18n } from "./i18n";
 import { watchShellUpdates, type ShellLiveSource } from "./live-updates";
 import { initialShellState, shellReducer } from "./shell-state";
+import { fetchStreamSessions, type StreamSession } from "./stream-client";
 
 export function App({ snapshot, live }: { snapshot: ShellSnapshotV1; live?: ShellLiveSource | undefined }) {
   const [current, setCurrent] = useState(snapshot);
@@ -45,6 +47,9 @@ function Shell({ snapshot, widgetRequest, allowDevelopmentLoopback }: {
   const locale = resolveLocale(snapshot.user.locale);
   const { t } = useI18n();
   const [timeZone, setTimeZone] = useState("UTC");
+  const [streamSessions, setStreamSessions] = useState<readonly StreamSession[]>([]);
+  const [streamsUnavailable, setStreamsUnavailable] = useState(false);
+  const managerOpen = state.windows.some((windowState) => windowState.id === "app-manager");
   const formatter = useMemo(
     () => new Intl.DateTimeFormat(locale, { hour: "2-digit", minute: "2-digit", timeZone }),
     [locale, timeZone]
@@ -69,6 +74,23 @@ function Shell({ snapshot, widgetRequest, allowDevelopmentLoopback }: {
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [state.commandPaletteOpen]);
 
+  useEffect(() => {
+    if (!managerOpen || !widgetRequest) return;
+    let canceled = false;
+    void fetchStreamSessions(widgetRequest).then(
+      (sessions) => {
+        if (!canceled) {
+          setStreamSessions(sessions);
+          setStreamsUnavailable(false);
+        }
+      },
+      () => {
+        if (!canceled) setStreamsUnavailable(true);
+      }
+    );
+    return () => { canceled = true; };
+  }, [managerOpen, snapshot.revision, widgetRequest]);
+
   const openAppManager = () =>
     dispatch({
       type: "open-window",
@@ -76,6 +98,17 @@ function Shell({ snapshot, widgetRequest, allowDevelopmentLoopback }: {
         id: "app-manager",
         title: t("appManager.title"),
         subtitle: t("appManager.subtitle")
+      }
+    });
+
+  const openStream = (session: StreamSession) =>
+    dispatch({
+      type: "open-window",
+      window: {
+        id: `stream:${session.id}`,
+        title: session.title,
+        subtitle: t("stream.subtitle"),
+        streamId: session.id
       }
     });
 
@@ -130,19 +163,36 @@ function Shell({ snapshot, widgetRequest, allowDevelopmentLoopback }: {
                 onFocus={() => dispatch({ type: "focus-window", id: windowState.id })}
                 onMinimize={() => dispatch({ type: "toggle-minimize", id: windowState.id })}
                 subtitle={windowState.subtitle}
+                stream={windowState.streamId !== undefined}
                 title={windowState.title}
                 variant={snapshot.theme.windowChrome}
               >
-                <div className="app-manager">
+                {windowState.streamId ? (
+                  <StreamRenderer
+                    id={windowState.streamId}
+                    request={widgetRequest}
+                    title={windowState.title}
+                  />
+                ) : <div className="app-manager">
                   <div>
                     <p className="eyebrow">
                       {t("appManager.count", { count: snapshot.systemStatus.installedAppCount })}
                     </p>
                     <h3>{t("appManager.ready")}</h3>
                     <p>{t("appManager.body")}</p>
+                    <h4>{t("stream.available")}</h4>
+                    {streamsUnavailable ? <p role="status">{t("stream.unavailable")}</p> :
+                      streamSessions.length === 0 ? <p>{t("stream.none")}</p> :
+                      <div className="stream-list">
+                        {streamSessions.map((session) => (
+                          <button key={session.id} onClick={() => openStream(session)} type="button">
+                            {session.title}
+                          </button>
+                        ))}
+                      </div>}
                   </div>
                   <button type="button">{t("appManager.selectPackage")}</button>
-                </div>
+                </div>}
               </ProtectedWindow>
             )
           )}

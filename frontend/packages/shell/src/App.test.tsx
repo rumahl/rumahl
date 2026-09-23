@@ -1,5 +1,5 @@
 import { fireEvent, render, screen, within } from "@testing-library/react";
-import { describe, expect, test } from "vitest";
+import { describe, expect, test, vi } from "vitest";
 import { App } from "./App";
 import { demoSnapshot as fixtureSnapshot } from "./demo/snapshot";
 
@@ -78,5 +78,32 @@ describe("protected shell behavior", () => {
     fireEvent.click(screen.getByRole("button", { name: "Open app manager" }));
     expect(screen.getByText("1 app")).toBeInTheDocument();
     expect(screen.getByText(/rumahl OS installs and updates apps/)).toBeInTheDocument();
+  });
+
+  test("opens a streamed app inside shell-owned window controls", async () => {
+    const id = "4485f47e-a1cd-4b7b-a7c2-203086be13f5";
+    const request = vi.fn(async (input: RequestInfo | URL) => {
+      if (input === "/api/v1/shell/streams") {
+        return Response.json({ sessions: [{ id, title: "Firefox" }] });
+      }
+      return Response.json({ frameUrl: `/api/v1/shell/streams/${id}/` });
+    });
+    const socket = {
+      close: vi.fn(),
+      onclose: null,
+      onerror: null,
+      onmessage: null,
+      onopen: null
+    };
+    render(<App snapshot={fixtureSnapshot} live={{ request, openEvents: () => socket }} />);
+    fireEvent.click(screen.getByRole("button", { name: "Open app manager" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Firefox" }));
+    const window = screen.getByRole("region", { name: "Firefox" });
+    expect(within(window).getByRole("button", { name: "Minimize Firefox" })).toBeInTheDocument();
+    const frame = await within(window).findByTitle("Firefox");
+    expect(frame).toHaveAttribute("src", `/api/v1/shell/streams/${id}/`);
+    expect(frame).not.toHaveAttribute("src", expect.stringContaining("token="));
+    fireEvent.click(within(window).getByRole("button", { name: "Close Firefox" }));
+    expect(screen.queryByRole("region", { name: "Firefox" })).not.toBeInTheDocument();
   });
 });
