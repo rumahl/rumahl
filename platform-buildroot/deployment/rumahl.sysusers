@@ -1,0 +1,8 @@
+g rumahl-web -
+g rumahl-ssr -
+u rumahl-platform - "rumahl platform" /var/lib/rumahl /usr/sbin/nologin
+u rumahl-shell - "rumahl renderer" /nonexistent /usr/sbin/nologin
+m rumahl-platform rumahl-web
+m rumahl-platform rumahl-ssr
+m rumahl-shell rumahl-ssr
+m www-data rumahl-web

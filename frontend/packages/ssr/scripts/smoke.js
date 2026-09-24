@@ -43,7 +43,7 @@ try {
   const result = await post(payload);
   assert.equal(result.status, 200);
   assert.match(result.headers["cache-control"], /no-store/);
-  assert.match(result.headers["content-security-policy"], /frame-src https:\/\/weather\.apps\.rumahl\.com/);
+  assert.match(result.headers["content-security-policy"], /frame-src 'self' https:\/\/weather\.apps\.rumahl\.com/);
   assert.match(result.body, /data-shell-ssr="1"/);
   assert.match(result.body, /Ada Example/);
   assert.match(result.body, /id="rumahl-shell-snapshot"/);

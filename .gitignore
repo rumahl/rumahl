@@ -8,3 +8,7 @@
 /frontend/coverage
 *.tsbuildinfo
 /frontend/packages/ssr/node_modules
+
+/.local-tools/
+
+__pycache__/

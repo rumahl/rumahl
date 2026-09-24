@@ -660,6 +660,8 @@ mod tests {
             events: Arc::new(InMemoryShellEvents::new(4)),
             widgets: Arc::new(NoWidgets),
             streams: None,
+            browser_sessions: None,
+            login_slots: Arc::new(tokio::sync::Semaphore::new(2)),
             oidc: Some(Arc::new(protocol)),
         });
         let challenge = base64::engine::general_purpose::URL_SAFE_NO_PAD

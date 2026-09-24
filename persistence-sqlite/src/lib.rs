@@ -45,3 +45,6 @@ pub use secret_store::{
 pub use session_credential_repository::{
     SqliteSessionCredentialRepository, SqliteSessionCredentialRepositoryError,
 };
+
+mod browser_session_repository;
+pub use browser_session_repository::{BrowserSessionError, SqliteBrowserSessionRepository};

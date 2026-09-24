@@ -39,3 +39,35 @@ jobs:
         run: cargo clippy --workspace --all-targets --locked -- -D warnings
       - name: Tests
         run: cargo test --workspace --locked
+
+  shell-integration:
+    name: Frontend and local HTTPS shell
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: '24'
+      - name: Install pinned frontend package manager and HTTPS test server
+        run: |
+          npm install --global pnpm@11.19.0
+          sudo apt-get update
+          sudo apt-get install -y nginx
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: pnpm install --frozen-lockfile
+      - name: Check frontend
+        working-directory: frontend
+        run: |
+          pnpm typecheck
+          pnpm lint
+          pnpm test
+          pnpm build
+          pnpm --filter @rumahl/ssr test:smoke
+      - name: Build platform service
+        run: cargo build --locked -p rumahl-platform-service
+      - name: Exercise real HTTPS, SSR, persistent sessions and recovery
+        run: python3 tests/e2e/shell/check.py

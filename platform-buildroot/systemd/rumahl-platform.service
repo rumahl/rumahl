@@ -1,0 +1,41 @@
+[Unit]
+Description=rumahl local platform and browser gateway
+Wants=rumahl-shell.service
+After=local-fs.target rumahl-shell.service
+RequiresMountsFor=/var/lib/rumahl
+StartLimitIntervalSec=60
+StartLimitBurst=10
+
+[Service]
+Type=simple
+User=rumahl-platform
+Group=rumahl-web
+SupplementaryGroups=rumahl-ssr
+StateDirectory=rumahl
+StateDirectoryMode=0700
+RuntimeDirectory=rumahl-platform
+RuntimeDirectoryMode=0750
+EnvironmentFile=/etc/rumahl/platform.env
+ExecStart=/usr/bin/rumahl-platform-service serve
+MemoryDenyWriteExecute=yes
+Restart=on-failure
+RestartSec=2s
+TimeoutStopSec=15s
+UMask=0077
+NoNewPrivileges=yes
+CapabilityBoundingSet=
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectSystem=strict
+ProtectHome=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictAddressFamilies=AF_UNIX
+RestrictRealtime=yes
+LockPersonality=yes
+TasksMax=64
+MemoryMax=256M
+
+[Install]
+WantedBy=multi-user.target

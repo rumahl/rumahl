@@ -23,6 +23,8 @@ export const english = {
   "contribution.widget": "Isolated widget slot",
   "contribution.widgetLoading": "Loading widget…",
   "contribution.widgetUnavailable": "Widget unavailable. The rest of the system remains ready.",
+  "session.signIn": "Sign in",
+  "session.signOut": "Sign out",
   "session.expired": "Your session has ended. Sign in again to continue.",
   "dashboard.greeting": "Good evening, {name}",
   "dashboard.intro":

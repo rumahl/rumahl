@@ -95,4 +95,23 @@ describe("shell revision events", () => {
     expect(attempts).toBeGreaterThanOrEqual(2);
     stop();
   });
+  test("rechecks the session when a WebSocket handshake is rejected", async () => {
+    const expired = vi.fn();
+    let disconnect: (() => void) | undefined;
+    const stop = watchShellUpdates("initial-revision", {
+      request: async () => new Response(null, { status: 401 }),
+      openEvents: () => {
+        const socket = {
+          close: vi.fn(), onopen: null, onerror: null, onmessage: null,
+          onclose: null as ((event: CloseEvent) => void) | null
+        };
+        disconnect = () => socket.onclose?.(new CloseEvent("close", { code: 1006 }));
+        return socket;
+      }
+    }, vi.fn(), expired);
+    disconnect?.();
+    await vi.waitFor(() => expect(expired).toHaveBeenCalledOnce());
+    stop();
+  });
+
 });

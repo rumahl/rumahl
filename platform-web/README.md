@@ -3,9 +3,9 @@
 `rumahl-platform-web` is a local Unix-socket HTTP adapter, not the system's
 public HTTPS server. The HTTPS edge must preserve the browser's `Cookie`,
 `Origin`, and `Host` headers, route `/`, `/recovery`, `/api/v1/shell/*`,
-`/.well-known/openid-configuration`, and `/oauth2/*`
-to this socket, and serve the matching immutable `/assets/*` client bundle
-and authorized `/shell/themes/*` stylesheets. It must set the
+`/.well-known/openid-configuration`, `/oauth2/*`, `/login`, `/logout`, and
+`/shell/themes/*` to this socket, and serve the matching immutable `/assets/*`
+client bundle. The optional `BrowserSessions` adapter issues the
 host-only, Secure, HttpOnly, SameSite session cookie after login. No identity
 header from the edge is trusted by this adapter.
 
@@ -33,7 +33,10 @@ privileged action yet. Recovery actions require a separate, audited local
 administrator authorization and last-known-good store before they can safely
 be exposed.
 
-Buildroot service wiring, public TLS termination, login-cookie issuance,
-immutable asset serving, durable event publication, and privileged recovery
-operations are deployment/integration work still to be done. The library does
-not silently provide mock data in production.
+`platform-service` now composes the SQLite-backed browser login, logout,
+snapshots and stock theme. `platform-buildroot` supplies separate service units,
+an nginx HTTPS edge, artifact staging and a QEMU external tree. Its complete
+HTTPS process test lives in `tests/e2e/shell`; a full image boot/reboot remains a
+separate acceptance step. Privileged recovery actions and a journal-backed event
+feed remain future work. The current service polls persisted state and uses
+in-memory notifications; reconnecting clients always reload a snapshot.

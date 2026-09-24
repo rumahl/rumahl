@@ -1,0 +1,12 @@
+proxy_pass http://rumahl_platform;
+proxy_http_version 1.1;
+proxy_set_header Host $http_host;
+proxy_set_header Origin $http_origin;
+proxy_set_header Cookie $http_cookie;
+proxy_set_header Upgrade $http_upgrade;
+proxy_set_header Connection $rumahl_connection;
+proxy_set_header X-User-Id "";
+proxy_set_header X-Session-Id "";
+proxy_set_header X-Forwarded-User "";
+proxy_buffering off;
+proxy_read_timeout 75s;

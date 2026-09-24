@@ -10,5 +10,6 @@ members = [
     "platform-buildroot",
     "platform-api",
     "platform-web",
+    "platform-service",
     "ui-contracts",
 ]

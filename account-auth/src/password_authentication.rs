@@ -26,6 +26,7 @@ pub struct PasswordAuthenticationService<R, B> {
 pub struct VerifiedLocalAccount {
     user_id: UserId,
     authenticated_at: UnixTimestamp,
+    password_hash: crate::PasswordHashRecord,
 }
 
 #[derive(Debug)]
@@ -173,6 +174,7 @@ where
         Ok(VerifiedLocalAccount {
             user_id: *account.user_id(),
             authenticated_at: attempted_at,
+            password_hash: credential.password_hash().clone(),
         })
     }
 
@@ -192,6 +194,12 @@ where
 }
 
 impl VerifiedLocalAccount {
+    /// Compare inside the session-creation transaction to reject a proof made
+    /// stale by a concurrent password reset.
+    pub fn password_hash(&self) -> &crate::PasswordHashRecord {
+        &self.password_hash
+    }
+
     pub fn user_id(&self) -> &UserId {
         &self.user_id
     }

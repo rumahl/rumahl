@@ -1,5 +1,5 @@
 use std::collections::BTreeSet;
-use std::os::unix::fs::PermissionsExt;
+use std::os::unix::fs::{MetadataExt, PermissionsExt};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Duration;
@@ -91,6 +91,8 @@ pub struct GatewayState {
     pub streams: Option<Arc<StreamAccess>>,
     /// None leaves the Shell and recovery routes usable while OIDC is offline.
     pub oidc: Option<Arc<dyn oidc::OidcGateway>>,
+    pub browser_sessions: Option<Arc<dyn crate::BrowserSessions>>,
+    pub login_slots: Arc<tokio::sync::Semaphore>,
 }
 
 pub fn router(state: GatewayState) -> Router {
@@ -109,12 +111,23 @@ pub fn router(state: GatewayState) -> Router {
         .route("/api/v1/shell/streams/{id}/{*tail}", get(stream_asset))
         .route("/recovery", get(recovery))
         .merge(oidc::routes())
+        .merge(crate::browser_auth::routes())
         .with_state(Arc::new(state))
 }
 
 /// Expose the router only on a private local socket. A separate HTTPS edge must
 /// preserve Host, Origin and Cookie; it must not add trusted identity headers.
 pub async fn serve(socket: &Path, state: GatewayState) -> Result<(), GatewayError> {
+    serve_router(socket, router(state), false).await
+}
+
+/// Group access is explicit and must match the private parent directory group.
+/// The default `serve` entry point retains owner-only access.
+pub async fn serve_router(
+    socket: &Path,
+    app: Router,
+    group_access: bool,
+) -> Result<(), GatewayError> {
     if !socket.is_absolute() {
         return Err(GatewayError::InvalidSocketPath);
     }
@@ -127,19 +140,36 @@ pub async fn serve(socket: &Path, state: GatewayState) -> Result<(), GatewayErro
         return Err(GatewayError::InvalidSocketPath);
     }
     let listener = UnixListener::bind(socket).map_err(GatewayError::Io)?;
-    std::fs::set_permissions(socket, std::fs::Permissions::from_mode(0o600))
-        .map_err(GatewayError::Io)?;
-    axum::serve(listener, router(state))
-        .await
-        .map_err(GatewayError::Io)
+    if group_access
+        && (metadata.permissions().mode() & 0o010 == 0
+            || std::fs::symlink_metadata(socket)
+                .map_err(GatewayError::Io)?
+                .gid()
+                != metadata.gid())
+    {
+        return Err(GatewayError::InvalidSocketPath);
+    }
+    std::fs::set_permissions(
+        socket,
+        std::fs::Permissions::from_mode(if group_access { 0o660 } else { 0o600 }),
+    )
+    .map_err(GatewayError::Io)?;
+    axum::serve(listener, app).await.map_err(GatewayError::Io)
 }
 
 async fn shell(State(state): State<Arc<GatewayState>>, headers: HeaderMap) -> Response {
     let Ok(credential) = credential(&headers) else {
-        return error(StatusCode::UNAUTHORIZED);
+        return if state.browser_sessions.is_some() {
+            crate::browser_auth::login_redirect()
+        } else {
+            error(StatusCode::UNAUTHORIZED)
+        };
     };
     let identity = match authenticate(&state, &credential).await {
         Ok(identity) => identity,
+        Err(ShellBackendError::Unauthorized) if state.browser_sessions.is_some() => {
+            return crate::browser_auth::login_redirect();
+        }
         Err(error) => return backend_error(error),
     };
     let snapshot = match load_snapshot(&state, &credential).await {
@@ -581,11 +611,25 @@ async fn drive_events(
     loop {
         tokio::select! {
             _ = recheck.tick() => {
-                if authenticate(&state, &credential).await != Ok(identity) { break; }
+                match authenticate(&state, &credential).await {
+                    Ok(current) if current == identity => {},
+                    Err(ShellBackendError::Unauthorized) => {
+                        let _ = socket.send(Message::Text(ShellEvent::session_revoked().to_json().into())).await;
+                        break;
+                    }
+                    _ => break,
+                }
             }
             next = subscriber.recv() => match next {
                 Ok((user_id, event)) if user_id == identity.user_id => {
-                    if authenticate(&state, &credential).await != Ok(identity) { break; }
+                    match authenticate(&state, &credential).await {
+                    Ok(current) if current == identity => {},
+                    Err(ShellBackendError::Unauthorized) => {
+                        let _ = socket.send(Message::Text(ShellEvent::session_revoked().to_json().into())).await;
+                        break;
+                    }
+                    _ => break,
+                }
                     let revoke = matches!(event, ShellEvent::SessionRevoked { .. });
                     if socket.send(Message::Text(event.to_json().into())).await.is_err() { break; }
                     if revoke { break; }
@@ -837,6 +881,8 @@ mod tests {
             widgets: Arc::new(TestWidgets(widget_url)),
             streams: None,
             oidc: None,
+            browser_sessions: None,
+            login_slots: Arc::new(tokio::sync::Semaphore::new(2)),
         }
     }
 
@@ -958,6 +1004,8 @@ mod tests {
             widgets: Arc::new(TestWidgets("https://weather.apps.rumahl.dev/widget")),
             streams: Some(Arc::new(StreamAccess::new(provider))),
             oidc: None,
+            browser_sessions: None,
+            login_slots: Arc::new(tokio::sync::Semaphore::new(2)),
         });
         let list = app
             .clone()
@@ -1084,6 +1132,8 @@ mod tests {
             widgets: Arc::new(TestWidgets("https://weather.apps.rumahl.dev/widget")),
             streams: Some(Arc::new(StreamAccess::new(provider))),
             oidc: None,
+            browser_sessions: None,
+            login_slots: Arc::new(tokio::sync::Semaphore::new(2)),
         });
         let grant = Request::builder()
             .method("POST")

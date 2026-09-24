@@ -134,6 +134,7 @@ export function watchShellUpdates(
           expire();
           return;
         }
+        requestRefresh();
         scheduleReconnect();
       };
     } catch {

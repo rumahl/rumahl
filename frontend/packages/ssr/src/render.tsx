@@ -86,6 +86,7 @@ function ShellDocument({
         <meta name="viewport" content="width=device-width, initial-scale=1" />
         <title>rumahl OS</title>
         <link href={assets.stylesheet} rel="stylesheet" />
+        <link href={snapshot.theme.stylesheetUrl} rel="stylesheet" />
       </head>
       <body>
         <div data-shell-ssr="1" id="root">

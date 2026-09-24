@@ -1136,6 +1136,7 @@ mod tests {
 
     #[test]
     fn terminates_a_hung_docker_command() {
+        let _spawn_guard = crate::test_support::process_spawn_guard();
         let root = unique_test_root('d');
         let executable = root.join("docker");
         fs::write(&executable, "#!/bin/sh\nexec /bin/sleep 5\n").unwrap();

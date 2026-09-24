@@ -72,7 +72,7 @@ const server = createServer(async (request, response) => {
     const { stream, abort } = await renderShellDocument(payload.snapshot, assets, payload.nonce);
     response.writeHead(200, {
       "Cache-Control": "private, no-store",
-      "Content-Security-Policy": `default-src 'none'; script-src 'self' 'nonce-${payload.nonce}'; style-src 'self'; img-src 'self' data:; connect-src 'self'; frame-src 'self'${frameOrigins.length ? ` ${frameOrigins.join(" ")}` : ""}; base-uri 'none'; object-src 'none'; frame-ancestors 'none'`,
+      "Content-Security-Policy": `default-src 'none'; script-src 'self' 'nonce-${payload.nonce}'; style-src 'self'; img-src 'self' data:; connect-src 'self'; frame-src 'self'${frameOrigins.length ? ` ${frameOrigins.join(" ")}` : ""}; base-uri 'none'; object-src 'none'; form-action 'self'; frame-ancestors 'none'`,
       "Content-Type": "text/html; charset=utf-8",
       "X-Content-Type-Options": "nosniff"
     });

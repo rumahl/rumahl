@@ -35,7 +35,7 @@ export function App({ snapshot, live }: { snapshot: ShellSnapshotV1; live?: Shel
 
 function SessionExpired() {
   const { t } = useI18n();
-  return <main className="startup-message" role="status">{t("session.expired")}</main>;
+  return <main className="startup-message" role="status">{t("session.expired")} <a href="/login">{t("session.signIn")}</a></main>;
 }
 
 function Shell({ snapshot, widgetRequest, allowDevelopmentLoopback }: {
@@ -131,6 +131,7 @@ function Shell({ snapshot, widgetRequest, allowDevelopmentLoopback }: {
             <kbd>⌘ K</kbd>
           </button>
           <div className="topbar__profile">
+            <form action="/logout" method="post"><button type="submit">{t("session.signOut")}</button></form>
             <span>{formatter.format(new Date(snapshot.systemStatus.observedAtUnixMs))}</span>
             <button aria-label={t("profile.open")} type="button">
               {snapshot.user.displayName.slice(0, 1).toUpperCase()}

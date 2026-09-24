@@ -325,6 +325,7 @@ mod tests {
 
     #[test]
     fn unseals_active_and_historical_keys_by_id() {
+        let _spawn_guard = crate::test_support::process_spawn_guard();
         let root = test_root("tpm2-provider");
         fs::create_dir(&root).unwrap();
         let executable = fake_unseal(&root, "01234567890123456789012345678901");
@@ -364,6 +365,7 @@ mod tests {
 
     #[test]
     fn rejects_unsealed_values_that_are_not_aes_256_keys() {
+        let _spawn_guard = crate::test_support::process_spawn_guard();
         let root = test_root("tpm2-provider-length");
         fs::create_dir(&root).unwrap();
         let executable = fake_unseal(&root, "too-short");
@@ -388,6 +390,7 @@ mod tests {
 
     #[test]
     fn decrypts_sqlite_secrets_with_the_same_tpm_sealed_key() {
+        let _spawn_guard = crate::test_support::process_spawn_guard();
         let root = test_root("tpm2-provider-store");
         fs::create_dir(&root).unwrap();
         let executable = fake_unseal(&root, "01234567890123456789012345678901");
@@ -448,6 +451,7 @@ mod tests {
 
     #[test]
     fn terminates_a_hung_unseal_process() {
+        let _spawn_guard = crate::test_support::process_spawn_guard();
         let root = test_root("tpm2-provider-timeout");
         fs::create_dir(&root).unwrap();
         let executable = root.join("tpm2_unseal");

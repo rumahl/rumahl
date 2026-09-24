@@ -18,6 +18,8 @@ export const german = {
   "contribution.widget": "Isolierter Widget-Platz",
   "contribution.widgetLoading": "Widget wird geladen…",
   "contribution.widgetUnavailable": "Widget nicht verfügbar. Das übrige System bleibt bereit.",
+  "session.signIn": "Anmelden",
+  "session.signOut": "Abmelden",
   "session.expired": "Deine Sitzung ist beendet. Melde dich erneut an, um fortzufahren.",
   "dashboard.greeting": "Guten Abend, {name}",
   "dashboard.intro":

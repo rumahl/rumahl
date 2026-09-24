@@ -13,8 +13,13 @@ pub use backend::{
 };
 pub use events::{InMemoryShellEvents, ShellEventSource};
 pub use oidc::OidcGateway;
-pub use server::{GatewayConfig, GatewayError, GatewayState, WidgetFrameResolver, router, serve};
+pub use server::{
+    GatewayConfig, GatewayError, GatewayState, WidgetFrameResolver, router, serve, serve_router,
+};
 pub use streams::{
     RegisteredStreamProvider, StreamAccess, StreamDescriptor, StreamEndpoint, StreamEndpointError,
     StreamProvider, StreamProviderError,
 };
+
+mod browser_auth;
+pub use browser_auth::{BrowserSessions, SESSION_SECONDS};

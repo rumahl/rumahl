@@ -40,6 +40,7 @@ pub async fn render(
         let request = Request::builder()
             .method("POST")
             .uri("/render")
+            .header("host", "rumahl-shell.internal")
             .header("content-type", "application/json")
             .body(Full::new(Bytes::from(body)))
             .map_err(|_| ())?;

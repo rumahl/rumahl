@@ -239,3 +239,11 @@ The fixture image is built from the pinned base and addressed by its resulting
 immutable image ID. A Buildroot image may use this Docker target or replace it
 through `RuntimeControlTarget`; its package-import implementation remains a
 separate deployment choice.
+
+## Browser shell deployment
+
+The new [image external tree](image/README.md) and [platform service](../platform-service/README.md)
+provide a separate, minimal browser milestone. The package installs platform and
+SSR units, immutable frontend assets and an nginx HTTPS edge. Its design is
+recorded in [the prototype migration note](../docs/architecture/buildroot-migration.md).
+The runtime supervisor described above remains an independently integrated service.
