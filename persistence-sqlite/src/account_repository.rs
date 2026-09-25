@@ -8,6 +8,7 @@ use rumahl_core::{
     AccountSession, AccountState, AccountStateError, AccountStateRepository, AccountStatus,
     AccountUsername, LocalAccount, SessionId, UnixTimestamp, UserId,
 };
+use rumahl_oidc_provider::{OidcPublicClaims, OidcUserSource};
 use rusqlite::{Connection, Transaction, TransactionBehavior, params};
 
 use crate::identity_schema;
@@ -243,6 +244,38 @@ impl AccountStateRepository for SqliteAccountStateRepository {
         }
 
         transaction.commit().map_err(Self::database_error)
+    }
+}
+
+impl OidcUserSource for SqliteAccountStateRepository {
+    type Error = SqliteAccountStateRepositoryError;
+
+    fn active_authentication_time(
+        &self,
+        user_id: UserId,
+        session_id: SessionId,
+        now: UnixTimestamp,
+    ) -> Result<Option<UnixTimestamp>, Self::Error> {
+        let state = self.load()?;
+        let active_account = state
+            .accounts()
+            .get(&user_id)
+            .is_some_and(LocalAccount::can_authenticate);
+        Ok(state.sessions().get(&session_id).and_then(|session| {
+            (active_account && session.user_id() == &user_id && session.is_active_at(now))
+                .then_some(session.authenticated_at())
+        }))
+    }
+
+    fn public_claims(&self, user_id: UserId) -> Result<Option<OidcPublicClaims>, Self::Error> {
+        let state = self.load()?;
+        Ok(state.accounts().get(&user_id).and_then(|account| {
+            account.can_authenticate().then(|| OidcPublicClaims {
+                name: Some(account.display_name().to_owned()),
+                email: None,
+                email_verified: false,
+            })
+        }))
     }
 }
 

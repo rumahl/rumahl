@@ -6,6 +6,7 @@ mod manifest;
 mod oidc;
 mod registrar;
 mod registration;
+mod stream_presentation;
 mod validator;
 mod version;
 
@@ -15,6 +16,10 @@ pub use contribution::{
 };
 
 pub use manifest::{AppManifest, AppManifestError};
+
+pub use stream_presentation::{
+    PreferredStreamSize, STREAMING_ENGINE_CAPABILITY, StreamPresentation, StreamPresentationError,
+};
 
 pub use oidc::{
     OidcCallbackPath, OidcCallbackPathError, OidcClientDeclaration, OidcClientDeclarationError,

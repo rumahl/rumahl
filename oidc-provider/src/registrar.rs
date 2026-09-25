@@ -37,18 +37,6 @@ pub struct OidcClientRegistration {
 }
 
 #[derive(Debug)]
-pub enum OidcClientRegistrationError<RepositoryError, ResolverError> {
-    InstallationNotFound,
-    ClientAlreadyRegistered,
-    OriginResolution(ResolverError),
-    InvalidRedirectUri(OidcRedirectUriError),
-    ClientIdGeneration(OidcClientIdGenerationError),
-    ClientSecretGeneration(OidcClientSecretGenerationError),
-    InvalidClient(OidcClientRecordError),
-    Repository(RepositoryError),
-}
-
-#[derive(Debug)]
 pub enum OidcClientProvisioningError<RepositoryError, ResolverError, SecretStoreError> {
     InstallationNotFound,
     OriginResolution(ResolverError),
@@ -81,70 +69,6 @@ where
             repository,
             origin_resolver,
         }
-    }
-
-    pub fn register_installed_app(
-        &self,
-        state: &PlatformState,
-        installation_id: &InstallationId,
-        created_at: UnixTimestamp,
-    ) -> Result<Option<OidcClientRegistration>, OidcClientRegistrationError<R::Error, O::Error>>
-    {
-        let app = state
-            .installed_apps()
-            .get_by_installation_id(installation_id)
-            .ok_or(OidcClientRegistrationError::InstallationNotFound)?;
-        let Some(declaration) = app.manifest().oidc_client() else {
-            return Ok(None);
-        };
-
-        if self
-            .repository
-            .find_active_by_installation(installation_id)
-            .map_err(OidcClientRegistrationError::Repository)?
-            .is_some()
-        {
-            return Err(OidcClientRegistrationError::ClientAlreadyRegistered);
-        }
-
-        let origin = self
-            .origin_resolver
-            .resolve_origin(app, declaration.callback_entrypoint())
-            .map_err(OidcClientRegistrationError::OriginResolution)?;
-        let redirect_uri =
-            OidcRedirectUri::from_platform_origin(&origin, declaration.callback_path())
-                .map_err(OidcClientRegistrationError::InvalidRedirectUri)?;
-        let client_id =
-            OidcClientId::generate().map_err(OidcClientRegistrationError::ClientIdGeneration)?;
-        let client_secret = match declaration.client_type() {
-            OidcClientType::Public => None,
-            OidcClientType::Confidential => Some(
-                OidcClientSecret::generate()
-                    .map_err(OidcClientRegistrationError::ClientSecretGeneration)?,
-            ),
-        };
-        let client = OidcClientRecord::restore(
-            client_id,
-            *installation_id,
-            app.identity().app_id().clone(),
-            app.manifest().display_name(),
-            declaration.client_type(),
-            redirect_uri,
-            declaration.scopes().to_vec(),
-            client_secret.as_ref().map(OidcClientSecret::digest),
-            created_at,
-            None,
-        )
-        .map_err(OidcClientRegistrationError::InvalidClient)?;
-
-        self.repository
-            .insert(&client)
-            .map_err(OidcClientRegistrationError::Repository)?;
-
-        Ok(Some(OidcClientRegistration {
-            client,
-            client_secret,
-        }))
     }
 
     /// Registers a declared client or reconstructs an interrupted registration.
@@ -362,49 +286,6 @@ impl fmt::Debug for OidcClientRegistration {
             .field("client", &self.client)
             .field("has_client_secret", &self.client_secret.is_some())
             .finish()
-    }
-}
-
-impl<RepositoryError, ResolverError> fmt::Display
-    for OidcClientRegistrationError<RepositoryError, ResolverError>
-where
-    RepositoryError: Error,
-    ResolverError: Error,
-{
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::InstallationNotFound => write!(f, "installed app was not found"),
-            Self::ClientAlreadyRegistered => {
-                write!(f, "installed app already has an active OIDC client")
-            }
-            Self::OriginResolution(_) => write!(f, "installed app origin could not be resolved"),
-            Self::InvalidRedirectUri(error) => write!(f, "OIDC redirect URI is invalid: {error}"),
-            Self::ClientIdGeneration(_) => write!(f, "OIDC client ID could not be generated"),
-            Self::ClientSecretGeneration(_) => {
-                write!(f, "OIDC client secret could not be generated")
-            }
-            Self::InvalidClient(error) => write!(f, "OIDC client is invalid: {error}"),
-            Self::Repository(_) => write!(f, "OIDC client could not be persisted"),
-        }
-    }
-}
-
-impl<RepositoryError, ResolverError> Error
-    for OidcClientRegistrationError<RepositoryError, ResolverError>
-where
-    RepositoryError: Error + 'static,
-    ResolverError: Error + 'static,
-{
-    fn source(&self) -> Option<&(dyn Error + 'static)> {
-        match self {
-            Self::OriginResolution(error) => Some(error),
-            Self::InvalidRedirectUri(error) => Some(error),
-            Self::ClientIdGeneration(error) => Some(error),
-            Self::ClientSecretGeneration(error) => Some(error),
-            Self::InvalidClient(error) => Some(error),
-            Self::Repository(error) => Some(error),
-            Self::InstallationNotFound | Self::ClientAlreadyRegistered => None,
-        }
     }
 }
 
@@ -712,9 +593,15 @@ mod tests {
             MemoryRepository::default(),
             FixedOriginResolver("https://notes.rumahl.local/"),
         );
+        let secret_store = MemorySecretStore::default();
 
         let registration = registrar
-            .register_installed_app(&state, &installation_id, UnixTimestamp::from_seconds(100))
+            .register_or_recover_installed_app(
+                &state,
+                &installation_id,
+                UnixTimestamp::from_seconds(100),
+                &secret_store,
+            )
             .unwrap()
             .unwrap();
 
@@ -746,9 +633,15 @@ mod tests {
             MemoryRepository::default(),
             FixedOriginResolver("https://cloud.rumahl.local/"),
         );
+        let secret_store = MemorySecretStore::default();
 
         let registration = registrar
-            .register_installed_app(&state, &installation_id, UnixTimestamp::from_seconds(100))
+            .register_or_recover_installed_app(
+                &state,
+                &installation_id,
+                UnixTimestamp::from_seconds(100),
+                &secret_store,
+            )
             .unwrap()
             .unwrap();
         let encoded_secret = registration.client_secret().unwrap().encode();
@@ -760,14 +653,20 @@ mod tests {
         );
         assert!(registration.client().client_secret_digest().is_some());
         assert!(!format!("{registration:?}").contains(encoded_secret.as_str()));
-        assert!(matches!(
-            registrar.register_installed_app(
+        let recovered = registrar
+            .register_or_recover_installed_app(
                 &state,
                 &installation_id,
                 UnixTimestamp::from_seconds(101),
-            ),
-            Err(OidcClientRegistrationError::ClientAlreadyRegistered)
-        ));
+                &secret_store,
+            )
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            recovered.client().client_id(),
+            registration.client().client_id()
+        );
+        assert_eq!(recovered.client_secret().unwrap().encode(), encoded_secret);
     }
 
     #[test]
@@ -878,9 +777,21 @@ mod tests {
             MemoryRepository::default(),
             FixedOriginResolver("https://cloud.rumahl.local/"),
         );
-        registrar
-            .register_installed_app(&state, &installation_id, UnixTimestamp::from_seconds(100))
+        let app = state
+            .installed_apps()
+            .get_by_installation_id(&installation_id)
             .unwrap();
+        let secret = OidcClientSecret::generate().unwrap();
+        let client = build_client(
+            OidcClientId::generate().unwrap(),
+            app,
+            app.manifest().oidc_client().unwrap(),
+            OidcRedirectUri::parse("https://cloud.rumahl.local/apps/oidc/callback").unwrap(),
+            Some(&secret),
+            UnixTimestamp::from_seconds(100),
+        )
+        .unwrap();
+        registrar.repository().insert(&client).unwrap();
 
         assert!(matches!(
             registrar.register_or_recover_installed_app(
@@ -902,12 +813,13 @@ mod tests {
         );
 
         assert!(matches!(
-            registrar.register_installed_app(
+            registrar.register_or_recover_installed_app(
                 &state,
                 &installation_id,
                 UnixTimestamp::from_seconds(100),
+                &MemorySecretStore::default(),
             ),
-            Err(OidcClientRegistrationError::InvalidRedirectUri(
+            Err(OidcClientProvisioningError::InvalidRedirectUri(
                 OidcRedirectUriError::HttpsRequired
             ))
         ));

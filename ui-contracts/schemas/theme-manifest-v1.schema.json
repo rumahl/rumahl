@@ -1,0 +1,54 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.rumahl.com/ui/theme-manifest-v1.schema.json",
+  "title": "rumahl Theme Manifest v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["manifestVersion", "uiContractVersion", "id", "name"],
+  "properties": {
+    "manifestVersion": { "const": 1 },
+    "uiContractVersion": { "const": 1 },
+    "id": {
+      "type": "string",
+      "maxLength": 128,
+      "pattern": "^[a-z](?:[a-z0-9]|-(?=[a-z0-9]))*(\\.[a-z](?:[a-z0-9]|-(?=[a-z0-9]))*){2,}$"
+    },
+    "name": { "type": "string", "minLength": 1, "maxLength": 128 },
+    "tokens": {
+      "type": "object",
+      "additionalProperties": false,
+      "maxProperties": 64,
+      "properties": {
+        "color.canvas.background": { "$ref": "#/$defs/color" },
+        "color.panel.background": { "$ref": "#/$defs/color" },
+        "color.text.primary": { "$ref": "#/$defs/color" },
+        "color.text.muted": { "$ref": "#/$defs/color" },
+        "color.accent.primary": { "$ref": "#/$defs/color" },
+        "color.window.titlebar.background": { "$ref": "#/$defs/color" },
+        "color.window.titlebar.foreground": { "$ref": "#/$defs/color" },
+        "radius.window": {
+          "type": "string",
+          "pattern": "^(0|[1-9]|[12][0-9]|3[0-2])px$"
+        },
+        "space.shell.gap": {
+          "type": "string",
+          "pattern": "^(0|[1-9]|[1-5][0-9]|6[0-4])px$"
+        }
+      }
+    },
+    "variants": {
+      "type": "object",
+      "additionalProperties": false,
+      "maxProperties": 16,
+      "properties": {
+        "window.chrome": { "enum": ["standard", "compact"] }
+      }
+    }
+  },
+  "$defs": {
+    "color": {
+      "type": "string",
+      "pattern": "^#[0-9A-Fa-f]{6}$"
+    }
+  }
+}

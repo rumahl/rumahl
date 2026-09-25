@@ -1,0 +1,23 @@
+[package]
+name = "rumahl-platform-service"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[dependencies]
+axum = "0.8.9"
+rumahl-account-auth = { path = "../account-auth" }
+rumahl-core = { path = "../core" }
+rumahl-persistence-sqlite = { path = "../persistence-sqlite" }
+rumahl-platform-api = { path = "../platform-api" }
+rumahl-platform-web = { path = "../platform-web" }
+rumahl-ui-contracts = { path = "../ui-contracts" }
+serde_json = "1"
+sha2 = "0.11.0"
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "signal"] }
+zeroize = "1"
+
+[dev-dependencies]
+tempfile = "3"
+tower = { version = "0.5", features = ["util"] }
+http-body-util = "0.1"

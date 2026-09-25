@@ -18,6 +18,9 @@ pub enum AppManifestValidationError {
         required: RuntimeEntrypointKind,
     },
     NativeRuntimeUnsupported,
+    StreamRequiresContainerRuntime(RuntimeKind),
+    StreamEntrypointMissing(RuntimeEntrypointId),
+    StreamEntrypointIncompatible(RuntimeEntrypointId),
     SearchCapabilityNotProvided {
         contribution: ContributionId,
         capability: CapabilityId,
@@ -41,12 +44,37 @@ impl AppManifestValidator {
 
     pub fn validate(&self, manifest: &AppManifest) -> Result<(), AppManifestValidationError> {
         self.validate_runtime(manifest)?;
+        self.validate_stream_presentation(manifest)?;
         self.validate_oidc(manifest)?;
 
         for contribution in manifest.contributions() {
             self.validate_contribution(manifest, contribution)?;
         }
 
+        Ok(())
+    }
+
+    fn validate_stream_presentation(
+        &self,
+        manifest: &AppManifest,
+    ) -> Result<(), AppManifestValidationError> {
+        let Some(stream) = manifest.stream_presentation() else {
+            return Ok(());
+        };
+        let runtime = manifest.runtime();
+        if runtime.kind() != RuntimeKind::Container {
+            return Err(AppManifestValidationError::StreamRequiresContainerRuntime(
+                runtime.kind(),
+            ));
+        }
+        let entrypoint = runtime.entrypoint(stream.app_entrypoint()).ok_or_else(|| {
+            AppManifestValidationError::StreamEntrypointMissing(stream.app_entrypoint().clone())
+        })?;
+        if entrypoint.kind() != RuntimeEntrypointKind::ContainerArtifact {
+            return Err(AppManifestValidationError::StreamEntrypointIncompatible(
+                entrypoint.id().clone(),
+            ));
+        }
         Ok(())
     }
 
@@ -166,6 +194,19 @@ impl fmt::Display for AppManifestValidationError {
                 )
             }
 
+            Self::StreamRequiresContainerRuntime(runtime) => write!(
+                f,
+                "stream presentation requires a container runtime, found '{runtime:?}'"
+            ),
+            Self::StreamEntrypointMissing(entrypoint) => write!(
+                f,
+                "stream presentation references missing app entrypoint '{entrypoint}'"
+            ),
+            Self::StreamEntrypointIncompatible(entrypoint) => write!(
+                f,
+                "stream presentation entrypoint '{entrypoint}' is not a container artifact"
+            ),
+
             Self::SearchCapabilityNotProvided {
                 contribution,
                 capability,
@@ -208,7 +249,7 @@ mod tests {
         AppId, AppVersion, CapabilityId, CommandAction, CommandContributionDeclaration,
         ContributionId, OidcCallbackPath, OidcClientDeclaration, OidcScope, PackagePath,
         PublisherId, RuntimeDescriptor, RuntimeEndpointId, RuntimeEntrypoint, RuntimeEntrypointId,
-        SearchContributionDeclaration,
+        SearchContributionDeclaration, StreamPresentation,
     };
 
     fn manifest() -> AppManifest {
@@ -303,6 +344,95 @@ mod tests {
         assert_eq!(
             AppManifestValidator::new().validate(&manifest).unwrap_err(),
             AppManifestValidationError::NativeRuntimeUnsupported
+        );
+    }
+
+    #[test]
+    fn accepts_stream_presentation_on_container_artifact_without_new_runtime_kind() {
+        let mut runtime = RuntimeDescriptor::container();
+        runtime
+            .add_entrypoint(RuntimeEntrypoint::container_artifact(
+                RuntimeEntrypointId::parse("browser").unwrap(),
+                PackagePath::parse("runtime/browser.oci").unwrap(),
+            ))
+            .unwrap();
+        let mut manifest = AppManifest::new(
+            AppId::parse("com.rumahl.browser").unwrap(),
+            PublisherId::parse("com.rumahl").unwrap(),
+            AppVersion::new(1, 0, 0),
+            "Browser",
+            runtime,
+        )
+        .unwrap();
+        manifest
+            .declare_stream_presentation(
+                StreamPresentation::new(
+                    RuntimeEntrypointId::parse("browser").unwrap(),
+                    None,
+                    Some(30),
+                )
+                .unwrap(),
+            )
+            .unwrap();
+
+        assert_eq!(manifest.runtime().kind(), RuntimeKind::Container);
+        assert_eq!(
+            manifest
+                .required_system_capabilities()
+                .map(|capability| capability.to_string())
+                .collect::<Vec<_>>(),
+            vec!["com.rumahl.streaming.v1".to_owned()]
+        );
+        assert!(AppManifestValidator::new().validate(&manifest).is_ok());
+    }
+
+    #[test]
+    fn rejects_stream_presentation_for_web_runtime_and_non_artifact_entrypoint() {
+        let mut web = manifest();
+        web.declare_stream_presentation(
+            StreamPresentation::new(RuntimeEntrypointId::parse("main").unwrap(), None, None)
+                .unwrap(),
+        )
+        .unwrap();
+        assert_eq!(
+            AppManifestValidator::new().validate(&web),
+            Err(AppManifestValidationError::StreamRequiresContainerRuntime(
+                RuntimeKind::Web
+            ))
+        );
+
+        let mut runtime = RuntimeDescriptor::container();
+        runtime
+            .add_entrypoint(RuntimeEntrypoint::container_artifact(
+                RuntimeEntrypointId::parse("service").unwrap(),
+                PackagePath::parse("runtime/server.oci").unwrap(),
+            ))
+            .unwrap();
+        runtime
+            .add_entrypoint(RuntimeEntrypoint::endpoint(
+                RuntimeEntrypointId::parse("main").unwrap(),
+                RuntimeEndpointId::parse("web").unwrap(),
+            ))
+            .unwrap();
+        let mut container = AppManifest::new(
+            AppId::parse("com.rumahl.browser").unwrap(),
+            PublisherId::parse("com.rumahl").unwrap(),
+            AppVersion::new(1, 0, 0),
+            "Browser",
+            runtime,
+        )
+        .unwrap();
+        container
+            .declare_stream_presentation(
+                StreamPresentation::new(RuntimeEntrypointId::parse("main").unwrap(), None, None)
+                    .unwrap(),
+            )
+            .unwrap();
+        assert_eq!(
+            AppManifestValidator::new().validate(&container),
+            Err(AppManifestValidationError::StreamEntrypointIncompatible(
+                RuntimeEntrypointId::parse("main").unwrap()
+            ))
         );
     }
 

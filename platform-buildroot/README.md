@@ -239,3 +239,22 @@ The fixture image is built from the pinned base and addressed by its resulting
 immutable image ID. A Buildroot image may use this Docker target or replace it
 through `RuntimeControlTarget`; its package-import implementation remains a
 separate deployment choice.
+
+## Browser shell deployment
+
+The new [image external tree](image/README.md) and [platform service](../platform-service/README.md)
+provide a separate, minimal browser milestone. The package installs platform and
+SSR units, immutable frontend assets and an nginx HTTPS edge. Its design is
+recorded in [the prototype migration note](../docs/architecture/buildroot-migration.md).
+The runtime supervisor described above remains an independently integrated service.
+
+### Runtime control timeouts
+
+The runtime client waits up to 300 seconds for a control response by default.
+This covers multi-command Docker operations: activation can execute 18 commands,
+each bounded by the default 15-second Docker command timeout. The supervisor
+keeps its separate five-second request I/O limit. Custom targets or Docker
+timeouts require a matching explicit `UnixAppRuntimeProviderConfig::with_timeout`
+budget. A client timeout does not cancel an operation already running in the
+supervisor; recovery must recheck runtime state and use the existing replay-safe
+operation journal.

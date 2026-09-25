@@ -5,17 +5,22 @@
 //! client registration without allowing the manifest to choose an arbitrary
 //! redirect host or reusable client secret.
 
-mod app_lifecycle;
+mod access_token;
+mod authorization;
 mod client;
 mod client_id;
 mod client_secret;
+mod protocol;
 mod redirect_uri;
 mod registrar;
 mod repository;
+mod signing;
+mod token_family;
 
-pub use app_lifecycle::{
-    OidcAppInstallError, OidcAppInstallResult, OidcAppLifecycle, OidcAppUninstallError,
-    OidcAppUninstallResult,
+pub use access_token::{AccessTokenGrant, AccessTokenGrantError, OidcAccessTokenStore};
+pub use authorization::{
+    ApprovedAuthorization, AuthorizationCode, AuthorizationTransaction, OidcAuthorizationError,
+    OidcAuthorizationStore, PairwiseSubject, PkceChallenge, UserConsent,
 };
 pub use client::{
     OidcClientRecord, OidcClientRecordError, OidcCodeChallengeMethod, OidcTokenEndpointAuthMethod,
@@ -25,10 +30,16 @@ pub use client_secret::{
     OidcClientSecret, OidcClientSecretDigest, OidcClientSecretGenerationError,
     OidcClientSecretParseError,
 };
+pub use protocol::{
+    OidcProtocol, OidcProtocolError, OidcPublicClaims, OidcTokenResponse, OidcUserSource,
+};
 pub use redirect_uri::{OidcRedirectUri, OidcRedirectUriError};
 pub use registrar::{
     InstalledAppOriginResolver, OIDC_CLIENT_SECRET_PURPOSE, OidcClientProvisioningError,
     OidcClientProvisioningResult, OidcClientRegistrar, OidcClientRegistration,
-    OidcClientRegistrationError,
 };
 pub use repository::OidcClientRepository;
+pub use signing::{OidcSigningKey, OidcSigningKeyError};
+pub use token_family::{
+    OidcRefreshTokenStore, RefreshRotation, RefreshTokenFamily, RefreshTokenFamilyError,
+};

@@ -9,4 +9,7 @@ members = [
     "persistence-sqlite",
     "platform-buildroot",
     "platform-api",
+    "platform-web",
+    "platform-service",
+    "ui-contracts",
 ]

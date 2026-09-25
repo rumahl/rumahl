@@ -1,0 +1,4 @@
+packages:
+  - "packages/*"
+minimumReleaseAgeExclude:
+  - jsdom@30.1.1

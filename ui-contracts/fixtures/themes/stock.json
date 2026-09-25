@@ -1,0 +1,10 @@
+{
+  "manifestVersion": 1,
+  "uiContractVersion": 1,
+  "id": "com.rumahl.stock",
+  "name": "rumahl",
+  "tokens": {},
+  "variants": {
+    "window.chrome": "standard"
+  }
+}

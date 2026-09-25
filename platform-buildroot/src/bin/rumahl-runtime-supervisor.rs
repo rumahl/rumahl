@@ -363,9 +363,16 @@ mod tests {
         // Every supported host has the root account, but the returned UID is
         // read through libc rather than assumed by the supervisor.
         assert_eq!(user_uid("root").unwrap(), 0);
-        assert!(matches!(
-            user_uid("rumahl-user-that-must-not-exist-7f3e7c73"),
-            Err(SupervisorError::UnknownPlatformUser)
-        ));
+        // Host NSS backends can report an absent user as either no entry or
+        // a lookup error. Both must reject the configured user; the exact
+        // error classification is not portable across build hosts.
+        let lookup = user_uid("rumahl-user-that-must-not-exist-7f3e7c73");
+        assert!(
+            matches!(
+                &lookup,
+                Err(SupervisorError::UnknownPlatformUser | SupervisorError::PlatformUserLookup(_))
+            ),
+            "unknown platform user must be rejected"
+        );
     }
 }

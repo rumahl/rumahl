@@ -34,8 +34,9 @@ pub use apps::{
     InstalledApp, InstalledAppError, InstalledAppRegistry, InstalledAppRegistryError,
     OidcCallbackPath, OidcCallbackPathError, OidcClientDeclaration, OidcClientDeclarationError,
     OidcClientType, OidcScope, PlatformDeregistrationReport, PlatformRegistrar,
-    PlatformRegistrarError, PlatformRegistration, PlatformRegistrationError,
-    SearchContributionDeclaration,
+    PlatformRegistrarError, PlatformRegistration, PlatformRegistrationError, PreferredStreamSize,
+    STREAMING_ENGINE_CAPABILITY, SearchContributionDeclaration, StreamPresentation,
+    StreamPresentationError,
 };
 
 pub use context::{CorrelationId, CorrelationIdError, OperationContext};

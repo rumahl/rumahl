@@ -1,0 +1,20 @@
+config BR2_PACKAGE_RUMAHL_SHELL
+    bool "rumahl local browser shell"
+    depends on BR2_INIT_SYSTEMD
+    depends on BR2_PACKAGE_NODEJS
+    depends on BR2_PACKAGE_NGINX_HTTP_SSL_MODULE
+    depends on BR2_PACKAGE_NGINX_HTTP_MAP_MODULE
+    depends on BR2_PACKAGE_NGINX_HTTP_PROXY_MODULE
+    depends on BR2_PACKAGE_NGINX_HTTP_REWRITE_MODULE
+    depends on BR2_PACKAGE_NGINX_HTTP_LIMIT_REQ_MODULE
+    help
+      Install a staged, target-matching platform binary, bundled renderer,
+      client assets and service configuration. TLS certificates, a password
+      blocklist and persistent /var/lib/rumahl are provisioned per device.
+
+config BR2_PACKAGE_RUMAHL_SHELL_ARTIFACTS
+    string "absolute path to staged rumahl artifacts"
+    depends on BR2_PACKAGE_RUMAHL_SHELL
+    help
+      Directory produced by platform-buildroot/deployment/stage.py.
+      Build the Rust binary with this image's target toolchain first.
