@@ -604,7 +604,7 @@ mod tests {
             session,
             vec![OidcScope::OpenId, OidcScope::Profile],
             "opaque-state-123",
-            "opaque-nonce-123",
+            &random_value().unwrap(),
             challenge(),
             UnixTimestamp::from_seconds(110),
         )
@@ -693,7 +693,7 @@ mod tests {
             session,
             vec![OidcScope::OpenId, OidcScope::OfflineAccess],
             "opaque-state-123",
-            "opaque-nonce-123",
+            &random_value().unwrap(),
             challenge(),
             UnixTimestamp::from_seconds(110),
         )
@@ -729,7 +729,7 @@ mod tests {
                 session,
                 vec![OidcScope::Email, OidcScope::OpenId],
                 "opaque-state-123",
-                "opaque-nonce-123",
+                &random_value().unwrap(),
                 challenge(),
                 UnixTimestamp::from_seconds(110)
             )

@@ -372,7 +372,7 @@ mod tests {
                 &lookup,
                 Err(SupervisorError::UnknownPlatformUser | SupervisorError::PlatformUserLookup(_))
             ),
-            "unexpected lookup result: {lookup:?}"
+            "unknown platform user must be rejected"
         );
     }
 }

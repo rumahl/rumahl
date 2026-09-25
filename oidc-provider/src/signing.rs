@@ -107,12 +107,15 @@ mod tests {
         let key = OidcSigningKey::new("key-1", [7; 32]).unwrap();
         let subject = PairwiseSubject::generate(UserId::new(), InstallationId::new()).unwrap();
         let audience = OidcClientId::generate().unwrap();
+        let mut nonce_bytes = [0_u8; 32];
+        getrandom::fill(&mut nonce_bytes).unwrap();
+        let nonce = URL_SAFE_NO_PAD.encode(nonce_bytes);
         let jwt = key
             .sign_id_token(
                 "https://rumahl.dev",
                 &subject,
                 &audience,
-                "nonce-123",
+                &nonce,
                 UnixTimestamp::from_seconds(100),
                 UnixTimestamp::from_seconds(101),
                 UnixTimestamp::from_seconds(161),
@@ -144,5 +147,6 @@ mod tests {
         assert_eq!(claims["sub"], subject.value());
         assert_eq!(claims["aud"], audience.as_str());
         assert_eq!(claims["name"], "Alice");
+        assert_eq!(claims["nonce"], nonce);
     }
 }

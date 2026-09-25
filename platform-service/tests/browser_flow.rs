@@ -11,7 +11,12 @@ use rumahl_platform_web::{GatewayConfig, GatewayState, InMemoryShellEvents, rout
 use std::{path::Path, sync::Arc};
 use tower::ServiceExt;
 
-const PASSWORD: &str = "a long integration test password";
+fn test_password() -> String {
+    rumahl_account_auth::SessionToken::generate()
+        .unwrap()
+        .encode()
+        .to_string()
+}
 fn app(root: &Path) -> Router {
     let accounts = root.join("accounts.sqlite");
     router(GatewayState {
@@ -45,14 +50,14 @@ fn request(
     }
     r.body(Body::from(body.to_owned())).unwrap()
 }
-async fn login(app: &Router, user: &str) -> String {
+async fn login(app: &Router, user: &str, password: &str) -> String {
     let response = app
         .clone()
         .oneshot(request(
             "POST",
             "/login",
             None,
-            &format!("username={user}&password={PASSWORD}"),
+            &format!("username={user}&password={password}"),
             Some("https://rumahl.test"),
         ))
         .await
@@ -93,19 +98,24 @@ async fn snapshot(app: &Router, cookie: &str) -> serde_json::Value {
 async fn two_users_survive_restart_and_logout_revokes_only_its_session() {
     let dir = tempfile::tempdir().unwrap();
     let db = dir.path().join("accounts.sqlite");
-    for (name, display) in [("alice", "Alice"), ("bob", "Bob")] {
+    let alice_password = test_password();
+    let bob_password = test_password();
+    for (name, display, password) in [
+        ("alice", "Alice", &alice_password),
+        ("bob", "Bob", &bob_password),
+    ] {
         provision(
             &db,
             name,
             display,
-            PASSWORD.into(),
+            password.clone(),
             LocalPasswordBlocklist::default(),
         )
         .unwrap();
     }
     let first = app(dir.path());
-    let alice = login(&first, "alice").await;
-    let bob = login(&first, "bob").await;
+    let alice = login(&first, "alice", &alice_password).await;
+    let bob = login(&first, "bob", &bob_password).await;
     assert_ne!(alice, bob);
     assert_eq!(
         snapshot(&first, &alice).await["user"]["displayName"],
@@ -173,16 +183,17 @@ async fn two_users_survive_restart_and_logout_revokes_only_its_session() {
 async fn csrf_malformed_forms_and_wrong_password_cannot_create_or_revoke_sessions() {
     let dir = tempfile::tempdir().unwrap();
     let db = dir.path().join("accounts.sqlite");
+    let password = test_password();
     provision(
         &db,
         "alice",
         "Alice",
-        PASSWORD.into(),
+        password.clone(),
         LocalPasswordBlocklist::default(),
     )
     .unwrap();
     let app = app(dir.path());
-    let body = format!("username=alice&password={PASSWORD}");
+    let body = format!("username=alice&password={password}");
     for origin in [None, Some("https://evil.test"), Some("null")] {
         assert_eq!(
             app.clone()
@@ -248,7 +259,7 @@ async fn csrf_malformed_forms_and_wrong_password_cannot_create_or_revoke_session
             .sessions()
             .is_empty()
     );
-    let cookie = login(&app, "alice").await;
+    let cookie = login(&app, "alice", &password).await;
     assert_eq!(
         app.clone()
             .oneshot(request(

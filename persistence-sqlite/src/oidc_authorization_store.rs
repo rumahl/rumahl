@@ -427,6 +427,12 @@ mod tests {
 
     const VERIFIER: &str = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-._~";
 
+    fn nonce() -> String {
+        let mut bytes = [0_u8; 32];
+        getrandom::fill(&mut bytes).unwrap();
+        URL_SAFE_NO_PAD.encode(bytes)
+    }
+
     fn client() -> OidcClientRecord {
         OidcClientRecord::restore(
             OidcClientId::generate().unwrap(),
@@ -464,7 +470,7 @@ mod tests {
             session,
             vec![OidcScope::OpenId, OidcScope::Profile],
             "state-opaque-123",
-            "nonce-opaque-123",
+            &nonce(),
             challenge,
             UnixTimestamp::from_seconds(110),
         )
@@ -586,7 +592,7 @@ mod tests {
             session,
             vec![OidcScope::OpenId],
             "state-opaque-123",
-            "nonce-opaque-123",
+            &nonce(),
             challenge,
             UnixTimestamp::from_seconds(110),
         )
@@ -659,7 +665,7 @@ mod tests {
                 session,
                 vec![OidcScope::OpenId],
                 "state-opaque-123",
-                "nonce-opaque-123",
+                &nonce(),
                 challenge,
                 UnixTimestamp::from_seconds(110),
             )

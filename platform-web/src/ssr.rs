@@ -77,6 +77,7 @@ pub async fn render(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use rand::RngCore;
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
     use tokio::net::UnixListener;
 
@@ -85,6 +86,13 @@ mod tests {
         let directory = tempfile::tempdir().unwrap();
         let path = directory.path().join("ssr.sock");
         let listener = UnixListener::bind(&path).unwrap();
+        let mut nonce_bytes = [0_u8; 24];
+        rand::rng().fill_bytes(&mut nonce_bytes);
+        let nonce: String = nonce_bytes
+            .iter()
+            .map(|byte| format!("{byte:02x}"))
+            .collect();
+        let expected_nonce = nonce.clone();
         let server = tokio::spawn(async move {
             let (mut stream, _) = listener.accept().await.unwrap();
             let mut request = Vec::new();
@@ -114,9 +122,12 @@ mod tests {
             assert!(!request.to_ascii_lowercase().contains("cookie:"));
             assert!(!request.to_ascii_lowercase().contains("x-rumahl-user"));
             assert!(request.contains("\"frameOrigins\":[\"https://weather.apps.rumahl.dev\"]"));
+            let payload: serde_json::Value =
+                serde_json::from_str(request.split_once("\r\n\r\n").unwrap().1).unwrap();
+            assert_eq!(payload["nonce"].as_str(), Some(expected_nonce.as_str()));
             let body = "<html></html>";
             let response = format!(
-                "HTTP/1.1 200 OK\r\ncontent-type: text/html; charset=utf-8\r\ncontent-security-policy: default-src 'none'; script-src 'nonce-aaaaaaaaaaaaaaaa'; frame-ancestors 'none'\r\ncontent-length: {}\r\n\r\n{body}",
+                "HTTP/1.1 200 OK\r\ncontent-type: text/html; charset=utf-8\r\ncontent-security-policy: default-src 'none'; script-src 'nonce-{expected_nonce}'; frame-ancestors 'none'\r\ncontent-length: {}\r\n\r\n{body}",
                 body.len(),
             );
             stream.write_all(response.as_bytes()).await.unwrap();
@@ -124,12 +135,17 @@ mod tests {
         let rendered = render(
             &path,
             r#"{"snapshotVersion":1}"#,
-            "aaaaaaaaaaaaaaaa",
+            &nonce,
             &["https://weather.apps.rumahl.dev".to_owned()],
         )
         .await
         .unwrap();
         assert_eq!(rendered.body, "<html></html>");
+        assert!(
+            rendered
+                .csp
+                .contains(&format!("'nonce-{}'", nonce.as_str()))
+        );
         server.await.unwrap();
     }
 }

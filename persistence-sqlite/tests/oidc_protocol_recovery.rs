@@ -78,6 +78,11 @@ fn two_local_users_recover_codes_and_tokens_without_identity_mixup() {
     let redirect = client.redirect_uri().as_str();
     let scopes = vec![OidcScope::OpenId, OidcScope::Profile];
 
+    let mut nonce_bytes = [0_u8; 32];
+    getrandom::fill(&mut nonce_bytes).unwrap();
+    let alice_nonce = URL_SAFE_NO_PAD.encode(nonce_bytes);
+    getrandom::fill(&mut nonce_bytes).unwrap();
+    let bob_nonce = URL_SAFE_NO_PAD.encode(nonce_bytes);
     let first = provider(&path);
     let alice_tx = first
         .begin(
@@ -85,7 +90,7 @@ fn two_local_users_recover_codes_and_tokens_without_identity_mixup() {
             redirect,
             scopes.clone(),
             "state-alice-123",
-            "nonce-alice-123",
+            &alice_nonce,
             &challenge,
             alice,
             alice_session,
@@ -98,7 +103,7 @@ fn two_local_users_recover_codes_and_tokens_without_identity_mixup() {
             redirect,
             scopes.clone(),
             "state-bob-123",
-            "nonce-bob-123",
+            &bob_nonce,
             &challenge,
             bob,
             bob_session,
@@ -190,6 +195,17 @@ fn two_local_users_recover_codes_and_tokens_without_identity_mixup() {
             .err(),
         Some(OidcProtocolError::InvalidGrant),
     );
+    for (tokens, expected_nonce) in [(&alice_tokens, &alice_nonce), (&bob_tokens, &bob_nonce)] {
+        let payload = tokens["id_token"]
+            .as_str()
+            .unwrap()
+            .split('.')
+            .nth(1)
+            .unwrap();
+        let claims: serde_json::Value =
+            serde_json::from_slice(&URL_SAFE_NO_PAD.decode(payload).unwrap()).unwrap();
+        assert_eq!(claims["nonce"].as_str(), Some(expected_nonce.as_str()));
+    }
     let alice_access = alice_tokens["access_token"].as_str().unwrap();
     let bob_access = bob_tokens["access_token"].as_str().unwrap();
     let alice_info = restarted
