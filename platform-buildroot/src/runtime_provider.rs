@@ -36,7 +36,11 @@ const MAX_FIELD_LENGTH: usize = 1024;
 const MAX_REQUEST_LENGTH: usize = 64 * 1024;
 const OWNER_ONLY_SOCKET_MODE: u32 = 0o600;
 const OWNER_GROUP_SOCKET_MODE: u32 = 0o660;
-const DEFAULT_TIMEOUT: Duration = Duration::from_secs(5);
+// A Docker activation can execute 18 sequential commands, each with a default
+// 15-second timeout. Allow the complete operation plus transport overhead.
+const DEFAULT_RESPONSE_TIMEOUT: Duration = Duration::from_secs(300);
+// Receiving a request must not inherit the much longer target-operation budget.
+const DEFAULT_REQUEST_TIMEOUT: Duration = Duration::from_secs(5);
 
 #[derive(Debug, Clone)]
 pub struct UnixAppRuntimeProviderConfig {
@@ -177,7 +181,7 @@ impl UnixAppRuntimeProviderConfig {
         socket_path: impl Into<PathBuf>,
         expected_peer_uid: u32,
     ) -> Result<Self, UnixAppRuntimeProviderConfigError> {
-        Self::with_timeout(socket_path, expected_peer_uid, DEFAULT_TIMEOUT)
+        Self::with_timeout(socket_path, expected_peer_uid, DEFAULT_RESPONSE_TIMEOUT)
     }
 
     pub fn with_timeout(
@@ -373,7 +377,7 @@ impl UnixRuntimeControlServerConfig {
         socket_path: impl Into<PathBuf>,
         expected_peer_uid: u32,
     ) -> Result<Self, UnixRuntimeControlServerConfigError> {
-        Self::with_timeout(socket_path, expected_peer_uid, DEFAULT_TIMEOUT)
+        Self::with_timeout(socket_path, expected_peer_uid, DEFAULT_REQUEST_TIMEOUT)
     }
 
     pub fn with_timeout(
@@ -1095,6 +1099,72 @@ mod tests {
                 .unwrap_err(),
             UnixRuntimeControlServerConfigError::InvalidSocketMode
         );
+    }
+
+    #[test]
+    fn waits_for_target_completion_beyond_request_timeout() {
+        let root = test_root();
+        let path = root.join("control.sock");
+        let listener = UnixListener::bind(&path).unwrap();
+        let server = thread::spawn(move || {
+            let (mut stream, _) = listener.accept().unwrap();
+            assert!(matches!(
+                parse_request(&mut stream).unwrap(),
+                ParsedRequest::State(_)
+            ));
+            // Simulate target work exceeding the old five-second client limit.
+            thread::sleep(Duration::from_secs(6));
+            write_response(
+                &mut stream,
+                RuntimeControlTargetOutcome::Accepted {
+                    state: AppRuntimeInstallationState::Prepared,
+                    changed: false,
+                },
+            )
+            .unwrap();
+        });
+        let provider = UnixAppRuntimeProvider::new(
+            UnixAppRuntimeProviderConfig::new(&path, current_uid()).unwrap(),
+        );
+        assert_eq!(
+            provider.installation_state(&InstallationId::new()).unwrap(),
+            AppRuntimeInstallationState::Prepared
+        );
+        server.join().unwrap();
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn explicit_response_timeout_still_bounds_a_stalled_target() {
+        let root = test_root();
+        let path = root.join("control.sock");
+        let listener = UnixListener::bind(&path).unwrap();
+        let (release, wait) = std::sync::mpsc::channel();
+        let server = thread::spawn(move || {
+            let (mut stream, _) = listener.accept().unwrap();
+            assert!(matches!(
+                parse_request(&mut stream).unwrap(),
+                ParsedRequest::State(_)
+            ));
+            // Keep the socket open without replying until the client times out.
+            wait.recv_timeout(Duration::from_secs(2)).unwrap();
+        });
+        let provider = UnixAppRuntimeProvider::new(
+            UnixAppRuntimeProviderConfig::with_timeout(
+                &path,
+                current_uid(),
+                Duration::from_millis(50),
+            )
+            .unwrap(),
+        );
+        let result = provider.installation_state(&InstallationId::new());
+        release.send(()).unwrap();
+        server.join().unwrap();
+        assert!(
+            matches!(result, Err(UnixAppRuntimeProviderError::Read(error))
+            if matches!(error.kind(), io::ErrorKind::WouldBlock | io::ErrorKind::TimedOut))
+        );
+        fs::remove_dir_all(root).unwrap();
     }
 
     #[test]
