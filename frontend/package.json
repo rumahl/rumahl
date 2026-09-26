@@ -6,7 +6,7 @@
   "packageManager": "pnpm@11.19.0",
   "scripts": {
     "build": "pnpm --filter @rumahl/shell build && pnpm --filter @rumahl/ssr build",
-    "dev": "pnpm --filter @rumahl/shell dev",
+    "dev": "pnpm --filter @rumahl/ssr dev",
     "dev:demo": "pnpm --filter @rumahl/shell dev:demo",
     "lint": "eslint .",
     "test": "pnpm --filter @rumahl/shell test && pnpm --filter @rumahl/ssr test",
@@ -15,6 +15,7 @@
   "devDependencies": {
     "@eslint/js": "10.0.1",
     "eslint": "10.11.0",
+    "playwright": "1.63.0",
     "typescript": "6.0.3",
     "typescript-eslint": "8.70.1"
   }

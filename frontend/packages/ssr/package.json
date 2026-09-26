@@ -8,7 +8,8 @@
     "start": "node server.js",
     "test:smoke": "node scripts/smoke.js",
     "test": "vitest run --pool=threads --maxWorkers=1",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "dev": "node dev/start.js"
   },
   "dependencies": {
     "@rumahl/contracts": "workspace:*",

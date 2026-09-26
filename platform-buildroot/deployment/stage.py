@@ -29,7 +29,8 @@ copy(args.binary, "usr/bin/rumahl-platform-service")
 (root / "usr/bin/rumahl-platform-service").chmod(0o755)
 for package in ["shell", "ssr"]:
     shutil.copytree(frontend / package / "dist", root / f"usr/share/rumahl/frontend/packages/{package}/dist", ignore=shutil.ignore_patterns("*.map"))
-copy(frontend / "ssr/server.js", "usr/share/rumahl/frontend/packages/ssr/server.js")
+for module in ["server.js", "renderer-http.js"]:
+    copy(frontend / "ssr" / module, f"usr/share/rumahl/frontend/packages/ssr/{module}")
 (root / "usr/share/rumahl/frontend/packages/ssr/package.json").write_text('{"type":"module"}\n')
 for name in ["rumahl-platform", "rumahl-shell"]:
     copy(repo / f"platform-buildroot/systemd/{name}.service", f"usr/lib/systemd/system/{name}.service")
