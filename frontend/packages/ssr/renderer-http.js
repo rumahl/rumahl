@@ -32,7 +32,7 @@ export function createRendererServer(render, { development = false } = {}) {
     try {
       const payload = JSON.parse(await readBoundedBody(request));
       const keys = payload && typeof payload === "object" ? Object.keys(payload).sort().join(",") : "";
-      if (keys !== "nonce,snapshot" && keys !== "frameOrigins,nonce,snapshot") {
+      if (!["nonce,snapshot", "frameOrigins,nonce,snapshot", "nonce,requestPath,snapshot", "frameOrigins,nonce,requestPath,snapshot"].includes(keys)) {
         reply(response, 400);
         return;
       }

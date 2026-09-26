@@ -162,3 +162,62 @@ key. Linux may require Playwright's documented browser system dependencies.
 
 The release/image checks remain separate: use the production HTTPS test and
 Buildroot acceptance described in their READMEs before shipping an image.
+
+## Shell routes and modes
+
+Use `/app/app-manager` for a direct first-party app route and
+`/settings/display` for presentation preferences. The top bar changes the mode
+for this browser profile; Settings can save it for the whole account or this
+device. The URL stays unchanged. Browser reload and Back/Forward preserve the route; login
+returns to a validated deep link. See [shell routing](architecture/shell-routing.md)
+for the module layout, app registration boundary and remaining integration work.
+
+## Installed web apps
+
+Desktop and launcher share the authorized app catalog and `/app/:appId/*` host.
+A backend installation, explicit launch grant and published web assets are
+required; the shell does not import an app's React code. See
+[app hosting](architecture/app-hosting.md) for the contract and current limits.
+
+The developer certificate now covers both `localhost` and `*.apps.localhost`.
+On the first start with an older generated certificate, the runner regenerates
+it. Trust the displayed certificate again; custom `--cert` certificates must
+cover both names. The browser must resolve installation subdomains beneath
+`apps.localhost` to loopback. Shell and apps use the same developer HTTPS port.
+
+The integration fixture is only for disposable developer state; it refuses to
+seed a platform that already has installations. It is not an installer:
+
+```sh
+cargo build -p rumahl-platform-service --bins --example app_host_fixture
+# While the developer server is running (adjust the state directory as needed):
+target/debug/examples/app_host_fixture seed "$HOME/.local/state/rumahl-dev/data" developer
+# Open /apps; "Isolated test app" is granted only to the developer account.
+target/debug/examples/app_host_fixture revoke "$HOME/.local/state/rumahl-dev/data"
+```
+
+Both `tests/e2e/shell/check.py` and
+`tests/e2e/development/check.py --browser` require this fixture executable.
+They use temporary state and check real TLS, app hosting and grant revocation.
+
+## Synchronized user and device preferences
+
+In **Settings → Shell mode**, choose **My account · all devices** or
+**This browser profile**. A device override takes priority; **Use account setting**
+removes it. User preferences automatically follow the same account on other
+browser profiles connected to this rumahl OS instance. Multiple tabs of the same
+profile share its device preferences. Other users keep independent settings.
+
+Modes and preference caches use Local Storage, with Session Storage fallback.
+Rust persists authoritative values in `data/preferences.sqlite` beneath the
+developer state directory (production: `$RUMAHL_STATE_DIR/preferences.sqlite`).
+Active pages refresh every two seconds, hidden pages every ten seconds, and
+focus/local storage notifications trigger an immediate refresh. Concurrent stale
+writes return a visible conflict instead of overwriting a newer change.
+
+A “device” currently means a browser profile on this origin, not hardware
+fingerprinting. Clearing storage creates a new profile; browsers on the same
+physical device remain separate. This is local OS synchronization, not cloud
+synchronization between separate rumahl servers. See
+[shell preferences](architecture/shell-preferences.md) for the versioned API and
+extension rules. `shell.mode` is the first supported preference.

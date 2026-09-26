@@ -28,6 +28,8 @@ fn app(root: &Path) -> Router {
         events: Arc::new(InMemoryShellEvents::new(8)),
         widgets: Arc::new(NoWidgets),
         streams: None,
+        apps: None,
+        preferences: None,
         oidc: None,
     })
 }

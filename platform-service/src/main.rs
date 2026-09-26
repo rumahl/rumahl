@@ -102,6 +102,17 @@ async fn run() -> Result<(), ServiceError> {
     )
     .map_err(|_| std::io::Error::other("invalid gateway configuration"))?;
     let authority = config.public_origin.as_str()[8..].to_owned();
+    let app_suffix = env::var("RUMAHL_APP_HOST_SUFFIX")
+        .unwrap_or_else(|_| format!("apps.{}", config.public_origin.host_str().unwrap()));
+    let app_root = state_dir.join("app-assets");
+    let apps = Arc::new(
+        rumahl_platform_web::AppAccess::new(
+            Arc::new(apps::PersistentApps::open(&accounts, &platform, app_root)?),
+            &config.public_origin,
+            &app_suffix,
+        )
+        .map_err(|_| std::io::Error::other("invalid app host configuration"))?,
+    );
     let events = Arc::new(InMemoryShellEvents::new(128));
     let snapshots = PersistentShellSnapshots::open(&accounts, &platform, build_id, &locale)?;
     let account_feed = SqliteAccountStateRepository::open(&accounts)?;
@@ -113,6 +124,12 @@ async fn run() -> Result<(), ServiceError> {
         events: events.clone(),
         widgets: Arc::new(NoWidgets),
         streams: None,
+        apps: Some(apps.clone()),
+        preferences: Some(Arc::new(
+            rumahl_persistence_sqlite::SqliteShellPreferences::open(
+                state_dir.join("preferences.sqlite"),
+            )?,
+        )),
         oidc: None,
     };
     let (theme_path, css) = stock_stylesheet();
@@ -141,11 +158,50 @@ async fn run() -> Result<(), ServiceError> {
         )
         .layer(middleware::from_fn(move |request: Request, next: Next| {
             let authority = authority.clone();
+            let apps = apps.clone();
             async move {
-                if request.headers().get_all("host").iter().count() != 1
-                    || request.headers().get("host").and_then(|h| h.to_str().ok())
-                        != Some(authority.trim_end_matches('/'))
-                {
+                let host = request
+                    .headers()
+                    .get("host")
+                    .and_then(|h| h.to_str().ok())
+                    .unwrap_or("")
+                    .to_owned();
+                if request.headers().get_all("host").iter().count() != 1 {
+                    return rumahl_platform_web::app_error(
+                        rumahl_platform_web::AppAccessError::Denied,
+                    );
+                }
+                if apps.accepts_host(&host) {
+                    if request.method() != axum::http::Method::GET
+                        && request.method() != axum::http::Method::HEAD
+                    {
+                        return rumahl_platform_web::app_error(
+                            rumahl_platform_web::AppAccessError::Denied,
+                        );
+                    }
+                    let path = request.uri().path().to_owned();
+                    let head = request.method() == axum::http::Method::HEAD;
+                    let loader = apps.clone();
+                    let load_host = host.clone();
+                    return match tokio::task::spawn_blocking(move || {
+                        loader.resource(&load_host, &path)
+                    })
+                    .await
+                    {
+                        Ok(Ok(asset)) => {
+                            let mut response = apps.asset_response(&host, asset);
+                            if head {
+                                *response.body_mut() = Body::empty();
+                            }
+                            response
+                        }
+                        Ok(Err(error)) => rumahl_platform_web::app_error(error),
+                        Err(_) => rumahl_platform_web::app_error(
+                            rumahl_platform_web::AppAccessError::Unavailable,
+                        ),
+                    };
+                }
+                if host != authority.trim_end_matches('/') {
                     let mut response = Response::new(Body::empty());
                     *response.status_mut() = StatusCode::MISDIRECTED_REQUEST;
                     return response;

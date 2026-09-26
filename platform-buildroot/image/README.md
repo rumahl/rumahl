@@ -79,7 +79,7 @@ Use a **native host build** of the platform provisioning CLI, as described in
 acceptance. Close the provisioning process before constructing the data image;
 do not copy a database out of an actively running service.
 
-Place a certificate for `rumahl.home.arpa` and its private key in
+Place a certificate for `rumahl.home.arpa` **and `*.apps.rumahl.home.arpa`** and its private key in
 `$RUMAHL_SEED/lib/rumahl-tls/fullchain.pem` and `key.pem`. Restrict the key to mode
 `0600`. Use a locally trusted development CA and install only its public trust
 certificate in the test browser. TLS verification stays enabled.
@@ -111,3 +111,10 @@ verify the old credential remains rejected after another restart. Stop the
 renderer and verify `/recovery` and `/login` remain reachable. Record the
 Buildroot version, source commit, shell build ID and image hashes, never tokens
 or passwords.
+
+Installed web apps also require local wildcard DNS for `*.apps.rumahl.home.arpa`
+to resolve to the device (or the QEMU host when using port forwarding). A hosts
+file cannot define wildcards; individual installation hostnames can be added for
+a test. The same port and trusted certificate serve shell and isolated app hosts.
+See [app hosting](../../docs/architecture/app-hosting.md) for publication and
+explicit launch grants. This path still needs validation in a booted image.

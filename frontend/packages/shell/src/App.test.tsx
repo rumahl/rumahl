@@ -9,7 +9,7 @@ describe("protected shell behavior", () => {
 
     expect(screen.getByText("12 local apps")).toBeInTheDocument();
     expect(screen.getByText("4 minutes ago")).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "Apps" }));
+    fireEvent.click(screen.getByRole("link", { name: "Apps" }));
 
     expect(screen.getByRole("heading", { level: 1, name: "Apps" })).toBeInTheDocument();
     expect(screen.getByRole("navigation", { name: "Main navigation" })).toBeInTheDocument();

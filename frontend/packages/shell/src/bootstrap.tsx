@@ -13,7 +13,7 @@ export function renderShell(snapshot: ShellSnapshotV1, live?: ShellLiveSource): 
 
   createRoot(root).render(
     <StrictMode>
-      <App live={live} snapshot={snapshot} />
+      <App live={live} snapshot={snapshot} router={live?.allowDevelopmentLoopback ? "memory" : "browser"} />
     </StrictMode>
   );
 }
@@ -26,7 +26,7 @@ export function hydrateShell(snapshot: ShellSnapshotV1, live?: ShellLiveSource):
   return hydrateRoot(
     root,
     <StrictMode>
-      <App live={live} snapshot={snapshot} />
+      <App live={live} snapshot={snapshot} router={live?.allowDevelopmentLoopback ? "memory" : "browser"} />
     </StrictMode>
   );
 }

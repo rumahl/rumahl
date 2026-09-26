@@ -1,3 +1,4 @@
+import { ShellLink } from "../routing/ShellLink";
 import type { ComponentType, SVGProps } from "react";
 import { GridIcon, HomeIcon, PulseIcon, SettingsIcon } from "../icons";
 import { useI18n } from "../i18n";
@@ -5,10 +6,9 @@ import type { ShellSection } from "../shell-state";
 
 interface NavigationProps {
   active: ShellSection;
-  onNavigate: (section: ShellSection) => void;
 }
 
-export function Navigation({ active, onNavigate }: NavigationProps) {
+export function Navigation({ active }: NavigationProps) {
   const { t } = useI18n();
   const items: readonly {
     icon: ComponentType<SVGProps<SVGSVGElement>>;
@@ -31,16 +31,15 @@ export function Navigation({ active, onNavigate }: NavigationProps) {
       </div>
       <div className="navigation__items">
         {items.map(({ icon: Icon, id, label }) => (
-          <button
+          <ShellLink
             aria-current={active === id ? "page" : undefined}
             className={active === id ? "is-active" : undefined}
             key={id}
-            onClick={() => onNavigate(id)}
-            type="button"
+            to={id === "home" ? "/" : `/${id}`}
           >
             <Icon />
             <span>{label}</span>
-          </button>
+          </ShellLink>
         ))}
       </div>
       <div className="navigation__footer">

@@ -98,7 +98,7 @@ input:focus-visible {
   gap: 7px;
 }
 
-.navigation__items button {
+.navigation__items a {
   display: flex;
   align-items: center;
   gap: 13px;
@@ -114,12 +114,12 @@ input:focus-visible {
   transition: 160ms ease;
 }
 
-.navigation__items button:hover {
+.navigation__items a:hover {
   color: var(--rumahl-color-text-primary);
   background: rgba(255, 255, 255, 0.72);
 }
 
-.navigation__items button.is-active {
+.navigation__items a.is-active {
   color: #fff;
   background: var(--rumahl-color-accent-primary);
   box-shadow: 0 9px 24px rgba(40, 105, 76, 0.2);
@@ -702,7 +702,7 @@ button.contribution-card:hover {
     display: none;
   }
 
-  .navigation__items button {
+  .navigation__items a {
     justify-content: center;
   }
 
@@ -751,7 +751,7 @@ button.contribution-card:hover {
     width: 100%;
   }
 
-  .navigation__items button {
+  .navigation__items a {
     min-height: 44px;
   }
 
@@ -803,7 +803,7 @@ button.contribution-card:hover {
 @media (prefers-reduced-motion: no-preference) {
   .shell-window,
   .contribution-card,
-  .navigation__items button {
+  .navigation__items a {
     transition: 160ms ease;
   }
 }
@@ -821,3 +821,20 @@ button.contribution-card:hover {
 .startup-message--error {
   color: #8a3d32;
 }
+
+/* Presentation modes share navigation and route content. */
+.window-position { position: absolute; inset: 0; pointer-events: none; }
+.window-position:has(.is-focused) { z-index: 2; }
+.launcher-workspace { overflow: auto; flex: 1; min-height: 0; padding-block: 24px; }
+.launcher-workspace .stream-frame { height: 70vh; }
+.app-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 16px; }
+.app-grid a { padding: 24px; color: inherit; background: var(--rumahl-color-panel-background); border: 1px solid var(--line); border-radius: var(--rumahl-radius-window); }
+.route-message { padding: 24px; }
+.topbar__profile select { font: inherit; margin-inline-start: 8px; }
+
+.navigation__items a { text-decoration: none; }
+a:focus-visible, select:focus-visible { outline: 3px solid var(--rumahl-color-accent-primary); outline-offset: 2px; }
+.settings-tabs { display: flex; gap: 16px; }
+
+.installed-app-frame { display: block; width: 100%; height: 65vh; border: 0; background: white; }
+.app-grid small { display: block; color: var(--rumahl-color-text-muted); }

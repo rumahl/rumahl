@@ -8,8 +8,8 @@ const assets = {
 };
 const nonce = "AbCdEfGhIjKlMnOpQrStUvWx";
 
-async function documentFor(snapshot: unknown): Promise<string> {
-  const { stream } = await renderShellDocument(snapshot, assets, nonce);
+async function documentFor(snapshot: unknown, requestPath = "/"): Promise<string> {
+  const { stream } = await renderShellDocument(snapshot, assets, nonce, requestPath);
   let document = "";
   for await (const chunk of stream) document += chunk.toString();
   return document;
@@ -31,6 +31,19 @@ describe("server-rendered shell", () => {
     expect(html).toContain(`id="rumahl-shell-snapshot"`);
     expect(html).toContain("\\u003c/script\\u003e");
     expect(html).not.toContain(maliciousTitle);
+  });
+
+  test("renders the requested route with a deterministic mode before storage hydration", async () => {
+    const desktop = await documentFor(demoSnapshot, "/app/app-manager");
+    expect(desktop).toContain('data-window-id="app:app-manager"');
+    const launcher = await documentFor(demoSnapshot, "/settings/display?mode=launcher");
+    expect(launcher).toContain('data-shell-mode="desktop"');
+    expect(launcher).toContain('data-window-id="/settings/*"');
+    const unknown = await documentFor(demoSnapshot, "/app/not-installed");
+    expect(unknown).toContain("App unavailable");
+    for (const path of ["//foreign.test", "https://foreign.test", "/x\\y", "/x\n"]) {
+      await expect(documentFor(demoSnapshot, path)).rejects.toThrow("invalid shell request path");
+    }
   });
 
   test("isolates consecutive users and rejects mismatched builds", async () => {

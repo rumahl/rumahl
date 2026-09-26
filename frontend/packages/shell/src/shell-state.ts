@@ -5,18 +5,17 @@ export interface ShellWindow {
   title: string;
   subtitle: string;
   streamId?: string;
+  location?: string;
   minimized: boolean;
 }
 
 export interface ShellState {
-  section: ShellSection;
   windows: readonly ShellWindow[];
   focusedWindowId: string | null;
   commandPaletteOpen: boolean;
 }
 
 export type ShellAction =
-  | { type: "navigate"; section: ShellSection }
   | { type: "open-window"; window: Omit<ShellWindow, "minimized"> }
   | { type: "close-window"; id: string }
   | { type: "toggle-minimize"; id: string }
@@ -24,7 +23,6 @@ export type ShellAction =
   | { type: "toggle-command-palette" };
 
 export const initialShellState: ShellState = {
-  section: "home",
   windows: [],
   focusedWindowId: null,
   commandPaletteOpen: false
@@ -32,13 +30,11 @@ export const initialShellState: ShellState = {
 
 export function shellReducer(state: ShellState, action: ShellAction): ShellState {
   switch (action.type) {
-    case "navigate":
-      return { ...state, section: action.section };
     case "open-window": {
       const existing = state.windows.find((window) => window.id === action.window.id);
       const windows = existing
         ? state.windows.map((window) =>
-            window.id === action.window.id ? { ...window, minimized: false } : window
+            window.id === action.window.id ? { ...window, ...action.window, minimized: false } : window
           )
         : [...state.windows, { ...action.window, minimized: false }];
       return { ...state, windows, focusedWindowId: action.window.id };

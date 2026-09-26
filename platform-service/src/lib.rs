@@ -157,7 +157,32 @@ impl PersistentShellSnapshots {
             .filter(|a| a.can_authenticate())
             .ok_or_else(|| std::io::Error::other("account unavailable"))?;
         let platform = self.platform.load()?;
-        let count = platform.as_ref().map_or(0, |p| p.installed_apps().len());
+        let now_seconds = UnixTimestamp::now()?;
+        let identity = state
+            .sessions()
+            .sessions_for_user(user_id)
+            .find(|session| session.is_active_at(now_seconds))
+            .map(|session| rumahl_platform_web::ShellIdentity {
+                user_id: *user_id,
+                session_id: *session.session_id(),
+            });
+        let visible = match (platform.as_ref(), identity) {
+            (Some(platform), Some(identity)) => apps::authorized_apps(platform, identity)
+                .map_err(|_| std::io::Error::other("app catalog unavailable"))?,
+            _ => vec![],
+        };
+        let catalog_revision: Vec<_> = visible
+            .iter()
+            .map(|app| {
+                (
+                    app.identity().app_id().to_string(),
+                    app.installation_id().to_string(),
+                    app.manifest().display_name(),
+                    app.manifest().version().to_string(),
+                )
+            })
+            .collect();
+        let count = visible.len();
         let now = UnixTimestamp::now()?
             .as_seconds()
             .checked_mul(1000)
@@ -167,7 +192,7 @@ impl PersistentShellSnapshots {
             user.display_name(),
             &self.locale,
             &self.build_id,
-            count,
+            &catalog_revision,
         ))?);
         Ok(ShellSnapshot::new(
             &self.build_id,
@@ -231,3 +256,5 @@ fn sha256_hex(bytes: &[u8]) -> String {
         .map(|byte| format!("{byte:02x}"))
         .collect()
 }
+
+pub mod apps;

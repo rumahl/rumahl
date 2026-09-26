@@ -2,7 +2,7 @@
 import console from "node:console";
 import { setTimeout, clearTimeout, setInterval, clearInterval } from "node:timers";
 import { spawn } from "node:child_process";
-import { randomBytes, randomUUID } from "node:crypto";
+import { randomBytes, randomUUID, X509Certificate } from "node:crypto";
 import { watch } from "node:fs";
 import { chmod, lstat, mkdir, mkdtemp, open, readFile, readdir, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -131,16 +131,29 @@ async function prepareState() {
 }
 async function tls() {
   if (Boolean(values.cert) !== Boolean(values.key)) throw new Error("Supply both --cert and --key");
-  if (values.cert) return { cert: resolve(values.cert), key: resolve(values.key) };
+  if (values.cert) {
+    const certificate = new X509Certificate(await readFile(resolve(values.cert)));
+    if (!certificate.checkHost("localhost") || !certificate.checkHost("00000000-0000-7000-8000-000000000000.apps.localhost")) {
+      throw new Error("Development certificate must cover localhost and *.apps.localhost");
+    }
+    return { cert: resolve(values.cert), key: resolve(values.key) };
+  }
   const directory = join(state, "tls");
   await mkdir(directory, { mode: 0o700, recursive: true });
   const cert = join(directory, "localhost.pem");
   const key = join(directory, "localhost-key.pem");
-  try { await stat(cert); await stat(key); }
+  try {
+    await stat(key);
+    const certificate = new X509Certificate(await readFile(cert));
+    if (!certificate.checkHost("00000000-0000-7000-8000-000000000000.apps.localhost")) {
+      console.log("[tls] Updating the generated developer certificate for app hosts; trust the new public certificate.");
+      throw Object.assign(new Error("app names missing"), { code: "ENOENT" });
+    }
+  }
   catch (error) {
     if (error.code !== "ENOENT") throw error;
     await command("openssl", ["req", "-x509", "-newkey", "rsa:2048", "-nodes", "-days", "30",
-      "-subj", "/CN=localhost", "-addext", "subjectAltName=DNS:localhost,IP:127.0.0.1,IP:::1",
+      "-subj", "/CN=localhost", "-addext", "subjectAltName=DNS:localhost,DNS:*.apps.localhost,IP:127.0.0.1,IP:::1",
       "-keyout", key, "-out", cert], { capture: true });
     await chmod(key, 0o600);
   }
@@ -265,7 +278,7 @@ try {
   await writeFile(blocklist, "development-password-must-not-be-used\n", { mode: 0o600 });
   edge = await startGateway({ repo, runtime, state, cert, key, port, buildId, polling: values.poll });
   env = { ...process.env, RUMAHL_STATE_DIR: join(state, "data"), RUMAHL_PUBLIC_ORIGIN: edge.origin,
-    RUMAHL_CLIENT_BUILD: buildFile, RUMAHL_PASSWORD_BLOCKLIST: blocklist,
+    RUMAHL_APP_HOST_SUFFIX: "apps.localhost", RUMAHL_CLIENT_BUILD: buildFile, RUMAHL_PASSWORD_BLOCKLIST: blocklist,
     RUMAHL_GATEWAY_SOCKET: join(runtime, "gateway.sock"), RUMAHL_GATEWAY_SOCKET_ACCESS: "owner",
     RUMAHL_SSR_SOCKET: join(runtime, "ssr.sock"), RUMAHL_SSR_SOCKET_ACCESS: "owner" };
   await provision();

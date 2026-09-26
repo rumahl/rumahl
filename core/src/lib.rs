@@ -141,3 +141,9 @@ mod tests {
         assert_eq!(grant.resources(), &[file]);
     }
 }
+
+mod shell_preferences;
+pub use shell_preferences::{
+    BrowserProfileId, PreferenceScope, ShellMode, ShellPreferences, ShellPreferencesError,
+    ShellPreferencesRepository,
+};

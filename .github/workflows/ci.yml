@@ -68,7 +68,7 @@ jobs:
           pnpm build
           pnpm --filter @rumahl/ssr test:smoke
       - name: Build platform service
-        run: cargo build --locked -p rumahl-platform-service
+        run: cargo build --locked -p rumahl-platform-service --bins --example app_host_fixture
       - name: Exercise real HTTPS, SSR, persistent sessions and recovery
         run: python3 tests/e2e/shell/check.py
       - name: Install development test browser

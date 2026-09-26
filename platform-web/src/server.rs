@@ -89,6 +89,8 @@ pub struct GatewayState {
     pub widgets: Arc<dyn WidgetFrameResolver>,
     /// None keeps core Shell and recovery paths available without an engine.
     pub streams: Option<Arc<StreamAccess>>,
+    pub apps: Option<Arc<crate::AppAccess>>,
+    pub preferences: Option<Arc<dyn rumahl_core::ShellPreferencesRepository>>,
     /// None leaves the Shell and recovery routes usable while OIDC is offline.
     pub oidc: Option<Arc<dyn oidc::OidcGateway>>,
     pub browser_sessions: Option<Arc<dyn crate::BrowserSessions>>,
@@ -98,7 +100,13 @@ pub struct GatewayState {
 pub fn router(state: GatewayState) -> Router {
     Router::new()
         .route("/", get(shell))
+        .fallback(shell_fallback)
         .route("/api/v1/shell/snapshot", get(snapshot))
+        .route("/api/v1/shell/apps", get(app_catalog))
+        .route(
+            "/api/v1/shell/apps/{id}/launch",
+            post(app_launch).layer(axum::extract::DefaultBodyLimit::max(1024)),
+        )
         .route("/api/v1/shell/events", get(events))
         .route("/api/v1/shell/widgets/{id}/frame", get(widget_frame))
         .route("/api/v1/shell/streams", get(stream_list))
@@ -111,6 +119,7 @@ pub fn router(state: GatewayState) -> Router {
         .route("/api/v1/shell/streams/{id}/{*tail}", get(stream_asset))
         .route("/recovery", get(recovery))
         .merge(oidc::routes())
+        .merge(crate::preferences::routes())
         .merge(crate::browser_auth::routes())
         .with_state(Arc::new(state))
 }
@@ -157,10 +166,122 @@ pub async fn serve_router(
     axum::serve(listener, app).await.map_err(GatewayError::Io)
 }
 
-async fn shell(State(state): State<Arc<GatewayState>>, headers: HeaderMap) -> Response {
+async fn app_catalog(State(state): State<Arc<GatewayState>>, headers: HeaderMap) -> Response {
+    let identity = match credential(&headers) {
+        Ok(token) => match authenticate(&state, &token).await {
+            Ok(identity) => identity,
+            Err(error) => return backend_error(error),
+        },
+        Err(_) => return error(StatusCode::UNAUTHORIZED),
+    };
+    let Some(apps) = state.apps.clone() else {
+        return error(StatusCode::SERVICE_UNAVAILABLE);
+    };
+    match tokio::task::spawn_blocking(move || apps.catalog(identity)).await {
+        Ok(Ok(apps)) => {
+            let apps: Vec<_> = apps.into_iter().map(|app| serde_json::json!({
+                "id": app.id, "installationId": app.installation_id.to_string(), "title": app.title,
+                "version": app.version, "launchable": app.launchable,
+            })).collect();
+            let mut response =
+                axum::Json(serde_json::json!({"catalogVersion": 1, "apps": apps})).into_response();
+            secure_headers(&mut response);
+            response
+        }
+        Ok(Err(error)) => crate::app_error(error),
+        Err(_) => error(StatusCode::SERVICE_UNAVAILABLE),
+    }
+}
+async fn app_launch(
+    State(state): State<Arc<GatewayState>>,
+    UrlPath(id): UrlPath<String>,
+    headers: HeaderMap,
+    body: axum::body::Bytes,
+) -> Response {
+    if !valid_origin(&headers, &state.config.public_origin) {
+        return error(StatusCode::FORBIDDEN);
+    }
+    if body.len() > 1024 {
+        return error(StatusCode::PAYLOAD_TOO_LARGE);
+    }
+    if headers.get("content-type").and_then(|v| v.to_str().ok()) != Some("application/json") {
+        return error(StatusCode::UNSUPPORTED_MEDIA_TYPE);
+    }
+    let identity = match credential(&headers) {
+        Ok(token) => match authenticate(&state, &token).await {
+            Ok(identity) => identity,
+            Err(error) => return backend_error(error),
+        },
+        Err(_) => return error(StatusCode::UNAUTHORIZED),
+    };
+    let Ok(value) = serde_json::from_slice::<serde_json::Value>(&body) else {
+        return error(StatusCode::BAD_REQUEST);
+    };
+    let Some(object) = value.as_object() else {
+        return error(StatusCode::BAD_REQUEST);
+    };
+    if object
+        .keys()
+        .any(|key| key != "installationId" && key != "lease")
+    {
+        return error(StatusCode::BAD_REQUEST);
+    }
+    let Some(installation) = value
+        .get("installationId")
+        .and_then(|v| v.as_str())
+        .map(str::to_owned)
+    else {
+        return error(StatusCode::BAD_REQUEST);
+    };
+    let lease = match value.get("lease") {
+        None => None,
+        Some(serde_json::Value::String(s)) if s.len() == 64 => Some(s.clone()),
+        _ => return error(StatusCode::BAD_REQUEST),
+    };
+    let Some(apps) = state.apps.clone() else {
+        return error(StatusCode::SERVICE_UNAVAILABLE);
+    };
+    match tokio::task::spawn_blocking(move || {
+        apps.launch(identity, &id, &installation, lease.as_deref())
+    })
+    .await
+    {
+        Ok(Ok(launch)) => {
+            let mut response = axum::Json(serde_json::json!({"launchVersion": 1, "id": launch.app.id, "installationId": launch.app.installation_id.to_string(), "lease": launch.lease, "frameUrl": launch.frame_url, "renewAfterSeconds": 30})).into_response();
+            secure_headers(&mut response);
+            response
+        }
+        Ok(Err(error)) => crate::app_error(error),
+        Err(_) => error(StatusCode::SERVICE_UNAVAILABLE),
+    }
+}
+
+async fn shell_fallback(
+    State(state): State<Arc<GatewayState>>,
+    OriginalUri(uri): OriginalUri,
+    method: axum::http::Method,
+    headers: HeaderMap,
+) -> Response {
+    if method != axum::http::Method::GET && method != axum::http::Method::HEAD {
+        return error(StatusCode::METHOD_NOT_ALLOWED);
+    }
+    if !crate::browser_auth::valid_shell_target(&uri.to_string()) {
+        return error(StatusCode::NOT_FOUND);
+    }
+    shell(State(state), OriginalUri(uri), headers).await
+}
+
+async fn shell(
+    State(state): State<Arc<GatewayState>>,
+    OriginalUri(uri): OriginalUri,
+    headers: HeaderMap,
+) -> Response {
+    if !crate::browser_auth::valid_shell_target(&uri.to_string()) {
+        return error(StatusCode::BAD_REQUEST);
+    }
     let Ok(credential) = credential(&headers) else {
         return if state.browser_sessions.is_some() {
-            crate::browser_auth::login_redirect()
+            crate::browser_auth::login_redirect_to(&uri.to_string())
         } else {
             error(StatusCode::UNAUTHORIZED)
         };
@@ -168,7 +289,7 @@ async fn shell(State(state): State<Arc<GatewayState>>, headers: HeaderMap) -> Re
     let identity = match authenticate(&state, &credential).await {
         Ok(identity) => identity,
         Err(ShellBackendError::Unauthorized) if state.browser_sessions.is_some() => {
-            return crate::browser_auth::login_redirect();
+            return crate::browser_auth::login_redirect_to(&uri.to_string());
         }
         Err(error) => return backend_error(error),
     };
@@ -191,6 +312,7 @@ async fn shell(State(state): State<Arc<GatewayState>>, headers: HeaderMap) -> Re
         &snapshot_json,
         &nonce,
         &frame_origins,
+        &uri.to_string(),
     )
     .await
     {
@@ -776,7 +898,11 @@ fn frame_origins(
             origins.insert(origin);
         }
     }
-    origins.into_iter().take(32).collect()
+    let mut result: Vec<_> = origins.into_iter().take(31).collect();
+    if let Some(apps) = &state.apps {
+        result.push(apps.frame_source());
+    }
+    result
 }
 
 pub(super) fn secure_headers(response: &mut Response) {
@@ -882,6 +1008,8 @@ mod tests {
             events: Arc::new(crate::InMemoryShellEvents::new(4)),
             widgets: Arc::new(TestWidgets(widget_url)),
             streams: None,
+            apps: None,
+            preferences: None,
             oidc: None,
             browser_sessions: None,
             login_slots: Arc::new(tokio::sync::Semaphore::new(2)),
@@ -1005,6 +1133,8 @@ mod tests {
             events: Arc::new(crate::InMemoryShellEvents::new(4)),
             widgets: Arc::new(TestWidgets("https://weather.apps.rumahl.dev/widget")),
             streams: Some(Arc::new(StreamAccess::new(provider))),
+            apps: None,
+            preferences: None,
             oidc: None,
             browser_sessions: None,
             login_slots: Arc::new(tokio::sync::Semaphore::new(2)),
@@ -1133,6 +1263,8 @@ mod tests {
             events: Arc::new(crate::InMemoryShellEvents::new(4)),
             widgets: Arc::new(TestWidgets("https://weather.apps.rumahl.dev/widget")),
             streams: Some(Arc::new(StreamAccess::new(provider))),
+            apps: None,
+            preferences: None,
             oidc: None,
             browser_sessions: None,
             login_slots: Arc::new(tokio::sync::Semaphore::new(2)),

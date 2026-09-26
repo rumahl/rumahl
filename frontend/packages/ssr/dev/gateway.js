@@ -19,17 +19,24 @@ export async function startGateway({ repo, runtime, state, cert, key, port, buil
   let vite;
   let origin;
   const edge = createHttpsServer({ cert: await readFile(cert), key: await readFile(key) }, (request, response) => {
-    if (request.headers.host !== new URL(origin).host) {
+    const shellHost = new URL(origin).host;
+    const appHost = new RegExp(`^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\\.apps\\.localhost:${new URL(origin).port}$`).test(request.headers.host ?? "");
+    if (request.headers.host !== shellHost && !appHost) {
       response.writeHead(421).end();
       return;
     }
     // Vite serves source code, so never permit cross-origin browser access.
-    if (request.headers.origin && request.headers.origin !== origin) {
+    if (!appHost && request.headers.origin && request.headers.origin !== origin) {
       response.writeHead(403).end();
       return;
     }
     const path = request.url.split("?")[0];
-    if (frontendPath.test(path)) {
+    if (appHost) {
+      if (!["GET", "HEAD"].includes(request.method)) { response.writeHead(405).end(); return; }
+      delete request.headers.cookie;
+      delete request.headers.authorization;
+    }
+    if (!appHost && frontendPath.test(path)) {
       if (!["GET", "HEAD"].includes(request.method)) {
         response.writeHead(405).end();
         return;
@@ -136,7 +143,7 @@ export async function startGateway({ repo, runtime, state, cert, key, port, buil
       try { module = await vite.ssrLoadModule(join(repo, "frontend/packages/ssr/src/render.tsx")); }
       catch (error) { console.error(`[ssr] ${error.message}`); throw error; }
       let rendered;
-      try { rendered = await module.renderShellDocument(payload.snapshot, assets, payload.nonce); }
+      try { rendered = await module.renderShellDocument(payload.snapshot, assets, payload.nonce, payload.requestPath); }
       catch (error) { console.error(`[ssr] ${error.message}`); throw error; }
       try {
         let html = "";
