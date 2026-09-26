@@ -71,3 +71,8 @@ jobs:
         run: cargo build --locked -p rumahl-platform-service
       - name: Exercise real HTTPS, SSR, persistent sessions and recovery
         run: python3 tests/e2e/shell/check.py
+      - name: Install development test browser
+        working-directory: frontend
+        run: pnpm exec playwright install --with-deps chromium
+      - name: Exercise developer HTTPS, browser HMR and persistent sessions
+        run: python3 tests/e2e/development/check.py --browser
