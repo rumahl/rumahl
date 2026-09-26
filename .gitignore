@@ -12,3 +12,5 @@
 /.local-tools/
 
 __pycache__/
+
+/.rumahl-dev/

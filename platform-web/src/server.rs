@@ -787,9 +787,11 @@ pub(super) fn secure_headers(response: &mut Response) {
         "x-content-type-options",
         HeaderValue::from_static("nosniff"),
     );
+    // Preserve Origin on same-origin HTML form POSTs. `no-referrer` makes
+    // browsers send Origin: null, which correctly fails our CSRF check.
     response
         .headers_mut()
-        .insert("referrer-policy", HeaderValue::from_static("no-referrer"));
+        .insert("referrer-policy", HeaderValue::from_static("same-origin"));
 }
 
 fn error(status: StatusCode) -> Response {

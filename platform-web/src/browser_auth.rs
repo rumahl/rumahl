@@ -201,3 +201,17 @@ fn page(headers: &HeaderMap, logout: bool, invalid: bool) -> Response {
     secure_headers(&mut response);
     response
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn auth_forms_preserve_same_origin_for_csrf_validation() {
+        for logout in [false, true] {
+            let response = page(&HeaderMap::new(), logout, false);
+            assert_eq!(response.headers()["referrer-policy"], "same-origin");
+            assert_eq!(response.headers()["cache-control"], "private, no-store");
+        }
+    }
+}
