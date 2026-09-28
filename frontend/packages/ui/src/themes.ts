@@ -21,4 +21,40 @@ export const rumahlTheme: Theme = {
   variants: defaultVariants
 };
 
+/**
+ * Deliberately different fixture theme: an opaque, square classic look with a
+ * taskbar and an app drawer. It exists to prove that a theme can swap the whole
+ * shell structure and skin without touching component code.
+ */
+export const classicTheme: Theme = {
+  id: "com.rumahl.classic",
+  name: "Classic",
+  tokens: {
+    ...defaultTokens,
+    "color.accent": "#3465a4",
+    "color.accent-strong": "#5b8ac6",
+    "color.surface": "#ececec",
+    "color.surface-strong": "#f4f4f4",
+    "color.outline": "rgba(0, 0, 0, 0.28)",
+    "color.on-wallpaper": "#ffffff",
+    "color.on-accent": "#ffffff",
+    "color.shadow": "rgba(0, 0, 0, 0.4)",
+    "material.blur": "0px",
+    "material.saturation": "1",
+    "shape.radius-window": "4px",
+    "shape.radius-dock": "6px",
+    "shape.radius-icon": "6px",
+    "shape.icon-size": "40px",
+    "shape.icon-size-large": "56px",
+    "motion.duration": "90ms",
+    "motion.duration-fast": "70ms",
+    "motion.easing-spring": "ease-out",
+    "layout.dock-offset": "0px",
+    "icon.gradient": "linear-gradient(160deg, #5b8ac6, #3465a4)"
+  },
+  variants: { shellLayout: "taskbar", launcherLayout: "drawer", windowChrome: "compact" }
+};
+
+export const themes = [rumahlTheme, classicTheme] as const;
+
 export const defaultTheme = rumahlTheme;

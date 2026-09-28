@@ -136,3 +136,19 @@
 .desktop-icon__art.folder-preview { display: grid; grid-template-columns: repeat(2, 1fr); gap: 4px; padding: 6px; background: #ffffff30; backdrop-filter: blur(14px); }
 .desktop-icon__art.folder-preview > span { display: grid; place-items: center; border-radius: 5px; background: #ffffff38; }
 .desktop-icon__art.folder-preview svg { width: 15px; height: 15px; }
+
+/* Classic taskbar shell variant (theme variant shell.layout = "taskbar"). */
+.shell .taskbar { position: absolute; inset: auto 0 0 0; z-index: 60; display: flex; align-items: center; gap: 6px; min-height: 46px; padding: 5px 8px; color: var(--rumahl-ui-color-on-accent, #fff); background: var(--rumahl-ui-color-accent, #28694c); border-top: 1px solid var(--rumahl-ui-color-outline, #ffffff44); box-shadow: 0 -6px 20px var(--rumahl-ui-color-shadow, #0004); }
+.taskbar__start { display: grid; place-items: center; align-self: stretch; width: 42px; border: 1px solid #ffffff33; border-radius: var(--rumahl-ui-shape-radius-icon, 6px); color: inherit; background: color-mix(in srgb, #000 20%, transparent); }
+.taskbar__start:hover { background: color-mix(in srgb, #000 30%, transparent); }
+.taskbar__start svg { width: auto; height: 20px; }
+.taskbar__apps, .taskbar__windows { display: flex; align-items: center; gap: 5px; min-width: 0; overflow: hidden; }
+.taskbar__windows { padding-left: 6px; border-left: 1px solid #ffffff33; }
+.taskbar__button { display: flex; align-items: center; gap: 8px; height: 34px; max-width: 220px; padding: 0 12px; border: 1px solid #ffffff2e; border-radius: var(--rumahl-ui-shape-radius-icon, 6px); color: inherit; background: #ffffff1f; text-decoration: none; font-size: 13px; white-space: nowrap; }
+.taskbar__button > span:last-child { overflow: hidden; text-overflow: ellipsis; }
+.taskbar__button:hover, .taskbar__button[aria-pressed="true"] { background: #ffffff3d; }
+.taskbar__button svg { width: 18px; height: 18px; stroke: currentColor; }
+.taskbar__window.is-minimized { opacity: .6; }
+.taskbar__tray { display: flex; align-items: center; gap: 8px; margin-left: auto; padding-left: 8px; border-left: 1px solid #ffffff33; }
+.taskbar__show { padding: 0 10px; }
+.taskbar__clock { padding: 0 10px; color: inherit; font-size: 13px; font-variant-numeric: tabular-nums; white-space: nowrap; }

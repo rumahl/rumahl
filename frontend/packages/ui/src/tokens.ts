@@ -14,6 +14,7 @@ export const defaultTokens = {
   "color.surface-strong": "#f8faf7",
   "color.outline": "rgba(255, 255, 255, 0.44)",
   "color.on-wallpaper": "#ffffff",
+  "color.on-accent": "#ffffff",
   "color.shadow": "rgba(0, 0, 0, 0.27)",
   "material.blur": "34px",
   "material.saturation": "1.6",

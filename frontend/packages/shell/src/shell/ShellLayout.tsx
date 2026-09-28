@@ -8,6 +8,7 @@ import { rememberRecent } from "../apps/recents";
 import { DesktopLayout } from "./desktop/DesktopLayout";
 import { LauncherLayout } from "./launcher/LauncherLayout";
 import { OsDock } from "./OsDock";
+import { Taskbar } from "./Taskbar";
 import { useI18n } from "../i18n";
 import { initialShellState, shellReducer, type ShellWindow } from "../shell-state";
 import { describeRoute, ShellRoutes } from "../routing/routes";
@@ -77,7 +78,7 @@ export function ShellLayout({ snapshot, live }: { snapshot: ShellSnapshotV1; liv
             : <LauncherLayout><RouteBoundary location={path}>{route.presentation === "window" ? null : <ShellRoutes />}</RouteBoundary></LauncherLayout>}
           <DesktopWindows />
         </div>
-        <OsDock layout={variants.shellLayout} />
+        {variants.shellLayout === "taskbar" ? <Taskbar /> : <OsDock />}
         <CommandPalette />
       </div>
     </div>
