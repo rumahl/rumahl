@@ -31,7 +31,7 @@ describe("shell routes and presentation", () => {
     localStorage.setItem("rumahl.demo.shell-mode", "launcher");
     render(<App snapshot={demoSnapshot} initialLocation="/app/test/documents/42?view=grid" />);
     expect(screen.getByRole("heading", { name: "Document 42: grid" })).toBeInTheDocument();
-    expect(document.querySelector(".shell-window")).toBeNull();
+    expect(screen.queryByRole("button", { name: /Close Apps/ })).toBeNull();
     expect(document.querySelector(".shell")).toHaveAttribute("data-shell-mode", "launcher");
   });
 
@@ -54,7 +54,7 @@ describe("shell routes and presentation", () => {
     render(<App snapshot={demoSnapshot} initialLocation="/app/test/documents/42?view=grid" />);
     fireEvent.change(screen.getByRole("combobox", { name: "Shell mode" }), { target: { value: "launcher" } });
     expect(await screen.findByRole("heading", { name: "Document 42: grid" })).toBeInTheDocument();
-    expect(document.querySelector(".shell-window")).toBeNull();
+    expect(screen.queryByRole("button", { name: /Close Apps/ })).toBeNull();
     fireEvent.change(screen.getByRole("combobox", { name: "Shell mode" }), { target: { value: "desktop" } });
     expect(await screen.findByRole("region", { name: "Apps" })).toBeInTheDocument();
   });
@@ -70,9 +70,23 @@ describe("shell routes and presentation", () => {
     expect(screen.getByRole("combobox", { name: "Save for" })).toHaveValue("device");
   });
 
+  test("preserves unsaved app state across minimization and presentation switches", async () => {
+    render(<App snapshot={demoSnapshot} initialLocation="/app/test/documents/42" />);
+    const input = screen.getByRole("textbox", { name: "Draft note" });
+    fireEvent.change(input, { target: { value: "keep my draft" } });
+    fireEvent.click(screen.getByRole("button", { name: "Minimize Apps" }));
+    fireEvent.click(within(screen.getByRole("navigation", { name: "Main navigation" })).getByRole("button", { name: "Apps" }));
+    expect(screen.getByRole("textbox", { name: "Draft note" })).toBe(input);
+    fireEvent.change(screen.getByRole("combobox", { name: "Shell mode" }), { target: { value: "launcher" } });
+    expect(screen.getByRole("textbox", { name: "Draft note" })).toBe(input);
+    expect(input).toHaveValue("keep my draft");
+    fireEvent.change(screen.getByRole("combobox", { name: "Shell mode" }), { target: { value: "desktop" } });
+    expect(screen.getByRole("textbox", { name: "Draft note" })).toBe(input);
+  });
+
   test("retains independent windows and routes when closing one", async () => {
     render(<App snapshot={demoSnapshot} initialLocation="/app/app-manager" />);
-    fireEvent.click(screen.getByRole("link", { name: "Settings" }));
+    fireEvent.click(within(screen.getByRole("navigation", { name: "Main navigation" })).getByRole("link", { name: "Settings" }));
     const settings = await screen.findByRole("region", { name: "Settings" });
     expect(screen.getByRole("region", { name: "App manager" })).toBeInTheDocument();
     fireEvent.click(within(settings).getByRole("button", { name: "Close Settings" }));

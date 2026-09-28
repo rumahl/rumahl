@@ -147,3 +147,7 @@ pub use shell_preferences::{
     BrowserProfileId, PreferenceScope, ShellMode, ShellPreferences, ShellPreferencesError,
     ShellPreferencesRepository,
 };
+mod workspace;
+pub use workspace::{WorkspacePreferences, WorkspaceRepository};
+mod personal_files;
+pub use personal_files::{FileError, PersonalFile, PersonalFiles};

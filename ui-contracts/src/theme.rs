@@ -338,7 +338,7 @@ fn stock_tokens() -> BTreeMap<ThemeToken, ThemeTokenValue> {
         ),
         (
             ThemeToken::ColorAccentPrimary,
-            ThemeTokenValue::Color("#315efb".to_owned()),
+            ThemeTokenValue::Color("#28694c".to_owned()),
         ),
         (
             ThemeToken::ColorWindowTitlebarBackground,

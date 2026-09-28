@@ -123,7 +123,7 @@ http {{
         subprocess.run([NGINX, "-t", "-p", str(root), "-c", str(config)], check=True, stdout=log, stderr=log)
         edge = launch([NGINX, "-p", str(root), "-c", str(config)])
 
-        def request(path, method="GET", body=None, cookie=None, request_origin=None, json_body=None):
+        def request(path, method="GET", body=None, cookie=None, request_origin=None, json_body=None, binary_body=None):
             connection = http.client.HTTPSConnection("localhost", port, context=context, timeout=10)
             headers = {}
             if body is not None:
@@ -132,6 +132,9 @@ http {{
             if json_body is not None:
                 headers["Content-Type"] = "application/json"
                 body = json.dumps(json_body)
+            if binary_body is not None:
+                headers["Content-Type"] = "application/octet-stream"
+                body = binary_body
             if cookie:
                 headers["Cookie"] = cookie
             if request_origin:
@@ -199,6 +202,15 @@ http {{
             subprocess.run([str(fixture), "revoke", str(root / "state")], check=True)
             assert app_request(frame.path)[0] == 404
             print("PASS: production nginx wildcard TLS, authorized catalog, isolated app host and revocation", flush=True)
+            # The shipped edge must accept document uploads beyond its default 16 KiB cap.
+            document = b"personal document\n" * 4096
+            assert request("/api/v1/files?parent=root&name=sample.txt&directory=false", "POST", cookie=cookies["alice"], request_origin=origin, binary_body=document)[0] == 204
+            documents = json.loads(request("/api/v1/files?parent=root", cookie=cookies["alice"])[2])
+            content_path = "/api/v1/files/content?id=" + documents[0]["id"]
+            assert request(content_path, cookie=cookies["alice"])[2] == document
+            assert request(content_path, cookie=cookies["bob"])[0] == 404
+            assert request(content_path, cookie=cookies["alice"])[1]["content-disposition"].startswith("attachment;")
+            print("PASS: production document upload limits, download and owner isolation", flush=True)
             preferences_path = "/api/v1/shell/preferences?device=00000000-0000-4000-8000-000000000001"
             settings = json.loads(request(preferences_path, cookie=cookies["alice"])[2])
             status, _, result = request(preferences_path, "PUT", cookie=cookies["alice"], request_origin=origin,
@@ -211,6 +223,7 @@ http {{
             wait_for(lambda: request("/api/v1/shell/snapshot", cookie=cookies["alice"])[0] == 200, gateway)
             assert json.loads(request(preferences_path, cookie=cookies["alice"])[2])["effective"]["shellMode"] == "launcher"
             assert json.loads(request(preferences_path, cookie=cookies["bob"])[2])["effective"]["shellMode"] == "desktop"
+            assert request(content_path, cookie=cookies["alice"])[2] == document
             print("PASS: user preferences survive process restart and remain isolated", flush=True)
             # Real authenticated WebSocket: logout must notify an already open tab.
             ws = context.wrap_socket(socket.create_connection(("127.0.0.1", port)), server_hostname="localhost")

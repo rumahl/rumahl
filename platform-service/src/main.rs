@@ -125,6 +125,14 @@ async fn run() -> Result<(), ServiceError> {
         widgets: Arc::new(NoWidgets),
         streams: None,
         apps: Some(apps.clone()),
+        files: Some(Arc::new(
+            rumahl_persistence_sqlite::SqlitePersonalFiles::open(state_dir.join("files.sqlite"))?,
+        )),
+        workspace: Some(Arc::new(
+            rumahl_persistence_sqlite::SqliteShellPreferences::open(
+                state_dir.join("preferences.sqlite"),
+            )?,
+        )),
         preferences: Some(Arc::new(
             rumahl_persistence_sqlite::SqliteShellPreferences::open(
                 state_dir.join("preferences.sqlite"),

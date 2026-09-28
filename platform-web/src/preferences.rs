@@ -26,25 +26,28 @@ fn response(user: UserId, preferences: ShellPreferences) -> Response {
     secure_headers(&mut response);
     response
 }
-fn error(status: StatusCode) -> Response {
+pub(crate) fn error(status: StatusCode) -> Response {
     let mut response = status.into_response();
     secure_headers(&mut response);
     response
 }
-fn storage_error(error_value: ShellPreferencesError) -> Response {
+pub(crate) fn storage_error(error_value: ShellPreferencesError) -> Response {
     error(match error_value {
         ShellPreferencesError::Conflict => StatusCode::CONFLICT,
         ShellPreferencesError::Limit => StatusCode::TOO_MANY_REQUESTS,
         ShellPreferencesError::Unavailable => StatusCode::SERVICE_UNAVAILABLE,
     })
 }
-fn profile(query: &HashMap<String, String>) -> Option<BrowserProfileId> {
+pub(crate) fn profile(query: &HashMap<String, String>) -> Option<BrowserProfileId> {
     if query.len() != 1 {
         return None;
     }
     BrowserProfileId::parse(query.get("device")?)
 }
-async fn user(state: &Arc<GatewayState>, headers: &HeaderMap) -> Result<UserId, Response> {
+pub(crate) async fn user(
+    state: &Arc<GatewayState>,
+    headers: &HeaderMap,
+) -> Result<UserId, Response> {
     let token = credential(headers).map_err(|_| error(StatusCode::UNAUTHORIZED))?;
     authenticate(state, &token)
         .await

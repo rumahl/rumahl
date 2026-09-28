@@ -51,3 +51,5 @@ pub use browser_session_repository::{BrowserSessionError, SqliteBrowserSessionRe
 
 mod shell_preferences;
 pub use shell_preferences::SqliteShellPreferences;
+mod personal_files;
+pub use personal_files::SqlitePersonalFiles;

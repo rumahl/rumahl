@@ -188,6 +188,8 @@ async fn catalog_and_launch_require_session_origin_and_current_installation() {
         streams: None,
         apps: Some(apps.clone()),
         preferences: None,
+        workspace: None,
+        files: None,
         oidc: None,
     });
     let response = app

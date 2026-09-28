@@ -18,6 +18,7 @@ impl SqliteShellPreferences {
             path: path.as_ref().to_owned(),
         };
         this.connect()?.execute_batch("CREATE TABLE IF NOT EXISTS shell_user_preferences (user_id TEXT PRIMARY KEY, revision INTEGER NOT NULL CHECK(revision >= 0), shell_mode TEXT NOT NULL CHECK(shell_mode IN ('desktop', 'launcher'))); CREATE TABLE IF NOT EXISTS shell_device_preferences (user_id TEXT NOT NULL, device_id TEXT NOT NULL, shell_mode TEXT NOT NULL CHECK(shell_mode IN ('desktop', 'launcher')), PRIMARY KEY(user_id, device_id));")?;
+        this.connect()?.execute_batch("CREATE TABLE IF NOT EXISTS shell_workspace_revisions (user_id TEXT PRIMARY KEY, revision INTEGER NOT NULL); CREATE TABLE IF NOT EXISTS shell_workspaces (user_id TEXT NOT NULL, profile TEXT NOT NULL, value TEXT NOT NULL, PRIMARY KEY(user_id,profile));")?;
         Ok(this)
     }
     fn connect(&self) -> Result<Connection, rusqlite::Error> {
@@ -109,4 +110,77 @@ impl ShellPreferencesRepository for SqliteShellPreferences {
         tx.commit().map_err(|_| Error::Unavailable)?;
         Ok(result)
     }
+}
+
+impl rumahl_core::WorkspaceRepository for SqliteShellPreferences {
+    fn load_workspace(
+        &self,
+        user: UserId,
+        device: BrowserProfileId,
+    ) -> Result<rumahl_core::WorkspacePreferences, Error> {
+        read_workspace(
+            &self.connect().map_err(|_| Error::Unavailable)?,
+            user,
+            device,
+        )
+    }
+    fn save_workspace(
+        &self,
+        user: UserId,
+        device: BrowserProfileId,
+        revision: u64,
+        scope: PreferenceScope,
+        value: Option<String>,
+    ) -> Result<rumahl_core::WorkspacePreferences, Error> {
+        if value.as_ref().is_some_and(|v| v.len() > 65536) {
+            return Err(Error::Limit);
+        }
+        let mut connection = self.connect().map_err(|_| Error::Unavailable)?;
+        let tx = connection
+            .transaction_with_behavior(TransactionBehavior::Immediate)
+            .map_err(|_| Error::Unavailable)?;
+        let current = read_workspace(&tx, user, device)?;
+        if current.revision != revision {
+            return Err(Error::Conflict);
+        }
+        let next = revision
+            .checked_add(1)
+            .filter(|n| *n <= 9_007_199_254_740_991)
+            .ok_or(Error::Unavailable)?;
+        let key = if scope == PreferenceScope::User {
+            String::new()
+        } else {
+            device.to_string()
+        };
+        if value.is_some() {
+            let count: i64 = tx
+                .query_row(
+                    "SELECT COUNT(*) FROM shell_workspaces WHERE user_id=?1 AND profile<>?2",
+                    params![user.to_string(), key],
+                    |r| r.get(0),
+                )
+                .map_err(|_| Error::Unavailable)?;
+            if count >= 129 {
+                return Err(Error::Limit);
+            }
+            tx.execute("INSERT INTO shell_workspaces VALUES (?1,?2,?3) ON CONFLICT(user_id,profile) DO UPDATE SET value=excluded.value", params![user.to_string(), key, value]).map_err(|_| Error::Unavailable)?;
+        } else {
+            tx.execute(
+                "DELETE FROM shell_workspaces WHERE user_id=?1 AND profile=?2",
+                params![user.to_string(), key],
+            )
+            .map_err(|_| Error::Unavailable)?;
+        }
+        tx.execute("INSERT INTO shell_workspace_revisions VALUES (?1,?2) ON CONFLICT(user_id) DO UPDATE SET revision=excluded.revision", params![user.to_string(), next as i64]).map_err(|_| Error::Unavailable)?;
+        let result = read_workspace(&tx, user, device)?;
+        tx.commit().map_err(|_| Error::Unavailable)?;
+        Ok(result)
+    }
+}
+fn read_workspace(
+    connection: &Connection,
+    user: UserId,
+    device: BrowserProfileId,
+) -> Result<rumahl_core::WorkspacePreferences, Error> {
+    connection.query_row("SELECT revision, (SELECT value FROM shell_workspaces WHERE user_id=?1 AND profile=''), (SELECT value FROM shell_workspaces WHERE user_id=?1 AND profile=?2) FROM shell_workspace_revisions WHERE user_id=?1", params![user.to_string(), device.to_string()], |r| Ok(rumahl_core::WorkspacePreferences { revision: r.get::<_, i64>(0)? as u64, user: r.get(1)?, device: r.get(2)? })).optional().map(|v| v.unwrap_or_default()).map_err(|_| Error::Unavailable)
 }

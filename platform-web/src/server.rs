@@ -90,6 +90,8 @@ pub struct GatewayState {
     /// None keeps core Shell and recovery paths available without an engine.
     pub streams: Option<Arc<StreamAccess>>,
     pub apps: Option<Arc<crate::AppAccess>>,
+    pub files: Option<Arc<dyn rumahl_core::PersonalFiles>>,
+    pub workspace: Option<Arc<dyn rumahl_core::WorkspaceRepository>>,
     pub preferences: Option<Arc<dyn rumahl_core::ShellPreferencesRepository>>,
     /// None leaves the Shell and recovery routes usable while OIDC is offline.
     pub oidc: Option<Arc<dyn oidc::OidcGateway>>,
@@ -120,6 +122,8 @@ pub fn router(state: GatewayState) -> Router {
         .route("/recovery", get(recovery))
         .merge(oidc::routes())
         .merge(crate::preferences::routes())
+        .merge(crate::workspace::routes())
+        .merge(crate::files::routes())
         .merge(crate::browser_auth::routes())
         .with_state(Arc::new(state))
 }
@@ -1010,6 +1014,8 @@ mod tests {
             streams: None,
             apps: None,
             preferences: None,
+            workspace: None,
+            files: None,
             oidc: None,
             browser_sessions: None,
             login_slots: Arc::new(tokio::sync::Semaphore::new(2)),
@@ -1135,6 +1141,8 @@ mod tests {
             streams: Some(Arc::new(StreamAccess::new(provider))),
             apps: None,
             preferences: None,
+            workspace: None,
+            files: None,
             oidc: None,
             browser_sessions: None,
             login_slots: Arc::new(tokio::sync::Semaphore::new(2)),
@@ -1265,6 +1273,8 @@ mod tests {
             streams: Some(Arc::new(StreamAccess::new(provider))),
             apps: None,
             preferences: None,
+            workspace: None,
+            files: None,
             oidc: None,
             browser_sessions: None,
             login_slots: Arc::new(tokio::sync::Semaphore::new(2)),

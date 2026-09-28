@@ -1,3 +1,4 @@
+import { WorkspaceSettings } from "../preferences/WorkspaceSettings";
 import { useShellPreferences } from "../preferences/ShellPreferences";
 import { useRoutes } from "react-router";
 import { SectionPlaceholder } from "../components/SectionPlaceholder";
@@ -10,11 +11,13 @@ export function SettingsPage() {
   const content = useRoutes([
     { index: true, element: <SectionPlaceholder section="settings" /> },
     { path: "display", Component: DisplaySettings },
+    { path: "workspace", Component: WorkspaceSettings },
     { path: "*", Component: UnavailablePage }
   ]);
   return <div><nav aria-label={t("nav.settings")} className="settings-tabs">
     <ShellLink to="/settings">{t("nav.settings")}</ShellLink>
     <ShellLink to="/settings/display">{t("mode.label")}</ShellLink>
+    <ShellLink to="/settings/workspace">{t("workspace.title")}</ShellLink>
   </nav>{content}</div>;
 }
 function DisplaySettings() {

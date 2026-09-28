@@ -1,6 +1,7 @@
 import { ShellLink } from "../routing/ShellLink";
 import type { ComponentType, SVGProps } from "react";
 import { GridIcon, HomeIcon, PulseIcon, SettingsIcon } from "../icons";
+import { RumahlMark } from "./RumahlMark";
 import { useI18n } from "../i18n";
 import type { ShellSection } from "../shell-state";
 
@@ -25,7 +26,7 @@ export function Navigation({ active }: NavigationProps) {
     <nav aria-label={t("nav.main")} className="navigation">
       <div className="navigation__brand" aria-label="rumahl OS">
         <span aria-hidden="true" className="navigation__mark">
-          r
+          <RumahlMark />
         </span>
         <span>rumahl</span>
       </div>

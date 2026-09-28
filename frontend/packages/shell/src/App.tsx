@@ -4,6 +4,7 @@ import { I18nProvider, useI18n } from "./i18n";
 import { watchShellUpdates, type ShellLiveSource } from "./live-updates";
 import { ShellRouter, type ShellRouterOptions } from "./routing/ShellRouter";
 import { ShellPreferencesProvider } from "./preferences/ShellPreferences";
+import { WorkspaceProvider } from "./preferences/Workspace";
 import { AppCatalog } from "./apps/AppCatalog";
 import { ShellLayout } from "./shell/ShellLayout";
 
@@ -19,7 +20,7 @@ export function App({ snapshot, live, ...routing }: ShellRouterOptions & {
   }, [live, snapshot.revision]);
   return <I18nProvider locale={current.user.locale}>
     {sessionExpired ? <SessionExpired /> :
-      <ShellRouter {...routing}><ShellPreferencesProvider live={live}><AppCatalog live={live} revision={current.revision}><ShellLayout snapshot={current} live={live} /></AppCatalog></ShellPreferencesProvider></ShellRouter>}
+      <ShellRouter {...routing}><ShellPreferencesProvider live={live}><AppCatalog live={live} revision={current.revision}><WorkspaceProvider live={live}><ShellLayout snapshot={current} live={live} /></WorkspaceProvider></AppCatalog></ShellPreferencesProvider></ShellRouter>}
   </I18nProvider>;
 }
 function SessionExpired() {

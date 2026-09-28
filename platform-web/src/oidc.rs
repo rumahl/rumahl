@@ -662,6 +662,8 @@ mod tests {
             streams: None,
             apps: None,
             preferences: None,
+            workspace: None,
+            files: None,
             browser_sessions: None,
             login_slots: Arc::new(tokio::sync::Semaphore::new(2)),
             oidc: Some(Arc::new(protocol)),

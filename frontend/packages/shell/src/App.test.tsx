@@ -5,20 +5,20 @@ import { demoSnapshot as fixtureSnapshot } from "./demo/snapshot";
 
 describe("protected shell behavior", () => {
   test("navigates without allowing contributions to own shell navigation", () => {
-    render(<App snapshot={fixtureSnapshot} />);
+    render(<App snapshot={fixtureSnapshot} initialLocation="/" />);
 
-    expect(screen.getByText("12 local apps")).toBeInTheDocument();
-    expect(screen.getByText("4 minutes ago")).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("link", { name: "Apps" }));
+    const nav = screen.getByRole("navigation", { name: "Main navigation" });
+    expect(within(nav).getByRole("link", { name: "Apps" })).toBeInTheDocument();
+    fireEvent.click(within(nav).getByRole("link", { name: "Apps" }));
 
     expect(screen.getByRole("heading", { level: 1, name: "Apps" })).toBeInTheDocument();
     expect(screen.getByRole("navigation", { name: "Main navigation" })).toBeInTheDocument();
   });
 
   test("keeps close and minimize semantics in the first-party window chrome", () => {
-    render(<App snapshot={fixtureSnapshot} />);
+    render(<App snapshot={fixtureSnapshot} initialLocation="/" />);
 
-    fireEvent.click(screen.getByRole("button", { name: "Open app manager" }));
+    fireEvent.click(screen.getByRole("link", { name: "App manager" }));
     expect(screen.getByRole("region", { name: "App manager" })).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "Minimize App manager" }));
@@ -30,7 +30,7 @@ describe("protected shell behavior", () => {
   });
 
   test("projects commands into the shell-owned command palette", () => {
-    render(<App snapshot={fixtureSnapshot} />);
+    render(<App snapshot={fixtureSnapshot} initialLocation="/" />);
 
     fireEvent.keyDown(window, { key: "k", metaKey: true });
 
@@ -44,29 +44,27 @@ describe("protected shell behavior", () => {
       ...fixtureSnapshot,
       user: { ...fixtureSnapshot.user, locale: "de-DE" }
     };
-    const { unmount } = render(<App snapshot={germanSnapshot} />);
+    const { unmount } = render(<App snapshot={germanSnapshot} initialLocation="/" />);
 
     expect(screen.getByRole("navigation", { name: "Hauptnavigation" })).toBeInTheDocument();
-    expect(screen.getByRole("heading", { level: 1, name: "Alles zuhause." })).toBeInTheDocument();
-    expect(screen.getByText("12 lokale Apps")).toBeInTheDocument();
-    expect(screen.getByText("vor 4 Minuten")).toBeInTheDocument();
+    expect(screen.getByText("Ein Zuhause für alles.")).toBeInTheDocument();
     expect(document.documentElement.lang).toBe("de");
 
     unmount();
     render(
       <App
-        snapshot={{ ...fixtureSnapshot, user: { ...fixtureSnapshot.user, locale: "fr-FR" } }}
+        initialLocation="/" snapshot={{ ...fixtureSnapshot, user: { ...fixtureSnapshot.user, locale: "fr-FR" } }}
       />
     );
 
     expect(screen.getByRole("navigation", { name: "Main navigation" })).toBeInTheDocument();
-    expect(screen.getByRole("heading", { level: 1, name: "Everything at home." })).toBeInTheDocument();
+    expect(screen.getByText("A place for everything.")).toBeInTheDocument();
     expect(document.documentElement.lang).toBe("en");
   });
 
   test("formats singular runtime values instead of embedding them in translations", () => {
     render(
-      <App
+      <App initialLocation="/"
         snapshot={{
           ...fixtureSnapshot,
           systemStatus: { ...fixtureSnapshot.systemStatus, installedAppCount: 1 }
@@ -74,8 +72,8 @@ describe("protected shell behavior", () => {
       />
     );
 
-    expect(screen.getByText("1 local app")).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "Open app manager" }));
+    expect(screen.getByText(/Installed apps: 1/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("link", { name: "App manager" }));
     expect(screen.getByText("1 app")).toBeInTheDocument();
     expect(screen.getByText(/rumahl OS installs and updates apps/)).toBeInTheDocument();
   });
@@ -95,8 +93,8 @@ describe("protected shell behavior", () => {
       onmessage: null,
       onopen: null
     };
-    render(<App snapshot={fixtureSnapshot} live={{ request, openEvents: () => socket }} />);
-    fireEvent.click(screen.getByRole("button", { name: "Open app manager" }));
+    render(<App initialLocation="/" snapshot={fixtureSnapshot} live={{ request, openEvents: () => socket }} />);
+    fireEvent.click(screen.getByRole("link", { name: "App manager" }));
     fireEvent.click(await screen.findByRole("button", { name: "Firefox" }));
     const window = screen.getByRole("region", { name: "Firefox" });
     expect(within(window).getByRole("button", { name: "Minimize Firefox" })).toBeInTheDocument();

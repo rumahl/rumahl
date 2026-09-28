@@ -43,6 +43,13 @@ async fn preferences_are_session_scoped_csrf_protected_and_revision_checked() {
         streams: None,
         apps: None,
         oidc: None,
+        files: Some(Arc::new(
+            rumahl_persistence_sqlite::SqlitePersonalFiles::open(root.join("files.sqlite"))
+                .unwrap(),
+        )),
+        workspace: Some(Arc::new(
+            SqliteShellPreferences::open(root.join("preferences.sqlite")).unwrap(),
+        )),
         preferences: Some(Arc::new(
             SqliteShellPreferences::open(root.join("preferences.sqlite")).unwrap(),
         )),
@@ -132,6 +139,165 @@ async fn preferences_are_session_scoped_csrf_protected_and_revision_checked() {
         serde_json::from_slice(&response.into_body().collect().await.unwrap().to_bytes()).unwrap();
     assert_eq!(bob_value["effective"]["shellMode"], "desktop");
     assert_ne!(bob_value["ownerId"], value["ownerId"]);
+    // New APIs use the same browser session boundary and never accept an owner ID.
+    let send =
+        |method: &str, uri: &str, token: &str, origin: &str, content: &str, body: Vec<u8>| {
+            Request::builder()
+                .method(method)
+                .uri(uri)
+                .header("cookie", format!("__Host-rumahl_session={token}"))
+                .header("origin", origin)
+                .header("content-type", content)
+                .body(Body::from(body))
+                .unwrap()
+        };
+    let workspace = "/api/v1/shell/workspace?device=00000000-0000-4000-8000-000000000001";
+    let layout = serde_json::json!({"revision":0,"scope":"user","value":{"version":1,"windows":[],"folders":[]}}).to_string().into_bytes();
+    assert_eq!(
+        app.clone()
+            .oneshot(send(
+                "PUT",
+                workspace,
+                &alice,
+                "https://evil.test",
+                "application/json",
+                layout.clone()
+            ))
+            .await
+            .unwrap()
+            .status(),
+        StatusCode::FORBIDDEN
+    );
+    assert_eq!(
+        app.clone()
+            .oneshot(send(
+                "PUT",
+                workspace,
+                &alice,
+                "https://rumahl.test",
+                "application/json",
+                layout.clone()
+            ))
+            .await
+            .unwrap()
+            .status(),
+        StatusCode::OK
+    );
+    assert_eq!(
+        app.clone()
+            .oneshot(send(
+                "PUT",
+                workspace,
+                &alice,
+                "https://rumahl.test",
+                "application/json",
+                layout
+            ))
+            .await
+            .unwrap()
+            .status(),
+        StatusCode::CONFLICT
+    );
+    let invalid=serde_json::json!({"revision":1,"scope":"user","value":{"version":1,"windows":[],"folders":[{"id":"a","name":"A","apps":["same","same"]}]}}).to_string().into_bytes();
+    assert_eq!(
+        app.clone()
+            .oneshot(send(
+                "PUT",
+                workspace,
+                &alice,
+                "https://rumahl.test",
+                "application/json",
+                invalid
+            ))
+            .await
+            .unwrap()
+            .status(),
+        StatusCode::BAD_REQUEST
+    );
+    let upload = "/api/v1/files?parent=root&name=test.html&directory=false";
+    assert_eq!(
+        app.clone()
+            .oneshot(send(
+                "POST",
+                upload,
+                &alice,
+                "https://evil.test",
+                "application/octet-stream",
+                vec![1]
+            ))
+            .await
+            .unwrap()
+            .status(),
+        StatusCode::FORBIDDEN
+    );
+    assert_eq!(
+        app.clone()
+            .oneshot(send(
+                "POST",
+                upload,
+                &alice,
+                "https://rumahl.test",
+                "application/octet-stream",
+                b"<script>alert(1)</script>".to_vec()
+            ))
+            .await
+            .unwrap()
+            .status(),
+        StatusCode::NO_CONTENT
+    );
+    let list = app
+        .clone()
+        .oneshot(send(
+            "GET",
+            "/api/v1/files?parent=root",
+            &alice,
+            "https://rumahl.test",
+            "",
+            vec![],
+        ))
+        .await
+        .unwrap();
+    let list: serde_json::Value =
+        serde_json::from_slice(&list.into_body().collect().await.unwrap().to_bytes()).unwrap();
+    let download = format!(
+        "/api/v1/files/content?id={}",
+        list[0]["id"].as_str().unwrap()
+    );
+    assert_eq!(
+        app.clone()
+            .oneshot(send(
+                "GET",
+                &download,
+                &bob,
+                "https://rumahl.test",
+                "",
+                vec![]
+            ))
+            .await
+            .unwrap()
+            .status(),
+        StatusCode::NOT_FOUND
+    );
+    let file = app
+        .clone()
+        .oneshot(send(
+            "GET",
+            &download,
+            &alice,
+            "https://rumahl.test",
+            "",
+            vec![],
+        ))
+        .await
+        .unwrap();
+    assert_eq!(file.headers()["content-type"], "application/octet-stream");
+    assert!(
+        file.headers()["content-disposition"]
+            .to_str()
+            .unwrap()
+            .starts_with("attachment;")
+    );
+    assert_eq!(file.headers()["cache-control"], "private, no-store");
     sessions.logout(&alice).unwrap();
     assert_eq!(
         app.oneshot(request(Some(&alice), None, None))
