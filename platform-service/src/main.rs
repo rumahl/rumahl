@@ -114,7 +114,14 @@ async fn run() -> Result<(), ServiceError> {
         .map_err(|_| std::io::Error::other("invalid app host configuration"))?,
     );
     let events = Arc::new(InMemoryShellEvents::new(128));
-    let snapshots = PersistentShellSnapshots::open(&accounts, &platform, build_id, &locale)?;
+    let snapshot_store = Arc::new(
+        rumahl_persistence_sqlite::SqliteShellPreferences::open(
+            state_dir.join("preferences.sqlite"),
+        )?,
+    );
+    let snapshots = PersistentShellSnapshots::open(&accounts, &platform, build_id, &locale)?
+        .with_preferences(snapshot_store.clone())
+        .with_workspace(snapshot_store.clone());
     let account_feed = SqliteAccountStateRepository::open(&accounts)?;
     let state = GatewayState {
         config,
@@ -140,30 +147,19 @@ async fn run() -> Result<(), ServiceError> {
         )),
         oidc: None,
     };
-    let (theme_path, css) = stock_stylesheet();
-    let app = router(state)
-        .route(
-            &theme_path,
+    // Serve every built-in theme stylesheet so the account theme renders on the
+    // first paint without a flash of the default theme.
+    let mut app = router(state);
+    for (path, css) in theme_stylesheets() {
+        app = app.route(
+            &path,
             get(move || {
                 let css = css.clone();
-                async move {
-                    let mut response = Response::new(Body::from(css));
-                    response.headers_mut().insert(
-                        "content-type",
-                        HeaderValue::from_static("text/css; charset=utf-8"),
-                    );
-                    response.headers_mut().insert(
-                        "cache-control",
-                        HeaderValue::from_static("public, max-age=31536000, immutable"),
-                    );
-                    response.headers_mut().insert(
-                        "x-content-type-options",
-                        HeaderValue::from_static("nosniff"),
-                    );
-                    response
-                }
+                async move { stylesheet_response(css) }
             }),
-        )
+        );
+    }
+    let app = app
         .layer(middleware::from_fn(move |request: Request, next: Next| {
             let authority = authority.clone();
             let apps = apps.clone();
@@ -243,7 +239,7 @@ async fn run() -> Result<(), ServiceError> {
                         if active.contains_key(user) {
                             continue;
                         }
-                        if let Ok(snapshot) = snapshots.for_user(user) {
+                        if let Ok(snapshot) = snapshots.for_user(user, None) {
                             active.insert(*user, snapshot.revision().to_owned());
                         }
                     }
@@ -275,4 +271,22 @@ async fn run() -> Result<(), ServiceError> {
         _ = tokio::signal::ctrl_c() => {},
     }
     Ok(())
+}
+
+/// Immutable, content-addressed stylesheet response for a built-in theme.
+fn stylesheet_response(css: String) -> Response {
+    let mut response = Response::new(Body::from(css));
+    response.headers_mut().insert(
+        "content-type",
+        HeaderValue::from_static("text/css; charset=utf-8"),
+    );
+    response.headers_mut().insert(
+        "cache-control",
+        HeaderValue::from_static("public, max-age=31536000, immutable"),
+    );
+    response.headers_mut().insert(
+        "x-content-type-options",
+        HeaderValue::from_static("nosniff"),
+    );
+    response
 }

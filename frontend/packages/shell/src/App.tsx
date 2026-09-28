@@ -1,16 +1,16 @@
 import { useEffect, useMemo, useState, type PropsWithChildren } from "react";
 import type { ShellSnapshotV1 } from "@rumahl/contracts";
 import { ThemeProvider } from "@rumahl/ui";
-import { defineTheme, getTheme } from "@rumahl/ui/sdk";
-import { defaultTheme, type Theme } from "@rumahl/ui/themes";
+import { type Theme } from "@rumahl/ui/themes";
 import { I18nProvider, useI18n } from "./i18n";
 import { watchShellUpdates, type ShellLiveSource } from "./live-updates";
 import { ShellRouter, type ShellRouterOptions } from "./routing/ShellRouter";
 import { ShellPreferencesProvider, useShellPreferences } from "./preferences/ShellPreferences";
+import { applyTuning, useThemeTuning } from "./preferences/theme-tuning";
 import { WorkspaceProvider } from "./preferences/Workspace";
 import { AppCatalog } from "./apps/AppCatalog";
 import { ShellLayout } from "./shell/ShellLayout";
-import wallpaperUrl from "./assets/monstera.jpg";
+import { buildSnapshotTheme, resolveActiveTheme, resolveTokens } from "./theme";
 
 export function App({ snapshot, live, theme, ...routing }: ShellRouterOptions & {
   snapshot: ShellSnapshotV1;
@@ -23,19 +23,15 @@ export function App({ snapshot, live, theme, ...routing }: ShellRouterOptions & 
     if (!live) return;
     return watchShellUpdates(snapshot.revision, live, setCurrent, () => setSessionExpired(true));
   }, [live, snapshot.revision]);
-  // Bridge the snapshot chrome into the theme model. Token values come from the
-  // selected theme; the platform compiles the same tokens into the SSR stylesheet.
-  const fallback = useMemo(() => defineTheme({
-    id: "com.rumahl.shell",
-    name: "rumahl",
-    variants: { windowChrome: current.theme.windowChrome }
-  }), [current.theme.windowChrome]);
+  // The platform resolves the account theme and ships its tokens and variants.
+  // Device overrides are resolved from the local theme registry.
+  const serverTheme = useMemo(() => buildSnapshotTheme(current), [current]);
   return <I18nProvider locale={current.user.locale}>
     <ShellRouter {...routing}>
-      <ShellPreferencesProvider live={live}>
-        <AppCatalog live={live} revision={current.revision}>
-          <WorkspaceProvider live={live}>
-            <ShellThemeGate override={theme} fallback={fallback}>
+      <ShellPreferencesProvider live={live} initial={{ mode: current.mode, theme: current.theme.id }}>
+        <AppCatalog live={live} revision={current.revision} initial={current.apps}>
+          <WorkspaceProvider live={live} initial={current.workspace}>
+            <ShellThemeGate override={theme} serverTheme={serverTheme}>
               {sessionExpired ? <SessionExpired /> : <ShellLayout snapshot={current} live={live} />}
             </ShellThemeGate>
           </WorkspaceProvider>
@@ -45,15 +41,13 @@ export function App({ snapshot, live, theme, ...routing }: ShellRouterOptions & 
   </I18nProvider>;
 }
 
-function ShellThemeGate({ override, fallback, children }: PropsWithChildren<{ override?: Theme | undefined; fallback: Theme }>) {
+function ShellThemeGate({ override, serverTheme, children }: PropsWithChildren<{ override?: Theme | undefined; serverTheme: Theme }>) {
   const preferences = useShellPreferences();
+  const { tuning } = useThemeTuning();
   const theme = useMemo(() => {
-    const selected = override ?? getTheme(preferences.theme) ?? defaultTheme;
-    const merged = { ...selected, variants: { ...selected.variants, windowChrome: fallback.variants.windowChrome } };
-    if (merged.tokens["texture.wallpaper"] !== "default") return merged;
-    // `default` means the shell's bundled wallpaper; themes may override it.
-    return { ...merged, tokens: { ...merged.tokens, "texture.wallpaper": `url(${wallpaperUrl})` } };
-  }, [override, preferences.theme, fallback]);
+    const selected = override ?? resolveActiveTheme(serverTheme, preferences.theme);
+    return { ...selected, tokens: resolveTokens(applyTuning(selected.tokens, tuning)) };
+  }, [override, preferences.theme, serverTheme, tuning]);
   return <ThemeProvider theme={theme}>{children}</ThemeProvider>;
 }
 

@@ -14,7 +14,7 @@ use axum::{
 use rumahl_core::{PreferenceScope, WorkspacePreferences};
 use serde::{Deserialize, Serialize};
 use std::{
-    collections::{HashMap, HashSet},
+    collections::{BTreeMap, HashMap, HashSet},
     sync::Arc,
 };
 #[derive(Deserialize, Serialize)]
@@ -23,6 +23,78 @@ struct Workspace {
     version: u8,
     windows: Vec<Window>,
     folders: Vec<Folder>,
+    #[serde(default)]
+    desktop: Desktop,
+    #[serde(default)]
+    launcher_view: Option<String>,
+    #[serde(default)]
+    appearance: Appearance,
+}
+#[derive(Deserialize, Serialize, Default)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+struct Appearance {
+    #[serde(default)]
+    seed: Option<String>,
+    #[serde(default)]
+    mode: Option<String>,
+    #[serde(default)]
+    tokens: BTreeMap<String, String>,
+}
+fn valid_appearance(appearance: &Appearance) -> bool {
+    appearance
+        .seed
+        .as_deref()
+        .map_or(true, |seed| {
+            seed.len() == 7
+                && seed.starts_with('#')
+                && seed[1..].bytes().all(|b| b.is_ascii_hexdigit())
+        })
+        && appearance
+            .mode
+            .as_deref()
+            .map_or(true, |mode| ["light", "dark"].contains(&mode))
+        && appearance.tokens.len() <= 64
+        && appearance.tokens.iter().all(|(key, value)| {
+            !key.is_empty()
+                && key.len() <= 256
+                && !value.is_empty()
+                && value.len() <= 256
+                && !value.contains([';', '{', '}', '\\', '<', '>', '@'])
+        })
+}
+#[derive(Deserialize, Serialize)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+struct Desktop {
+    #[serde(default)]
+    order: Vec<String>,
+    #[serde(default)]
+    hidden: Vec<String>,
+    #[serde(default = "default_widgets")]
+    widgets: bool,
+}
+impl Default for Desktop {
+    fn default() -> Self {
+        Self {
+            order: Vec::new(),
+            hidden: Vec::new(),
+            widgets: true,
+        }
+    }
+}
+fn default_widgets() -> bool {
+    true
+}
+fn valid_arrangement(desktop: &Desktop) -> bool {
+    [&desktop.order, &desktop.hidden].iter().all(|list| {
+        list.len() <= 512
+            && list.iter().all(|id| {
+                !id.is_empty()
+                    && id.len() <= 255
+                    && id
+                        .bytes()
+                        .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'.' | b'_' | b'-'))
+            })
+    })
 }
 #[derive(Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
@@ -69,6 +141,12 @@ fn valid(value: &Workspace) -> bool {
                 && w.rect.height >= 1.0
                 && ["floating", "left", "right", "maximized"].contains(&w.placement.as_str())
         })
+        && valid_arrangement(&value.desktop)
+        && valid_appearance(&value.appearance)
+        && value
+            .launcher_view
+            .as_deref()
+            .map_or(true, |view| ["grid", "deck", "canvas"].contains(&view))
         && value.folders.iter().all(|f| {
             f.id.len() <= 64
                 && !f.id.is_empty()

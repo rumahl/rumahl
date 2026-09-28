@@ -20,7 +20,7 @@ use hyper::client::conn::http1;
 use hyper::{Request, StatusCode as UpstreamStatus};
 use hyper_util::rt::TokioIo;
 use rand::RngCore;
-use rumahl_core::UserId;
+use rumahl_core::{BrowserProfileId, UserId};
 use rumahl_ui_contracts::{ExtensionContribution, ShellEvent, ShellSnapshot};
 use tokio::net::{UnixListener, UnixStream};
 use tokio::sync::broadcast;
@@ -37,6 +37,9 @@ use crate::streams::{StreamAccess, StreamEndpoint, StreamProviderError, frame_pa
 const SESSION_COOKIE: &str = "__Host-rumahl_session";
 const MAX_COOKIE_BYTES: usize = 4096;
 const STREAM_COOKIE: &str = "__Secure-rumahl_stream";
+/// Non-credential browser-profile namespace, mirrored into a cookie so the
+/// server can render the device-scoped workspace on the first paint.
+const DEVICE_COOKIE: &str = "rumahl_device";
 const STREAM_FRAME_CSP: &str = "default-src 'self'; script-src 'self' blob:; worker-src 'self' blob:; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' blob:; connect-src 'self' wss:; frame-ancestors 'self'; base-uri 'none'; object-src 'none'";
 
 /// App routing owns this decision. The gateway verifies the resolved URL again
@@ -297,7 +300,7 @@ async fn shell(
         }
         Err(error) => return backend_error(error),
     };
-    let snapshot = match load_snapshot(&state, &credential).await {
+    let snapshot = match load_snapshot(&state, &credential, device_cookie(&headers)).await {
         Ok(snapshot) => snapshot,
         Err(error) => return backend_error(error),
     };
@@ -345,7 +348,7 @@ async fn snapshot(State(state): State<Arc<GatewayState>>, headers: HeaderMap) ->
     if let Err(error) = authenticate(&state, &credential).await {
         return backend_error(error);
     }
-    let snapshot = match load_snapshot(&state, &credential).await {
+    let snapshot = match load_snapshot(&state, &credential, device_cookie(&headers)).await {
         Ok(snapshot) => snapshot,
         Err(error) => return backend_error(error),
     };
@@ -373,7 +376,7 @@ async fn widget_frame(
         Ok(identity) => identity,
         Err(error) => return backend_error(error),
     };
-    let snapshot = match load_snapshot(&state, &credential).await {
+    let snapshot = match load_snapshot(&state, &credential, device_cookie(&headers)).await {
         Ok(snapshot) => snapshot,
         Err(error) => return backend_error(error),
     };
@@ -475,6 +478,23 @@ async fn authorized_stream(
         .map_err(|_| error(StatusCode::SERVICE_UNAVAILABLE))?
         .ok_or_else(|| error(StatusCode::FORBIDDEN))?;
     Ok((endpoint, credential, identity))
+}
+
+fn device_cookie(headers: &HeaderMap) -> Option<BrowserProfileId> {
+    let cookie = headers.get(COOKIE)?.to_str().ok()?;
+    let mut found: Option<&str> = None;
+    for pair in cookie.split(';') {
+        let Some((name, value)) = pair.trim().split_once('=') else {
+            continue;
+        };
+        if name == DEVICE_COOKIE {
+            if found.is_some() {
+                return None;
+            }
+            found = Some(value);
+        }
+    }
+    found.and_then(BrowserProfileId::parse)
 }
 
 fn stream_ticket(headers: &HeaderMap) -> Option<&str> {
@@ -849,10 +869,11 @@ pub(super) async fn authenticate(
 async fn load_snapshot(
     state: &Arc<GatewayState>,
     credential: &str,
+    device: Option<BrowserProfileId>,
 ) -> Result<ShellSnapshot, ShellBackendError> {
     let backend = Arc::clone(&state.backend);
     let credential = Zeroizing::new(credential.to_owned());
-    tokio::task::spawn_blocking(move || backend.snapshot(&credential))
+    tokio::task::spawn_blocking(move || backend.snapshot(&credential, device))
         .await
         .map_err(|_| ShellBackendError::Unavailable)?
 }
@@ -952,7 +973,7 @@ mod tests {
     use axum::http::Request;
     use rumahl_core::SessionId;
     use rumahl_ui_contracts::{
-        ShellSystemStatus, ShellTheme, ShellUser, SystemProtectionStatus, WindowChromeVariant,
+        ResolvedTheme, ShellSystemStatus, ShellTheme, ShellUser, SystemProtectionStatus,
     };
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
     use tower::ServiceExt;
@@ -973,17 +994,19 @@ mod tests {
             }
         }
 
-        fn snapshot(&self, token: &str) -> Result<ShellSnapshot, ShellBackendError> {
+        fn snapshot(&self, token: &str, _device: Option<BrowserProfileId>) -> Result<ShellSnapshot, ShellBackendError> {
             if !self.available || token != TOKEN {
                 return Err(ShellBackendError::Unavailable);
             }
             Ok(ShellSnapshot::new(
                 "shell-build-001", "revision-001",
                 ShellUser::new("Example User", "en-US").unwrap(),
-                ShellTheme::new(
+                ShellTheme::from_theme(
                     "/shell/themes/sha256-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.css",
-                    WindowChromeVariant::Standard,
+                    &ResolvedTheme::stock(),
                 ).unwrap(),
+                Vec::new(),
+                None,
                 ShellSystemStatus::new(SystemProtectionStatus::Active, 1, 1, None).unwrap(),
                 vec![ExtensionContribution::widget("com.rumahl.weather.widget", "Weather", "main").unwrap()],
             ).unwrap())

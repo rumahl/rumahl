@@ -1,32 +1,43 @@
+import { RUMAHL_COLORS, themeColorValues } from "./color";
+
 /**
  * Default rumahl OS design tokens.
  *
- * A theme provides values for every token id; the runtime projects them onto
- * the document root as `--rumahl-ui-*` custom properties. The values below are
- * the rumahl brand defaults (green accent, glass materials, macOS-like shapes).
- * They intentionally use plain CSS values so a theme can change colours,
- * transparency, radii, motion and textures without touching component code.
+ * Colour roles are computed by the native rumahl colour system from a single
+ * seed (see `@rumahl/ui/color`); structural roles (materials, shapes, motion,
+ * typography) are authored here. A theme projects every token onto the document
+ * root as `--rumahl-ui-*` custom properties. Token ids match the authoritative
+ * Rust contract exactly (dots).
  */
+const COLORS = themeColorValues(RUMAHL_COLORS.base);
+
 export const defaultTokens = {
-  "color.accent": "#28694c",
-  "color.accent-strong": "#4f8f78",
-  "color.surface": "rgba(248, 250, 247, 0.84)",
-  "color.surface-strong": "#f8faf7",
+  "color.accent": COLORS.accent,
+  "color.accent.strong": COLORS.accentStrong,
+  "color.surface": COLORS.surface,
+  "color.surface.strong": COLORS.surfaceStrong,
   "color.outline": "rgba(255, 255, 255, 0.44)",
-  "color.on-wallpaper": "#ffffff",
-  "color.on-accent": "#ffffff",
+  "color.on.wallpaper": "#ffffff",
+  "color.on.accent": COLORS.onAccent,
   "color.shadow": "rgba(0, 0, 0, 0.27)",
+  "color.text.primary": "#18201c",
+  "color.text.muted": "#657068",
+  "color.canvas.background": "#e8ece7",
+  "color.panel.background": "#f8faf7",
+  "color.window.titlebar.background": "#f2f5f1",
+  "color.window.titlebar.foreground": "#18201c",
   "material.blur": "34px",
   "material.saturation": "1.6",
-  "shape.radius-window": "12px",
-  "shape.radius-dock": "22px",
-  "shape.radius-icon": "15px",
-  "shape.icon-size": "50px",
-  "shape.icon-size-large": "64px",
-  "motion.duration-fast": "120ms",
+  "material.opacity": "0.84",
+  "shape.radius.window": "12px",
+  "shape.radius.dock": "22px",
+  "shape.radius.icon": "15px",
+  "shape.icon.size": "50px",
+  "shape.icon.size.large": "64px",
+  "motion.duration.fast": "120ms",
   "motion.duration": "150ms",
-  "motion.easing-spring": "cubic-bezier(.2, .9, .3, 1.25)",
-  "layout.dock-offset": "12px",
+  "motion.easing.spring": "cubic-bezier(.2, .9, .3, 1.25)",
+  "layout.dock.offset": "12px",
   "icon.gradient": "linear-gradient(140deg, #3f9e74, #28694c)",
   "texture.wallpaper": "default",
   "typography.family": "-apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif",

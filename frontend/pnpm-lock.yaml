@@ -83,6 +83,9 @@ importers:
       '@rumahl/shell':
         specifier: workspace:*
         version: link:../shell
+      '@rumahl/ui':
+        specifier: workspace:*
+        version: link:../ui
       react:
         specifier: 19.3.0
         version: 19.3.0

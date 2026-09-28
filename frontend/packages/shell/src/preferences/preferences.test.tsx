@@ -11,7 +11,17 @@ function Probe() {
 }
 const source = (request: ShellLiveSource["request"]): ShellLiveSource => ({ request, openEvents: () => { throw new Error("not used by preferences"); } });
 afterEach(() => vi.useRealTimers());
+function ThemeProbe() {
+  const settings = useShellPreferences();
+  return <><p>{settings.theme}</p><button onClick={() => settings.saveTheme("user", "com.rumahl.classic")}>Set theme</button></>;
+}
 describe("synchronized preferences", () => {
+  it("applies a locally selected theme", async () => {
+    render(<ShellPreferencesProvider live={undefined}><ThemeProbe /></ShellPreferencesProvider>);
+    expect(await screen.findByText("com.rumahl.default")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Set theme" }));
+    expect(screen.getByText("com.rumahl.classic")).toBeInTheDocument();
+  });
   it("rejects inconsistent effective values and unsafe revisions", () => {
     expect(parsePreferences(defaults).effective.shellMode).toBe("desktop");
     expect(() => parsePreferences({ ...defaults, effective: { shellMode: "launcher", shellTheme } })).toThrow();

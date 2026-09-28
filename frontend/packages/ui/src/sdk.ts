@@ -1,6 +1,6 @@
 import { defaultTokens, type Tokens } from "./tokens";
 import { resolveVariants, type VariantSelection } from "./variants";
-import { themes, type Theme } from "./themes";
+import { themes, type AppearanceMode, type Theme, type ThemeParameter } from "./themes";
 
 /**
  * Developer SDK. Third-party code authors themes as data; the shell keeps
@@ -12,6 +12,8 @@ export interface ThemeInput {
   name: string;
   tokens?: Partial<Tokens> | undefined;
   variants?: Partial<VariantSelection> | undefined;
+  parameters?: readonly ThemeParameter[] | undefined;
+  modes?: readonly AppearanceMode[] | undefined;
 }
 
 /** Merges partial tokens/variants over the rumahl defaults into a full theme. */
@@ -21,7 +23,9 @@ export function defineTheme(input: ThemeInput): Theme {
     id: input.id,
     name: input.name,
     tokens: { ...defaultTokens, ...input.tokens },
-    variants: resolveVariants(input.variants)
+    variants: resolveVariants(input.variants),
+    parameters: input.parameters ?? [],
+    modes: input.modes ?? ["light"]
   };
 }
 

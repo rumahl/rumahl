@@ -5,6 +5,8 @@
   "type": "module",
   "exports": {
     ".": "./src/index.ts",
+    "./color": "./src/color.ts",
+    "./palette": "./src/palette.ts",
     "./tokens": "./src/tokens.ts",
     "./themes": "./src/themes.ts",
     "./variants": "./src/variants.ts",

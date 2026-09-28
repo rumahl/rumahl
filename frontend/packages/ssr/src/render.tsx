@@ -6,6 +6,7 @@ import { App } from "@rumahl/shell/App";
 import { SHELL_BUILD_ID } from "@rumahl/shell/build-id";
 import { EMBEDDED_SNAPSHOT_ID } from "@rumahl/shell/embedded-snapshot";
 import { resolveLocale } from "@rumahl/shell/i18n";
+import { appearanceCss, windowPositionCss } from "@rumahl/shell/ssr";
 
 export interface ShellAssets {
   script: string;
@@ -94,6 +95,7 @@ function ShellDocument({
         <title>rumahl OS</title>
         <link href={assets.stylesheet} rel="stylesheet" />
         <link href={snapshot.theme.stylesheetUrl} rel="stylesheet" />
+        <style nonce={nonce} dangerouslySetInnerHTML={{ __html: appearanceCss(snapshot) + windowPositionCss(snapshot) }} />
       </head>
       <body>
         <div data-shell-ssr="1" id="root">

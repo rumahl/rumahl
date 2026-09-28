@@ -5,6 +5,7 @@
   "type": "module",
   "exports": {
     "./App": "./src/App.tsx",
+    "./ssr": "./src/ssr.ts",
     "./build-id": "./src/build-id.ts",
     "./i18n": "./src/i18n/index.tsx",
     "./embedded-snapshot": "./src/embedded-snapshot.ts"

@@ -577,6 +577,7 @@ mod tests {
         fn snapshot(
             &self,
             _: &str,
+            _device: Option<rumahl_core::BrowserProfileId>,
         ) -> Result<rumahl_ui_contracts::ShellSnapshot, ShellBackendError> {
             Err(ShellBackendError::Unavailable)
         }

@@ -12,10 +12,17 @@ export const demoSnapshot = {
     locale: "en-US"
   },
   theme: {
+    id: "com.rumahl.default",
     stylesheetUrl:
       "/shell/themes/sha256-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.css",
-    windowChrome: "standard"
+    windowChrome: "standard",
+    shellLayout: "dock",
+    launcherLayout: "springboard",
+    tokens: {}
   },
+  apps: [],
+  workspace: null,
+  mode: "desktop",
   systemStatus: {
     protection: "active",
     installedAppCount: 12,

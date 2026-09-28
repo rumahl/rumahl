@@ -3,7 +3,10 @@ export const SNAPSHOT_VERSION = 1 as const;
 export const UI_CONTRACT_VERSION = 1 as const;
 export const EXTENSION_API_VERSION = 1 as const;
 
+export type ShellMode = "desktop" | "launcher";
 export type WindowChromeVariant = "standard" | "compact";
+export type ShellLayoutVariant = "dock" | "taskbar";
+export type LauncherLayoutVariant = "springboard" | "drawer";
 export type ExtensionSlot = "dashboard_widgets";
 export type ThemeTokenId =
   | "color.canvas.background"
@@ -25,6 +28,7 @@ export type ThemeTokenId =
   | "color.shadow"
   | "material.blur"
   | "material.saturation"
+  | "material.opacity"
   | "shape.radius.dock"
   | "shape.radius.icon"
   | "shape.icon.size"
@@ -37,7 +41,8 @@ export type ThemeTokenId =
   | "texture.wallpaper"
   | "typography.family"
   | "typography.scale";
-export type ThemeVariantId = "window.chrome";
+export type ThemeVariantId = "window.chrome" | "shell.layout" | "launcher.layout";
+export type ThemeVariantValue = WindowChromeVariant | ShellLayoutVariant | LauncherLayoutVariant;
 
 export interface ThemeManifestV1 {
   manifestVersion: 1;
@@ -45,7 +50,7 @@ export interface ThemeManifestV1 {
   id: string;
   name: string;
   tokens?: Partial<Record<ThemeTokenId, string>>;
-  variants?: Partial<Record<ThemeVariantId, WindowChromeVariant>>;
+  variants?: Partial<Record<ThemeVariantId, ThemeVariantValue>>;
 }
 
 export interface ShellUser {
@@ -53,9 +58,19 @@ export interface ShellUser {
   locale: string;
 }
 
+export interface ShellApp {
+  id: string;
+  title: string;
+  launchable: boolean;
+}
+
 export interface ShellTheme {
+  id: string;
   stylesheetUrl: `/shell/themes/sha256-${string}.css`;
   windowChrome: WindowChromeVariant;
+  shellLayout: ShellLayoutVariant;
+  launcherLayout: LauncherLayoutVariant;
+  tokens: Record<string, string>;
 }
 
 export type SystemProtectionStatus = "active" | "attention";
@@ -96,7 +111,10 @@ export interface ShellSnapshotV1 {
   revision: string;
   user: ShellUser;
   theme: ShellTheme;
+  apps: readonly ShellApp[];
+  workspace: string | null;
   systemStatus: ShellSystemStatus;
+  mode: ShellMode;
   contributions: readonly ExtensionContribution[];
 }
 "#;

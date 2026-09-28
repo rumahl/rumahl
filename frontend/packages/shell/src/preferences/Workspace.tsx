@@ -5,12 +5,27 @@ import type { PreferenceScope } from "./client";
 import type { WindowRect, WindowPlacement } from "../shell/desktop/geometry";
 export interface AppFolder { id: string; name: string; apps: string[] }
 export interface SavedWindow { location: string; rect: WindowRect; placement: WindowPlacement; minimized: boolean }
-export interface Workspace { version: 1; windows: SavedWindow[]; folders: AppFolder[] }
+export interface DesktopArrangement { order: string[]; hidden: string[]; widgets: boolean }
+export type LauncherViewId = "grid" | "deck" | "canvas";
+export type AppearanceMode = "light" | "dark";
+/** Device appearance customization: palette seed, light/dark mode, token overrides. */
+export interface AppearanceSettings { seed: string | null; mode: AppearanceMode | null; tokens: { [key: string]: string } }
+export interface Workspace { version: 1; windows: SavedWindow[]; folders: AppFolder[]; desktop: DesktopArrangement; launcherView: LauncherViewId | null; appearance: AppearanceSettings }
 interface Record { ownerId: string; revision: number; user: Workspace | null; device: Workspace | null }
-export const emptyWorkspace: Workspace = { version: 1, windows: [], folders: [] };
+export const emptyAppearance: AppearanceSettings = { seed: null, mode: null, tokens: {} };
+export const emptyWorkspace: Workspace = { version: 1, windows: [], folders: [], desktop: { order: [], hidden: [], widgets: true }, launcherView: null, appearance: emptyAppearance };
 export function parseWorkspace(value: unknown): Workspace {
   const w = value as Workspace | null;
   if (!w || w.version !== 1 || !Array.isArray(w.windows) || w.windows.length > 32 || !Array.isArray(w.folders) || w.folders.length > 32) throw Error("workspace");
+  const desktop = w.desktop ?? { order: [], hidden: [], widgets: true };
+  const arrangement = [desktop.order, desktop.hidden];
+  if (typeof desktop !== "object" || arrangement.some((list) => !Array.isArray(list) || list.length > 512) ||
+      typeof desktop.widgets !== "boolean" ||
+      arrangement.some((list) => !list.every((id: unknown) => typeof id === "string" && id.length > 0 && id.length <= 255)) ||
+      new Set(desktop.order).size !== desktop.order.length || new Set(desktop.hidden).size !== desktop.hidden.length) throw Error("desktop");
+  const launcherView = w.launcherView ?? null;
+  if (launcherView !== null && launcherView !== "grid" && launcherView !== "deck" && launcherView !== "canvas") throw Error("launcher");
+  const appearance = parseAppearance(w.appearance);
   for (const win of w.windows) {
     if (!win || typeof win.location !== "string" || win.location.length > 2048 || !/^\/(app\/|settings(?:\/|$)|activity$)/.test(win.location.split(/[?#]/)[0]!) || /[\\\r\n]/.test(win.location) || !["floating", "left", "right", "maximized"].includes(win.placement) || typeof win.minimized !== "boolean" || !win.rect || ![win.rect.x,win.rect.y,win.rect.width,win.rect.height].every(v => Number.isFinite(v) && v >= 0 && v <= 32768) || win.rect.width < 1 || win.rect.height < 1) throw Error("window");
   }
@@ -20,12 +35,34 @@ export function parseWorkspace(value: unknown): Workspace {
     ids.add(f.id);
     for (const id of f.apps) { if (typeof id !== "string" || !/^[a-zA-Z0-9._-]{1,255}$/.test(id) || apps.has(id)) throw Error("app"); apps.add(id); }
   }
-  return w;
+  return { ...w, desktop, launcherView, appearance };
+}
+export function parseAppearance(value: unknown): AppearanceSettings {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return emptyAppearance;
+  const record = value as { [key: string]: unknown };
+  const seed = typeof record.seed === "string" && /^#[0-9a-fA-F]{6}$/.test(record.seed) ? record.seed : null;
+  const mode = record.mode === "light" || record.mode === "dark" ? record.mode : null;
+  const tokens: { [key: string]: string } = {};
+  if (record.tokens && typeof record.tokens === "object" && !Array.isArray(record.tokens)) {
+    for (const [key, raw] of Object.entries(record.tokens as { [key: string]: unknown })) {
+      if (typeof raw === "string" && raw.length > 0 && raw.length <= 256 && !/[;{}\\<>@]/.test(raw)) tokens[key] = raw;
+    }
+  }
+  return { seed, mode, tokens };
 }
 interface ContextValue { record: Record | null; effective: Workspace; ready: boolean; busy: boolean; error: string | null; save: (scope: PreferenceScope, value: Workspace | null) => Promise<boolean>; restore: number; requestRestore: () => void }
 const Context = createContext<ContextValue | null>(null);
-export function WorkspaceProvider({ live, children }: PropsWithChildren<{ live: ShellLiveSource | undefined }>) {
-  const [record,setRecord] = useState<Record | null>(null), [busy,setBusy] = useState(false), [error,setError] = useState<string | null>(null), [restore,setRestore] = useState(0);
+/** Seeds the device-scoped workspace from the server snapshot for first paint. */
+function snapshotRecord(initial: string | null | undefined): Record | null {
+  if (!initial) return null;
+  try {
+    return { ownerId: "snapshot", revision: 0, user: null, device: parseWorkspace(JSON.parse(initial)) };
+  } catch {
+    return null;
+  }
+}
+export function WorkspaceProvider({ live, initial, children }: PropsWithChildren<{ live: ShellLiveSource | undefined; initial?: string | null | undefined }>) {
+  const [record,setRecord] = useState<Record | null>(() => snapshotRecord(initial)), [busy,setBusy] = useState(false), [error,setError] = useState<string | null>(null), [restore,setRestore] = useState(0);
   const latest = useRef<Record | null>(null), writer = useRef<ContextValue["save"]>(async()=>false);
   useEffect(() => {
     const controller = new AbortController(), profile = browserProfile(); let writing = false, generation = 0;

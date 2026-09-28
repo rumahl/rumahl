@@ -11,7 +11,7 @@ describe("launcher shell", () => {
     expect(await screen.findByRole("heading", { name: "Your apps. Your space." })).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "App drawer" }));
     expect(document.querySelector(".launcher-view--drawer")).not.toBeNull();
-    expect(localStorage.getItem("rumahl.launcher.view.v1")).toBe("deck");
+    expect(JSON.parse(localStorage.getItem("rumahl.demo.workspace")!).launcherView).toBe("deck");
     fireEvent.click(screen.getByRole("button", { name: "Cards" }));
     expect(screen.getByRole("list")).toBeInTheDocument();
   });

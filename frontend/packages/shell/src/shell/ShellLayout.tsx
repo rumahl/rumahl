@@ -40,19 +40,10 @@ export function ShellLayout({ snapshot, live }: { snapshot: ShellSnapshotV1; liv
     id: route.id, title: route.streamTitle ?? installedTitle ?? t(route.title), subtitle: t("appManager.subtitle"),
     location: path, ...(route.stream ? { streamId: route.id.slice(7) } : {})
   }), [installedTitle, route.id, route.title, route.streamTitle, route.stream, path, t]);
-  const [state, dispatch] = useReducer(shellReducer, initialShellState, (initial) =>
-    route.presentation === "window" ? shellReducer(initial, { type: "open-window", window: routedWindow }) : initial);
-  useEffect(() => {
-    if (route.presentation === "window") {
-      dispatch({ type: "open-window", window: routedWindow });
-    }
-  }, [mode, routedWindow, route.presentation]);
   const workspace = useWorkspace();
-  const restored = useRef(-1);
-  useEffect(() => {
-    if (!workspace.ready || catalog.status === "loading" || restored.current === workspace.restore) return;
-    restored.current = workspace.restore;
-    if (workspace.restore === 0 && workspace.effective.windows.length === 0) return;
+  // Restores the device workspace windows. Available synchronously from the
+  // snapshot so windows are server-rendered, not added after a client fetch.
+  const restoredWindows = () => {
     const windows: ShellWindow[] = [];
     for (const saved of workspace.effective.windows) {
       const description = describeRoute(saved.location);
@@ -60,6 +51,24 @@ export function ShellLayout({ snapshot, live }: { snapshot: ShellSnapshotV1; liv
       const title = catalog.apps.find(app => app.id === description.appId)?.title ?? t(description.title);
       windows.push({ ...saved, id: description.id, title, subtitle: t("appManager.subtitle") });
     }
+    return windows;
+  };
+  const [state, dispatch] = useReducer(shellReducer, initialShellState, (initial) => {
+    const seeded = restoredWindows();
+    const next = seeded.length ? shellReducer(initial, { type: "restore-workspace", windows: seeded }) : initial;
+    return route.presentation === "window" ? shellReducer(next, { type: "open-window", window: routedWindow }) : next;
+  });
+  useEffect(() => {
+    if (route.presentation === "window") {
+      dispatch({ type: "open-window", window: routedWindow });
+    }
+  }, [mode, routedWindow, route.presentation]);
+  const restored = useRef(-1);
+  useEffect(() => {
+    if (!workspace.ready || catalog.status === "loading" || restored.current === workspace.restore) return;
+    restored.current = workspace.restore;
+    if (workspace.restore === 0 && workspace.effective.windows.length === 0) return;
+    const windows = restoredWindows();
     // An explicit deep link always wins over a stored layout.
     if (route.presentation === "window") {
       const existing = windows.find(w => w.id === routedWindow.id);

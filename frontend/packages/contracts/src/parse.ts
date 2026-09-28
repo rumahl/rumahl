@@ -20,7 +20,7 @@ export function parseShellSnapshot(value: unknown): ShellSnapshotV1 {
   if (
     !hasKeys(value, [
       "snapshotVersion", "uiContractVersion", "extensionApiVersion", "shellBuildId",
-      "revision", "user", "theme", "systemStatus", "contributions"
+      "revision", "user", "theme", "apps", "workspace", "systemStatus", "mode", "contributions"
     ]) ||
     value.snapshotVersion !== 1 ||
     value.uiContractVersion !== 1 ||
@@ -29,7 +29,10 @@ export function parseShellSnapshot(value: unknown): ShellSnapshotV1 {
     !validOpaqueId(value.revision) ||
     !validUser(value.user) ||
     !validTheme(value.theme) ||
+    !validApps(value.apps) ||
+    !validWorkspace(value.workspace) ||
     !validSystemStatus(value.systemStatus) ||
+    (value.mode !== "desktop" && value.mode !== "launcher") ||
     !Array.isArray(value.contributions) ||
     value.contributions.length > 512 ||
     !value.contributions.every(validContribution)
@@ -50,9 +53,45 @@ function validUser(value: unknown): boolean {
 }
 
 function validTheme(value: unknown): boolean {
-  return hasKeys(value, ["stylesheetUrl", "windowChrome"]) &&
+  return hasKeys(value, ["id", "stylesheetUrl", "windowChrome", "shellLayout", "launcherLayout", "tokens"]) &&
+    validNamespacedId(value.id) &&
     typeof value.stylesheetUrl === "string" && STYLESHEET.test(value.stylesheetUrl) &&
-    (value.windowChrome === "standard" || value.windowChrome === "compact");
+    (value.windowChrome === "standard" || value.windowChrome === "compact") &&
+    (value.shellLayout === "dock" || value.shellLayout === "taskbar") &&
+    (value.launcherLayout === "springboard" || value.launcherLayout === "drawer") &&
+    validTokens(value.tokens);
+}
+
+function validTokens(value: unknown): boolean {
+  if (!isRecord(value)) return false;
+  const entries = Object.entries(value);
+  return entries.length <= 32 && entries.every(([, token]) =>
+    typeof token === "string" && token.length > 0 && token.length <= 256 && !/[;{}\\<>@]/.test(token)
+  );
+}
+
+function validApps(value: unknown): boolean {
+  if (!Array.isArray(value) || value.length > 256) return false;
+  const seen = new Set<string>();
+  return value.every((app) => {
+    if (!isRecord(app) || !hasKeys(app, ["id", "title", "launchable"])) return false;
+    const id = app.id;
+    if (typeof id !== "string" || !validNamespacedId(id) || seen.has(id)) return false;
+    if (!validTitle(app.title, 256) || typeof app.launchable !== "boolean") return false;
+    seen.add(id);
+    return true;
+  });
+}
+
+function validWorkspace(value: unknown): boolean {
+  if (value === null) return true;
+  if (typeof value !== "string" || value.length === 0 || value.length > 96 * 1024) return false;
+  try {
+    const parsed: unknown = JSON.parse(value);
+    return isRecord(parsed);
+  } catch {
+    return false;
+  }
 }
 
 function validSystemStatus(value: unknown): boolean {

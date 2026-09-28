@@ -38,6 +38,7 @@
         "color.shadow": { "$ref": "#/$defs/colorAlpha" },
         "material.blur": { "$ref": "#/$defs/length" },
         "material.saturation": { "$ref": "#/$defs/cssValue" },
+        "material.opacity": { "$ref": "#/$defs/cssValue" },
         "shape.radius.dock": { "$ref": "#/$defs/length" },
         "shape.radius.icon": { "$ref": "#/$defs/length" },
         "shape.icon.size": { "$ref": "#/$defs/length" },

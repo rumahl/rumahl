@@ -84,6 +84,22 @@ fn theme_overrides_follow_the_same_precedence_and_persist() {
     assert_eq!(store.load(user, profile(1)).unwrap().effective_theme(), CLASSIC);
 }
 #[test]
+fn a_device_mode_override_does_not_pin_the_account_theme() {
+    let temp = tempfile::tempdir().unwrap();
+    let path = temp.path().join("preferences.sqlite");
+    let store = SqliteShellPreferences::open(&path).unwrap();
+    let user = UserId::new();
+    store
+        .save(user, profile(1), 0, Device, ShellPreferenceUpdate::Mode(Some(Launcher)))
+        .unwrap();
+    let after = store
+        .save(user, profile(1), 1, User, ShellPreferenceUpdate::Theme(Some(CLASSIC.to_owned())))
+        .unwrap();
+    assert_eq!(after.effective_mode(), Launcher);
+    assert_eq!(after.effective_theme(), CLASSIC);
+    assert_eq!(store.load(user, profile(1)).unwrap().effective_theme(), CLASSIC);
+}
+#[test]
 fn concurrent_writers_cannot_silently_overwrite_and_profiles_are_bounded() {
     let temp = tempfile::tempdir().unwrap();
     let path = temp.path().join("preferences.sqlite");

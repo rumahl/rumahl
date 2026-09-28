@@ -10,6 +10,9 @@ export function browserProfile(): { id: string; persistence: "local" | "session"
       const existing = storage.getItem(PROFILE);
       const id = existing && /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(existing) ? existing : crypto.randomUUID();
       storage.setItem(PROFILE, id);
+      // Mirror the (non-credential) profile id into a cookie so the server can
+      // render the device-scoped workspace on the first paint.
+      try { document.cookie = `rumahl_device=${id}; Path=/; SameSite=Lax; Max-Age=31536000`; } catch { /* ignore */ }
       return { id, persistence };
     } catch { /* Restricted browsers retain a session or in-memory profile. */ }
   }

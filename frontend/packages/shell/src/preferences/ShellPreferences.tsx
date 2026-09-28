@@ -20,10 +20,20 @@ interface SettingsContext {
 const Context = createContext<SettingsContext | null>(null);
 const demoUser = { shellMode: "desktop" as const, shellTheme: DEFAULT_THEME_ID };
 const demoDefaults: Preferences = { settingsVersion: 1, ownerId: "demo", revision: 0, user: demoUser, device: { shellMode: null, shellTheme: null }, effective: demoUser };
-export function ShellPreferencesProvider({ live, children }: PropsWithChildren<{ live: ShellLiveSource | undefined }>) {
+export function ShellPreferencesProvider({ live, initial, children }: PropsWithChildren<{
+  live: ShellLiveSource | undefined;
+  initial?: { mode: ShellMode; theme: string } | undefined;
+}>) {
   // SSR and the first client render always agree; storage is accessed only after hydration.
   const [scope, setScope] = useState<PreferenceScope>("user");
-  const [preferences, setPreferences] = useState<Preferences | null>(null);
+  const [preferences, setPreferences] = useState<Preferences | null>(() => initial ? {
+    settingsVersion: 1,
+    ownerId: "snapshot",
+    revision: 0,
+    user: { shellMode: initial.mode, shellTheme: initial.theme },
+    device: { shellMode: null, shellTheme: null },
+    effective: { shellMode: initial.mode, shellTheme: initial.theme }
+  } : null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<SettingsContext["error"]>(null);
   const [persistence, setPersistence] = useState<SettingsContext["persistence"]>("memory");
@@ -67,8 +77,10 @@ export function ShellPreferencesProvider({ live, children }: PropsWithChildren<{
         const storedTheme = localStorage.getItem("rumahl.demo.shell-theme");
         if (isThemeId(storedTheme)) theme = storedTheme;
       } catch { /* demo works without storage */ }
-      const device = { shellMode: mode, shellTheme: theme };
-      apply({ ...demoDefaults, device, effective: { shellMode: mode, shellTheme: theme } });
+      // The stored demo values act as the account baseline; a browser override is
+      // represented by a non-null device value written later.
+      const user = { shellMode: mode, shellTheme: theme };
+      apply({ ...demoDefaults, user, device: { shellMode: null, shellTheme: null }, effective: user });
     } else void poll();
     writer.current = (scope, update) => {
       if (writing || !current.current || controller.signal.aborted) return;
