@@ -2,12 +2,10 @@
 .DS_Store
 *.lock
 !Cargo.lock
-/frontend/node_modules
-/frontend/packages/shell/node_modules
+node_modules/
 /frontend/packages/*/dist
 /frontend/coverage
 *.tsbuildinfo
-/frontend/packages/ssr/node_modules
 
 /.local-tools/
 

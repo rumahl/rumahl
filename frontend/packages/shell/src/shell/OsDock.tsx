@@ -1,3 +1,4 @@
+import type { ShellLayoutId } from "@rumahl/ui/variants";
 import { AppIcon } from "../apps/AppTile";
 import { RumahlMark } from "../components/RumahlMark";
 import { useShellApps } from "../apps/useShellApps";
@@ -9,7 +10,7 @@ import { describeRoute } from "../routing/routes";
 import { useI18n } from "../i18n";
 import { useShell } from "./ShellContext";
 import { StartMenu } from "./launcher/StartMenu";
-export function OsDock() {
+export function OsDock({ layout = "dock" }: { layout?: ShellLayoutId }) {
   const { t } = useI18n();
   const apps = useShellApps();
   const { state, dispatch, open, mode } = useShell();
@@ -31,7 +32,7 @@ export function OsDock() {
     return "";
   };
   return <>
-    <nav className={`os-dock os-dock--${mode}`} aria-label={t("nav.main")} onPointerLeave={() => setHover(null)}>
+    <nav className={`os-dock os-dock--${mode}`} data-layout={layout} aria-label={t("nav.main")} onPointerLeave={() => setHover(null)}>
       <button className={`dock-item dock-start${magnify("start")}`} type="button" aria-label={mode === "desktop" ? t("launcher.open") : t("launcher.home")} aria-expanded={launcher}
         onPointerEnter={() => setHover("start")}
         onClick={() => mode === "desktop" ? setLauncher((value) => !value) : open("/")}><RumahlMark /></button>

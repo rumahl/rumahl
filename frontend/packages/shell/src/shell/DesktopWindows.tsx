@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type KeyboardEvent, type PointerEvent } from "react";
 import { useLocation } from "react-router";
+import { useTheme } from "@rumahl/ui";
 import { ProtectedWindow } from "../components/ProtectedWindow";
 import { describeRoute, ShellRoutes } from "../routing/routes";
 import { RouteBoundary } from "../routing/RouteBoundary";
@@ -26,7 +27,8 @@ export function DesktopWindows() {
   )}</div>;
 }
 function HostedWindow({ item, area, order }: { item: ShellWindow; area: WorkArea; order: number }) {
-  const { snapshot, state, dispatch, open, mode } = useShell();
+  const { state, dispatch, open, mode } = useShell();
+  const { variants } = useTheme();
   const location = useLocation();
   const active = describeRoute(location.pathname).id;
   const isLauncher = mode === "launcher";
@@ -103,7 +105,7 @@ function HostedWindow({ item, area, order }: { item: ShellWindow; area: WorkArea
       onSnap={(side) => dispatch({ type: "set-window-placement", id: item.id, placement: side })}
       maximized={placement !== "floating"} onTitlePointerDown={(event) => begin(event, false)} onTitleKeyDown={(event) => keyboard(event, false)}
       onResizePointerDown={(event) => begin(event, true)} onResizeKeyDown={(event) => keyboard(event, true)}
-      subtitle={item.subtitle} title={item.title} stream={item.streamId !== undefined} variant={snapshot.theme.windowChrome}>
+      subtitle={item.subtitle} title={item.title} stream={item.streamId !== undefined} variant={variants.windowChrome}>
       <RouteBoundary location={item.location ?? "/"}><ShellRoutes location={item.location ?? "/"} /></RouteBoundary>
     </ProtectedWindow>
   </div>;

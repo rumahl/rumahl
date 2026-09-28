@@ -5,6 +5,7 @@ import { useShellApps, type ShellApp } from "../../apps/useShellApps";
 import { useI18n } from "../../i18n";
 import { useWorkspace } from "../../preferences/Workspace";
 import { ArrowIcon } from "../../icons";
+import { useTheme } from "@rumahl/ui";
 import { useShell } from "../ShellContext";
 import { useClock } from "../clock";
 import { useLauncherView, type LauncherView } from "./launcher-view";
@@ -17,8 +18,9 @@ export function LauncherHome() {
   const { snapshot, open } = useShell();
   const apps = useShellApps();
   const { effective } = useWorkspace();
+  const { variants } = useTheme();
   const recents = useRecents();
-  const [view, setView] = useLauncherView();
+  const [view, setView] = useLauncherView(variants.launcherLayout === "drawer" ? "deck" : "grid");
   const [query, setQuery] = useState("");
   const [folder, setFolder] = useState<string | null>(null);
   const [page, setPage] = useState(0);

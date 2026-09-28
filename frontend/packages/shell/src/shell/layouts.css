@@ -41,7 +41,7 @@
 .desktop-icon.is-selected { background: color-mix(in srgb, var(--rumahl-color-accent-primary) 30%, transparent); border-color: color-mix(in srgb, var(--rumahl-color-accent-primary) 55%, transparent); }
 .desktop-icon.is-dragging { opacity: .45; }
 .desktop-icon:focus-visible { outline: 3px solid #ffffff66; outline-offset: 2px; }
-.desktop-icon__art { width: 54px; height: 54px; display: grid; place-items: center; border-radius: 16px; color: white; background: linear-gradient(140deg, #3f9e74, #28694c); box-shadow: 0 6px 18px #0003; }
+.desktop-icon__art { width: 54px; height: 54px; display: grid; place-items: center; border-radius: 16px; color: white; background: var(--rumahl-ui-icon-gradient, linear-gradient(140deg, #3f9e74, #28694c)); box-shadow: 0 6px 18px #0003; }
 .desktop-icon__art.is-system { background: linear-gradient(140deg, var(--rumahl-color-accent-primary), #488887); }
 .desktop-icon__art svg { width: 26px; height: 26px; stroke: currentColor; stroke-width: 1.5; }
 .desktop-icon__label { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -95,7 +95,7 @@
 .launcher-deck-list h2 { margin: 0 0 6px; font: 500 19px/1.2 Georgia, serif; }
 .launcher-row { display: flex; align-items: center; gap: 14px; padding: 12px 14px; border: 1px solid var(--line); border-radius: 14px; background: var(--rumahl-color-panel-background); text-align: left; }
 .launcher-row:hover { background: color-mix(in srgb, var(--rumahl-color-accent-primary) 7%, var(--rumahl-color-panel-background)); }
-.launcher-row__art, .launcher-card__art { flex: 0 0 auto; width: 44px; height: 44px; display: grid; place-items: center; border-radius: 13px; color: #fff; background: linear-gradient(140deg, #3f9e74, #28694c); }
+.launcher-row__art, .launcher-card__art { flex: 0 0 auto; width: 44px; height: 44px; display: grid; place-items: center; border-radius: 13px; color: #fff; background: var(--rumahl-ui-icon-gradient, linear-gradient(140deg, #3f9e74, #28694c)); }
 .launcher-row__art.is-system, .launcher-card__art.is-system { background: linear-gradient(140deg, var(--rumahl-color-accent-primary), #488887); }
 .launcher-row__art svg, .launcher-card__art svg { width: 22px; height: 22px; stroke: currentColor; stroke-width: 1.5; }
 .launcher-row__text { display: grid; gap: 2px; flex: 1; min-width: 0; }
@@ -116,7 +116,7 @@
 .app-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(118px, 1fr)); gap: 18px; }
 .app-grid .app-tile { display: flex; align-items: center; flex-direction: column; gap: 12px; padding: 16px 8px; background: transparent; border: 1px solid transparent; border-radius: 14px; text-decoration: none; text-align: center; overflow-wrap: anywhere; font-size: 13px; }
 .app-grid .app-tile:hover { background: color-mix(in srgb, var(--rumahl-color-accent-primary) 9%, transparent); border-color: color-mix(in srgb, var(--rumahl-color-accent-primary) 20%, transparent); }
-.app-tile__icon { width: 62px; height: 62px; display: grid; place-items: center; border-radius: 18px; color: white; background: linear-gradient(140deg, #3f9e74, #28694c); box-shadow: 0 6px 18px #0002; }
+.app-tile__icon { width: 62px; height: 62px; display: grid; place-items: center; border-radius: 18px; color: white; background: var(--rumahl-ui-icon-gradient, linear-gradient(140deg, #3f9e74, #28694c)); box-shadow: 0 6px 18px #0002; }
 .app-tile__icon.is-system { background: linear-gradient(140deg, var(--rumahl-color-accent-primary), #488887); }
 .app-tile__icon svg { width: 29px; height: 29px; stroke: currentColor; stroke-width: 1.5; }
 .app-browser__note { text-align: center; color: var(--rumahl-color-text-muted); font-size: 12px; margin-top: 24px; }

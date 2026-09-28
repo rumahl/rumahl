@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useReducer, useRef } from "react";
 import { useLocation, useNavigate } from "react-router";
 import type { ShellSnapshotV1 } from "@rumahl/contracts";
+import { useTheme } from "@rumahl/ui";
 import type { ShellLiveSource } from "../live-updates";
 import { useAppCatalog } from "../apps/AppCatalog";
 import { rememberRecent } from "../apps/recents";
@@ -23,6 +24,7 @@ import { HomePage } from "../pages/HomePage";
 export function ShellLayout({ snapshot, live }: { snapshot: ShellSnapshotV1; live: ShellLiveSource | undefined }) {
   const location = useLocation();
   const navigate = useNavigate();
+  const { variants } = useTheme();
   const { t } = useI18n();
   const path = location.pathname + location.search;
   const preferences = useShellPreferences();
@@ -75,7 +77,7 @@ export function ShellLayout({ snapshot, live }: { snapshot: ShellSnapshotV1; liv
             : <LauncherLayout><RouteBoundary location={path}>{route.presentation === "window" ? null : <ShellRoutes />}</RouteBoundary></LauncherLayout>}
           <DesktopWindows />
         </div>
-        <OsDock />
+        <OsDock layout={variants.shellLayout} />
         <CommandPalette />
       </div>
     </div>
