@@ -144,8 +144,8 @@ mod tests {
 
 mod shell_preferences;
 pub use shell_preferences::{
-    BrowserProfileId, PreferenceScope, ShellMode, ShellPreferences, ShellPreferencesError,
-    ShellPreferencesRepository,
+    BrowserProfileId, DEFAULT_THEME_ID, PreferenceScope, ShellMode, ShellPreferenceUpdate,
+    ShellPreferences, ShellPreferencesError, ShellPreferencesRepository, valid_theme_id,
 };
 mod workspace;
 pub use workspace::{WorkspacePreferences, WorkspaceRepository};

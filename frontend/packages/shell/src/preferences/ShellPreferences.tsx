@@ -1,20 +1,25 @@
 import { createContext, useContext, useEffect, useRef, useState, type PropsWithChildren } from "react";
+import { DEFAULT_THEME_ID } from "@rumahl/ui/themes";
 import type { ShellLiveSource } from "../live-updates";
-import { isMode, PreferencesHttpError, requestPreferences, type Preferences, type PreferenceScope, type ShellMode } from "./client";
+import { isMode, isThemeId, PreferencesHttpError, requestPreferences, type Preferences, type PreferenceKey, type PreferenceScope, type ShellMode } from "./client";
 import { browserProfile, cachePreferences, notifyPreferencesChanged, PREFERENCES_CHANGED } from "./storage";
+type PreferenceValue = ShellMode | string | null;
 interface SettingsContext {
   scope: PreferenceScope;
   setScope: (scope: PreferenceScope) => void;
   mode: ShellMode;
+  theme: string;
   preferences: Preferences | null;
   ready: boolean;
   saving: boolean;
   error: "unavailable" | "conflict" | null;
   persistence: "local" | "session" | "memory";
   save: (scope: PreferenceScope, value: ShellMode | null) => void;
+  saveTheme: (scope: PreferenceScope, value: string | null) => void;
 }
 const Context = createContext<SettingsContext | null>(null);
-const demoDefaults: Preferences = { settingsVersion: 1, ownerId: "demo", revision: 0, user: { shellMode: "desktop" }, device: { shellMode: null }, effective: { shellMode: "desktop" } };
+const demoUser = { shellMode: "desktop" as const, shellTheme: DEFAULT_THEME_ID };
+const demoDefaults: Preferences = { settingsVersion: 1, ownerId: "demo", revision: 0, user: demoUser, device: { shellMode: null, shellTheme: null }, effective: demoUser };
 export function ShellPreferencesProvider({ live, children }: PropsWithChildren<{ live: ShellLiveSource | undefined }>) {
   // SSR and the first client render always agree; storage is accessed only after hydration.
   const [scope, setScope] = useState<PreferenceScope>("user");
@@ -23,7 +28,7 @@ export function ShellPreferencesProvider({ live, children }: PropsWithChildren<{
   const [error, setError] = useState<SettingsContext["error"]>(null);
   const [persistence, setPersistence] = useState<SettingsContext["persistence"]>("memory");
   const current = useRef<Preferences | null>(null);
-  const writer = useRef<SettingsContext["save"]>(() => {});
+  const writer = useRef<(scope: PreferenceScope, update: { key: PreferenceKey; value: PreferenceValue }) => void>(() => {});
   useEffect(() => {
     const profile = browserProfile();
     setPersistence(profile.persistence);
@@ -34,7 +39,9 @@ export function ShellPreferencesProvider({ live, children }: PropsWithChildren<{
     let generation = 0;
     function apply(value: Preferences) {
       if (controller.signal.aborted) return;
-      if (current.current?.ownerId === value.ownerId && current.current.revision === value.revision && current.current.user.shellMode === value.user.shellMode && current.current.device.shellMode === value.device.shellMode) return;
+      if (current.current?.ownerId === value.ownerId && current.current.revision === value.revision &&
+          current.current.user.shellMode === value.user.shellMode && current.current.device.shellMode === value.device.shellMode &&
+          current.current.user.shellTheme === value.user.shellTheme && current.current.device.shellTheme === value.device.shellTheme) return;
       current.current = value; setPreferences(value); cachePreferences(profile.id, value);
     }
     async function refresh() {
@@ -53,23 +60,40 @@ export function ShellPreferencesProvider({ live, children }: PropsWithChildren<{
     }
     if (!live) {
       let mode: ShellMode = "desktop";
-      try { const stored = localStorage.getItem("rumahl.demo.shell-mode"); if (isMode(stored)) mode = stored; } catch { /* demo works without storage */ }
-      apply({ ...demoDefaults, device: { shellMode: mode }, effective: { shellMode: mode } });
+      let theme = DEFAULT_THEME_ID;
+      try {
+        const storedMode = localStorage.getItem("rumahl.demo.shell-mode");
+        if (isMode(storedMode)) mode = storedMode;
+        const storedTheme = localStorage.getItem("rumahl.demo.shell-theme");
+        if (isThemeId(storedTheme)) theme = storedTheme;
+      } catch { /* demo works without storage */ }
+      const device = { shellMode: mode, shellTheme: theme };
+      apply({ ...demoDefaults, device, effective: { shellMode: mode, shellTheme: theme } });
     } else void poll();
-    writer.current = (scope, value) => {
+    writer.current = (scope, update) => {
       if (writing || !current.current || controller.signal.aborted) return;
       if (!live) {
         const previous = current.current;
-        const user = scope === "user" ? { shellMode: value ?? "desktop" as const } : previous.user;
-        const device = scope === "device" ? { shellMode: value } : previous.device;
-        const next = { ...previous, user, device, effective: { shellMode: device.shellMode ?? user.shellMode } };
+        let user = previous.user;
+        let device = previous.device;
+        if (update.key === "shell.mode") {
+          if (scope === "user") user = { ...user, shellMode: (update.value as ShellMode | null) ?? "desktop" };
+          else device = { ...device, shellMode: update.value as ShellMode | null };
+        } else {
+          if (scope === "user") user = { ...user, shellTheme: (update.value as string | null) ?? DEFAULT_THEME_ID };
+          else device = { ...device, shellTheme: update.value as string | null };
+        }
+        const next = { ...previous, user, device, effective: { shellMode: device.shellMode ?? user.shellMode, shellTheme: device.shellTheme ?? user.shellTheme } };
         apply(next);
-        try { localStorage.setItem("rumahl.demo.shell-mode", next.effective.shellMode); } catch { /* demo fallback */ }
+        try {
+          localStorage.setItem("rumahl.demo.shell-mode", next.effective.shellMode);
+          localStorage.setItem("rumahl.demo.shell-theme", next.effective.shellTheme);
+        } catch { /* demo fallback */ }
         return;
       }
       writing = true; generation += 1; setSaving(true); setError(null);
       const revision = current.current.revision;
-      void requestPreferences(live.request, profile.id, controller.signal, { revision, scope, value }).then((value) => {
+      void requestPreferences(live.request, profile.id, controller.signal, { revision, scope, key: update.key, value: update.value }).then((value) => {
         apply(value); notifyPreferencesChanged();
       }).catch(async (failure: unknown) => {
         if (controller.signal.aborted) return;
@@ -86,7 +110,14 @@ export function ShellPreferencesProvider({ live, children }: PropsWithChildren<{
     document.addEventListener("visibilitychange", refreshNow);
     return () => { controller.abort(); clearTimeout(timer); writer.current = () => {}; window.removeEventListener("focus", refreshNow); window.removeEventListener("storage", storageChanged); document.removeEventListener("visibilitychange", refreshNow); };
   }, [live]);
-  return <Context value={{ scope, setScope, mode: preferences?.effective.shellMode ?? "desktop", preferences, ready: preferences !== null, saving, error, persistence, save: (scope, value) => writer.current(scope, value) }}>{children}</Context>;
+  return <Context value={{
+    scope, setScope,
+    mode: preferences?.effective.shellMode ?? "desktop",
+    theme: preferences?.effective.shellTheme ?? DEFAULT_THEME_ID,
+    preferences, ready: preferences !== null, saving, error, persistence,
+    save: (scope, value) => writer.current(scope, { key: "shell.mode", value }),
+    saveTheme: (scope, value) => writer.current(scope, { key: "shell.theme", value })
+  }}>{children}</Context>;
 }
 export function useShellPreferences() {
   const value = useContext(Context);

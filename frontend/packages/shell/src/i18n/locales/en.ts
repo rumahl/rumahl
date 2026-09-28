@@ -102,6 +102,8 @@ export const english = {
   "mode.label": "Shell mode",
   "mode.desktop": "Desktop",
   "mode.launcher": "Launcher",
+  "theme.title": "Appearance",
+  "theme.help": "Themes change colours, transparency, shapes, materials and the entire layout.",
   "route.notFound": "Page not found",
   "route.notFoundBody": "This address does not match an available shell page.",
   "route.appUnavailable": "App unavailable",

@@ -127,6 +127,7 @@ export function LauncherHome() {
 
     {view === "deck" ? <div className="launcher-view launcher-view--drawer">
       <div className="drawer-search">{search}</div>
+      <p className="drawer-count">{t("appManager.count", { count: visible.length })}</p>
       <div className="drawer-list">
         {groups.map(([letter, entries]) => <section className="drawer-group" key={letter}>
           <h2 className="drawer-letter" aria-label={letter}>{letter}</h2>

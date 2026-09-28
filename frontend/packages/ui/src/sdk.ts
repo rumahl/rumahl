@@ -1,6 +1,6 @@
 import { defaultTokens, type Tokens } from "./tokens";
 import { resolveVariants, type VariantSelection } from "./variants";
-import { rumahlTheme, type Theme } from "./themes";
+import { themes, type Theme } from "./themes";
 
 /**
  * Developer SDK. Third-party code authors themes as data; the shell keeps
@@ -25,7 +25,7 @@ export function defineTheme(input: ThemeInput): Theme {
   };
 }
 
-const registry = new Map<string, Theme>([[rumahlTheme.id, rumahlTheme]]);
+const registry = new Map<string, Theme>(themes.map((theme) => [theme.id, theme]));
 
 export function registerTheme(theme: Theme): Theme {
   registry.set(theme.id, theme);

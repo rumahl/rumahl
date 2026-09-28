@@ -27,7 +27,10 @@ export const defaultTokens = {
   "motion.duration": "150ms",
   "motion.easing-spring": "cubic-bezier(.2, .9, .3, 1.25)",
   "layout.dock-offset": "12px",
-  "icon.gradient": "linear-gradient(140deg, #3f9e74, #28694c)"
+  "icon.gradient": "linear-gradient(140deg, #3f9e74, #28694c)",
+  "texture.wallpaper": "default",
+  "typography.family": "-apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif",
+  "typography.scale": "1"
 } as const satisfies Record<string, string>;
 
 export type TokenId = keyof typeof defaultTokens;

@@ -97,6 +97,8 @@ export const german = {
   "mode.label": "Shell-Modus",
   "mode.desktop": "Desktop",
   "mode.launcher": "Launcher",
+  "theme.title": "Erscheinungsbild",
+  "theme.help": "Themes ändern Farben, Transparenz, Formen, Materialien und das gesamte Layout.",
   "route.notFound": "Seite nicht gefunden",
   "route.notFoundBody": "Diese Adresse gehört zu keiner verfügbaren Shell-Seite.",
   "route.appUnavailable": "App nicht verfügbar",

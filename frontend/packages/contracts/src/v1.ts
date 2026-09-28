@@ -14,7 +14,29 @@ export type ThemeTokenId =
   | "color.window.titlebar.background"
   | "color.window.titlebar.foreground"
   | "radius.window"
-  | "space.shell.gap";
+  | "space.shell.gap"
+  | "color.accent"
+  | "color.accent.strong"
+  | "color.surface"
+  | "color.surface.strong"
+  | "color.outline"
+  | "color.on.wallpaper"
+  | "color.on.accent"
+  | "color.shadow"
+  | "material.blur"
+  | "material.saturation"
+  | "shape.radius.dock"
+  | "shape.radius.icon"
+  | "shape.icon.size"
+  | "shape.icon.size.large"
+  | "motion.duration"
+  | "motion.duration.fast"
+  | "motion.easing.spring"
+  | "layout.dock.offset"
+  | "icon.gradient"
+  | "texture.wallpaper"
+  | "typography.family"
+  | "typography.scale";
 export type ThemeVariantId = "window.chrome";
 
 export interface ThemeManifestV1 {

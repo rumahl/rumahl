@@ -50,7 +50,10 @@ export const classicTheme: Theme = {
     "motion.duration-fast": "70ms",
     "motion.easing-spring": "ease-out",
     "layout.dock-offset": "0px",
-    "icon.gradient": "linear-gradient(160deg, #5b8ac6, #3465a4)"
+    "icon.gradient": "linear-gradient(160deg, #5b8ac6, #3465a4)",
+    "texture.wallpaper": "none",
+    "typography.family": "Tahoma, Verdana, sans-serif",
+    "typography.scale": "0.95"
   },
   variants: { shellLayout: "taskbar", launcherLayout: "drawer", windowChrome: "compact" }
 };
@@ -58,3 +61,4 @@ export const classicTheme: Theme = {
 export const themes = [rumahlTheme, classicTheme] as const;
 
 export const defaultTheme = rumahlTheme;
+export const DEFAULT_THEME_ID = rumahlTheme.id;

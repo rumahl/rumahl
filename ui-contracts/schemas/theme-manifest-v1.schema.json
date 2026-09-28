@@ -26,14 +26,30 @@
         "color.accent.primary": { "$ref": "#/$defs/color" },
         "color.window.titlebar.background": { "$ref": "#/$defs/color" },
         "color.window.titlebar.foreground": { "$ref": "#/$defs/color" },
-        "radius.window": {
-          "type": "string",
-          "pattern": "^(0|[1-9]|[12][0-9]|3[0-2])px$"
-        },
-        "space.shell.gap": {
-          "type": "string",
-          "pattern": "^(0|[1-9]|[1-5][0-9]|6[0-4])px$"
-        }
+        "radius.window": { "$ref": "#/$defs/length" },
+        "space.shell.gap": { "$ref": "#/$defs/length" },
+        "color.accent": { "$ref": "#/$defs/colorAlpha" },
+        "color.accent.strong": { "$ref": "#/$defs/colorAlpha" },
+        "color.surface": { "$ref": "#/$defs/colorAlpha" },
+        "color.surface.strong": { "$ref": "#/$defs/colorAlpha" },
+        "color.outline": { "$ref": "#/$defs/colorAlpha" },
+        "color.on.wallpaper": { "$ref": "#/$defs/colorAlpha" },
+        "color.on.accent": { "$ref": "#/$defs/colorAlpha" },
+        "color.shadow": { "$ref": "#/$defs/colorAlpha" },
+        "material.blur": { "$ref": "#/$defs/length" },
+        "material.saturation": { "$ref": "#/$defs/cssValue" },
+        "shape.radius.dock": { "$ref": "#/$defs/length" },
+        "shape.radius.icon": { "$ref": "#/$defs/length" },
+        "shape.icon.size": { "$ref": "#/$defs/length" },
+        "shape.icon.size.large": { "$ref": "#/$defs/length" },
+        "motion.duration": { "$ref": "#/$defs/duration" },
+        "motion.duration.fast": { "$ref": "#/$defs/duration" },
+        "motion.easing.spring": { "$ref": "#/$defs/cssValue" },
+        "layout.dock.offset": { "$ref": "#/$defs/length" },
+        "icon.gradient": { "$ref": "#/$defs/cssValue" },
+        "texture.wallpaper": { "$ref": "#/$defs/cssValue" },
+        "typography.family": { "$ref": "#/$defs/cssValue" },
+        "typography.scale": { "$ref": "#/$defs/cssValue" }
       }
     },
     "variants": {
@@ -49,6 +65,24 @@
     "color": {
       "type": "string",
       "pattern": "^#[0-9A-Fa-f]{6}$"
+    },
+    "colorAlpha": {
+      "type": "string",
+      "pattern": "^#[0-9A-Fa-f]{6}([0-9A-Fa-f]{2})?$"
+    },
+    "length": {
+      "type": "string",
+      "pattern": "^(0|[1-9][0-9]?|[0-9]{3})px$"
+    },
+    "duration": {
+      "type": "string",
+      "pattern": "^(0|[1-9][0-9]{0,3})ms$"
+    },
+    "cssValue": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 256,
+      "pattern": "^[^;{}\\\\<>@]+$"
     }
   }
 }

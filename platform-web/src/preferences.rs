@@ -12,7 +12,8 @@ use axum::{
     routing::get,
 };
 use rumahl_core::{
-    BrowserProfileId, PreferenceScope, ShellMode, ShellPreferences, ShellPreferencesError, UserId,
+    BrowserProfileId, PreferenceScope, ShellMode, ShellPreferenceUpdate, ShellPreferences,
+    ShellPreferencesError, UserId, valid_theme_id,
 };
 use std::{collections::HashMap, sync::Arc};
 
@@ -22,7 +23,10 @@ pub(crate) fn routes() -> Router<Arc<GatewayState>> {
         .layer(DefaultBodyLimit::max(1024))
 }
 fn response(user: UserId, preferences: ShellPreferences) -> Response {
-    let mut response = axum::Json(serde_json::json!({"settingsVersion":1,"ownerId":user.to_string(),"revision":preferences.revision,"user":{"shellMode":preferences.user_mode.as_str()},"device":{"shellMode":preferences.device_mode.map(ShellMode::as_str)},"effective":{"shellMode":preferences.effective_mode().as_str()}})).into_response();
+    let ShellPreferences { revision, user_mode, device_mode, user_theme, device_theme } = preferences;
+    let effective_mode = device_mode.unwrap_or(user_mode).as_str();
+    let effective_theme = device_theme.clone().unwrap_or_else(|| user_theme.clone());
+    let mut response = axum::Json(serde_json::json!({"settingsVersion":1,"ownerId":user.to_string(),"revision":revision,"user":{"shellMode":user_mode.as_str(),"shellTheme":user_theme},"device":{"shellMode":device_mode.map(ShellMode::as_str),"shellTheme":device_theme},"effective":{"shellMode":effective_mode,"shellTheme":effective_theme}})).into_response();
     secure_headers(&mut response);
     response
 }
@@ -105,7 +109,7 @@ async fn save(
     let Some(object) = value.as_object() else {
         return error(StatusCode::BAD_REQUEST);
     };
-    if object.len() != 5 || value["settingsVersion"] != 1 || value["key"] != "shell.mode" {
+    if object.len() != 5 || value["settingsVersion"] != 1 {
         return error(StatusCode::BAD_REQUEST);
     }
     let Some(revision) = value["revision"]
@@ -119,18 +123,39 @@ async fn save(
         Some("device") => PreferenceScope::Device,
         _ => return error(StatusCode::BAD_REQUEST),
     };
-    let mode = if value["value"].is_null() && object.contains_key("value") {
-        None
-    } else if let Some(mode) = value["value"].as_str().and_then(ShellMode::parse) {
-        Some(mode)
-    } else {
-        return error(StatusCode::BAD_REQUEST);
+    let update = match value["key"].as_str() {
+        Some("shell.mode") => {
+            let mode = if value["value"].is_null() && object.contains_key("value") {
+                None
+            } else if let Some(mode) = value["value"].as_str().and_then(ShellMode::parse) {
+                Some(mode)
+            } else {
+                return error(StatusCode::BAD_REQUEST);
+            };
+            ShellPreferenceUpdate::Mode(mode)
+        }
+        Some("shell.theme") => {
+            let theme = if value["value"].is_null() && object.contains_key("value") {
+                None
+            } else if let Some(theme) = value["value"].as_str() {
+                if !valid_theme_id(theme) {
+                    return error(StatusCode::BAD_REQUEST);
+                }
+                Some(theme.to_owned())
+            } else {
+                return error(StatusCode::BAD_REQUEST);
+            };
+            ShellPreferenceUpdate::Theme(theme)
+        }
+        _ => return error(StatusCode::BAD_REQUEST),
     };
     let Some(repository) = state.preferences.clone() else {
         return error(StatusCode::SERVICE_UNAVAILABLE);
     };
-    match tokio::task::spawn_blocking(move || repository.save(user, device, revision, scope, mode))
-        .await
+    match tokio::task::spawn_blocking(move || {
+        repository.save(user, device, revision, scope, update)
+    })
+    .await
     {
         Ok(Ok(value)) => response(user, value),
         Ok(Err(value)) => storage_error(value),

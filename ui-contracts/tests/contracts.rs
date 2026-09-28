@@ -29,7 +29,7 @@ fn resolves_stock_and_contrasting_themes_deterministically() {
     );
     assert_eq!(contrast.compile_css(), contrast.compile_css());
     assert_ne!(stock.compile_css(), contrast.compile_css());
-    assert_eq!(contrast.compile_css().matches("--rumahl-").count(), 9);
+    assert_eq!(contrast.compile_css().matches("--rumahl-").count(), 30);
     assert!(!contrast.compile_css().contains("url("));
 }
 

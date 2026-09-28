@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 import { beforeEach, describe, expect, test } from "vitest";
 import { App } from "../../App";
 import { demoSnapshot } from "../../demo/snapshot";
@@ -14,6 +14,17 @@ describe("launcher shell", () => {
     expect(localStorage.getItem("rumahl.launcher.view.v1")).toBe("deck");
     fireEvent.click(screen.getByRole("button", { name: "Cards" }));
     expect(screen.getByRole("list")).toBeInTheDocument();
+  });
+
+  test("groups apps alphabetically in the Android app drawer", async () => {
+    render(<App snapshot={demoSnapshot} initialLocation="/" />);
+    expect(await screen.findByRole("heading", { name: "Your apps. Your space." })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "App drawer" }));
+    const list = document.querySelector(".drawer-list");
+    expect(list).not.toBeNull();
+    expect(screen.getByRole("heading", { name: "F" })).toBeInTheDocument();
+    expect(within(list as HTMLElement).getByRole("button", { name: /Files/ })).toBeInTheDocument();
+    expect(screen.getByText("3 apps")).toBeInTheDocument();
   });
 
   test("shows workspace folders and opens them", async () => {

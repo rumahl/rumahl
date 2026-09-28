@@ -1,7 +1,12 @@
 /* Shared local wallpaper; layout chrome stays first-party and theme-aware. */
 .shell {
-  background: #102b27 url("../assets/monstera.jpg") center / cover no-repeat;
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  background-color: var(--rumahl-color-canvas-background, #102b27);
+  background-image: var(--rumahl-ui-texture-wallpaper, url("../assets/monstera.jpg"));
+  background-position: center;
+  background-size: cover;
+  background-repeat: no-repeat;
+  font-family: var(--rumahl-ui-typography-family, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif);
+  font-size: calc(100% * var(--rumahl-ui-typography-scale, 1));
 }
 .shell .workspace-surfaces { margin: 8px 12px 86px; }
 .shell .desktop-workspace, .shell .launcher-workspace { background: transparent; border-radius: 0; }
@@ -152,3 +157,4 @@
 .taskbar__tray { display: flex; align-items: center; gap: 8px; margin-left: auto; padding-left: 8px; border-left: 1px solid #ffffff33; }
 .taskbar__show { padding: 0 10px; }
 .taskbar__clock { padding: 0 10px; color: inherit; font-size: 13px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.drawer-count { margin: 0 10px 8px; color: #cfe3d8; font-size: 12px; }

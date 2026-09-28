@@ -3,7 +3,8 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { ShellPreferencesProvider, useShellPreferences } from "./ShellPreferences";
 import { parsePreferences } from "./client";
 import type { ShellLiveSource } from "../live-updates";
-const defaults = { settingsVersion: 1, ownerId: "01990000-0000-7000-8000-000000000001", revision: 0, user: { shellMode: "desktop" }, device: { shellMode: null }, effective: { shellMode: "desktop" } };
+const shellTheme = "com.rumahl.default";
+const defaults = { settingsVersion: 1, ownerId: "01990000-0000-7000-8000-000000000001", revision: 0, user: { shellMode: "desktop", shellTheme }, device: { shellMode: null, shellTheme: null }, effective: { shellMode: "desktop", shellTheme } };
 function Probe() {
   const settings = useShellPreferences();
   return <><p>{settings.mode}</p><p>{settings.error}</p><button disabled={!settings.ready || settings.saving} onClick={() => settings.save("user", "launcher")}>Save user</button></>;
@@ -13,11 +14,11 @@ afterEach(() => vi.useRealTimers());
 describe("synchronized preferences", () => {
   it("rejects inconsistent effective values and unsafe revisions", () => {
     expect(parsePreferences(defaults).effective.shellMode).toBe("desktop");
-    expect(() => parsePreferences({ ...defaults, effective: { shellMode: "launcher" } })).toThrow();
+    expect(() => parsePreferences({ ...defaults, effective: { shellMode: "launcher", shellTheme } })).toThrow();
     expect(() => parsePreferences({ ...defaults, revision: Number.MAX_SAFE_INTEGER + 1 })).toThrow();
   });
   it("never loads another user's cached presentation before authenticated preferences", async () => {
-    localStorage.setItem("rumahl.preferences.v1:another-user:profile", JSON.stringify({ ...defaults, effective: { shellMode: "launcher" } }));
+    localStorage.setItem("rumahl.preferences.v1:another-user:profile", JSON.stringify({ ...defaults, effective: { shellMode: "launcher", shellTheme } }));
     let respond!: (response: Response) => void;
     const request = vi.fn(() => new Promise<Response>((resolve) => { respond = resolve; }));
     render(<ShellPreferencesProvider live={source(request)}><Probe /></ShellPreferencesProvider>);
@@ -27,7 +28,7 @@ describe("synchronized preferences", () => {
     expect(screen.getByRole("button")).toBeEnabled();
   });
   it("refreshes on conflicts without silently retrying a stale write", async () => {
-    const latest = { ...defaults, revision: 2, user: { shellMode: "launcher" }, effective: { shellMode: "launcher" } };
+    const latest = { ...defaults, revision: 2, user: { shellMode: "launcher", shellTheme }, effective: { shellMode: "launcher", shellTheme } };
     const request = vi.fn().mockResolvedValueOnce(new Response(JSON.stringify(defaults))).mockResolvedValueOnce(new Response(null, { status: 409 })).mockResolvedValueOnce(new Response(JSON.stringify(latest)));
     render(<ShellPreferencesProvider live={source(request)}><Probe /></ShellPreferencesProvider>);
     await waitFor(() => expect(screen.getByRole("button")).toBeEnabled());
@@ -42,7 +43,7 @@ describe("synchronized preferences", () => {
     let staleRead!: (response: Response) => void;
     const request = vi.fn().mockResolvedValueOnce(new Response(JSON.stringify(defaults)))
       .mockImplementationOnce(() => new Promise<Response>((resolve) => { staleRead = resolve; }))
-      .mockResolvedValueOnce(new Response(JSON.stringify({ ...defaults, revision: 1, user: { shellMode: "launcher" }, effective: { shellMode: "launcher" } })));
+      .mockResolvedValueOnce(new Response(JSON.stringify({ ...defaults, revision: 1, user: { shellMode: "launcher", shellTheme }, effective: { shellMode: "launcher", shellTheme } })));
     render(<ShellPreferencesProvider live={source(request)}><Probe /></ShellPreferencesProvider>);
     await waitFor(() => expect(screen.getByRole("button")).toBeEnabled());
     act(() => window.dispatchEvent(new Event("focus")));
@@ -56,7 +57,7 @@ describe("synchronized preferences", () => {
     const request = vi.fn().mockImplementation(async () => new Response(JSON.stringify(defaults)));
     const view = render(<ShellPreferencesProvider live={source(request)}><Probe /></ShellPreferencesProvider>);
     await act(async () => { await vi.advanceTimersByTimeAsync(0); });
-    request.mockImplementation(async () => new Response(JSON.stringify({ ...defaults, revision: 1, device: { shellMode: "launcher" }, effective: { shellMode: "launcher" } })));
+    request.mockImplementation(async () => new Response(JSON.stringify({ ...defaults, revision: 1, device: { shellMode: "launcher", shellTheme: null }, effective: { shellMode: "launcher", shellTheme } })));
     await act(async () => { await vi.advanceTimersByTimeAsync(2_000); });
     expect(screen.getByText("launcher")).toBeInTheDocument();
     view.unmount();
