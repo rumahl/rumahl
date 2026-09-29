@@ -32,43 +32,55 @@ export function surfaceContrast(surface: string, canvas: string, opacity: number
 }
 
 /**
- * Projects the rumahl colour engine onto the theme colour roles. Use this to
- * re-tint the whole OS from a single seed colour, optionally in dark mode.
- * Dark mode is derived entirely from the palette (never pure black), covers
- * every surface role, and derives text contrast from the effective surface.
+ * Projects the rumahl colour engine onto the theme colour roles. Light mode
+ * keeps neutral surfaces so the OS never inherits a strong tint
+ * from the brand colour. Dark mode is derived from the **native rumahl colour
+ * engine** (seed → dark shades) with distinct canvas, panel and frosted surface depths.
  */
 export function paletteTokens(seed: string, options: PaletteOptions = {}): Partial<Tokens> {
   const colors = themeColorValues(seed, options);
-  const palette = generateColorShades(seed, options);
-  const dark = options.mode === "dark";
-  const canvas = dark ? (findShade(palette.primary.dark, 950)?.hex ?? "#08120f") : "#e8ece7";
-  const contrast = surfaceContrast(colors.surfaceStrong, canvas, 0.84);
-  const base: Partial<Tokens> = {
+  const accent = {
     "color.accent": colors.accent,
     "color.accent.strong": colors.accentStrong,
-    "color.surface": colors.surface,
-    "color.surface.strong": colors.surfaceStrong,
     "color.on.accent": colors.onAccent,
-    "color.text.primary": contrast.textPrimary,
-    "color.text.muted": contrast.textMuted
+    "icon.gradient": `linear-gradient(150deg, ${colors.accentStrong}, ${colors.accent})`
   };
-  if (dark) {
+  const shade = (table: ReturnType<typeof generateColorShades>["primary"]["dark"], level: number, fallback: string) =>
+    findShade(table, level)?.hex ?? fallback;
+
+  if (options.mode === "dark") {
+    const dark = generateColorShades(seed, options).primary.dark;
+    const canvas = composite("#1b2028", shade(dark, 700, "#17221e"), 0.18);
+    const panel = composite("#2b313c", shade(dark, 650, "#22342b"), 0.18);
+    const strong = composite("#39414d", shade(dark, 600, "#2a4236"), 0.18);
     return {
-      ...base,
+      ...accent,
+      "color.surface": withAlpha(strong, 0.86),
+      "color.surface.strong": strong,
+      "color.text.primary": "#f5f7f6",
+      "color.text.muted": "#9aa5a0",
       "color.canvas.background": canvas,
-      "color.panel.background": findShade(palette.primary.dark, 900)?.hex ?? "#0c1a15",
-      "color.window.titlebar.background": findShade(palette.primary.dark, 800)?.hex ?? "#122a22",
-      "color.window.titlebar.foreground": contrast.textPrimary,
-      "color.on.wallpaper": findShade(palette.primary.light, 170)?.hex ?? contrast.textPrimary,
-      "color.outline": withAlpha("#ffffff", 0.18),
-      "color.shadow": "rgba(0, 0, 0, 0.5)"
+      "color.panel.background": panel,
+      "color.window.titlebar.background": panel,
+      "color.window.titlebar.foreground": "#f5f7f6",
+      "color.on.wallpaper": "#f5f5f7",
+      "color.outline": "rgba(255, 255, 255, 0.14)",
+      "color.shadow": "rgba(0, 0, 0, 0.7)"
     };
   }
+
   return {
-    ...base,
-    "color.canvas.background": canvas,
-    "color.panel.background": "#f8faf7",
-    "color.window.titlebar.background": "#f2f5f1",
-    "color.window.titlebar.foreground": contrast.textPrimary
+    ...accent,
+    "color.surface": "#ffffffd9",
+    "color.surface.strong": "#ffffff",
+    "color.text.primary": "#1d1d1f",
+    "color.text.muted": "#6e6e73",
+    "color.canvas.background": "#c9c9ce",
+    "color.panel.background": "#f5f5f7",
+    "color.window.titlebar.background": "#f5f5f7",
+    "color.window.titlebar.foreground": "#1d1d1f",
+    "color.on.wallpaper": "#ffffff",
+    "color.outline": "rgba(0, 0, 0, 0.12)",
+    "color.shadow": "rgba(0, 0, 0, 0.16)"
   };
 }

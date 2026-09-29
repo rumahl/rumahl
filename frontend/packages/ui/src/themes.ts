@@ -1,3 +1,4 @@
+import { paletteTokens } from "./palette";
 import { themeColorValues } from "./color";
 import { defaultTokens, type TokenId, type Tokens } from "./tokens";
 import { defaultVariants, type VariantSelection } from "./variants";
@@ -68,6 +69,9 @@ function px(token: TokenId, id: string, labelKey: string, fallback: number, max:
 
 const WALLPAPERS: readonly { value: string; labelKey: string }[] = [
   { value: "default", labelKey: "theme.wallpaper.default" },
+  { value: "photo:rodenn", labelKey: "theme.wallpaper.photoRoden" },
+  { value: "photo:towner", labelKey: "theme.wallpaper.photoTowner" },
+  { value: "photo:jonny", labelKey: "theme.wallpaper.photoJonny" },
   { value: "none", labelKey: "theme.wallpaper.none" },
   { value: "linear-gradient(160deg, #0f2027, #203a43, #2c5364)", labelKey: "theme.wallpaper.deep" },
   { value: "linear-gradient(160deg, #1a2a6c, #b21f1f, #fdbb2d)", labelKey: "theme.wallpaper.sunset" },
@@ -91,23 +95,33 @@ const officialParameters: readonly ThemeParameter[] = [
   { kind: "color", id: "text", token: "color.on.wallpaper", labelKey: "theme.parameter.text" },
   { kind: "choice", id: "wallpaper", token: "texture.wallpaper", labelKey: "theme.parameter.wallpaper", options: WALLPAPERS },
   {
+    kind: "range", id: "morphism", token: "material.morphism", labelKey: "theme.parameter.morphism", min: 0, max: 1, step: 0.05,
+    format: (value) => value.toFixed(2),
+    parse: (value) => {
+      const parsed = Number.parseFloat(value);
+      return Number.isFinite(parsed) ? parsed : 1;
+    }
+  },
+  {
     kind: "range", id: "opacity", token: "material.opacity", labelKey: "theme.parameter.opacity", min: 0.2, max: 1, step: 0.02,
     format: (value) => value.toFixed(2),
     parse: (value) => {
       const parsed = Number.parseFloat(value);
-      return Number.isFinite(parsed) ? parsed : 0.84;
+      return Number.isFinite(parsed) ? parsed : 0.7;
     }
   },
-  px("material.blur", "blur", "theme.parameter.blur", 34, 48),
+  px("material.blur", "blur", "theme.parameter.blur", 60, 120),
   {
     kind: "range", id: "saturation", token: "material.saturation", labelKey: "theme.parameter.saturation", min: 1, max: 3, step: 0.1,
     format: (value) => value.toFixed(1),
     parse: (value) => {
       const parsed = Number.parseFloat(value);
-      return Number.isFinite(parsed) ? parsed : 1.6;
+      return Number.isFinite(parsed) ? parsed : 1.8;
     }
   },
-  px("shape.radius.dock", "radius", "theme.parameter.radius", 22, 30)
+  px("shape.radius.dock", "radius", "theme.parameter.radius", 24, 40),
+  px("shape.radius.window", "window", "theme.parameter.window", 12, 32),
+  px("shape.radius.icon", "icon", "theme.parameter.icon", 15, 30)
 ];
 
 /** The classic fixture offers its own, different set of parameters. */
@@ -121,7 +135,7 @@ const classicParameters: readonly ThemeParameter[] = [
 export const rumahlTheme: Theme = {
   id: "com.rumahl.default",
   name: "rumahl",
-  tokens: defaultTokens,
+  tokens: { ...defaultTokens, ...paletteTokens(defaultTokens["color.accent"]) },
   variants: defaultVariants,
   parameters: officialParameters,
   modes: ["light", "dark"]
@@ -148,6 +162,7 @@ export const classicTheme: Theme = {
     "material.blur": "0px",
     "material.saturation": "1",
     "material.opacity": "1",
+    "material.morphism": "0",
     "shape.radius.window": "4px",
     "shape.radius.dock": "6px",
     "shape.radius.icon": "6px",

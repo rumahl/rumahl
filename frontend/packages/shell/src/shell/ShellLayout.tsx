@@ -22,10 +22,25 @@ import { useShellPreferences } from "../preferences/ShellPreferences";
 import { useWorkspace } from "../preferences/Workspace";
 import { HomePage } from "../pages/HomePage";
 
+function WallpaperVideo({ src }: { src: string }) {
+  const ref = useRef<HTMLVideoElement>(null);
+  useEffect(() => {
+    const video = ref.current;
+    if (!video) return;
+    video.muted = true;
+    const played = video.play();
+    if (played) void played.catch(() => undefined);
+  }, [src]);
+  return <video ref={ref} className="wallpaper-video" src={src} autoPlay muted loop playsInline />;
+}
+import { resolveWallpaper } from "../wallpapers";
+import { configureGlass, svgRefractionSupported } from "../glass-engine/useGlassEngine";
+import { useTestMedia } from "./test-media";
+
 export function ShellLayout({ snapshot, live }: { snapshot: ShellSnapshotV1; live: ShellLiveSource | undefined }) {
   const location = useLocation();
   const navigate = useNavigate();
-  const { variants } = useTheme();
+  const { theme, variants, tokens } = useTheme();
   const { t } = useI18n();
   const path = location.pathname + location.search;
   const preferences = useShellPreferences();
@@ -78,8 +93,40 @@ export function ShellLayout({ snapshot, live }: { snapshot: ShellSnapshotV1; liv
   }, [workspace.ready, workspace.restore, workspace.effective, catalog.status, catalog.apps, route.presentation, routedWindow, t]);
   const open = (target: string) => { const next = localPath(target); rememberRecent(next); void navigate(next); };
   const setMode = (next: ShellMode) => { preferences.save("device", next); };
+  const glassEngine = workspace.effective.appearance.glassEngine ?? "canvas";
+  const material = Number(tokens["material.opacity"]) >= 1 || Number(tokens["material.morphism"]) <= 0 ? "solid" : "translucent";
+  const scheme = workspace.effective.appearance.mode ?? "light";
+  const wallpaper = resolveWallpaper(tokens["texture.wallpaper"]);
+  const wallpaperUrl = /^url\((.*)\)$/.exec(wallpaper)?.[1]?.replace(/^["']|["']$/g, "") ?? null;
+  const media = useTestMedia();
+  const showVideo = media.video !== null;
+  const mediaSrc = showVideo ? media.video : media.image ?? wallpaperUrl;
+  useEffect(() => {
+    if (typeof document === "undefined") return;
+    // The reference stylesheet keys its light theme off `body.light`.
+    document.body.classList.toggle("light", scheme === "light");
+  }, [scheme]);
+  const appearance = workspace.effective.appearance;
+  const glassEnabled = appearance.glassEnabled !== false;
+  // SVG (`backdrop-filter: url()`) cannot sample a composited video layer, so a
+  // video wallpaper uses WebGL, which reads the video texture directly.
+  const glassBackend = appearance.glassBackend ?? "auto";
+  const glassQuality = appearance.glassQuality ?? "auto";
+  // An animated (promoted) wallpaper is excluded from the SVG backdrop, so SVG
+  // switches the wallpaper to a still layer.
+  const svgActive = glassEnabled && (glassBackend === "svg" || (glassBackend === "auto" && svgRefractionSupported()));
+  useEffect(() => {
+    configureGlass({ enabled: glassEnabled, backend: glassBackend, quality: glassQuality });
+  }, [glassEnabled, glassBackend, glassQuality]);
   return <ShellContext value={{ snapshot, live, state, dispatch, mode, setMode, open }}>
-    <div className="shell" data-shell-build={snapshot.shellBuildId} data-shell-mode={mode} data-preferences-revision={preferences.preferences?.revision}>
+    <div className={`scene shell${showVideo ? "" : " image-mode"}${appearance.wallpaperMotion === false || svgActive ? " no-motion" : ""}`} data-theme={theme.id} data-material={material} data-glass={glassEngine} data-scheme={scheme} data-shell-build={snapshot.shellBuildId} data-shell-mode={mode} data-preferences-revision={preferences.preferences?.revision}>
+      <div className="wallpaper media-wall" aria-hidden="true">
+        {showVideo
+          ? media.video ? <WallpaperVideo key={media.video} src={media.video} />
+            : null
+          : mediaSrc ? <img key={mediaSrc} className="wallpaper-image" src={mediaSrc} alt="" />
+            : null}
+      </div>
       <div className="shell__workspace">
         <MenuBar />
         <div className="workspace-surfaces">
@@ -87,9 +134,9 @@ export function ShellLayout({ snapshot, live }: { snapshot: ShellSnapshotV1; liv
             : <LauncherLayout><RouteBoundary location={path}>{route.presentation === "window" ? null : <ShellRoutes />}</RouteBoundary></LauncherLayout>}
           <DesktopWindows />
         </div>
-        {variants.shellLayout === "taskbar" ? <Taskbar /> : <OsDock />}
         <CommandPalette />
       </div>
+      {variants.shellLayout === "taskbar" ? <Taskbar /> : <OsDock />}
     </div>
   </ShellContext>;
 }

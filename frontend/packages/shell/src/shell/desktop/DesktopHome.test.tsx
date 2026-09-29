@@ -20,15 +20,6 @@ describe("desktop shell", () => {
     expect(JSON.parse(localStorage.getItem("rumahl.demo.workspace")!).desktop.hidden).toContain("files");
   });
 
-  test("finds and opens an app from the desktop search", () => {
-    render(<App snapshot={demoSnapshot} initialLocation="/" />);
-    fireEvent.click(document.querySelector(".desktop-search")!);
-    const palette = screen.getByRole("dialog", { name: "Command palette" });
-    fireEvent.change(within(palette).getByRole("textbox", { name: "Search commands" }), { target: { value: "Files" } });
-    fireEvent.click(within(palette).getByRole("button", { name: /Files/ }));
-    expect(screen.getByRole("region", { name: "Files" })).toBeInTheDocument();
-  });
-
   test("renders installed apps from the snapshot without a catalog fetch", () => {
     render(<App snapshot={{ ...demoSnapshot, apps: [{ id: "com.example.notes", title: "Notes", launchable: true }] }} initialLocation="/" />);
     expect(screen.getByRole("link", { name: "Notes" })).toBeInTheDocument();

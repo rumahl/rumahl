@@ -65,7 +65,7 @@ function validTheme(value: unknown): boolean {
 function validTokens(value: unknown): boolean {
   if (!isRecord(value)) return false;
   const entries = Object.entries(value);
-  return entries.length <= 32 && entries.every(([, token]) =>
+  return entries.length <= 48 && entries.every(([, token]) =>
     typeof token === "string" && token.length > 0 && token.length <= 256 && !/[;{}\\<>@]/.test(token)
   );
 }

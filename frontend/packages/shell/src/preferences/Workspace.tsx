@@ -9,7 +9,21 @@ export interface DesktopArrangement { order: string[]; hidden: string[]; widgets
 export type LauncherViewId = "grid" | "deck" | "canvas";
 export type AppearanceMode = "light" | "dark";
 /** Device appearance customization: palette seed, light/dark mode, token overrides. */
-export interface AppearanceSettings { seed: string | null; mode: AppearanceMode | null; tokens: { [key: string]: string } }
+export type GlassEngine = "css" | "canvas";
+export type GlassBackend = "auto" | "svg" | "webgl" | "css";
+export type GlassQuality = "auto" | "high" | "balanced" | "low";
+export interface AppearanceSettings {
+  autoColor?: boolean;
+  wallpaperTint?: boolean;
+  wallpaperMotion?: boolean;
+  glassEngine?: GlassEngine;
+  glassEnabled?: boolean;
+  glassBackend?: GlassBackend;
+  glassQuality?: GlassQuality;
+  seed: string | null;
+  mode: AppearanceMode | null;
+  tokens: { [key: string]: string };
+}
 export interface Workspace { version: 1; windows: SavedWindow[]; folders: AppFolder[]; desktop: DesktopArrangement; launcherView: LauncherViewId | null; appearance: AppearanceSettings }
 interface Record { ownerId: string; revision: number; user: Workspace | null; device: Workspace | null }
 export const emptyAppearance: AppearanceSettings = { seed: null, mode: null, tokens: {} };
@@ -48,7 +62,16 @@ export function parseAppearance(value: unknown): AppearanceSettings {
       if (typeof raw === "string" && raw.length > 0 && raw.length <= 256 && !/[;{}\\<>@]/.test(raw)) tokens[key] = raw;
     }
   }
-  return { seed, mode, tokens };
+  return {
+    seed, mode, tokens,
+    ...(record.autoColor === true ? { autoColor: true } : {}),
+    ...(typeof record.wallpaperTint === "boolean" ? { wallpaperTint: record.wallpaperTint } : {}),
+    ...(typeof record.wallpaperMotion === "boolean" ? { wallpaperMotion: record.wallpaperMotion } : {}),
+    ...(record.glassEngine === "css" || record.glassEngine === "canvas" ? { glassEngine: record.glassEngine } : {}),
+    ...(typeof record.glassEnabled === "boolean" ? { glassEnabled: record.glassEnabled } : {}),
+    ...(["auto", "svg", "webgl", "css"].includes(record.glassBackend as string) ? { glassBackend: record.glassBackend as GlassBackend } : {}),
+    ...(["auto", "high", "balanced", "low"].includes(record.glassQuality as string) ? { glassQuality: record.glassQuality as GlassQuality } : {})
+  };
 }
 interface ContextValue { record: Record | null; effective: Workspace; ready: boolean; busy: boolean; error: string | null; save: (scope: PreferenceScope, value: Workspace | null) => Promise<boolean>; restore: number; requestRestore: () => void }
 const Context = createContext<ContextValue | null>(null);

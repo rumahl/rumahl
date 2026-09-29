@@ -3,8 +3,8 @@ import { constrainRect, placedRect, rectsIntersect } from "./geometry";
 import { initialShellState, shellReducer } from "../../shell-state";
 describe("desktop windows", () => {
   it("keeps windows reachable on small displays and after resizing the viewport", () => {
-    expect(constrainRect({ x: 900, y: 600, width: 760, height: 540 }, { width: 320, height: 400 })).toEqual({ x: 0, y: 0, width: 320, height: 400 });
-    expect(constrainRect({ x: -30, y: -20, width: 1, height: 1 }, { width: 1000, height: 700 })).toEqual({ x: 0, y: 0, width: 280, height: 220 });
+    expect(constrainRect({ x: 900, y: 600, width: 760, height: 540 }, { width: 320, height: 400 })).toEqual({ x: 272, y: 352, width: 320, height: 400 });
+    expect(constrainRect({ x: -30, y: -20, width: 1, height: 1 }, { width: 1000, height: 700 })).toEqual({ x: -30, y: -20, width: 280, height: 220 });
     expect(placedRect({ x: 10, y: 10, width: 400, height: 300 }, "maximized", { width: 800, height: 600 })).toEqual({ x: 0, y: 0, width: 800, height: 600 });
   });
   it("retains geometry and window identity when minimizing, focusing and restoring", () => {

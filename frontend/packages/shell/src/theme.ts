@@ -2,16 +2,14 @@ import type { ShellSnapshotV1 } from "@rumahl/contracts";
 import { getTheme } from "@rumahl/ui/sdk";
 import { applyTokens, defaultTokens, type Tokens } from "@rumahl/ui/tokens";
 import type { Theme } from "@rumahl/ui/themes";
-import wallpaperUrl from "./assets/monstera.jpg";
+import { resolveWallpaper } from "./wallpapers";
 import { emptyAppearance, parseWorkspace } from "./preferences/Workspace";
 import { applyTuning } from "./preferences/theme-tuning";
 
 /** Builds the server-resolved theme, substituting the bundled wallpaper. */
 export function buildSnapshotTheme(snapshot: ShellSnapshotV1): Theme {
   const base: Tokens = { ...defaultTokens, ...(snapshot.theme.tokens as Partial<Tokens>) };
-  const tokens = base["texture.wallpaper"] === "default"
-    ? { ...base, "texture.wallpaper": `url(${wallpaperUrl})` }
-    : base;
+  const tokens = { ...base, "texture.wallpaper": resolveWallpaper(base["texture.wallpaper"]) };
   return {
     id: snapshot.theme.id,
     name: snapshot.theme.id,
@@ -33,9 +31,7 @@ export function resolveActiveTheme(snapshotTheme: Theme, preferencesTheme: strin
 
 /** Resolves the wallpaper sentinel after a theme's tokens were customized. */
 export function resolveTokens(tokens: Tokens): Tokens {
-  return tokens["texture.wallpaper"] === "default"
-    ? { ...tokens, "texture.wallpaper": `url(${wallpaperUrl})` }
-    : tokens;
+  return { ...tokens, "texture.wallpaper": resolveWallpaper(tokens["texture.wallpaper"]) };
 }
 
 /** Parses the device appearance customization embedded in the snapshot. */

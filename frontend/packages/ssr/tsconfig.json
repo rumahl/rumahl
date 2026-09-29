@@ -3,6 +3,8 @@
   "compilerOptions": {
     "jsx": "react-jsx",
     "noEmit": true,
+    "allowJs": true,
+    "checkJs": false,
     "types": ["node", "vite/client", "vitest/globals"]
   },
   "include": ["src", "vite.config.ts"]

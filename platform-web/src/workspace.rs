@@ -34,6 +34,20 @@ struct Workspace {
 #[serde(deny_unknown_fields, rename_all = "camelCase")]
 struct Appearance {
     #[serde(default)]
+    auto_color: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    wallpaper_tint: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    wallpaper_motion: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    glass_engine: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    glass_enabled: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    glass_backend: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    glass_quality: Option<String>,
+    #[serde(default)]
     seed: Option<String>,
     #[serde(default)]
     mode: Option<String>,
@@ -53,6 +67,18 @@ fn valid_appearance(appearance: &Appearance) -> bool {
             .mode
             .as_deref()
             .map_or(true, |mode| ["light", "dark"].contains(&mode))
+        && appearance
+            .glass_engine
+            .as_deref()
+            .map_or(true, |engine| ["css", "canvas"].contains(&engine))
+        && appearance
+            .glass_backend
+            .as_deref()
+            .map_or(true, |backend| ["auto", "svg", "webgl", "css"].contains(&backend))
+        && appearance
+            .glass_quality
+            .as_deref()
+            .map_or(true, |quality| ["auto", "high", "balanced", "low"].contains(&quality))
         && appearance.tokens.len() <= 64
         && appearance.tokens.iter().all(|(key, value)| {
             !key.is_empty()
@@ -249,5 +275,20 @@ async fn save(
         Ok(Ok(v)) => response(owner, v),
         Ok(Err(e)) => storage_error(e),
         _ => error(StatusCode::SERVICE_UNAVAILABLE),
+    }
+}
+
+#[cfg(test)]
+mod appearance_tests {
+    use super::*;
+
+    #[test]
+    fn automatic_colour_roundtrips_and_defaults_off() {
+        let old: Appearance = serde_json::from_str(r#"{"seed":null,"mode":null,"tokens":{}}"#).unwrap();
+        assert!(!old.auto_color);
+        let new: Appearance = serde_json::from_str(r#"{"autoColor":true,"tokens":{}}"#).unwrap();
+        assert!(valid_appearance(&new));
+        let stored = serde_json::to_value(&new).unwrap();
+        assert_eq!(stored["autoColor"], true);
     }
 }

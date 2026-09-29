@@ -11,6 +11,10 @@ describe("default themes", () => {
     expect(classicTheme.variants.shellLayout).toBe("taskbar");
     expect(classicTheme.variants.launcherLayout).toBe("drawer");
     expect(classicTheme.tokens["material.blur"]).toBe("0px");
+    expect(classicTheme.tokens["material.morphism"]).toBe("0");
+    expect(rumahlTheme.tokens["material.morphism"]).toBe("1");
+    const morphism = rumahlTheme.parameters.find((parameter) => parameter.kind === "range" && parameter.token === "material.morphism");
+    expect(morphism && morphism.kind === "range" ? morphism.min : null).toBe(0);
     expect(classicTheme.tokens["shape.radius.dock"]).not.toBe(rumahlTheme.tokens["shape.radius.dock"]);
     expect(rumahlTheme.parameters.some((parameter) => parameter.kind === "color")).toBe(true);
     expect(rumahlTheme.parameters.some((parameter) => parameter.kind === "choice")).toBe(true);

@@ -48,9 +48,9 @@ export function MenuBar() {
     </div>;
   }
 
-  return <header ref={bar} className="menubar">
-    <nav className="menubar__menus" aria-label={t("menubar.label")}>
-      {menu("system", <span className="menubar__brand" aria-label="rumahl OS"><RumahlMark /></span>, <>
+  return <header ref={bar} className="menubar topbar-glass">
+    <nav className="menubar__menus menuitems" aria-label={t("menubar.label")}>
+      {menu("system", <span className="menubar__brand brand" aria-label="rumahl OS"><RumahlMark /></span>, <>
         <p className="menubar__about">{t("menubar.about")}<small>{snapshot.shellBuildId.slice(0, 8)}</small></p>
         <div className="menubar__separator" role="separator" />
         <button role="menuitem" type="button" onClick={act(() => open("/settings"))}>{t("nav.settings")}</button>
@@ -80,7 +80,7 @@ export function MenuBar() {
               onClick={act(() => { dispatch({ type: "focus-window", id: item.id }); open(item.location ?? "/"); })}>{item.title}</button>)}
       </>)}
     </nav>
-    <div className="menubar__status">
+    <div className="menubar__status menuright">
       <button className="menubar__item menubar__spotlight" type="button" aria-label={t("search.system")} title={t("menubar.spotlight")}
         aria-expanded={state.commandPaletteOpen} onClick={() => dispatch({ type: "toggle-command-palette" })}><SearchIcon /></button>
       {preferences.error ? <span className="menubar__error" role="status">{t(`preferences.${preferences.error}`)}</span> : null}

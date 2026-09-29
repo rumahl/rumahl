@@ -1,104 +1,47 @@
-import { useTheme } from "@rumahl/ui";
 import { themes } from "@rumahl/ui/themes";
-import type { MessageKey } from "../i18n/locales/en";
+import { useTheme } from "@rumahl/ui";
 import { useShellPreferences } from "../preferences/ShellPreferences";
-import { useThemeTuning } from "../preferences/theme-tuning";
 import { WorkspaceSettings } from "../preferences/WorkspaceSettings";
-import { useRoutes } from "react-router";
-import { SectionPlaceholder } from "../components/SectionPlaceholder";
+import { useLocation, useRoutes } from "react-router";
+import { DisplaySettings } from "./DisplaySettings";
+import { RumahlMark } from "../components/RumahlMark";
+import { SettingsIcon, DesktopIcon, GridIcon } from "../icons";
 import { useI18n } from "../i18n";
 import { ShellLink } from "../routing/ShellLink";
 import { UnavailablePage } from "./UnavailablePage";
 
 export function SettingsPage() {
   const { t } = useI18n();
+  const { pathname } = useLocation();
+  const preferences = useShellPreferences();
+  const { theme } = useTheme();
   const content = useRoutes([
-    { index: true, element: <SectionPlaceholder section="settings" /> },
+    { index: true, element: <SettingsOverview /> },
     { path: "display", Component: DisplaySettings },
     { path: "workspace", Component: WorkspaceSettings },
     { path: "*", Component: UnavailablePage }
   ]);
-  return <div><nav aria-label={t("nav.settings")} className="settings-tabs">
-    <ShellLink to="/settings">{t("nav.settings")}</ShellLink>
-    <ShellLink to="/settings/display">{t("mode.label")}</ShellLink>
-    <ShellLink to="/settings/workspace">{t("workspace.title")}</ShellLink>
-  </nav>{content}</div>;
-}
-function DisplaySettings() {
-  const { t } = useI18n();
-  const settings = useShellPreferences();
-  const { scope, setScope } = settings;
-  const selected = settings.preferences?.[scope].shellMode;
-  const selectedTheme = settings.preferences?.[scope].shellTheme;
-  const effectiveTheme = themes.find((item) => item.id === settings.theme);
-  const { tokens, theme: activeTheme } = useTheme();
-  const { tuning, setSeed, setMode, setToken, reset } = useThemeTuning();
-  return <section><h1>{t("mode.label")}</h1>
-    <p>{t("preferences.precedence")}</p>
-    <label>{t("preferences.scope")} <select aria-label={t("preferences.scope")} value={scope} onChange={(event) => setScope(event.target.value === "device" ? "device" : "user")}>
-      <option value="user">{t("preferences.user")}</option><option value="device">{t("preferences.device")}</option>
-    </select></label>
-    <fieldset disabled={!settings.ready || settings.saving}>
-      <legend>{t("mode.label")}</legend>
-      <button type="button" aria-pressed={selected === "desktop"} onClick={() => settings.save(scope, "desktop")}>{t("mode.desktop")}</button>
-      <button type="button" aria-pressed={selected === "launcher"} onClick={() => settings.save(scope, "launcher")}>{t("mode.launcher")}</button>
-      {scope === "device" ? <button type="button" aria-pressed={selected === null} onClick={() => settings.save("device", null)}>{t("preferences.inherit")}</button> : null}
-    </fieldset>
-    <fieldset disabled={!settings.ready || settings.saving}>
-      <legend>{t("theme.title")}</legend>
-      <p>{t("theme.help")}</p>
-      {themes.map((theme) => <button key={theme.id} type="button" aria-pressed={selectedTheme === theme.id} onClick={() => settings.saveTheme(scope, theme.id)}>{theme.name}</button>)}
-      {scope === "device" ? <button type="button" aria-pressed={selectedTheme === null} onClick={() => settings.saveTheme("device", null)}>{t("preferences.inherit")}</button> : null}
-    </fieldset>
-    {activeTheme.parameters.length > 0 ? <fieldset disabled={!settings.ready}>
-      <legend>{t("theme.customize")}</legend>
-      {activeTheme.parameters.map((parameter) => {
-        const label = t(parameter.labelKey as MessageKey);
-        const current = tokens[parameter.token];
-        if (parameter.kind === "range") {
-          const value = parameter.parse(current);
-          return <label key={parameter.id} className="theme-parameter">
-            <span>{label}</span>
-            <input type="range" aria-label={label} min={parameter.min} max={parameter.max} step={parameter.step} value={value}
-              onChange={(event) => setToken(parameter.token, parameter.format(Number(event.target.value)))} />
-            <output>{parameter.format(value)}</output>
-          </label>;
-        }
-        if (parameter.kind === "color") {
-          const assign = (value: string) => parameter.seed ? setSeed(value) : setToken(parameter.token, value);
-          return <label key={parameter.id} className="theme-parameter">
-            <span>{label}</span>
-            <input type="color" aria-label={label} value={toHex(current)} onChange={(event) => assign(event.target.value)} />
-            {parameter.presets ? <span className="theme-swatches">{parameter.presets.map((preset) => (
-              <button key={preset.id} type="button" className={`theme-swatch theme-swatch--${preset.id}`}
-                aria-label={t(preset.labelKey as MessageKey)} title={t(preset.labelKey as MessageKey)}
-                aria-pressed={toHex(current).toLowerCase() === preset.value.toLowerCase()} onClick={() => assign(preset.value)} />
-            ))}</span> : null}
-            <output>{toHex(current)}</output>
-          </label>;
-        }
-        return <label key={parameter.id} className="theme-parameter">
-          <span>{label}</span>
-          <select aria-label={label} value={current} onChange={(event) => setToken(parameter.token, event.target.value)}>
-            {parameter.options.map((option) => <option key={option.value} value={option.value}>{t(option.labelKey as MessageKey)}</option>)}
-          </select>
-        </label>;
-      })}
-      <button type="button" onClick={reset}>{t("theme.reset")}</button>
-    </fieldset> : null}
-    {activeTheme.modes.includes("dark") ? <fieldset disabled={!settings.ready}>
-      <legend>{t("theme.parameter.mode")}</legend>
-      <button type="button" aria-pressed={(tuning.mode ?? "light") === "light"} onClick={() => setMode("light")}>{t("theme.mode.light")}</button>
-      <button type="button" aria-pressed={tuning.mode === "dark"} onClick={() => setMode("dark")}>{t("theme.mode.dark")}</button>
-    </fieldset> : null}
-    <p>{t("preferences.effective")}: {t(`mode.${settings.mode}`)} · {effectiveTheme?.name ?? settings.theme}</p>
-    <p role="status">{settings.saving ? t("preferences.saving") : settings.error ? t(`preferences.${settings.error}`) : settings.ready ? t("preferences.synced") : t("preferences.loading")}</p>
-    {settings.persistence !== "local" ? <p>{t("preferences.temporary")}</p> : null}
-  </section>;
+  return <div className="window-body settings-layout"><aside className="sidebar settings-sidebar">
+    <div className="side-profile settings-identity"><span className="brandmark" aria-hidden="true"><RumahlMark /></span><div><strong>rumahl OS</strong><div className="small">{t(`mode.${preferences.mode}`)} · {themes.find(item => item.id === theme.id)?.name ?? theme.name}</div></div></div>
+    <div className="nav-heading">{t("preferences.user")}</div>
+    <nav aria-label={t("nav.settings")}>
+      <ShellLink className="nav-item" to="/settings" aria-current={pathname === "/settings" ? "page" : undefined}><SettingsIcon /><span>{t("nav.settings")}</span></ShellLink>
+      <ShellLink className="nav-item" to="/settings/display" aria-current={pathname.startsWith("/settings/display") ? "page" : undefined}><DesktopIcon /><span>{t("mode.label")}</span></ShellLink>
+      <ShellLink className="nav-item" to="/settings/workspace" aria-current={pathname.startsWith("/settings/workspace") ? "page" : undefined}><GridIcon /><span>{t("workspace.title")}</span></ShellLink>
+    </nav>
+    <div className="side-bottom"><div className="build">rumahl OS <b>Preview</b><br />{themes.find(item => item.id === theme.id)?.name ?? theme.name}</div></div>
+  </aside><div className="content settings-content" key={pathname}>{content}</div></div>;
 }
 
-/** Normalizes a token colour to the `#rrggbb` form an `<input type="color">` needs. */
-function toHex(value: string): string {
-  const match = /^#([0-9a-fA-F]{6})/.exec(value);
-  return match ? `#${match[1]}` : "#000000";
+function SettingsOverview() {
+  const { t } = useI18n();
+  const settings = useShellPreferences();
+  const { theme } = useTheme();
+  return <section className="settings-overview">
+    <header className="settings-page-heading"><div className="heading-flex"><h1 className="pagetitle">{t("nav.settings")}</h1><span className="badge">rumahl OS</span></div><p className="pagedesc">{t("settings.overviewHelp")}</p></header>
+    <div className="settings-overview-links">
+      <ShellLink to="/settings/display"><DesktopIcon /><span><strong>{t("mode.label")}</strong><small>{t(`mode.${settings.mode}`)} · {themes.find(item => item.id === theme.id)?.name ?? theme.name}</small></span><span aria-hidden="true">›</span></ShellLink>
+      <ShellLink to="/settings/workspace"><GridIcon /><span><strong>{t("workspace.title")}</strong><small>{t("settings.workspaceHelp")}</small></span><span aria-hidden="true">›</span></ShellLink>
+    </div>
+  </section>;
 }

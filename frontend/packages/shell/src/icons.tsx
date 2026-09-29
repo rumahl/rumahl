@@ -79,3 +79,29 @@ export function ShieldIcon(props: IconProps) {
     </IconBase>
   );
 }
+
+export function DesktopIcon(props: IconProps) {
+  return <IconBase {...props}><rect x="3" y="4" width="18" height="13" rx="2" /><path d="M12 17v4M8 21h8" /></IconBase>;
+}
+
+/** First-party window controls (rumahl, not the platform's). */
+export function WindowMinimizeIcon(props: IconProps) {
+  return <IconBase stroke="currentColor" strokeWidth={2} strokeLinecap="round" {...props}><path d="M6 12h12" /></IconBase>;
+}
+
+export function WindowMaximizeIcon(props: IconProps) {
+  return <IconBase stroke="currentColor" strokeWidth={2} strokeLinejoin="round" {...props}><rect x="6" y="6" width="12" height="12" rx="3" /></IconBase>;
+}
+
+export function WindowRestoreIcon(props: IconProps) {
+  return (
+    <IconBase stroke="currentColor" strokeWidth={2} strokeLinejoin="round" {...props}>
+      <rect x="9" y="9" width="9" height="9" rx="2.5" />
+      <path d="M6 15V8.5A2.5 2.5 0 0 1 8.5 6H15" strokeLinecap="round" />
+    </IconBase>
+  );
+}
+
+export function WindowCloseIcon(props: IconProps) {
+  return <IconBase stroke="currentColor" strokeWidth={2} strokeLinecap="round" {...props}><path d="M7 7l10 10M17 7 7 17" /></IconBase>;
+}

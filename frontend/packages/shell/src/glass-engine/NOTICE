@@ -1,0 +1,3 @@
+@rumahl/glass-engine (vendored)
+Independent rumahl Glass Engine MVP, Apache-2.0. Ported into @rumahl/shell.
+See ./LICENSE. Architecture informed by liquidglass; no third-party source copied.

@@ -60,4 +60,19 @@ describe("theme selection", () => {
     expect(JSON.parse(localStorage.getItem("rumahl.demo.workspace")!).appearance.tokens["material.opacity"]).toBe("0.50");
     expect(document.documentElement.style.getPropertyValue("--rumahl-ui-material-opacity")).toBe("0.50");
   });
+  test("turns surface effects off atomically without changing the palette", async () => {
+    const rendered = render(<App snapshot={demoSnapshot} initialLocation="/settings/display" />);
+    fireEvent.click(await screen.findByRole("button", { name: "Red" }));
+    const control = screen.getByRole("switch", { name: "Transparency effects" });
+    fireEvent.click(control);
+    expect(document.querySelector(".shell")).toHaveAttribute("data-material", "solid");
+    expect(document.documentElement.style.getPropertyValue("--rumahl-ui-material-blur")).toBe("0px");
+    expect(document.documentElement.style.getPropertyValue("--rumahl-ui-color-accent")).toBe("#e5484d");
+    rendered.unmount();
+    render(<App snapshot={demoSnapshot} initialLocation="/settings/display" />);
+    expect(await screen.findByRole("switch", { name: "Transparency effects" })).not.toBeChecked();
+    fireEvent.click(screen.getByRole("switch", { name: "Transparency effects" }));
+    expect(document.querySelector(".shell")).toHaveAttribute("data-material", "translucent");
+  });
+
 });

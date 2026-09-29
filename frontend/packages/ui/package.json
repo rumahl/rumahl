@@ -10,6 +10,8 @@
     "./tokens": "./src/tokens.ts",
     "./themes": "./src/themes.ts",
     "./variants": "./src/variants.ts",
+    "./glass": "./src/glass.ts",
+    "./slots": "./src/slots.tsx",
     "./sdk": "./src/sdk.ts"
   },
   "scripts": {

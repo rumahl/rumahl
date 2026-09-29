@@ -1,15 +1,20 @@
 import { AppIcon } from "../apps/AppTile";
 import { RumahlMark } from "../components/RumahlMark";
 import { useShellApps } from "../apps/useShellApps";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useLocation } from "react-router";
-import { HomeIcon, GridIcon, SettingsIcon, PulseIcon } from "../icons";
+import { HomeIcon, GridIcon, SettingsIcon, PulseIcon, DesktopIcon } from "../icons";
 import { ShellLink } from "../routing/ShellLink";
 import { describeRoute } from "../routing/routes";
 import { useI18n } from "../i18n";
 import { useShell } from "./ShellContext";
 import { StartMenu } from "./launcher/StartMenu";
+import { useGlassHost } from "../glass-engine/useGlassEngine";
+import { GLASS_MATERIALS } from "@rumahl/ui/glass";
+
 export function OsDock() {
+  const dockRef = useRef<HTMLElement>(null);
+  useGlassHost(dockRef, GLASS_MATERIALS.dock);
   const { t } = useI18n();
   const apps = useShellApps();
   const { state, dispatch, open, mode } = useShell();
@@ -31,23 +36,23 @@ export function OsDock() {
     return "";
   };
   return <>
-    <nav className={`os-dock os-dock--${mode}`} aria-label={t("nav.main")} onPointerLeave={() => setHover(null)}>
-      <button className={`dock-item dock-start${magnify("start")}`} type="button" aria-label={mode === "desktop" ? t("launcher.open") : t("launcher.home")} aria-expanded={launcher}
+    <nav ref={dockRef} className={`dock os-dock os-dock--${mode}`} aria-label={t("nav.main")} onPointerLeave={() => setHover(null)}>
+      <button className={`dock-item dock-icon dock-start${magnify("start")}`} type="button" aria-label={mode === "desktop" ? t("launcher.open") : t("launcher.home")} aria-expanded={launcher}
         onPointerEnter={() => setHover("start")}
         onClick={() => mode === "desktop" ? setLauncher((value) => !value) : open("/")}><RumahlMark /></button>
-      {links.map((link) => <ShellLink key={link.to} className={`dock-item${magnify(link.to)}`} to={link.to} aria-label={link.label} title={link.label} data-dock-app={link.id}
+      {links.map((link) => <ShellLink key={link.to} className={`dock-item dock-icon${magnify(link.to)}`} to={link.to} aria-label={link.label} title={link.label} data-dock-app={link.id}
         onPointerEnter={() => setHover(link.to)}>{link.icon}</ShellLink>)}
       {windows.length > 0 ? <span className="dock-separator" aria-hidden="true" /> : null}
       {windows.length > 0 ? <div className="dock-windows" aria-label={t("desktop.running")}>
         {windows.map((item) => <button key={item.id} type="button" aria-label={item.title} title={item.title}
-          aria-pressed={!item.minimized && active === item.id} className={`dock-item${magnify(item.id)}${item.minimized ? " is-minimized" : " is-running"}`}
+          aria-pressed={!item.minimized && active === item.id} className={`dock-item dock-icon${magnify(item.id)}${item.minimized ? " is-minimized" : " is-running"}`}
           onPointerEnter={() => setHover(item.id)}
           onClick={() => { if (!item.minimized && active === item.id && mode === "desktop") { dispatch({ type: "toggle-minimize", id: item.id }); open("/"); }
-            else { dispatch({ type: "focus-window", id: item.id }); open(item.location ?? "/"); } }}><span aria-hidden="true">{(() => { const app = apps.find(app => item.id === `app:${app.id}` || item.id === app.path || item.location === app.path); return app ? <AppIcon app={app}/> : <GridIcon/>; })()}</span><i className={`dock-dot${item.minimized ? " is-minimized" : ""}`} aria-hidden="true" /></button>)}
+            else { dispatch({ type: "focus-window", id: item.id }); open(item.location ?? "/"); } }}><span aria-hidden="true">{(() => { const app = apps.find(app => item.id === `app:${app.id}` || item.id === app.path || item.location === app.path); const systemLink = links.find(link => item.location === link.to || (link.to !== "/" && item.location?.startsWith(`${link.to}/`))); return app ? <AppIcon app={app}/> : systemLink?.icon ?? <GridIcon/>; })()}</span><i className={`dock-dot${item.minimized ? " is-minimized" : ""}`} aria-hidden="true" /></button>)}
       </div> : null}
       <span className="dock-separator" aria-hidden="true" />
-      <button className={`dock-item dock-desktop${magnify("desktop")}`} type="button" onPointerEnter={() => setHover("desktop")}
-        onClick={() => { dispatch({ type: "minimize-all" }); open("/"); }} aria-label={t("desktop.show")} title={t("desktop.show")}><span aria-hidden="true">▱</span></button>
+      <button className={`dock-item dock-icon dock-desktop${magnify("desktop")}`} type="button" onPointerEnter={() => setHover("desktop")}
+        onClick={() => { dispatch({ type: "minimize-all" }); open("/"); }} aria-label={t("desktop.show")} title={t("desktop.show")}><DesktopIcon /></button>
     </nav>
     {launcher ? <StartMenu onClose={() => setLauncher(false)} /> : null}
   </>;

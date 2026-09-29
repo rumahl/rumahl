@@ -1,13 +1,19 @@
 @layer foundation, presentation;
+@import "./glass-engine/glass.css" layer(presentation);
 @import "./shell/layouts.css" layer(presentation);
 @import "./shell/native-presentation.css" layer(presentation);
+@import "./shell/materials.css" layer(presentation);
+@import "./shell/default-theme.css" layer(presentation);
+@import "./shell/new-design.css" layer(presentation);
+@import "./shell/reference/reference.css";
+@import "./pages/settings.css" layer(presentation);
 
 @layer foundation {
 :root {
   color: #18201c;
   background: #e8ece7;
   font-family:
-    Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    Inter, system-ui, "Segoe UI", Roboto, "Noto Sans", sans-serif;
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   --rumahl-color-canvas-background: #e8ece7;

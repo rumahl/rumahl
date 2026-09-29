@@ -27,6 +27,7 @@ export function windowPositionCss(snapshot: ShellSnapshotV1): string {
   } catch {
     return "";
   }
+  const launcher = snapshot.mode === "launcher";
   const rules: string[] = [];
   const seen = new Set<string>();
   for (const saved of windows.slice(0, 32)) {
@@ -34,7 +35,8 @@ export function windowPositionCss(snapshot: ShellSnapshotV1): string {
     if (route.presentation !== "window" || route.stream || seen.has(route.id)) continue;
     seen.add(route.id);
     const selector = `.shell-window[data-window-id="${route.id}"]`;
-    if (saved.placement === "left") rules.push(`${selector}{left:0;top:0;width:50%;height:100%}`);
+    if (launcher) rules.push(`${selector}{left:0;top:0;width:100%;height:100%}`);
+    else if (saved.placement === "left") rules.push(`${selector}{left:0;top:0;width:50%;height:100%}`);
     else if (saved.placement === "right") rules.push(`${selector}{left:50%;top:0;width:50%;height:100%}`);
     else if (saved.placement === "maximized") rules.push(`${selector}{left:0;top:0;width:100%;height:100%}`);
     else rules.push(`${selector}{left:${saved.rect.x}px;top:${saved.rect.y}px;width:${saved.rect.width}px;height:${saved.rect.height}px}`);

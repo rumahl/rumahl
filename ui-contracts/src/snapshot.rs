@@ -467,7 +467,7 @@ impl ShellTheme {
             ShellLayoutVariant::parse(&wire.shell_layout).ok_or(ShellSnapshotError::InvalidJson)?;
         let launcher_layout = LauncherLayoutVariant::parse(&wire.launcher_layout)
             .ok_or(ShellSnapshotError::InvalidJson)?;
-        if wire.tokens.len() > 32 {
+        if wire.tokens.len() > 48 {
             return Err(ShellSnapshotError::InvalidThemeTokens);
         }
         let mut tokens = BTreeMap::new();
