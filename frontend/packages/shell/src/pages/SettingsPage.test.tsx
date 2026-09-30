@@ -7,7 +7,7 @@ test("settings overview keeps existing routes and the active navigation state", 
   render(<App snapshot={demoSnapshot} initialLocation="/settings" />);
   expect(await screen.findByText("Make this desktop your own.")).toBeInTheDocument();
   const navigation = screen.getByRole("navigation", { name: "Settings" });
-  const display = within(navigation).getByRole("link", { name: "Shell mode" });
+  const display = within(navigation).getByRole("link", { name: "Personalization" });
   fireEvent.click(display);
   await waitFor(() => expect(display).toHaveAttribute("aria-current", "page"));
   expect(await screen.findByRole("switch", { name: "Transparency effects" })).toBeInTheDocument();

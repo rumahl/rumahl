@@ -19,8 +19,19 @@ export function useThemeTuning() {
     void workspace.save("device", { ...workspace.effective, appearance: next });
   }, [workspace]);
   const setSeed = useCallback((seed: string) => persist({ ...tuning, seed, autoColor: false }), [tuning, persist]);
-  const setMode = useCallback((mode: AppearanceMode) => persist({ ...tuning, mode }), [tuning, persist]);
+  const setMode = useCallback((mode: AppearanceMode | null) => persist({ ...tuning, mode }), [tuning, persist]);
   const setToken = useCallback((token: TokenId, value: string) => persist({ ...tuning, tokens: { ...tuning.tokens, [token]: value } }), [tuning, persist]);
+  const clearToken = useCallback((token: TokenId) => {
+    const tokens = { ...tuning.tokens };
+    delete tokens[token];
+    persist({ ...tuning, tokens });
+  }, [tuning, persist]);
+  /** Clears the automatic-by-default surface/text overrides and the mode choice. */
+  const autoColors = useCallback(() => {
+    const tokens = { ...tuning.tokens };
+    for (const key of ["color.surface.strong", "color.text.primary", "color.text.muted"] as TokenId[]) delete tokens[key];
+    persist({ ...tuning, mode: null, tokens });
+  }, [tuning, persist]);
   const setTransparency = useCallback((enabled: boolean) => {
     const tokens = { ...tuning.tokens };
     for (const key of ["material.opacity", "material.blur", "material.saturation", "material.morphism"]) delete tokens[key];
@@ -34,12 +45,20 @@ export function useThemeTuning() {
   const setGlassEnabled = useCallback((glassEnabled: boolean) => persist({ ...tuning, glassEnabled }), [tuning, persist]);
   const setGlassBackend = useCallback((glassBackend: "auto" | "svg" | "webgl" | "css") => persist({ ...tuning, glassBackend }), [tuning, persist]);
   const setGlassQuality = useCallback((glassQuality: "auto" | "high" | "balanced" | "low") => persist({ ...tuning, glassQuality }), [tuning, persist]);
-  const setMaterialPreset = useCallback((preset: "clear" | "soft" | "solid") => {
-    const values = { clear: ["0.72", "12px", "1.3", "1"], soft: ["0.9", "16px", "1.1", "0.65"], solid: ["1", "0px", "1", "0"] }[preset];
+  const setGlassReduced = useCallback((glassReduced: boolean) => persist({ ...tuning, glassReduced }), [tuning, persist]);
+  const setAnimations = useCallback((animations: boolean) => persist({ ...tuning, animations }), [tuning, persist]);
+  const setPerformanceMode = useCallback((performanceMode: boolean) => persist({ ...tuning, performanceMode }), [tuning, persist]);
+  const setMaterialPreset = useCallback((preset: "clear" | "soft" | "bold" | "solid") => {
+    const values = {
+      clear: ["0.72", "12px", "1.3", "1"],
+      soft: ["0.9", "16px", "1.1", "0.65"],
+      bold: ["0.62", "22px", "1.45", "1"],
+      solid: ["1", "0px", "1", "0"]
+    }[preset];
     persist({ ...tuning, tokens: { ...tuning.tokens, "material.opacity": values[0]!, "material.blur": values[1]!, "material.saturation": values[2]!, "material.morphism": values[3]! } });
   }, [tuning, persist]);
   const reset = useCallback(() => persist(emptyAppearance), [persist]);
-  return { tuning, setSeed, setMode, setToken, setTransparency, setAutoColor, setWallpaperTint, setWallpaperMotion, setGlassEngine, setGlassEnabled, setGlassBackend, setGlassQuality, setMaterialPreset, reset };
+  return { tuning, setSeed, setMode, setToken, clearToken, autoColors, setTransparency, setAutoColor, setWallpaperTint, setWallpaperMotion, setGlassEngine, setGlassEnabled, setGlassBackend, setGlassQuality, setGlassReduced, setAnimations, setPerformanceMode, setMaterialPreset, reset };
 }
 
 /**
@@ -48,12 +67,13 @@ export function useThemeTuning() {
  * surface blends towards the canvas as opacity drops, text contrast adapts
  * automatically when the transparency changes.
  */
-export function applyTuning(tokens: Tokens, tuning: AppearanceSettings): Tokens {
+export function applyTuning(tokens: Tokens, tuning: AppearanceSettings, systemMode: AppearanceMode = "light"): Tokens {
   const wallpaper = tuning.tokens["texture.wallpaper"] ?? tokens["texture.wallpaper"];
   const seed = tuning.autoColor ? wallpaperSeed(wallpaper, tokens["color.canvas.background"]) : tuning.seed;
+  const mode = tuning.mode ?? systemMode;
   const customized = seed !== null || tuning.mode !== null;
   const base = customized
-    ? { ...tokens, ...paletteTokens(seed ?? tokens["color.accent"], { mode: tuning.mode ?? "light" }) }
+    ? { ...tokens, ...paletteTokens(seed ?? tokens["color.accent"], { mode }) }
     : tokens;
   const merged = { ...base, ...(tuning.tokens as Partial<Tokens>) };
   // The palette already provides readable text. Only a directly chosen surface

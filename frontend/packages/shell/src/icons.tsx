@@ -84,6 +84,22 @@ export function DesktopIcon(props: IconProps) {
   return <IconBase {...props}><rect x="3" y="4" width="18" height="13" rx="2" /><path d="M12 17v4M8 21h8" /></IconBase>;
 }
 
+export function InfoIcon(props: IconProps) {
+  return <IconBase {...props}><circle cx="12" cy="12" r="9" /><path d="M12 11v5M12 7.6v.2" strokeLinecap="round" /></IconBase>;
+}
+
+export function DocumentIcon(props: IconProps) {
+  return <IconBase {...props}><path d="M6 3h7l5 5v13H6z" /><path d="M13 3v5h5M9 13h6M9 17h6" strokeLinecap="round" /></IconBase>;
+}
+
+export function ExternalLinkIcon(props: IconProps) {
+  return <IconBase {...props}><path d="M14 4h6v6" /><path d="M20 4 11 13" /><path d="M18 14v4a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4" strokeLinecap="round" strokeLinejoin="round" /></IconBase>;
+}
+
+export function TerminalIcon(props: IconProps) {
+  return <IconBase {...props}><rect x="3" y="4" width="18" height="16" rx="3" /><path d="m7 9 3 3-3 3M13 15h4" strokeLinecap="round" strokeLinejoin="round" /></IconBase>;
+}
+
 /** First-party window controls (rumahl, not the platform's). */
 export function WindowMinimizeIcon(props: IconProps) {
   return <IconBase stroke="currentColor" strokeWidth={2} strokeLinecap="round" {...props}><path d="M6 12h12" /></IconBase>;

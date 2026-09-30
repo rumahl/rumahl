@@ -1,3 +1,4 @@
+import "../test/popover";
 import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, test } from "vitest";
 import { paletteTokens } from "@rumahl/ui/palette";
@@ -23,17 +24,22 @@ describe("theme selection", () => {
 
   test("re-tints derivatives from the accent via the rumahl colour engine", async () => {
     render(<App snapshot={demoSnapshot} initialLocation="/settings/display" />);
-    fireEvent.change(await screen.findByLabelText("Accent colour"), { target: { value: "#ff0000" } });
+    fireEvent.click(await screen.findByLabelText("Accent colour"));
+    const accentHex = screen.getByLabelText("Accent colour value");
+    fireEvent.change(accentHex, { target: { value: "#ff0000" } });
+    fireEvent.keyDown(accentHex, { key: "Enter" });
     const expected = paletteTokens("#ff0000");
     expect(document.documentElement.style.getPropertyValue("--rumahl-ui-color-accent")).toBe(expected["color.accent"]);
     expect(document.documentElement.style.getPropertyValue("--rumahl-ui-color-accent-strong")).toBe(expected["color.accent.strong"]);
     expect(document.documentElement.style.getPropertyValue("--rumahl-ui-color-surface-strong")).toBe(expected["color.surface.strong"]);
-    fireEvent.change(screen.getByLabelText("Wallpaper"), { target: { value: "none" } });
+    fireEvent.click(screen.getByRole("button", { name: "Wallpaper" }));
+    fireEvent.click(screen.getByRole("option", { name: "Solid" }));
     expect(document.documentElement.style.getPropertyValue("--rumahl-ui-texture-wallpaper")).toBe("none");
   });
 
   test("offers direct colour presets and a dark mode", async () => {
     render(<App snapshot={demoSnapshot} initialLocation="/settings/display" />);
+    fireEvent.click(await screen.findByLabelText("Accent colour"));
     fireEvent.click(await screen.findByRole("button", { name: "Red" }));
     expect(document.documentElement.style.getPropertyValue("--rumahl-ui-color-accent")).toBe("#e5484d");
     fireEvent.click(screen.getByRole("button", { name: "Dark" }));
@@ -48,7 +54,10 @@ describe("theme selection", () => {
 
   test("keeps text readable when a surface colour changes", async () => {
     render(<App snapshot={demoSnapshot} initialLocation="/settings/display" />);
-    fireEvent.change(await screen.findByLabelText("Panel colour"), { target: { value: "#000000" } });
+    fireEvent.click(await screen.findByLabelText("Panel colour"));
+    const panelHex = screen.getByLabelText("Panel colour value");
+    fireEvent.change(panelHex, { target: { value: "#000000" } });
+    fireEvent.keyDown(panelHex, { key: "Enter" });
     expect(document.documentElement.style.getPropertyValue("--rumahl-ui-color-surface-strong")).toBe("#000000");
     expect(document.documentElement.style.getPropertyValue("--rumahl-ui-color-text-primary")).toBe("#ffffff");
   });
@@ -62,6 +71,7 @@ describe("theme selection", () => {
   });
   test("turns surface effects off atomically without changing the palette", async () => {
     const rendered = render(<App snapshot={demoSnapshot} initialLocation="/settings/display" />);
+    fireEvent.click(await screen.findByLabelText("Accent colour"));
     fireEvent.click(await screen.findByRole("button", { name: "Red" }));
     const control = screen.getByRole("switch", { name: "Transparency effects" });
     fireEvent.click(control);

@@ -36,7 +36,7 @@
 .shell .settings-content button[aria-pressed="true"] { background: var(--rumahl-ui-color-accent); color: var(--rumahl-ui-color-on-accent); border-color: transparent; }
 .shell .settings-content :is(.segmented, .appearance-switch input) { backdrop-filter: none; -webkit-backdrop-filter: none; box-shadow: none; }
 .settings-content :is(button, select, input, a):focus-visible { outline: 2px solid var(--rumahl-ui-color-accent); outline-offset: 3px; }
-.shell .settings-content :is(.material-presets .material-card, .theme-custom-variant) { background: transparent; border: 1px solid var(--material-line); box-shadow: none; }
+.shell .settings-content .theme-custom-variant { background: transparent; border: 1px solid var(--material-line); box-shadow: none; }
 .settings-content .material-presets { gap: 8px; }
 .settings-content .theme-custom-variant { margin-top: 22px; }
 @container settings (max-width: 580px) {
@@ -58,3 +58,30 @@
 }
 .settings-sidebar a svg, .settings-overview-links svg { stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
 .settings-identity span { color: var(--rumahl-ui-color-text-primary); }
+
+/* Drill-in navigation rows (Settings overview, System sub-pages, links). */
+.settings-nav__row { display: flex; align-items: center; gap: 15px; padding: 15px 18px; color: inherit; text-decoration: none; transition: background .15s ease; }
+.settings-nav__row + .settings-nav__row { border-top: 1px solid var(--divider); }
+.settings-nav__row:hover { background: color-mix(in srgb, var(--accent) 10%, transparent); }
+.settings-nav__icon { display: grid; place-items: center; width: 34px; height: 34px; flex: none; border-radius: 10px; color: var(--accent); background: color-mix(in srgb, var(--accent) 16%, transparent); }
+.settings-nav__icon svg { width: 18px; height: 18px; }
+.settings-nav__text { flex: 1; min-width: 0; display: grid; gap: 4px; }
+.settings-nav__text strong { font-size: 13px; font-weight: 620; color: var(--rumahl-ui-color-text-primary); }
+.settings-nav__text small { font-size: 11.5px; color: var(--muted); }
+.settings-nav__chevron { color: var(--muted); font-size: 17px; line-height: 1; }
+.settings-nav__ext { width: 15px; height: 15px; flex: none; color: var(--muted); }
+.settings-nav svg { stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+
+.about-identity__mark { display: grid; place-items: center; width: 44px; height: 44px; flex: none; border-radius: 13px; background: #0b0d12; color: #ffffff; }
+.about-identity__mark svg { width: 24px; height: 27px; }
+body.light .about-identity__mark { background: #ffffff; color: #0b0d12; }
+
+/* Read-only value rows are styled in reference.css (unlayered) so they win over
+   the base `.setting` rules. */
+.theme-parameter__auto { margin-left: 7px; color: var(--muted); font-size: 10px; font-style: normal; font-weight: 600; }
+.theme-custom-variant__state { color: var(--muted); font-size: 10.5px; font-weight: 600; }
+
+.settings-footnote { margin-top: 10px; font-size: 11.5px; color: var(--muted); }
+
+.workspace-actions { display: flex; flex-wrap: wrap; gap: 8px; justify-content: flex-end; }
+.settings-empty { padding: 16px 18px; color: var(--muted); font-size: 12.5px; }

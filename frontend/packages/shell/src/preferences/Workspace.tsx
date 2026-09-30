@@ -16,6 +16,9 @@ export interface AppearanceSettings {
   autoColor?: boolean;
   wallpaperTint?: boolean;
   wallpaperMotion?: boolean;
+  glassReduced?: boolean;
+  animations?: boolean;
+  performanceMode?: boolean;
   glassEngine?: GlassEngine;
   glassEnabled?: boolean;
   glassBackend?: GlassBackend;
@@ -67,6 +70,9 @@ export function parseAppearance(value: unknown): AppearanceSettings {
     ...(record.autoColor === true ? { autoColor: true } : {}),
     ...(typeof record.wallpaperTint === "boolean" ? { wallpaperTint: record.wallpaperTint } : {}),
     ...(typeof record.wallpaperMotion === "boolean" ? { wallpaperMotion: record.wallpaperMotion } : {}),
+    ...(typeof record.glassReduced === "boolean" ? { glassReduced: record.glassReduced } : {}),
+    ...(typeof record.animations === "boolean" ? { animations: record.animations } : {}),
+    ...(typeof record.performanceMode === "boolean" ? { performanceMode: record.performanceMode } : {}),
     ...(record.glassEngine === "css" || record.glassEngine === "canvas" ? { glassEngine: record.glassEngine } : {}),
     ...(typeof record.glassEnabled === "boolean" ? { glassEnabled: record.glassEnabled } : {}),
     ...(["auto", "svg", "webgl", "css"].includes(record.glassBackend as string) ? { glassBackend: record.glassBackend as GlassBackend } : {}),
