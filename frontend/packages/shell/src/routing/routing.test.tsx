@@ -27,6 +27,11 @@ function FixtureDocument() {
 }
 
 describe("shell routes and presentation", () => {
+  function choose(label: string, option: string) {
+    fireEvent.click(screen.getByRole("button", { name: label }));
+    fireEvent.click(screen.getByRole("option", { name: option }));
+  }
+
   test("resolves a registered app's nested parameters and query without shell changes", () => {
     localStorage.setItem("rumahl.demo.shell-mode", "launcher");
     render(<App snapshot={demoSnapshot} initialLocation="/app/test/documents/42?view=grid" />);
@@ -52,22 +57,22 @@ describe("shell routes and presentation", () => {
 
   test("changes presentation without losing the selected route", async () => {
     render(<App snapshot={demoSnapshot} initialLocation="/app/test/documents/42?view=grid" />);
-    fireEvent.change(screen.getByRole("combobox", { name: "Shell mode" }), { target: { value: "launcher" } });
+    choose("Shell mode", "Launcher");
     expect(await screen.findByRole("heading", { name: "Document 42: grid" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /Close Apps/ })).toBeNull();
-    fireEvent.change(screen.getByRole("combobox", { name: "Shell mode" }), { target: { value: "desktop" } });
+    choose("Shell mode", "Desktop");
     expect(await screen.findByRole("region", { name: "Apps" })).toBeInTheDocument();
   });
 
   test("keeps the settings scope when a mode change remounts its presentation", async () => {
     render(<App snapshot={demoSnapshot} initialLocation="/settings/display" />);
-    fireEvent.change(screen.getByRole("combobox", { name: "Save for" }), { target: { value: "device" } });
+    choose("Save for", "This browser profile");
     fireEvent.click(screen.getByRole("button", { name: "Launcher" }));
-    expect(await screen.findByRole("combobox", { name: "Save for" })).toHaveValue("device");
+    expect(await screen.findByRole("button", { name: "Save for" })).toHaveTextContent("This browser profile");
     expect(document.querySelector(".shell")).toHaveAttribute("data-shell-mode", "launcher");
     fireEvent.click(screen.getByRole("button", { name: "Desktop" }));
     expect(document.querySelector(".shell")).toHaveAttribute("data-shell-mode", "desktop");
-    expect(screen.getByRole("combobox", { name: "Save for" })).toHaveValue("device");
+    expect(screen.getByRole("button", { name: "Save for" })).toHaveTextContent("This browser profile");
   });
 
   test("preserves unsaved app state across minimization and presentation switches", async () => {
@@ -77,10 +82,10 @@ describe("shell routes and presentation", () => {
     fireEvent.click(screen.getByRole("button", { name: "Minimize Apps" }));
     fireEvent.click(within(screen.getByRole("navigation", { name: "Main navigation" })).getByRole("button", { name: "Apps" }));
     expect(screen.getByRole("textbox", { name: "Draft note" })).toBe(input);
-    fireEvent.change(screen.getByRole("combobox", { name: "Shell mode" }), { target: { value: "launcher" } });
+    choose("Shell mode", "Launcher");
     expect(screen.getByRole("textbox", { name: "Draft note" })).toBe(input);
     expect(input).toHaveValue("keep my draft");
-    fireEvent.change(screen.getByRole("combobox", { name: "Shell mode" }), { target: { value: "desktop" } });
+    choose("Shell mode", "Desktop");
     expect(screen.getByRole("textbox", { name: "Draft note" })).toBe(input);
   });
 

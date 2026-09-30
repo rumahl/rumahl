@@ -36,7 +36,7 @@ describe("protected shell behavior", () => {
 
     const palette = screen.getByRole("dialog", { name: "Command palette" });
     expect(palette).toBeInTheDocument();
-    expect(within(palette).getByRole("button", { name: /Install app/ })).toBeInTheDocument();
+    expect(within(palette).getByRole("option", { name: /Install app/ })).toBeInTheDocument();
   });
 
   test("supports German while keeping English as the fallback", () => {

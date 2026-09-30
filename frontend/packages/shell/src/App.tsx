@@ -10,6 +10,7 @@ import { applyTuning, useThemeTuning } from "./preferences/theme-tuning";
 import { WorkspaceProvider } from "./preferences/Workspace";
 import { AppCatalog } from "./apps/AppCatalog";
 import { ShellLayout } from "./shell/ShellLayout";
+import { useSystemMode } from "./shell/system-scheme";
 import { buildSnapshotTheme, resolveActiveTheme, resolveTokens } from "./theme";
 
 export function App({ snapshot, live, theme, ...routing }: ShellRouterOptions & {
@@ -44,10 +45,11 @@ export function App({ snapshot, live, theme, ...routing }: ShellRouterOptions & 
 function ShellThemeGate({ override, serverTheme, children }: PropsWithChildren<{ override?: Theme | undefined; serverTheme: Theme }>) {
   const preferences = useShellPreferences();
   const { tuning } = useThemeTuning();
+  const systemMode = useSystemMode();
   const theme = useMemo(() => {
     const selected = override ?? resolveActiveTheme(serverTheme, preferences.theme);
-    return { ...selected, tokens: resolveTokens(applyTuning(selected.tokens, tuning)) };
-  }, [override, preferences.theme, serverTheme, tuning]);
+    return { ...selected, tokens: resolveTokens(applyTuning(selected.tokens, tuning, systemMode)) };
+  }, [override, preferences.theme, serverTheme, tuning, systemMode]);
   return <ThemeProvider theme={theme}>{children}</ThemeProvider>;
 }
 

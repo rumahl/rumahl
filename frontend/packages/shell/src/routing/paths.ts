@@ -1,3 +1,4 @@
+import { isInternalTarget } from "./internal";
 /** Route IDs are navigation inputs, never proof of installation or permission. */
 export const APP_ID = /^[A-Za-z0-9][A-Za-z0-9._-]{0,254}$/;
 export function appPath(id: string, segments: readonly string[] = []): string {
@@ -12,6 +13,7 @@ export function appPath(id: string, segments: readonly string[] = []): string {
 }
 export type { ShellMode } from "../preferences/client";
 export function localPath(target: string): string {
+  if (isInternalTarget(target)) return `/#${target}`;
   if (!target.startsWith("/") || target.startsWith("//") || target.includes("\\")) {
     throw new Error("shell navigation must be local");
   }

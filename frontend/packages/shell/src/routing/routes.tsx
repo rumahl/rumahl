@@ -1,5 +1,7 @@
+import { DESIGN_URI, shellLocation } from "./internal";
+import { DesignLab } from "../pages/DesignLab";
 import type { ReactNode } from "react";
-import { matchRoutes, useRoutes, type RouteObject } from "react-router";
+import { matchRoutes, useRoutes, useLocation, type RouteObject } from "react-router";
 import { findFirstPartyApp } from "../apps/registry";
 import { SectionPlaceholder } from "../components/SectionPlaceholder";
 import { SettingsPage } from "../pages/SettingsPage";
@@ -31,6 +33,10 @@ export const shellRoutes: RouteObject[] = [
   route("*", <UnavailablePage />, { section: "home", title: "route.notFound", presentation: "page" })
 ];
 export function describeRoute(location: string) {
+  if (shellLocation(location) === DESIGN_URI) return {
+    id: "internal:design", section: "settings" as const, title: "command.design" as const,
+    presentation: "window" as const, stream: false, appId: undefined, streamTitle: undefined
+  };
   const url = new URL(location, "https://shell.invalid");
   const match = matchRoutes(shellRoutes, url.pathname)!.at(-1)!;
   const handle = match.route.handle as ShellRouteHandle;
@@ -44,5 +50,8 @@ export function describeRoute(location: string) {
   };
 }
 export function ShellRoutes({ location }: { location?: string }) {
-  return useRoutes(shellRoutes, location);
+  const current = useLocation();
+  const internal = shellLocation(location ?? current.pathname + current.search + current.hash) === DESIGN_URI;
+  const element = useRoutes(shellRoutes, internal ? "/" : location);
+  return internal ? <DesignLab /> : element;
 }
