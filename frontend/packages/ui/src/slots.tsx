@@ -12,6 +12,13 @@ export type SlotName = (typeof SLOT_NAMES)[number];
 
 export interface SlotText { text: string }
 export interface SlotRepeat { repeat: string; as: string; children: SlotNode[] }
+export interface SlotComponent {
+  /** A shell-provided component (whitelisted; never arbitrary code). */
+  component: string;
+  class?: string;
+  attrs?: Record<string, string>;
+  children?: SlotNode[];
+}
 export interface SlotElement {
   tag: string;
   class?: string;
@@ -21,13 +28,27 @@ export interface SlotElement {
   arg?: string;
   children?: SlotNode[];
 }
-export type SlotNode = SlotElement | SlotText | SlotRepeat;
+export type SlotNode = SlotElement | SlotText | SlotRepeat | SlotComponent;
 export type SlotTemplate = readonly SlotNode[];
 
 /** Elements a theme may use. Deliberately small and presentational. */
-const TAGS = new Set(["div", "span", "nav", "header", "footer", "section", "aside", "main", "button", "a", "ul", "ol", "li", "p", "strong", "small", "b", "i", "em", "img", "time"]);
-const ATTRS = new Set(["id", "title", "role", "href", "type", "alt", "src", "width", "height", "disabled", "hidden", "tabindex", "datetime"]);
-const SAFE_HREF = /^(?:https?:\/\/|\/|#)/;
+const TAGS = new Set([
+  "div", "span", "nav", "header", "footer", "section", "aside", "main", "article",
+  "button", "a", "ul", "ol", "li", "p", "strong", "small", "b", "i", "em", "mark",
+  "abbr", "code", "pre", "blockquote", "q", "cite", "dl", "dt", "dd", "hr", "br",
+  "img", "picture", "source", "video", "audio", "time",
+  "table", "thead", "tbody", "tfoot", "tr", "th", "td",
+  "form", "label", "input", "select", "option", "textarea", "fieldset", "legend",
+  "details", "summary", "dialog", "figure", "figcaption"
+]);
+const ATTRS = new Set([
+  "id", "title", "role", "href", "type", "alt", "src", "width", "height", "disabled",
+  "hidden", "tabindex", "datetime", "for", "name", "value", "placeholder", "checked",
+  "selected", "open", "controls", "autoplay", "muted", "loop", "playsinline", "poster",
+  "colspan", "rowspan", "download", "target", "rel", "spellcheck", "autocomplete"
+]);
+const SAFE_URL = /^(?:https?:\/\/|\/|#|data:image\/|data:video\/|data:audio\/)/;
+const INPUT_TYPES = new Set(["text", "search", "number", "checkbox", "radio", "range", "color", "date", "time", "email", "url", "tel", "password"]);
 
 function sanitizeAttrs(input: unknown): Record<string, string> | undefined {
   if (!input || typeof input !== "object") return undefined;
@@ -38,7 +59,7 @@ function sanitizeAttrs(input: unknown): Record<string, string> | undefined {
     if (lower.startsWith("on") || lower === "style" || lower === "srcset") continue;
     const ok = ATTRS.has(lower) || lower.startsWith("aria-") || lower.startsWith("data-");
     if (!ok) continue;
-    if (lower === "href" && !SAFE_HREF.test(value)) continue;
+    if ((lower === "href" || lower === "src" || lower === "poster") && !SAFE_URL.test(value)) continue;
     out[key] = value;
   }
   return Object.keys(out).length ? out : undefined;
@@ -53,10 +74,23 @@ function sanitizeNode(input: unknown, depth: number): SlotNode | null {
     const children = record.children.map((child) => sanitizeNode(child, depth + 1)).filter((node): node is SlotNode => node !== null);
     return { repeat: record.repeat, as: record.as, children };
   }
+  if (typeof record.component === "string") {
+    if (!/^[a-z][a-z0-9-]*$/.test(record.component)) return null;
+    const component: SlotComponent = { component: record.component };
+    if (typeof record.class === "string" && record.class.length <= 512) component.class = record.class;
+    const componentAttrs = sanitizeAttrs(record.attrs);
+    if (componentAttrs) component.attrs = componentAttrs;
+    if (Array.isArray(record.children)) {
+      const children = record.children.map((child) => sanitizeNode(child, depth + 1)).filter((entry): entry is SlotNode => entry !== null);
+      if (children.length) component.children = children;
+    }
+    return component;
+  }
   if (typeof record.tag !== "string" || !TAGS.has(record.tag)) return null;
   const node: SlotElement = { tag: record.tag };
   if (typeof record.class === "string" && record.class.length <= 512) node.class = record.class;
   const attrs = sanitizeAttrs(record.attrs);
+  if (attrs && node.tag === "input" && attrs.type && !INPUT_TYPES.has(attrs.type)) delete attrs.type;
   if (attrs) node.attrs = attrs;
   if (typeof record.action === "string" && /^[a-z][a-z0-9-]*$/.test(record.action)) node.action = record.action;
   if (typeof record.arg === "string" && record.arg.length <= 512) node.arg = record.arg;
@@ -83,11 +117,18 @@ export function sanitizeSlots(value: unknown): Partial<Record<SlotName, SlotTemp
   return out;
 }
 
+export interface SlotComponentProps {
+  className?: string | undefined;
+  children?: ReactNode;
+  [key: string]: unknown;
+}
 export interface SlotBindings {
   /** Data available to templates (e.g. `apps`, `windows`, `mode`). */
   data: Record<string, unknown>;
   /** Whitelisted shell actions a template may trigger. */
   actions: Record<string, (arg?: string) => void>;
+  /** Components the shell exposes to templates (icons, clock, …). */
+  components?: Record<string, (props: SlotComponentProps) => ReactNode>;
 }
 
 function resolve(path: string, scopes: Record<string, unknown>[]): unknown {
@@ -123,6 +164,12 @@ function renderNodes(nodes: SlotTemplate, bindings: SlotBindings, scopes: Record
           {renderNodes(node.children, bindings, [typeof entry === "object" && entry ? entry as Record<string, unknown> : { [node.as]: entry }, ...scopes], `${key}.${entryIndex}.`)}
         </Fragment>
       ));
+    }
+    if ("component" in node) {
+      const render = bindings.components?.[node.component];
+      if (!render) return null;
+      const children = node.children ? renderNodes(node.children, bindings, scopes, `${key}.`) : undefined;
+      return <Fragment key={key}>{render({ ...(node.attrs ?? {}), className: node.class, children })}</Fragment>;
     }
     const props: Record<string, unknown> = { key };
     if (node.class) props.className = node.class;

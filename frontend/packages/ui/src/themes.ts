@@ -2,6 +2,7 @@ import { paletteTokens } from "./palette";
 import { themeColorValues } from "./color";
 import { defaultTokens, type TokenId, type Tokens } from "./tokens";
 import { defaultVariants, type VariantSelection } from "./variants";
+import type { SlotName, SlotTemplate } from "./slots";
 
 const CLASSIC_COLORS = themeColorValues("#3465a4");
 
@@ -54,6 +55,10 @@ export interface Theme {
   parameters: readonly ThemeParameter[];
   /** Appearance modes the theme supports (a theme may be light-only). */
   modes: readonly AppearanceMode[];
+  /** Optional per-region markup the theme provides as safe templates. */
+  slots?: Partial<Record<SlotName, SlotTemplate>> | undefined;
+  /** Optional theme stylesheet (applied CSP-safely, first-party themes). */
+  css?: string | undefined;
 }
 
 function px(token: TokenId, id: string, labelKey: string, fallback: number, max: number): RangeParameter {
@@ -92,7 +97,7 @@ const COLOR_PRESETS = [
 const officialParameters: readonly ThemeParameter[] = [
   { kind: "color", id: "accent", token: "color.accent", labelKey: "theme.parameter.accent", seed: true, presets: COLOR_PRESETS },
   { kind: "color", id: "panel", token: "color.surface.strong", labelKey: "theme.parameter.panel" },
-  { kind: "color", id: "text", token: "color.on.wallpaper", labelKey: "theme.parameter.text" },
+  { kind: "color", id: "text", token: "color.text.primary", labelKey: "theme.parameter.text" },
   { kind: "choice", id: "wallpaper", token: "texture.wallpaper", labelKey: "theme.parameter.wallpaper", options: WALLPAPERS },
   {
     kind: "range", id: "morphism", token: "material.morphism", labelKey: "theme.parameter.morphism", min: 0, max: 1, step: 0.05,
@@ -179,7 +184,28 @@ export const classicTheme: Theme = {
   },
   variants: { shellLayout: "taskbar", launcherLayout: "drawer", windowChrome: "compact" },
   parameters: classicParameters,
-  modes: ["light", "dark"]
+  modes: ["light", "dark"],
+  // The classic shell defines its own taskbar markup here (theme code), instead
+  // of relying on the shell's built-in variant.
+  slots: {
+    dock: [
+      { tag: "div", class: "taskbar slot-taskbar", attrs: { role: "navigation", "aria-label": "Main navigation" }, children: [
+        { tag: "button", class: "taskbar__start", action: "minimize-all", children: [{ component: "brand" }] },
+        { tag: "a", class: "taskbar__button", attrs: { href: "/apps" }, children: [{ text: "Apps" }] },
+        { tag: "div", class: "taskbar__apps", children: [
+          { repeat: "apps", as: "app", children: [
+            { tag: "button", class: "taskbar__button", attrs: { "data-open": "{{app.running}}", "data-focused": "{{app.focused}}" }, action: "open", arg: "{{app.path}}", children: [{ text: "{{app.title}}" }] }
+          ] }
+        ] },
+        { tag: "div", class: "taskbar__windows", children: [
+          { repeat: "windows", as: "win", children: [
+            { tag: "button", class: "taskbar__button taskbar__window", action: "focus-window", arg: "{{win.id}}", children: [{ text: "{{win.title}}" }] }
+          ] }
+        ] },
+        { component: "clock", class: "taskbar__clock" }
+      ] }
+    ]
+  }
 };
 
 export const themes = [rumahlTheme, classicTheme] as const;

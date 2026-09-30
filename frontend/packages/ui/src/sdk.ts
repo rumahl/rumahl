@@ -1,6 +1,7 @@
 import { defaultTokens, type Tokens } from "./tokens";
 import { resolveVariants, type VariantSelection } from "./variants";
 import { themes, type AppearanceMode, type Theme, type ThemeParameter } from "./themes";
+import { sanitizeSlots, type SlotName, type SlotTemplate } from "./slots";
 
 /**
  * Developer SDK. Third-party code authors themes as data; the shell keeps
@@ -14,6 +15,10 @@ export interface ThemeInput {
   variants?: Partial<VariantSelection> | undefined;
   parameters?: readonly ThemeParameter[] | undefined;
   modes?: readonly AppearanceMode[] | undefined;
+  /** Optional per-region markup (validated safe templates). */
+  slots?: Partial<Record<SlotName, SlotTemplate>> | undefined;
+  /** Optional theme stylesheet (applied CSP-safely). */
+  css?: string | undefined;
 }
 
 /** Merges partial tokens/variants over the rumahl defaults into a full theme. */
@@ -25,7 +30,9 @@ export function defineTheme(input: ThemeInput): Theme {
     tokens: { ...defaultTokens, ...input.tokens },
     variants: resolveVariants(input.variants),
     parameters: input.parameters ?? [],
-    modes: input.modes ?? ["light"]
+    modes: input.modes ?? ["light"],
+    ...(input.slots ? { slots: sanitizeSlots(input.slots) } : {}),
+    ...(input.css ? { css: input.css.slice(0, 200_000) } : {})
   };
 }
 

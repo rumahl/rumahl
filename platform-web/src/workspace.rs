@@ -47,6 +47,12 @@ struct Appearance {
     glass_backend: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     glass_quality: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    glass_reduced: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    animations: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    performance_mode: Option<bool>,
     #[serde(default)]
     seed: Option<String>,
     #[serde(default)]
