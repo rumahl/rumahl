@@ -96,3 +96,7 @@ body.light .about-identity__mark { background: #ffffff; color: #0b0d12; }
 
 /* Settings always use the readable text token (never an inherited white). */
 .settings-layout, .settings-content, .settings-sidebar { color: var(--rumahl-ui-color-text-primary); }
+
+/* Settings identity: the signed-in user instead of the rumahl OS brand. */
+.settings-identity .settings-avatar { display: grid; place-items: center; width: 34px; height: 34px; grid-row: span 2; border-radius: 50%; background: linear-gradient(135deg, var(--rumahl-ui-color-accent), color-mix(in srgb, var(--rumahl-ui-color-accent) 55%, #65caa8)); color: var(--rumahl-ui-color-on-accent, #152136); font-size: 14px; font-weight: 800; }
+.settings-identity .small { color: var(--rumahl-ui-color-text-muted); font-size: 11px; line-height: 1.4; overflow-wrap: anywhere; }

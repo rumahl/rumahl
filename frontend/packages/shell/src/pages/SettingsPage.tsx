@@ -28,6 +28,7 @@ export function SettingsPage() {
   const { pathname } = useLocation();
   const preferences = useShellPreferences();
   const { theme } = useTheme();
+  const { snapshot } = useShell();
   const content = useRoutes([
     { index: true, element: <SettingsOverview /> },
     { path: "display", Component: DisplaySettings },
@@ -39,7 +40,10 @@ export function SettingsPage() {
     { path: "*", Component: UnavailablePage }
   ]);
   return <div className="window-body settings-layout"><aside className="sidebar settings-sidebar">
-    <div className="side-profile settings-identity"><span className="brandmark" aria-hidden="true"><RumahlMark /></span><div><strong>rumahl OS</strong><div className="small">{t(`mode.${preferences.mode}`)} · {themes.find(item => item.id === theme.id)?.name ?? theme.name}</div></div></div>
+    <div className="side-profile settings-identity">
+      <span className="settings-avatar" aria-hidden="true">{snapshot.user.displayName.slice(0, 1).toUpperCase()}</span>
+      <div><strong>{snapshot.user.displayName}</strong><div className="small">{t(`mode.${preferences.mode}`)} · {themes.find(item => item.id === theme.id)?.name ?? theme.name}</div></div>
+    </div>
     <div className="nav-heading">{t("preferences.user")}</div>
     <nav aria-label={t("nav.settings")}>
       <ShellLink className="nav-item" to="/settings/display" aria-current={pathname.startsWith("/settings/display") ? "page" : undefined}><DesktopIcon /><span>{t("settings.personalization")}</span></ShellLink>
