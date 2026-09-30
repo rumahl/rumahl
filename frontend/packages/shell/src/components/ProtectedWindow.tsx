@@ -1,5 +1,7 @@
-import type { PropsWithChildren, CSSProperties, PointerEventHandler, KeyboardEventHandler } from "react";
+import type { PropsWithChildren, CSSProperties, PointerEventHandler, KeyboardEventHandler, ReactNode } from "react";
 import type { WindowChromeVariant } from "@rumahl/contracts";
+import { useTheme } from "@rumahl/ui";
+import { renderSlot, type SlotBindings, type SlotComponentProps } from "@rumahl/ui/slots";
 import { useI18n } from "../i18n";
 import { WindowCloseIcon, WindowMaximizeIcon, WindowMinimizeIcon, WindowRestoreIcon } from "../icons";
 
@@ -8,8 +10,8 @@ interface ProtectedWindowProps extends PropsWithChildren {
   frameless?: boolean;
   style?: CSSProperties | undefined;
   maximized?: boolean;
-  onSnap?: (side: "left" | "right") => void;
-  onMaximize?: () => void;
+  onSnap?: ((side: "left" | "right") => void) | undefined;
+  onMaximize?: (() => void) | undefined;
   onTitlePointerDown?: PointerEventHandler<HTMLElement>;
   onTitleKeyDown?: KeyboardEventHandler<HTMLElement>;
   onResizePointerDown?: PointerEventHandler<HTMLButtonElement>;
@@ -37,6 +39,44 @@ export function ProtectedWindow({
   variant
 }: ProtectedWindowProps) {
   const { t } = useI18n();
+  const { theme } = useTheme();
+  const controlButton = (variantName: string, label: string, action: () => void, icon: ReactNode, extra?: string) => (
+    <button className={`window-control window-control--${variantName}${extra ? ` ${extra}` : ""}`} aria-label={label} onClick={action} type="button">{icon}</button>
+  );
+  const titleBlock = <div className="titlebar-titles">
+    <h2 className="titlebar-title">{title}</h2>
+    <p className="titlebar-subtitle">{subtitle}</p>
+  </div>;
+  const maximizeButton = onMaximize ? controlButton("maximize", t(maximized ? "window.restore" : "window.maximize", { title }), onMaximize, maximized ? <WindowRestoreIcon aria-hidden="true" /> : <WindowMaximizeIcon aria-hidden="true" />) : null;
+  const controlsBlock = <div aria-label={t("window.controls")} className="winbuttons shell-window__controls">
+    {controlButton("minimize", t("window.minimize", { title }), onMinimize, <WindowMinimizeIcon aria-hidden="true" />)}
+    {onMaximize && onSnap
+      ? <div className="window-control-group">
+          {maximizeButton}
+          <div className="window-snap-flyout" role="group" aria-label={t("window.controls")}>
+            {controlButton("snap", t("window.snapLeft", { title }), () => onSnap("left"), "◧")}
+            {controlButton("snap", t("window.snapRight", { title }), () => onSnap("right"), "◨")}
+          </div>
+        </div>
+      : maximizeButton}
+    {controlButton("close", t("window.close", { title }), onClose, <WindowCloseIcon aria-hidden="true" />)}
+  </div>;
+  const windowSlot = theme.slots?.window;
+  const bindings: SlotBindings = {
+    data: { title, subtitle, focused, maximized: maximized === true, frameless: frameless === true },
+    actions: {
+      close: onClose,
+      minimize: onMinimize,
+      maximize: () => onMaximize?.(),
+      "snap-left": () => onSnap?.("left"),
+      "snap-right": () => onSnap?.("right")
+    },
+    components: {
+      title: (props: SlotComponentProps) => <h2 className={(props.className as string | undefined) ?? "titlebar-title"}>{title}</h2>,
+      subtitle: (props: SlotComponentProps) => <p className={(props.className as string | undefined) ?? "titlebar-subtitle"}>{subtitle}</p>,
+      controls: () => controlsBlock
+    }
+  };
   return (
     <section
       aria-label={title}
@@ -57,20 +97,7 @@ export function ProtectedWindow({
         aria-label={onTitleKeyDown ? t("window.move", { title }) : undefined}
         onPointerDown={onTitlePointerDown} onKeyDown={onTitleKeyDown}
         onDoubleClick={(event) => { if (!(event.target as HTMLElement).closest("button")) onMaximize?.(); }}>
-        <div className="titlebar-titles">
-          <h2 className="titlebar-title">{title}</h2>
-          <p className="titlebar-subtitle">{subtitle}</p>
-        </div>
-        <div aria-label={t("window.controls")} className="winbuttons shell-window__controls">
-          <button className="window-control window-control--minimize" aria-label={t("window.minimize", { title })} onClick={onMinimize} type="button">
-            <WindowMinimizeIcon aria-hidden="true" />
-          </button>
-          {onSnap ? <><button className="window-control window-control--snap" type="button" aria-label={t("window.snapLeft", { title })} onClick={() => onSnap("left")}>◧</button><button className="window-control window-control--snap" type="button" aria-label={t("window.snapRight", { title })} onClick={() => onSnap("right")}>◨</button></> : null}
-          {onMaximize ? <button className="window-control window-control--maximize" aria-label={t(maximized ? "window.restore" : "window.maximize", { title })} onClick={onMaximize} type="button">{maximized ? <WindowRestoreIcon aria-hidden="true" /> : <WindowMaximizeIcon aria-hidden="true" />}</button> : null}
-          <button className="window-control window-control--close" aria-label={t("window.close", { title })} onClick={onClose} type="button">
-            <WindowCloseIcon aria-hidden="true" />
-          </button>
-        </div>
+        {windowSlot ? renderSlot(windowSlot, bindings) : <>{titleBlock}{controlsBlock}</>}
       </header>
       <div className="shell-window__content">{children}</div>
       {onResizePointerDown ? <button hidden={frameless || maximized} className="window-resize" aria-label={t("window.resize", { title })} onPointerDown={onResizePointerDown} onKeyDown={onResizeKeyDown} type="button" /> : null}

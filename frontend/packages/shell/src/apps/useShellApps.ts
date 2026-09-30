@@ -11,6 +11,8 @@ export interface ShellApp {
   launchable: boolean;
   system: boolean;
   kind: "settings" | "app";
+  /** Optional app-provided icon image (URL); falls back to a built-in glyph. */
+  icon?: string;
 }
 
 /**

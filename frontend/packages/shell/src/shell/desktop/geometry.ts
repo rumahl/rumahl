@@ -12,10 +12,11 @@ export function constrainRect(rect: WindowRect, area: WorkArea): WindowRect {
   const minY = -(height - REACHABLE), maxY = area.height - REACHABLE;
   return { width, height, x: Math.min(Math.max(rect.x, minX), maxX), y: Math.min(Math.max(rect.y, minY), maxY) };
 }
-export function placedRect(rect: WindowRect, placement: WindowPlacement, area: WorkArea): WindowRect {
+export function placedRect(rect: WindowRect, placement: WindowPlacement, area: WorkArea, topInset = 0): WindowRect {
   if (placement === "floating") return constrainRect(rect, area);
+  const top = Math.min(Math.max(0, topInset), Math.max(0, area.height - 1));
   const width = placement === "maximized" ? area.width : area.width / 2;
-  return { x: placement === "right" ? area.width - width : 0, y: 0, width, height: area.height };
+  return { x: placement === "right" ? area.width - width : 0, y: top, width, height: Math.max(1, area.height - top) };
 }
 /** Rectangles as drawn by a desktop marquee selection. */
 export interface SelectionRect { x: number; y: number; width: number; height: number }

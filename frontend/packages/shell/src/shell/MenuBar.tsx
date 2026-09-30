@@ -1,3 +1,4 @@
+import { RumahlSelect } from "../components/RumahlSelect";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { RumahlMark } from "../components/RumahlMark";
 import { SearchIcon } from "../icons";
@@ -5,6 +6,7 @@ import { useI18n } from "../i18n";
 import { useShellPreferences } from "../preferences/ShellPreferences";
 import { appPath } from "../routing/paths";
 import { useShell } from "./ShellContext";
+import { MenuDropdown } from "./MenuDropdown";
 
 type MenuId = "system" | "go" | "view" | "window" | "user";
 
@@ -15,13 +17,14 @@ export function MenuBar() {
   const [openMenu, setOpenMenu] = useState<MenuId | null>(null);
   const [timeZone, setTimeZone] = useState("UTC");
   const bar = useRef<HTMLElement>(null);
+  const anchors = useRef<{ [key: string]: HTMLElement | null }>({});
   useEffect(() => {
     document.documentElement.lang = locale;
     setTimeZone(Intl.DateTimeFormat().resolvedOptions().timeZone);
   }, [locale]);
   useEffect(() => {
     if (!openMenu) return;
-    const onPointerDown = (event: PointerEvent) => { if (!bar.current?.contains(event.target as Node)) setOpenMenu(null); };
+    const onPointerDown = (event: PointerEvent) => { const target = event.target as Element | null; if (bar.current?.contains(event.target as Node)) return; if (target?.closest(".menubar__dropdown")) return; setOpenMenu(null); };
     const onKeyDown = (event: KeyboardEvent) => { if (event.key === "Escape") setOpenMenu(null); };
     window.addEventListener("pointerdown", onPointerDown);
     window.addEventListener("keydown", onKeyDown);
@@ -40,11 +43,11 @@ export function MenuBar() {
 
   function menu(id: MenuId, label: ReactNode, entries: ReactNode) {
     const expanded = openMenu === id;
-    return <div className="menubar__menu" key={id}>
+    return <div className="menubar__menu" key={id} ref={(element) => { anchors.current[id] = element; }}>
       <button className="menubar__item" type="button" aria-haspopup="menu" aria-expanded={expanded}
         onPointerEnter={() => { if (openMenu) setOpenMenu(id); }}
         onClick={() => setOpenMenu(expanded ? null : id)}>{label}</button>
-      {expanded ? <div className="menubar__dropdown" role="menu">{entries}</div> : null}
+      <MenuDropdown anchor={{ current: anchors.current[id] ?? null }} open={expanded} className="menubar__dropdown">{entries}</MenuDropdown>
     </div>;
   }
 
@@ -85,12 +88,10 @@ export function MenuBar() {
         aria-expanded={state.commandPaletteOpen} onClick={() => dispatch({ type: "toggle-command-palette" })}><SearchIcon /></button>
       {preferences.error ? <span className="menubar__error" role="status">{t(`preferences.${preferences.error}`)}</span> : null}
       <div className="menubar__mode">
-        <select aria-label={t("mode.label")} disabled={!preferences.ready || preferences.saving}
+        <RumahlSelect label={t("mode.label")} disabled={!preferences.ready || preferences.saving}
           title={t("preferences.quickMode")} value={mode}
-          onChange={(event) => setMode(event.target.value === "launcher" ? "launcher" : "desktop")}>
-          <option value="desktop">{t("mode.desktop")}</option>
-          <option value="launcher">{t("mode.launcher")}</option>
-        </select>
+          onChange={value => setMode(value === "launcher" ? "launcher" : "desktop")}
+          options={[{ value: "desktop", label: t("mode.desktop") }, { value: "launcher", label: t("mode.launcher") }]} />
       </div>
       <span className="menubar__protection" data-state={snapshot.systemStatus.protection} title={`${t("status.protection.label")}: ${protection}`}>
         <span className="menubar__dot" aria-hidden="true" />{protection}
@@ -98,17 +99,17 @@ export function MenuBar() {
       <time className="menubar__clock" dateTime={new Date(snapshot.systemStatus.observedAtUnixMs).toISOString()}>
         {formatter.format(new Date(snapshot.systemStatus.observedAtUnixMs))}
       </time>
-      <div className="menubar__menu">
+      <div className="menubar__menu" ref={(element) => { anchors.current.user = element; }}>
         <button className="menubar__item menubar__user" type="button" aria-haspopup="menu" aria-expanded={openMenu === "user"}
           aria-label={t("profile.open")} onClick={() => setOpenMenu(openMenu === "user" ? null : "user")}>
           {snapshot.user.displayName.slice(0, 1).toUpperCase()}
         </button>
-        {openMenu === "user" ? <div className="menubar__dropdown menubar__dropdown--right" role="menu">
+        <MenuDropdown anchor={{ current: anchors.current.user ?? null }} open={openMenu === "user"} align="right" className="menubar__dropdown menubar__dropdown--right">
           <p className="menubar__about">{t("menubar.signedInAs", { name: snapshot.user.displayName })}</p>
           <div className="menubar__separator" role="separator" />
           <button role="menuitem" type="button" onClick={act(() => open("/settings"))}>{t("nav.settings")}</button>
           <button role="menuitem" type="submit" form="rumahl-sign-out">{t("session.signOut")}</button>
-        </div> : null}
+        </MenuDropdown>
       </div>
     </div>
     <form action="/logout" id="rumahl-sign-out" method="post" hidden />

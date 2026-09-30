@@ -208,3 +208,215 @@ body.light .menubar.topbar-glass{
 .shell .desktop-icon { padding: 8px 4px; border-radius: 14px; }
 .shell .desktop-icon:hover { background: color-mix(in srgb, var(--accent) 16%, transparent); }
 .shell .desktop-icon.is-selected { background: color-mix(in srgb, var(--accent) 34%, transparent); border: 1px solid color-mix(in srgb, var(--accent) 65%, transparent); }
+
+/* Maximized/snapped (and launcher) windows: the top bar sticks flush to the top
+   like a menubar and the window sits directly beneath it. Windows stay rounded. */
+.shell[data-maximized="true"] .menubar.topbar-glass { top: 0; left: 0; right: 0; border-radius: 0; border-top: 0; border-left: 0; border-right: 0; z-index: 70; }
+
+/* Resize handle: keep it above the window content and easy to hit. */
+.shell .shell-window__content { position: relative; z-index: 0; }
+.shell .window-resize { width: 28px; height: 28px; z-index: 6; pointer-events: auto; }
+
+/* Performance hint toast, top right. */
+.shell .perf-toast { position: fixed; top: 16px; right: 16px; z-index: 90; display: flex; align-items: center; gap: 10px; max-width: min(360px, calc(100vw - 32px)); padding: 12px 14px; border-radius: 14px; background: var(--window); border: 1px solid var(--stroke); box-shadow: 0 18px 50px var(--shadow); backdrop-filter: blur(24px); color: var(--ink); font-size: 12px; }
+.shell .perf-toast button { border: 1px solid var(--divider); border-radius: 9px; padding: 6px 10px; background: var(--button); color: var(--ink); font: inherit; font-size: 11px; white-space: nowrap; }
+.shell .perf-toast button:last-child { padding: 4px 8px; }
+
+/* While the tab/window is not visible, hold all animations (resume later). */
+.shell[data-inactive="true"] *,
+.shell[data-inactive="true"] *::before,
+.shell[data-inactive="true"] *::after { animation-play-state: paused !important; }
+
+/* The reference reset (`button{cursor:pointer}`) wins over our layered rule, so
+   the resize handle showed a pointer. Force the resize cursor here. */
+.shell .window-resize { cursor: nwse-resize; }
+
+/* Debug badge (visible only when debug mode is enabled from the console). */
+.shell .debug-badge { position: fixed; top: 8px; left: 50%; transform: translateX(-50%); z-index: 95; padding: 4px 10px; border-radius: 999px; background: rgba(0, 0, 0, .65); color: #fff; font: 11px/1.4 ui-monospace, monospace; pointer-events: none; }
+
+/* Solid (transparency off): the transparent dock tiles (windows/desktop) sat on
+   a light surface, so their white glyphs vanished. Give them a visible tile. */
+.shell[data-material="solid"] .os-dock .dock-item:not([data-dock-app]):not(.dock-start) {
+  background: color-mix(in srgb, var(--rumahl-ui-color-accent, #a58aff) 22%, var(--rumahl-ui-color-surface-strong, #fff));
+  color: var(--rumahl-ui-color-accent, #a58aff);
+}
+
+/* Solid mode: guarantee coloured dock tiles (app gradients + start) so no icon
+   sits white-on-white. The data-dock-app palette mirrors the design. */
+.shell[data-material="solid"] .os-dock .dock-item[data-dock-app="home"] { background: linear-gradient(140deg, #b59aff, #7153c5); color: #fff; }
+.shell[data-material="solid"] .os-dock .dock-item[data-dock-app="apps"] { background: linear-gradient(150deg, #b0a9d7, #6469a5); color: #fff; }
+.shell[data-material="solid"] .os-dock .dock-item[data-dock-app="activity"] { background: linear-gradient(145deg, #71a9d7, #457dc1); color: #fff; }
+.shell[data-material="solid"] .os-dock .dock-item[data-dock-app="settings"] { background: linear-gradient(150deg, #888fa9, #414f70); color: #fff; }
+.shell[data-material="solid"] .os-dock .dock-start { background: var(--rumahl-ui-icon-gradient, linear-gradient(140deg, #b59aff, #7153c5)); color: #fff; }
+
+/* General toast system (stackable) + glass-reduced settings banner. */
+.toast-stack { position: fixed; top: 16px; right: 16px; z-index: 95; display: flex; flex-direction: column; gap: 10px; width: min(360px, calc(100vw - 32px)); pointer-events: none; }
+.toast { position: static; opacity: 1; transform: none; bottom: auto; left: auto; pointer-events: auto; display: flex; flex-direction: column; gap: 4px; padding: 12px 14px 10px; border-radius: 16px; background: color-mix(in srgb, var(--window) 68%, transparent); border: 1px solid var(--stroke); border-left-width: 3px; box-shadow: 0 18px 50px var(--shadow); backdrop-filter: blur(30px) saturate(1.5); -webkit-backdrop-filter: blur(30px) saturate(1.5); color: var(--ink); font-size: 12px; }
+.toast__title { font-weight: 650; }
+.toast__message { color: var(--muted); }
+.toast__actions { display: flex; align-items: center; gap: 8px; margin-top: 8px; }
+.toast__button { border: 1px solid var(--divider); border-radius: 9px; padding: 6px 10px; background: var(--button); color: var(--ink); font: inherit; font-size: 11px; }
+.toast__button--primary { background: var(--accent); color: #152136; border-color: transparent; }
+.toast__close { margin-left: auto; border: 0; background: transparent; color: var(--muted); cursor: pointer; font-size: 12px; }
+.toast--success { border-left-color: #36bc92; }
+.toast--warning { border-left-color: #e0a34a; }
+.toast--error { border-left-color: #e5484d; }
+.toast--info, .toast--normal { border-left-color: var(--accent); }
+.shell .glass-banner { background: color-mix(in srgb, var(--accent) 14%, transparent); }
+.shell .settings-group[aria-disabled="true"] .setting:not(.glass-banner) { opacity: .5; }
+
+/* Portaled toasts live on <body>; wire the theme accent there too. */
+body { --accent: var(--rumahl-ui-color-accent, #a58aff); }
+
+/* Toast refinements: close top-right, up to two expanded, stacked count below. */
+.toast__head { display: flex; align-items: center; gap: 8px; min-height: 16px; }
+.toast__head .toast__close { margin-left: auto; }
+.toast-stack__more { align-self: flex-end; margin-top: -4px; padding: 3px 10px; border-radius: 999px; background: var(--window); border: 1px solid var(--stroke); color: var(--muted); font-size: 11px; box-shadow: 0 8px 24px var(--shadow); }
+
+/* Stacked notifications: ghost cards peek out behind the second toast. */
+.toast-stack__group { position: relative; }
+.toast-stack__ghosts { position: absolute; inset: 0; z-index: -1; pointer-events: none; }
+.toast-stack__ghost { position: absolute; left: 8px; right: 8px; top: 10px; bottom: -8px; border-radius: 16px; background: color-mix(in srgb, var(--window) 68%, transparent); border: 1px solid var(--stroke); box-shadow: 0 8px 24px var(--shadow); }
+.toast-stack__ghost:first-child { opacity: .8; }
+.toast-stack__ghost:last-of-type { transform: translateY(8px) scale(.97); opacity: .55; }
+.toast-stack__count { position: absolute; right: 12px; bottom: -14px; padding: 2px 9px; border-radius: 999px; background: var(--window); border: 1px solid var(--stroke); color: var(--muted); font-size: 11px; box-shadow: 0 6px 18px var(--shadow); }
+.toast--warning, .toast--error { background: color-mix(in srgb, var(--window) 82%, transparent); }
+
+/* Toast entry wrapper (motion animates it). */
+.toast-entry { position: relative; }
+/* Smooth top bar when switching to/from fullscreen. */
+.shell .menubar.topbar-glass { transition: top .28s cubic-bezier(.2, .7, .2, 1), left .28s cubic-bezier(.2, .7, .2, 1), right .28s cubic-bezier(.2, .7, .2, 1), border-radius .28s cubic-bezier(.2, .7, .2, 1), transform .28s cubic-bezier(.2, .7, .2, 1), opacity .28s ease; }
+/* Launcher: an opened app hides the top bar by sliding it up; the window keeps
+   the space the bar occupied (see DesktopWindows top inset). */
+.shell[data-launcher="app"] .menubar.topbar-glass { transform: translateY(calc(-100% - 12px)); opacity: 0; pointer-events: none; }
+@media (prefers-reduced-motion: reduce) { .shell[data-launcher="app"] .menubar.topbar-glass { transform: none; } }
+/* Smooth maximize/restore, but never while dragging or resizing. Focus changes
+   (shadow/border) stay instant. */
+.shell .window-position:not(.is-moving) .shell-window { transition: left .24s cubic-bezier(.2, .7, .2, 1), top .24s cubic-bezier(.2, .7, .2, 1), width .24s cubic-bezier(.2, .7, .2, 1), height .24s cubic-bezier(.2, .7, .2, 1); }
+
+/* Toast look aligned with the OS surfaces + variant dot. */
+.toast { border-left-width: 1px; }
+.toast__dot { width: 8px; height: 8px; border-radius: 50%; flex: 0 0 auto; background: var(--accent); }
+.toast__dot--success { background: #36bc92; }
+.toast__dot--warning { background: #e0a34a; }
+.toast__dot--error { background: #e5484d; }
+.toast__dot--info, .toast__dot--normal { background: var(--accent); }
+/* Minimize/restore + launcher/desktop entry animations. Focus never animates. */
+.shell .window-position > .shell-window { transition: opacity .26s ease, transform .26s cubic-bezier(.2, .7, .2, 1), left .24s cubic-bezier(.2, .7, .2, 1), top .24s cubic-bezier(.2, .7, .2, 1), width .24s cubic-bezier(.2, .7, .2, 1), height .24s cubic-bezier(.2, .7, .2, 1); }
+.shell .window-position.is-hidden > .shell-window { opacity: 0; transform: scale(.94) translateY(10px); pointer-events: none; }
+/* Launcher: switching the active app is instant (no fade/scale). */
+.shell[data-shell-mode="launcher"] .window-position > .shell-window { transition: none; }
+@keyframes rumahl-surface-in { from { opacity: 0; transform: scale(.98); } to { opacity: 1; transform: scale(1); } }
+.shell .launcher-workspace, .shell .desktop-workspace { animation: rumahl-surface-in .3s cubic-bezier(.2, .7, .2, 1) both; }
+@media (prefers-reduced-motion: reduce) { .shell .launcher-workspace, .shell .desktop-workspace, .shell .window-position > .shell-window { animation: none; transition: none; } }
+
+/* Window open fade is handled by motion; no CSS animation that could replay. */
+
+/* Transparency fully off: opaque chrome and no backdrop filters anywhere. */
+.shell[data-material="solid"] { --window: var(--rumahl-ui-color-surface-strong, #f5f5f7); --side: var(--rumahl-ui-color-surface-strong, #f5f5f7); --dock: var(--rumahl-ui-color-surface-strong, #f5f5f7); --widget: var(--rumahl-ui-color-surface-strong, #f5f5f7); --menu: var(--rumahl-ui-color-surface-strong, #f5f5f7); }
+.shell[data-material="solid"] :is(.menubar, .os-dock, .shell-window, .start-menu, .desktop-menu, .command-palette, .menubar__dropdown, .desktop-widget) { backdrop-filter: none !important; -webkit-backdrop-filter: none !important; }
+/* Animations off. */
+.shell[data-animations="off"] *,
+.shell[data-animations="off"] *::before,
+.shell[data-animations="off"] *::after { animation: none !important; transition: none !important; }
+body.animations-off *, body.animations-off *::before, body.animations-off *::after { animation: none !important; transition: none !important; }
+
+/* Transparency off: force opaque chrome even where backgrounds are hard-coded
+   or provided by the glass engine (inline tint). */
+.shell[data-material="solid"] :is(.menubar, .menubar.topbar-glass, .os-dock, .start-menu, .desktop-menu, .command-palette, .menubar__dropdown, .desktop-widget, .desktop-search, .launcher-views, .folder-preview) {
+  background: var(--rumahl-ui-color-surface-strong, #f5f5f7) !important;
+  backdrop-filter: none !important; -webkit-backdrop-filter: none !important;
+}
+.shell[data-material="solid"] :is(.os-dock, .desktop-widget) .rumahl-glass-surface {
+  background: var(--rumahl-ui-color-surface-strong, #f5f5f7) !important;
+  backdrop-filter: none !important; -webkit-backdrop-filter: none !important;
+}
+.shell[data-material="solid"] .launcher-home .app-search input { background: var(--rumahl-ui-color-surface-strong, #f5f5f7) !important; backdrop-filter: none !important; -webkit-backdrop-filter: none !important; }
+
+/* Window controls: snap flyout revealed from the maximize button (reachable
+   without closing; no gap so the pointer can travel into it). */
+.window-control-group { position: relative; display: flex; align-items: center; }
+.window-snap-flyout { position: absolute; top: 100%; left: 0; display: none; gap: 4px; padding-top: 6px; }
+.window-snap-flyout > button { background: color-mix(in srgb, var(--accent) 12%, transparent); color: var(--accent); border-radius: 8px; width: 30px; height: 26px; }
+.window-control-group:hover .window-snap-flyout,
+.window-control-group:focus-within .window-snap-flyout { display: flex; }
+
+/* Touch/coarse pointer: bigger hit targets for window controls and dock. */
+@media (pointer: coarse) {
+  .shell .shell-window__controls button { width: 40px; height: 34px; border-radius: 10px; }
+  .shell .window-snap-flyout > button { width: 40px; height: 34px; }
+  .shell .window-resize { width: 40px; height: 40px; }
+  .shell .os-dock .dock-item { min-width: 52px; min-height: 52px; }
+}
+
+/* Never transition window geometry while dragging (synchronous class). */
+.shell .window-position.is-dragging > .shell-window { transition: none !important; }
+
+/* Top bar dropdown gets a frosted blur (translucent mode only). */
+.shell:not([data-material="solid"]) .menubar__dropdown { backdrop-filter: blur(30px) saturate(1.6); -webkit-backdrop-filter: blur(30px) saturate(1.6); }
+
+/* rumahl custom dropdown */
+.rumahl-select { position: relative; display: inline-block; }
+.rumahl-select__trigger { display: inline-flex; align-items: center; gap: 8px; min-width: 140px; justify-content: space-between; border: 1px solid var(--dec-divider, var(--stroke)); border-radius: 9px; padding: 8px 12px; background: var(--button); color: var(--ink); font: inherit; font-size: 11px; cursor: pointer; }
+.rumahl-select__trigger:disabled { opacity: .5; cursor: default; }
+.rumahl-select__menu { position: absolute; z-index: 20; top: calc(100% + 6px); left: 0; min-width: 100%; display: grid; gap: 2px; padding: 6px; border-radius: 12px; background: var(--menu); border: 1px solid var(--stroke); box-shadow: 0 18px 50px var(--shadow); backdrop-filter: blur(24px) saturate(1.5); -webkit-backdrop-filter: blur(24px) saturate(1.5); }
+.rumahl-select__option { border: 0; border-radius: 8px; padding: 8px 10px; background: transparent; color: var(--ink); text-align: left; font: inherit; font-size: 11px; cursor: pointer; }
+.rumahl-select__option:hover { background: color-mix(in srgb, var(--accent) 16%, transparent); }
+.rumahl-select__option.is-active { background: color-mix(in srgb, var(--accent) 26%, transparent); }
+
+/* Portaled top bar dropdown (lives on <body> so its backdrop filter blurs the
+   page behind instead of the already-filtered top bar). */
+.menubar__dropdown { position: fixed; z-index: 120; min-width: 236px; max-width: min(340px, calc(100vw - 18px)); padding: 6px; border-radius: 15px; background: var(--menu); border: 1px solid var(--stroke); box-shadow: 0 26px 64px var(--shadow), 0 3px 10px rgba(0, 0, 0, .12), inset 0 1px 0 rgba(255, 255, 255, .16); backdrop-filter: blur(34px) saturate(1.7); -webkit-backdrop-filter: blur(34px) saturate(1.7); color: var(--ink); transform-origin: var(--menu-origin, top left); animation: rumahl-menu-in .2s cubic-bezier(.2, .9, .25, 1.02) both; overflow: hidden; }
+.menubar__dropdown--right { --menu-origin: top right; }
+@keyframes rumahl-menu-in { from { opacity: 0; transform: translateY(-7px) scale(.96); } to { opacity: 1; transform: translateY(0) scale(1); } }
+.menubar__dropdown button { position: relative; display: flex; align-items: center; justify-content: space-between; gap: 14px; width: 100%; padding: 8px 11px; border: 0; border-radius: 9px; color: inherit; background: transparent; font: inherit; font-size: 12px; text-align: left; cursor: pointer; transition: background .16s ease, color .16s ease, transform .16s cubic-bezier(.2, .7, .2, 1); animation: rumahl-menu-item-in .24s cubic-bezier(.2, .7, .2, 1) both; }
+.menubar__dropdown button:nth-of-type(2) { animation-delay: .02s; }
+.menubar__dropdown button:nth-of-type(3) { animation-delay: .04s; }
+.menubar__dropdown button:nth-of-type(4) { animation-delay: .06s; }
+.menubar__dropdown button:nth-of-type(5) { animation-delay: .08s; }
+.menubar__dropdown button:nth-of-type(n+6) { animation-delay: .1s; }
+@keyframes rumahl-menu-item-in { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: none; } }
+.menubar__dropdown button:hover:not(:disabled), .menubar__dropdown button:focus-visible:not(:disabled) { background: color-mix(in srgb, var(--accent) 18%, transparent); transform: translateX(2px); }
+.menubar__dropdown button:hover:not(:disabled)::before, .menubar__dropdown button:focus-visible:not(:disabled)::before { content: ""; position: absolute; left: 0; top: 50%; width: 3px; height: 15px; transform: translateY(-50%); border-radius: 3px; background: var(--accent); }
+.menubar__dropdown button:active:not(:disabled) { transform: translateX(2px) scale(.985); }
+.menubar__dropdown button:disabled { opacity: .42; cursor: default; }
+.menubar__dropdown button[role="menuitemradio"][aria-checked="true"] { background: color-mix(in srgb, var(--accent) 13%, transparent); }
+.menubar__dropdown button[role="menuitemradio"][aria-checked="true"]::after { margin-left: 12px; color: var(--accent); font-weight: 700; content: "✓"; }
+.menubar__dropdown .menubar__about { display: grid; gap: 3px; margin: 0 0 4px; padding: 8px 12px 10px; color: var(--muted); font-size: 11px; border-bottom: 1px solid var(--divider); }
+.menubar__dropdown .menubar__about small { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 10px; letter-spacing: .04em; opacity: .8; }
+.menubar__dropdown .menubar__separator { height: 1px; margin: 5px 7px; background: var(--divider); }
+.menubar__dropdown .menubar__empty { margin: 0; padding: 9px 12px; color: var(--muted); font-size: 11px; }
+@media (prefers-reduced-motion: reduce) { .menubar__dropdown, .menubar__dropdown button { animation: none; } }
+
+/* Material preset cards: live glass previews (animated backdrop + real blur). */
+.display-settings .material-presets { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; margin: 10px 0 18px; }
+.display-settings .material-card { position: relative; display: grid; gap: 8px; margin: 0; padding: 8px; border: 1px solid var(--stroke); border-radius: 16px; background: color-mix(in srgb, var(--rumahl-ui-color-surface-strong) 45%, transparent); color: var(--rumahl-ui-color-text-primary); text-align: left; cursor: pointer; transition: transform .2s cubic-bezier(.2, .7, .2, 1), border-color .2s ease, box-shadow .2s ease; }
+.display-settings .material-card:hover { transform: translateY(-3px); border-color: color-mix(in srgb, var(--accent) 45%, var(--stroke)); box-shadow: 0 10px 26px var(--shadow); }
+.display-settings .material-card:active { transform: translateY(-1px) scale(.98); }
+.display-settings .material-card[aria-pressed="true"] { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 12%, transparent); color: var(--rumahl-ui-color-text-primary); box-shadow: 0 0 0 1px var(--accent) inset, 0 10px 26px color-mix(in srgb, var(--accent) 26%, transparent); }
+.display-settings .material-card__preview { position: relative; height: 52px; border-radius: 11px; overflow: hidden; border: 1px solid color-mix(in srgb, var(--stroke) 60%, transparent); background: radial-gradient(circle at 18% 22%, #ff9f0a 0, transparent 42%), radial-gradient(circle at 82% 26%, #ff375f 0, transparent 46%), radial-gradient(circle at 50% 100%, #0a84ff 0, transparent 52%), linear-gradient(135deg, #bf5af2, #22c7a9); background-size: 160% 160%; animation: material-card-pan 8s ease-in-out infinite alternate; }
+@keyframes material-card-pan { from { background-position: 0% 0%; } to { background-position: 100% 100%; } }
+.display-settings .material-card__preview::after { content: ""; position: absolute; inset: 0; border-radius: inherit; background: rgba(20, 28, 47, var(--mc-tint, .12)); backdrop-filter: blur(var(--mc-blur, 12px)) saturate(var(--mc-sat, 1.5)); -webkit-backdrop-filter: blur(var(--mc-blur, 12px)) saturate(var(--mc-sat, 1.5)); box-shadow: inset 0 1px 0 rgba(255, 255, 255, .35); }
+.display-settings .material-card__preview::before { content: ""; position: absolute; inset: 0; z-index: 2; border-radius: inherit; pointer-events: none; background: linear-gradient(115deg, transparent 32%, rgba(255, 255, 255, .45) 50%, transparent 68%); transform: translateX(-130%); transition: transform .55s ease; }
+.display-settings .material-card:hover .material-card__preview::before { transform: translateX(130%); }
+.display-settings .material-card--clear { --mc-blur: 18px; --mc-sat: 1.9; --mc-tint: .05; }
+.display-settings .material-card--soft { --mc-blur: 11px; --mc-sat: 1.5; --mc-tint: .16; }
+.display-settings .material-card--bold { --mc-blur: 24px; --mc-sat: 2.1; --mc-tint: .10; }
+.display-settings .material-card--solid { --mc-blur: 0px; --mc-sat: 1; --mc-tint: .94; }
+.display-settings .material-card__label { display: flex; align-items: center; gap: 5px; padding: 0 2px 1px; font-size: 12px; font-weight: 600; }
+.display-settings .material-card__label::after { content: "✓"; margin-left: auto; color: var(--accent); font-size: 11px; opacity: 0; transform: scale(.6); transition: opacity .18s ease, transform .18s ease; }
+.display-settings .material-card[aria-pressed="true"] .material-card__label { color: var(--accent); }
+.display-settings .material-card[aria-pressed="true"] .material-card__label::after { opacity: 1; transform: scale(1); }
+@media (prefers-reduced-motion: reduce) { .display-settings .material-card__preview { animation: none; } .display-settings .material-card__preview::before { display: none; } }
+@media (max-width: 560px) { .display-settings .material-presets { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+
+/* Read-only value rows (System/About). The value stays right-aligned; long text
+   first wraps below the label (gap preserved), then scrolls horizontally. */
+.settings-content .setting--value { flex-wrap: wrap; }
+.settings-content .setting--value .copy { flex: 0 1 auto; min-width: 0; }
+.settings-content .setting--value .visual { flex: 1 1 auto; min-width: 0; max-width: 100%; overflow-x: auto; overflow-y: hidden; scrollbar-width: thin; scrollbar-color: color-mix(in srgb, var(--rumahl-ui-color-text-primary) 26%, transparent) transparent; }
+.settings-content .setting--value .visual::-webkit-scrollbar { height: 6px; }
+.settings-content .setting--value .visual::-webkit-scrollbar-thumb { border-radius: 20px; background: color-mix(in srgb, var(--rumahl-ui-color-text-primary) 26%, transparent); }
+.settings-content .setting--value .visual > span,
+.settings-content .setting--value .visual > code { display: block; text-align: right; white-space: nowrap; font-size: 12px; color: var(--rumahl-ui-color-text-primary); }
+.settings-content .setting--value .visual > code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11.5px; color: var(--muted); }

@@ -132,16 +132,19 @@
 .display-settings input[type="range"] { accent-color: var(--rumahl-ui-color-accent); }
 
 /* Richer settings controls: material preview cards, custom-variant disclosure, segmented toggles. */
-.display-settings .material-presets { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; margin: 8px 0 18px; }
+.display-settings .material-presets { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; margin: 8px 0 18px; }
 .display-settings .material-presets .material-card {
   display: grid; gap: 9px; margin: 0; padding: 10px; border: 1px solid var(--surface-edge);
   border-radius: 14px; background: color-mix(in srgb, var(--surface-base) 55%, transparent);
   color: var(--rumahl-ui-color-text-primary); text-align: left;
 }
-.display-settings .material-presets .material-card:hover { border-color: color-mix(in srgb, var(--rumahl-ui-color-accent) 42%, var(--surface-edge)); }
+.display-settings .material-presets .material-card { cursor: pointer; transition: border-color .15s ease, box-shadow .15s ease, transform .15s ease; }
+.display-settings .material-presets .material-card:hover { border-color: color-mix(in srgb, var(--rumahl-ui-color-accent) 42%, var(--surface-edge)); transform: translateY(-1px); }
+.display-settings .material-presets .material-card[aria-pressed="true"] { border-color: var(--rumahl-ui-color-accent); box-shadow: 0 0 0 1px var(--rumahl-ui-color-accent) inset, 0 6px 16px color-mix(in srgb, var(--rumahl-ui-color-accent) 22%, transparent); }
 .display-settings .material-card__preview { height: 46px; border-radius: 11px; border: 1px solid var(--surface-hairline); }
 .display-settings .material-card--clear .material-card__preview { background: linear-gradient(135deg, color-mix(in srgb, var(--rumahl-ui-color-accent) 30%, transparent), transparent 62%), color-mix(in srgb, var(--surface-base) 38%, transparent); }
 .display-settings .material-card--soft .material-card__preview { background: linear-gradient(135deg, color-mix(in srgb, var(--rumahl-ui-color-accent) 18%, transparent), transparent 62%), color-mix(in srgb, var(--surface-base) 74%, transparent); }
+.display-settings .material-card--bold .material-card__preview { background: linear-gradient(135deg, color-mix(in srgb, var(--rumahl-ui-color-accent) 40%, transparent), transparent 58%), color-mix(in srgb, var(--surface-base) 60%, transparent); box-shadow: inset 0 1px 0 color-mix(in srgb, #fff 30%, transparent); }
 .display-settings .material-card--solid .material-card__preview { background: var(--surface-base); }
 .display-settings .material-card__label { font-size: 12px; font-weight: 600; }
 .display-settings .theme-choice-params { display: grid; gap: 2px; }

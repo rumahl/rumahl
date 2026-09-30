@@ -249,6 +249,9 @@
 .shell .settings-content .settings-group .theme-parameter > span { flex: 1; min-width: 0; font-size: 12px; font-weight: 620; color: var(--nd-ink); }
 .shell .settings-content .settings-group .theme-parameter input[type="range"] { width: 120px; accent-color: var(--nd-accent); }
 .shell .settings-content .settings-group .theme-parameter :is(output, .theme-swatches) { justify-self: auto; }
+.shell .settings-content .settings-group .theme-parameter--color { flex-direction: column; align-items: stretch; gap: 9px; }
+.shell .settings-content .settings-group .theme-parameter--color > span { flex: none; }
+.shell .settings-content .settings-group .theme-parameter--color .rumahl-color-picker { max-width: none; }
 .shell .settings-content .settings-group .setting:first-child { border-top: 0; }
 .shell .setting .visual input[role="switch"] {
   appearance: none; position: relative; width: 38px; height: 23px; flex-shrink: 0;

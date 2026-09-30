@@ -18,7 +18,7 @@ describe("menu bar", () => {
     render(<App snapshot={demoSnapshot} initialLocation="/" />);
     fireEvent.click(screen.getByRole("button", { name: "View" }));
     fireEvent.click(screen.getByRole("menuitemradio", { name: "Launcher" }));
-    expect(screen.getByRole("combobox", { name: "Shell mode" })).toHaveValue("launcher");
+    expect(screen.getByRole("button", { name: "Shell mode" })).toHaveTextContent("Launcher");
   });
 
   test("lists open windows and focuses one", () => {

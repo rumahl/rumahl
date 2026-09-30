@@ -70,7 +70,9 @@ export function shellReducer(state: ShellState, action: ShellAction): ShellState
     case "focus-window": {
       const window = state.windows.find((item) => item.id === action.id);
       if (!window) return state;
-      return { ...state, windows: [...state.windows.filter((item) => item.id !== action.id), { ...window, minimized: false }], focusedWindowId: action.id };
+      // Keep the array order stable so focusing never reorders the DOM (and thus
+      // never replays the window entry animation); stacking uses the z-index map.
+      return { ...state, windows: state.windows.map((item) => item.id === action.id ? { ...item, minimized: false } : item), focusedWindowId: action.id };
     }
     case "set-window-rect":
       if (Object.values(action.rect).some((value) => !Number.isFinite(value))) return state;

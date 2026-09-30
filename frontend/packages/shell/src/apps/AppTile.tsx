@@ -5,6 +5,7 @@ import { rememberRecent } from "./recents";
 import type { ShellApp } from "./useShellApps";
 
 export function AppIcon({ app }: { app: ShellApp }) {
+  if (app.icon) return <img className="icon" src={app.icon} alt="" />;
   if (app.kind === "settings") return <SettingsIcon />;
   return <GridIcon />;
 }

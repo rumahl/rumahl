@@ -63,6 +63,14 @@ export function configureGlass(next: { enabled?: boolean; backend?: GlassBackend
 
 const handles = new Set<GlassHandle>();
 const adjust: Partial<GlassMaterial> = {};
+type GlassMetrics = { p95: number; dropped: number; renderer: string };
+const metricListeners = new Set<(metrics: GlassMetrics) => void>();
+
+/** Subscribes to engine performance metrics (for adapt-to-performance hints). */
+export function subscribeGlassMetrics(listener: (metrics: GlassMetrics) => void): () => void {
+  metricListeners.add(listener);
+  return () => { metricListeners.delete(listener); };
+}
 
 /** Live-tunes refraction/chroma/blur on every mounted glass surface. */
 export function setGlassAdjust(next: Partial<GlassMaterial>): void {
@@ -75,6 +83,10 @@ function getEngine(): GlassEngineInstance {
     engine = new Engine({ source: wallpaperSource, quality: config.quality, backend: config.backend });
     const report = () => { if (typeof document !== "undefined") document.documentElement.dataset.glassRenderer = engine!.renderer; };
     engine.addEventListener("qualitychange", report);
+    engine.addEventListener("metrics", (event) => {
+      const detail = (event as CustomEvent<GlassMetrics>).detail;
+      if (detail) for (const listener of metricListeners) listener(detail);
+    });
     report();
     // Console diagnostics: `window.__rumahlGlass.setBackend('webgl')`.
     if (typeof window !== "undefined") (window as unknown as { __rumahlGlass?: GlassEngineInstance }).__rumahlGlass = engine;

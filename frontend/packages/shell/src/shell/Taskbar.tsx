@@ -1,3 +1,4 @@
+import { windowBelongsToLink } from "./dock-model";
 import { useState } from "react";
 import { useLocation } from "react-router";
 import { AppIcon } from "../apps/AppTile";
@@ -20,7 +21,7 @@ export function Taskbar() {
   const apps = useShellApps();
   const { snapshot, state, dispatch, open, mode } = useShell();
   const location = useLocation();
-  const active = describeRoute(location.pathname).id;
+  const active = describeRoute(location.pathname + location.search + location.hash).id;
   const [launcher, setLauncher] = useState(false);
   const windows = [...state.windows].sort((a, b) => a.id.localeCompare(b.id));
   const links = [
@@ -29,6 +30,7 @@ export function Taskbar() {
     { to: "/activity", label: t("nav.activity"), icon: <PulseIcon /> },
     { to: "/settings", label: t("nav.settings"), icon: <SettingsIcon /> }
   ];
+  const extraWindows = windows.filter(item => !links.some(link => windowBelongsToLink(item, link.to)));
   const clock = new Intl.DateTimeFormat(locale, { hour: "2-digit", minute: "2-digit" }).format(new Date(snapshot.systemStatus.observedAtUnixMs));
   const windowIcon = (item: (typeof windows)[number]) => {
     const app = apps.find((candidate) => item.id === `app:${candidate.id}` || item.id === candidate.path || item.location === candidate.path);
@@ -39,12 +41,18 @@ export function Taskbar() {
       <button className="taskbar__start" type="button" aria-label={mode === "desktop" ? t("launcher.open") : t("launcher.home")} aria-expanded={launcher}
         onClick={() => mode === "desktop" ? setLauncher((value) => !value) : open("/")}><RumahlMark /></button>
       <div className="taskbar__apps">
-        {links.map((link) => <ShellLink key={link.to} className="taskbar__button" to={link.to} aria-label={link.label} title={link.label}>
-          {link.icon}<span>{link.label}</span>
-        </ShellLink>)}
+        {links.map(link => {
+          const item = windows.find(window => windowBelongsToLink(window, link.to));
+          const focused = item ? !item.minimized && state.focusedWindowId === item.id : active === describeRoute(link.to).id;
+          return <ShellLink key={link.to} className="taskbar__button" to={item?.location ?? link.to} aria-label={link.label} title={link.label}
+            data-open={!!item || (link.to === "/apps" && focused) || undefined} data-focused={focused || undefined}
+            onClick={event => { if (item && !event.ctrlKey && !event.metaKey && !event.shiftKey && event.button === 0) { event.preventDefault(); dispatch({ type: "focus-window", id: item.id }); open(item.location ?? link.to); } }}>
+            {link.icon}<span>{link.label}</span>
+          </ShellLink>;
+        })}
       </div>
-      {windows.length > 0 ? <div className="taskbar__windows" aria-label={t("desktop.running")}>
-        {windows.map((item) => <button key={item.id} type="button" className={`taskbar__button taskbar__window${item.minimized ? " is-minimized" : ""}`}
+      {extraWindows.length > 0 ? <div className="taskbar__windows" aria-label={t("desktop.running")}>
+        {extraWindows.map((item) => <button key={item.id} type="button" className={`taskbar__button taskbar__window${item.minimized ? " is-minimized" : ""}`}
           aria-label={item.title} title={item.title} aria-pressed={!item.minimized && active === item.id}
           onClick={() => { if (!item.minimized && active === item.id && mode === "desktop") { dispatch({ type: "toggle-minimize", id: item.id }); open("/"); }
             else { dispatch({ type: "focus-window", id: item.id }); open(item.location ?? "/"); } }}>
@@ -52,7 +60,7 @@ export function Taskbar() {
         </button>)}
       </div> : null}
       <div className="taskbar__tray">
-        <button className="taskbar__button taskbar__show" type="button" onClick={() => { dispatch({ type: "minimize-all" }); open("/"); }} aria-label={t("desktop.show")} title={t("desktop.show")}><span aria-hidden="true">▱</span></button>
+
         <time className="taskbar__clock" dateTime={new Date(snapshot.systemStatus.observedAtUnixMs).toISOString()}>{clock}</time>
       </div>
     </nav>

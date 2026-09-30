@@ -7,6 +7,10 @@
 @import "./shell/new-design.css" layer(presentation);
 @import "./shell/reference/reference.css";
 @import "./pages/settings.css" layer(presentation);
+@import "./components/controls.css";
+@import "./components/scrollbars.css";
+@import "./shell/command-palette.css";
+@import "./shell/dock-indicators.css";
 
 @layer foundation {
 :root {
