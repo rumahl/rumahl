@@ -10,6 +10,7 @@ import { setTestMedia } from "../shell/test-media";
 import { RumahlSelect } from "../components/RumahlSelect";
 import { RumahlColorPicker } from "../components/RumahlColorPicker";
 import { Button } from "../components/Button";
+import { SettingsHeading } from "../components/SettingsHeading";
 import { setGlassAdjust } from "../glass-engine/useGlassEngine";
 
 export function DisplaySettings() {
@@ -74,10 +75,7 @@ export function DisplaySettings() {
     </div>;
   };
   return <section className="display-settings">
-    <header className="settings-page-heading">
-      <h1 className="pagetitle">{t("settings.personalization")}</h1>
-      <p className="pagedesc">{t("settings.displayHelp")}</p>
-    </header>
+    <SettingsHeading title={t("settings.personalization")} help={t("settings.displayHelp")} back="/settings" />
 
     <h3 className="section-title">{t("theme.title")}</h3>
     <div className="settings-group">

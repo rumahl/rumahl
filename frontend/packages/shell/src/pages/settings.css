@@ -85,3 +85,14 @@ body.light .about-identity__mark { background: #ffffff; color: #0b0d12; }
 
 .workspace-actions { display: flex; flex-wrap: wrap; gap: 8px; justify-content: flex-end; }
 .settings-empty { padding: 16px 18px; color: var(--muted); font-size: 12.5px; }
+
+
+/* Settings sub-page header: back button before the title. */
+.settings-heading { display: flex; align-items: center; gap: 12px; margin: 8px 0; }
+.settings-heading .pagetitle { margin: 0; }
+.settings-back { display: grid; place-items: center; width: 34px; height: 34px; flex: none; border: 1px solid var(--control-border); border-radius: 999px; background: var(--control-fill); color: var(--rumahl-ui-color-text-primary); box-shadow: var(--control-inset); transition: background 150ms ease, border-color 150ms ease; }
+.settings-back:hover { background: var(--control-hover); border-color: var(--control-border-hover); }
+.settings-back svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+
+/* Settings always use the readable text token (never an inherited white). */
+.settings-layout, .settings-content, .settings-sidebar { color: var(--rumahl-ui-color-text-primary); }

@@ -90,39 +90,30 @@ function HostedWindow({ item, area, zIndex }: { item: ShellWindow; area: WorkAre
     const start = gesture.current;
     if (!start || start.pointer !== event.pointerId || !area) return;
     const dx = event.clientX - start.x, dy = event.clientY - start.y;
-    const apply = (next: typeof rect) => {
-      if (!start.element) return;
-      start.element.style.left = `${next.x}px`;
-      start.element.style.top = `${next.y}px`;
-      start.element.style.width = `${next.width}px`;
-      start.element.style.height = `${next.height}px`;
-    };
     if (start.pending) {
       if (Math.abs(dx) + Math.abs(dy) < 4) return;
       const under = start.pending;
       const next = constrainRect({ ...under.stored, x: event.clientX - under.stored.width * under.ratio, y: event.clientY - under.offsetY }, area);
-      apply(next);
       start.pending = null; start.rect = next; start.live = next; start.moved = true;
       start.x = event.clientX; start.y = event.clientY;
       dispatch({ type: "set-window-placement", id: item.id, placement: "floating" });
       dispatch({ type: "set-window-rect", id: item.id, rect: next });
       return;
     }
-    const next = start.resize
-      ? constrainRect({ ...start.rect, width: start.rect.width + dx, height: start.rect.height + dy }, area)
-      : constrainRect({ ...start.rect, x: start.rect.x + dx, y: start.rect.y + dy }, area);
-    start.live = next; start.moved = true;
-    apply(next);
-    if (!start.resize) {
-      const bounds = event.currentTarget.getBoundingClientRect();
-      const target = snapTarget(event.clientX - bounds.left, event.clientY - bounds.top);
-      if (target !== start.snap) {
-        start.snap = target;
-        setSnap(target);
-        // Sync state so the re-render (snap preview) keeps the live position.
-        dispatch({ type: "set-window-rect", id: item.id, rect: next });
-      }
+    if (start.resize) {
+      const next = constrainRect({ ...start.rect, width: start.rect.width + dx, height: start.rect.height + dy }, area);
+      start.live = next; start.moved = true;
+      const element = start.element;
+      if (element) { element.style.left = `${next.x}px`; element.style.top = `${next.y}px`; element.style.width = `${next.width}px`; element.style.height = `${next.height}px`; }
+      return;
     }
+    const next = constrainRect({ ...start.rect, x: start.rect.x + dx, y: start.rect.y + dy }, area);
+    start.live = next; start.moved = true;
+    // Move with a composited transform (no layout thrash); commit the rect on release.
+    if (start.element) start.element.style.transform = `translate3d(${next.x - start.rect.x}px, ${next.y - start.rect.y}px, 0)`;
+    const bounds = event.currentTarget.getBoundingClientRect();
+    const target = snapTarget(event.clientX - bounds.left, event.clientY - bounds.top);
+    if (target !== start.snap) { start.snap = target; setSnap(target); }
   }
   function snapTarget(x: number, y: number): WindowPlacement | null {
     if (!area) return null;
@@ -131,8 +122,19 @@ function HostedWindow({ item, area, zIndex }: { item: ShellWindow; area: WorkAre
   function end() {
     const start = gesture.current;
     if (start?.moved) {
+      const final = start.live;
+      const element = start.element;
+      if (element) {
+        // Drop the transient transform and pin the committed position so the
+        // state update does not jump the window.
+        element.style.transform = "";
+        element.style.left = `${final.x}px`;
+        element.style.top = `${final.y}px`;
+        element.style.width = `${final.width}px`;
+        element.style.height = `${final.height}px`;
+      }
       if (!start.resize && start.snap) dispatch({ type: "set-window-placement", id: item.id, placement: start.snap });
-      else dispatch({ type: "set-window-rect", id: item.id, rect: start.live });
+      else dispatch({ type: "set-window-rect", id: item.id, rect: final });
     }
     document.querySelector(".window-position.is-dragging")?.classList.remove("is-dragging");
     gesture.current = null; setMoving(false); setSnap(null);

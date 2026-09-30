@@ -71,6 +71,14 @@ export function ArrowIcon(props: IconProps) {
   );
 }
 
+export function ArrowLeftIcon(props: IconProps) {
+  return (
+    <IconBase {...props}>
+      <path d="M19 12H5M10 7l-5 5 5 5" strokeLinecap="round" strokeLinejoin="round" />
+    </IconBase>
+  );
+}
+
 export function ShieldIcon(props: IconProps) {
   return (
     <IconBase {...props}>

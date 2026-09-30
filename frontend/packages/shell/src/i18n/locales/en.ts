@@ -114,6 +114,7 @@ export const english = {
   "window.maximize": "Maximize {title}",
   "window.restore": "Restore {title}",
   "settings.personalization": "Personalization",
+  "settings.back": "Back",
   "settings.accessibility": "Accessibility",
   "settings.accessibilityHelp": "Motion, animation and transparency comfort options.",
   "settings.system": "System",

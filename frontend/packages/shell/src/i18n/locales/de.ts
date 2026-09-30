@@ -109,6 +109,7 @@ export const german = {
   "window.maximize": "{title} maximieren",
   "window.restore": "{title} wiederherstellen",
   "settings.personalization": "Personalisierung",
+  "settings.back": "Zurück",
   "settings.accessibility": "Barrierefreiheit",
   "settings.accessibilityHelp": "Komfortoptionen für Bewegung, Animation und Transparenz.",
   "settings.system": "System",

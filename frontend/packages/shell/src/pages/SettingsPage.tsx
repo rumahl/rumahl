@@ -7,6 +7,7 @@ import { useLocation, useRoutes } from "react-router";
 import { DisplaySettings } from "./DisplaySettings";
 import { SystemInfo } from "./SystemInfo";
 import { RumahlMark } from "../components/RumahlMark";
+import { SettingsHeading } from "../components/SettingsHeading";
 import { ButtonLink } from "../components/Button";
 import { SettingsIcon, DesktopIcon, GridIcon, PulseIcon, ShieldIcon, InfoIcon, DocumentIcon, ExternalLinkIcon } from "../icons";
 import { useI18n } from "../i18n";
@@ -71,7 +72,7 @@ function AccessibilitySettings() {
   const { tuning, setAnimations, setWallpaperMotion } = useThemeTuning();
   const perf = tuning.performanceMode === true;
   return <section className="display-settings">
-    <header className="settings-page-heading"><h1 className="pagetitle">{t("settings.accessibility")}</h1><p className="pagedesc">{t("settings.accessibilityHelp")}</p></header>
+    <SettingsHeading title={t("settings.accessibility")} help={t("settings.accessibilityHelp")} back="/settings" />
     <h3 className="section-title">{t("theme.performance.title")}</h3>
     <div className="settings-group">
       <div className="setting">
@@ -89,7 +90,7 @@ function AccessibilitySettings() {
 function SystemSettings() {
   const { t } = useI18n();
   return <section className="display-settings">
-    <header className="settings-page-heading"><h1 className="pagetitle">{t("settings.system")}</h1><p className="pagedesc">{t("settings.systemHelp")}</p></header>
+    <SettingsHeading title={t("settings.system")} help={t("settings.systemHelp")} back="/settings" />
     <SystemInfo />
     <h3 className="section-title">{t("settings.system.sections")}</h3>
     <div className="settings-group settings-nav">
@@ -104,7 +105,7 @@ function AboutSettings() {
   const { snapshot, mode } = useShell();
   const { theme } = useTheme();
   return <section className="display-settings">
-    <header className="settings-page-heading"><h1 className="pagetitle">{t("settings.system.about")}</h1><p className="pagedesc">{t("settings.system.aboutHelp")}</p></header>
+    <SettingsHeading title={t("settings.system.about")} help={t("settings.system.aboutHelp")} back="/settings/system" />
 
     <div className="settings-group">
       <div className="setting about-identity">
@@ -137,7 +138,7 @@ function AboutSettings() {
 function LicenseSettings() {
   const { t } = useI18n();
   return <section className="display-settings">
-    <header className="settings-page-heading"><h1 className="pagetitle">{t("settings.system.licenses")}</h1><p className="pagedesc">{t("settings.system.licensesHelp")}</p></header>
+    <SettingsHeading title={t("settings.system.licenses")} help={t("settings.system.licensesHelp")} back="/settings/system" />
 
     <div className="settings-group">
       <div className="setting">

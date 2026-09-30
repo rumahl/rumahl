@@ -2,6 +2,7 @@ import { isInternalTarget } from "../routing/internal";
 import { RumahlInput, RumahlCheckbox } from "../components/RumahlInputs";
 import { RumahlSelect } from "../components/RumahlSelect";
 import { Button } from "../components/Button";
+import { SettingsHeading } from "../components/SettingsHeading";
 import { useState } from "react";
 import { useWorkspace, type AppFolder } from "./Workspace";
 import { useShell } from "../shell/ShellContext";
@@ -26,10 +27,7 @@ export function WorkspaceSettings() {
   const beginEdit = (folder: AppFolder) => { setEditing(folder.id); setName(folder.name); setSelected(folder.apps); };
   const cancelEdit = () => { setEditing(null); setName(""); setSelected([]); };
   return <section className="display-settings">
-    <header className="settings-page-heading">
-      <h1 className="pagetitle">{t("workspace.title")}</h1>
-      <p className="pagedesc">{t("workspace.help")}</p>
-    </header>
+    <SettingsHeading title={t("workspace.title")} help={t("workspace.help")} back="/settings" />
 
     <h3 className="section-title">{t("preferences.scope")}</h3>
     <div className="settings-group">
