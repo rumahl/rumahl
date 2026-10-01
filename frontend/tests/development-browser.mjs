@@ -228,6 +228,8 @@ try {
   // Save a snapped workspace and app folder; verify a real browser reload.
   await page.goto(`${info.origin}/app/files`);
   await page.getByRole("heading", { name: "Files", exact: true, level: 1 }).waitFor();
+  // Snap controls live in a hover flyout on the window chrome.
+  await page.locator('[data-window-id="app:files"] .window-control-group').hover();
   await page.getByRole("button", { name: "Snap Files left", exact: true }).click();
   await page.waitForFunction(() => Math.abs(globalThis.document.querySelector('[data-window-id="app:files"]').getBoundingClientRect().width - globalThis.document.querySelector(".window-layer").getBoundingClientRect().width / 2) < 2);
   const snapped = await page.getByRole("region", { name: "Files", exact: true }).boundingBox();
