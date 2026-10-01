@@ -164,7 +164,12 @@ export function ShellLayout({ snapshot, live }: { snapshot: ShellSnapshotV1; liv
   const material = transparencyOff || glassOff ? "solid" : "translucent";
   // An animated (promoted) wallpaper is excluded from the SVG backdrop, so SVG
   // switches the wallpaper to a still layer.
-  const svgActive = glassEnabled && (glassBackend === "svg" || (glassBackend === "auto" && svgRefractionSupported()));
+  // Resolve the SVG backdrop after mount so the server and the first client
+  // render agree on the scene classes (hydration-safe).
+  const [svgActive, setSvgActive] = useState(false);
+  useEffect(() => {
+    setSvgActive(glassEnabled && (glassBackend === "svg" || (glassBackend === "auto" && svgRefractionSupported())));
+  }, [glassEnabled, glassBackend]);
   const windowMaximized = state.windows.some((item) => !item.minimized && (item.placement ?? "floating") !== "floating");
   useEffect(() => {
     configureGlass({ enabled: effectiveGlass, backend: glassBackend, quality: glassQuality });
