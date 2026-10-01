@@ -245,7 +245,13 @@ try {
   await page.getByRole("button", { name: "Save arrangement", exact: true }).waitFor();
   await page.getByText("Create app folder", { exact: true }).dispatchEvent("click");
   await page.getByLabel("Folder name", { exact: true }).fill("Tools");
-  await page.getByRole("checkbox", { name: "Files", exact: true }).evaluate((element) => element.click());
+  await page.getByRole("checkbox", { name: "Files", exact: true }).evaluate((element) => {
+    if (!element.checked) {
+      element.checked = true;
+      element.dispatchEvent(new globalThis.Event("input", { bubbles: true }));
+      element.dispatchEvent(new globalThis.Event("change", { bubbles: true }));
+    }
+  });
   const folderSaved = page.waitForResponse(r => r.url().includes("/api/v1/shell/workspace?") && r.request().method() === "PUT");
   await page.getByRole("button", { name: "Save folder", exact: true }).dispatchEvent("click");
   assert.equal((await folderSaved).status(), 200);
@@ -281,6 +287,7 @@ try {
   await login(workspacePage);
   await workspacePage.getByRole("button", { name: "Launcher home", exact: true }).click();
   await workspacePage.getByRole("button", { name: "Tools", exact: true }).click();
+  console.log("DEBUG folder", await workspacePage.evaluate(() => JSON.stringify({ heading: globalThis.document.querySelector(".launcher-section h2")?.textContent, tiles: [...globalThis.document.querySelectorAll(".app-tile")].map((tile) => tile.textContent), empty: globalThis.document.querySelector(".launcher-empty")?.textContent })));
   await workspacePage.getByRole("link", { name: "Files", exact: true }).waitFor();
   await workspaceContext.close();
   await page.getByRole("button", { name: "Search system", exact: true }).click();
