@@ -236,7 +236,9 @@ try {
   const workArea = await page.locator(".window-layer").boundingBox();
   assert(Math.abs(snapped.width - workArea.width / 2) < 2);
   await page.getByRole("navigation", { name: "Main navigation" }).getByRole("link", { name: "Settings", exact: true }).click();
-  await page.getByRole("navigation", { name: "Settings", exact: true }).getByRole("link", { name: "Workspace", exact: true }).click();
+  // The snapped Files window can overlap the Settings sidebar; dispatch the
+  // navigation directly instead of relying on hit-testing through the stack.
+  await page.getByRole("navigation", { name: "Settings", exact: true }).getByRole("link", { name: "Workspace", exact: true }).dispatchEvent("click");
   await page.getByRole("button", { name: "Save arrangement", exact: true }).click();
   await page.getByRole("button", { name: "Save arrangement", exact: true }).waitFor();
   await page.getByLabel("Folder name", { exact: true }).fill("Tools");
