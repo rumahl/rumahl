@@ -240,7 +240,7 @@ try {
   // navigation directly instead of relying on hit-testing through the stack.
   await page.getByRole("navigation", { name: "Settings", exact: true }).getByRole("link", { name: "Workspace", exact: true }).dispatchEvent("click");
   await page.getByRole("region", { name: "Settings", exact: true }).dispatchEvent("pointerdown");
-  console.log("DEBUG windows", await page.evaluate(() => JSON.stringify([...document.querySelectorAll(".window-position")].map((position) => { const win = position.querySelector(".shell-window"); return { id: win?.dataset.windowId, z: getComputedStyle(position).zIndex, focused: win?.classList.contains("is-focused"), x: win?.getBoundingClientRect().x, width: win?.getBoundingClientRect().width }; }))));
+  console.log("DEBUG windows", await page.evaluate(() => JSON.stringify([...globalThis.document.querySelectorAll(".window-position")].map((position) => { const win = position.querySelector(".shell-window"); return { id: win?.dataset.windowId, z: globalThis.getComputedStyle(position).zIndex, focused: win?.classList.contains("is-focused"), x: win?.getBoundingClientRect().x, width: win?.getBoundingClientRect().width }; }))));
   await page.getByRole("button", { name: "Save arrangement", exact: true }).click();
   await page.getByRole("button", { name: "Save arrangement", exact: true }).waitFor();
   await page.getByLabel("Folder name", { exact: true }).fill("Tools");
