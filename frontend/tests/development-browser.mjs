@@ -188,8 +188,9 @@ try {
   // One account, two independent browser profiles, and a second tab of one profile.
   await page.goto(`${info.origin}/settings/display`);
   await choose("Save for", "This browser profile", page);
-  await page.getByRole("button", { name: "Use account setting", exact: true }).click();
-  await page.waitForFunction(() => !globalThis.document.querySelector('fieldset').disabled);
+  const inherited = page.waitForResponse((response) => response.url().includes("/api/v1/shell/preferences?") && response.request().method() === "PUT");
+  await page.getByRole("group", { name: "Shell mode" }).getByRole("button", { name: "Use account setting", exact: true }).click();
+  assert.equal((await inherited).status(), 200);
   const secondContext = await browser.newContext(reducedMotion);
   try {
     const second = await secondContext.newPage();
