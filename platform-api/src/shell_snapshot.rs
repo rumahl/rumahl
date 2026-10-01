@@ -80,11 +80,8 @@ where
             return Err(ShellSnapshotRequestError::DirectUserSessionRequired);
         }
 
-        let subject = ShellSnapshotSubject::new(
-            *identity.id(),
-            *context.correlation_id(),
-            query.device,
-        );
+        let subject =
+            ShellSnapshotSubject::new(*identity.id(), *context.correlation_id(), query.device);
         self.provider
             .load_for_user(&subject)
             .map_err(ShellSnapshotRequestError::Provider)

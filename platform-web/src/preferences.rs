@@ -23,7 +23,13 @@ pub(crate) fn routes() -> Router<Arc<GatewayState>> {
         .layer(DefaultBodyLimit::max(1024))
 }
 fn response(user: UserId, preferences: ShellPreferences) -> Response {
-    let ShellPreferences { revision, user_mode, device_mode, user_theme, device_theme } = preferences;
+    let ShellPreferences {
+        revision,
+        user_mode,
+        device_mode,
+        user_theme,
+        device_theme,
+    } = preferences;
     let effective_mode = device_mode.unwrap_or(user_mode).as_str();
     let effective_theme = device_theme.clone().unwrap_or_else(|| user_theme.clone());
     let mut response = axum::Json(serde_json::json!({"settingsVersion":1,"ownerId":user.to_string(),"revision":revision,"user":{"shellMode":user_mode.as_str(),"shellTheme":user_theme},"device":{"shellMode":device_mode.map(ShellMode::as_str),"shellTheme":device_theme},"effective":{"shellMode":effective_mode,"shellTheme":effective_theme}})).into_response();

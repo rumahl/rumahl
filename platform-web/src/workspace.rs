@@ -61,30 +61,24 @@ struct Appearance {
     tokens: BTreeMap<String, String>,
 }
 fn valid_appearance(appearance: &Appearance) -> bool {
-    appearance
-        .seed
+    appearance.seed.as_deref().is_none_or(|seed| {
+        seed.len() == 7 && seed.starts_with('#') && seed[1..].bytes().all(|b| b.is_ascii_hexdigit())
+    }) && appearance
+        .mode
         .as_deref()
-        .map_or(true, |seed| {
-            seed.len() == 7
-                && seed.starts_with('#')
-                && seed[1..].bytes().all(|b| b.is_ascii_hexdigit())
-        })
-        && appearance
-            .mode
-            .as_deref()
-            .map_or(true, |mode| ["light", "dark"].contains(&mode))
+        .is_none_or(|mode| ["light", "dark"].contains(&mode))
         && appearance
             .glass_engine
             .as_deref()
-            .map_or(true, |engine| ["css", "canvas"].contains(&engine))
+            .is_none_or(|engine| ["css", "canvas"].contains(&engine))
         && appearance
             .glass_backend
             .as_deref()
-            .map_or(true, |backend| ["auto", "svg", "webgl", "css"].contains(&backend))
+            .is_none_or(|backend| ["auto", "svg", "webgl", "css"].contains(&backend))
         && appearance
             .glass_quality
             .as_deref()
-            .map_or(true, |quality| ["auto", "high", "balanced", "low"].contains(&quality))
+            .is_none_or(|quality| ["auto", "high", "balanced", "low"].contains(&quality))
         && appearance.tokens.len() <= 64
         && appearance.tokens.iter().all(|(key, value)| {
             !key.is_empty()
@@ -178,7 +172,7 @@ fn valid(value: &Workspace) -> bool {
         && value
             .launcher_view
             .as_deref()
-            .map_or(true, |view| ["grid", "deck", "canvas"].contains(&view))
+            .is_none_or(|view| ["grid", "deck", "canvas"].contains(&view))
         && value.folders.iter().all(|f| {
             f.id.len() <= 64
                 && !f.id.is_empty()
@@ -290,7 +284,8 @@ mod appearance_tests {
 
     #[test]
     fn automatic_colour_roundtrips_and_defaults_off() {
-        let old: Appearance = serde_json::from_str(r#"{"seed":null,"mode":null,"tokens":{}}"#).unwrap();
+        let old: Appearance =
+            serde_json::from_str(r#"{"seed":null,"mode":null,"tokens":{}}"#).unwrap();
         assert!(!old.auto_color);
         let new: Appearance = serde_json::from_str(r#"{"autoColor":true,"tokens":{}}"#).unwrap();
         assert!(valid_appearance(&new));

@@ -994,7 +994,11 @@ mod tests {
             }
         }
 
-        fn snapshot(&self, token: &str, _device: Option<BrowserProfileId>) -> Result<ShellSnapshot, ShellBackendError> {
+        fn snapshot(
+            &self,
+            token: &str,
+            _device: Option<BrowserProfileId>,
+        ) -> Result<ShellSnapshot, ShellBackendError> {
             if !self.available || token != TOKEN {
                 return Err(ShellBackendError::Unavailable);
             }

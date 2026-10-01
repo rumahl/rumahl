@@ -4,8 +4,8 @@ use rumahl_account_auth::{
     PasswordBlocklist, SessionToken, StoredSessionCredentialResolver,
 };
 use rumahl_core::{
-    AccountStateRepository, BrowserProfileId, PlatformSnapshotRepository, ShellPreferencesRepository,
-    UnixTimestamp, UserId, WorkspaceRepository,
+    AccountStateRepository, BrowserProfileId, PlatformSnapshotRepository,
+    ShellPreferencesRepository, UnixTimestamp, UserId, WorkspaceRepository,
 };
 use rumahl_persistence_sqlite::{
     BrowserSessionError, SqliteAccountStateRepository, SqliteBrowserSessionRepository,
@@ -174,7 +174,11 @@ impl PersistentShellSnapshots {
         self
     }
 
-    fn resolve_workspace(&self, user_id: &UserId, device: Option<BrowserProfileId>) -> Option<String> {
+    fn resolve_workspace(
+        &self,
+        user_id: &UserId,
+        device: Option<BrowserProfileId>,
+    ) -> Option<String> {
         const SENTINEL: &str = "00000000-0000-4000-8000-000000000000";
         let workspace = self.workspace.as_ref()?;
         let profile = device.or_else(|| BrowserProfileId::parse(SENTINEL))?;
@@ -209,7 +213,11 @@ impl PersistentShellSnapshots {
             _ => ShellMode::Desktop,
         }
     }
-    pub fn for_user(&self, user_id: &UserId, device: Option<BrowserProfileId>) -> Result<ShellSnapshot, ServiceError> {
+    pub fn for_user(
+        &self,
+        user_id: &UserId,
+        device: Option<BrowserProfileId>,
+    ) -> Result<ShellSnapshot, ServiceError> {
         let state = self.accounts.load()?;
         let user = state
             .accounts()

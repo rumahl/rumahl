@@ -526,9 +526,15 @@ fn stock_tokens() -> BTreeMap<ThemeToken, ThemeTokenValue> {
         (MotionDurationFast, ThemeTokenValue::Millis(120)),
         (MotionEasingSpring, css("cubic-bezier(.32, .72, 0, 1)")),
         (LayoutDockOffset, ThemeTokenValue::Pixels(10)),
-        (IconGradient, css("linear-gradient(150deg, #4f8f78, #28694c)")),
+        (
+            IconGradient,
+            css("linear-gradient(150deg, #4f8f78, #28694c)"),
+        ),
         (TextureWallpaper, css("default")),
-        (TypographyFamily, css("system-ui, \"Segoe UI\", Roboto, \"Noto Sans\", sans-serif")),
+        (
+            TypographyFamily,
+            css("system-ui, \"Segoe UI\", Roboto, \"Noto Sans\", sans-serif"),
+        ),
         (TypographyScale, css("1")),
     ])
 }
@@ -617,7 +623,10 @@ fn parse_decimal_between(value: &str, minimum: f64, maximum: f64) -> Option<Them
     if value.is_empty() || value.len() > 8 {
         return None;
     }
-    if !value.bytes().all(|byte| byte.is_ascii_digit() || byte == b'.') {
+    if !value
+        .bytes()
+        .all(|byte| byte.is_ascii_digit() || byte == b'.')
+    {
         return None;
     }
     let parsed = value.parse::<f64>().ok()?;

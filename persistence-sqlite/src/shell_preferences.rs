@@ -25,8 +25,18 @@ impl SqliteShellPreferences {
         let connection = this.connect()?;
         connection.execute_batch("CREATE TABLE IF NOT EXISTS shell_user_preferences (user_id TEXT PRIMARY KEY, revision INTEGER NOT NULL CHECK(revision >= 0), shell_mode TEXT NOT NULL CHECK(shell_mode IN ('desktop', 'launcher')), shell_theme TEXT NOT NULL); CREATE TABLE IF NOT EXISTS shell_device_preferences (user_id TEXT NOT NULL, device_id TEXT NOT NULL, shell_mode TEXT NOT NULL CHECK(shell_mode IN ('desktop', 'launcher')), shell_theme TEXT NOT NULL, PRIMARY KEY(user_id, device_id)); CREATE TABLE IF NOT EXISTS shell_device_themes (user_id TEXT NOT NULL, device_id TEXT NOT NULL, shell_theme TEXT NOT NULL, PRIMARY KEY(user_id, device_id)); CREATE TABLE IF NOT EXISTS shell_workspace_revisions (user_id TEXT PRIMARY KEY, revision INTEGER NOT NULL); CREATE TABLE IF NOT EXISTS shell_workspaces (user_id TEXT NOT NULL, profile TEXT NOT NULL, value TEXT NOT NULL, PRIMARY KEY(user_id,profile));")?;
         // Existing installations predate the theme columns.
-        ensure_column(&connection, "shell_user_preferences", "shell_theme", &format!("TEXT NOT NULL DEFAULT '{DEFAULT_THEME_ID}'"))?;
-        ensure_column(&connection, "shell_device_preferences", "shell_theme", "TEXT NOT NULL DEFAULT ''")?;
+        ensure_column(
+            &connection,
+            "shell_user_preferences",
+            "shell_theme",
+            &format!("TEXT NOT NULL DEFAULT '{DEFAULT_THEME_ID}'"),
+        )?;
+        ensure_column(
+            &connection,
+            "shell_device_preferences",
+            "shell_theme",
+            "TEXT NOT NULL DEFAULT ''",
+        )?;
         Ok(this)
     }
     fn connect(&self) -> Result<Connection, rusqlite::Error> {
@@ -57,10 +67,7 @@ impl SqliteShellPreferences {
             device_theme,
         })
     }
-    fn count_device_overrides(
-        connection: &Connection,
-        user: UserId,
-    ) -> Result<i64, Error> {
+    fn count_device_overrides(connection: &Connection, user: UserId) -> Result<i64, Error> {
         connection
             .query_row(
                 "SELECT (SELECT COUNT(*) FROM shell_device_preferences WHERE user_id=?1) + (SELECT COUNT(*) FROM shell_device_themes WHERE user_id=?1)",
@@ -138,13 +145,21 @@ impl ShellPreferencesRepository for SqliteShellPreferences {
                     tx.execute("INSERT INTO shell_device_preferences VALUES (?1,?2,?3,'') ON CONFLICT(user_id,device_id) DO UPDATE SET shell_mode=excluded.shell_mode", params![user.to_string(), device.to_string(), mode.as_str()]).map_err(|_| Error::Unavailable)?;
                 }
                 ShellPreferenceUpdate::Mode(None) => {
-                    tx.execute("DELETE FROM shell_device_preferences WHERE user_id=?1 AND device_id=?2", params![user.to_string(), device.to_string()]).map_err(|_| Error::Unavailable)?;
+                    tx.execute(
+                        "DELETE FROM shell_device_preferences WHERE user_id=?1 AND device_id=?2",
+                        params![user.to_string(), device.to_string()],
+                    )
+                    .map_err(|_| Error::Unavailable)?;
                 }
                 ShellPreferenceUpdate::Theme(Some(theme)) => {
                     tx.execute("INSERT INTO shell_device_themes VALUES (?1,?2,?3) ON CONFLICT(user_id,device_id) DO UPDATE SET shell_theme=excluded.shell_theme", params![user.to_string(), device.to_string(), theme]).map_err(|_| Error::Unavailable)?;
                 }
                 ShellPreferenceUpdate::Theme(None) => {
-                    tx.execute("DELETE FROM shell_device_themes WHERE user_id=?1 AND device_id=?2", params![user.to_string(), device.to_string()]).map_err(|_| Error::Unavailable)?;
+                    tx.execute(
+                        "DELETE FROM shell_device_themes WHERE user_id=?1 AND device_id=?2",
+                        params![user.to_string(), device.to_string()],
+                    )
+                    .map_err(|_| Error::Unavailable)?;
                 }
             }
         }

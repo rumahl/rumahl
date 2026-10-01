@@ -28,16 +28,39 @@ const credentials = JSON.parse(await readFile(join(state, "credentials.json"), "
 const publicKey = execFileSync("openssl", ["x509", "-in", info.certificate, "-pubkey", "-noout"]);
 const der = execFileSync("openssl", ["pkey", "-pubin", "-outform", "DER"], { input: publicKey });
 const fingerprint = createHash("sha256").update(der).digest("base64");
-const browser = await chromium.launch({ args: [`--ignore-certificate-errors-spki-list=${fingerprint}`] });
+const browser = await chromium.launch({ channel: "chromium", args: [`--ignore-certificate-errors-spki-list=${fingerprint}`] });
+// Deterministic geometry: the shell animates window placement unless the user
+// prefers reduced motion, and drag/resize assertions would otherwise race it.
+const reducedMotion = { reducedMotion: "reduce" };
 try {
-  const page = await browser.newPage();
+  const page = await browser.newPage(reducedMotion);
+  const modeReady = () => {
+    const trigger = globalThis.document.querySelector('button[aria-label="Shell mode"]');
+    return Boolean(trigger) && !trigger.disabled;
+  };
+  async function choose(label, option, target = page) {
+    await target.getByRole("button", { name: label, exact: true }).click();
+    await target.getByRole("option", { name: option, exact: true }).click();
+  }
+  // The menu bar hides while a launcher window is open, so drive the same
+  // device-scoped preference the control writes and let the shell apply it.
   async function setMode(value, target = page) {
-    await target.waitForFunction(() => !globalThis.document.querySelector('select[aria-label="Shell mode"]').disabled);
-    if (await target.getByRole("combobox", { name: "Shell mode" }).inputValue() !== value) {
-      const saved = target.waitForResponse((response) => response.url().includes("/api/v1/shell/preferences?") && response.request().method() === "PUT");
-      await target.getByRole("combobox", { name: "Shell mode" }).selectOption(value);
-      assert.equal((await saved).status(), 200);
+    await target.waitForFunction(modeReady);
+    if ((await target.locator(".shell").getAttribute("data-shell-mode")) === value) {
+      await target.locator(`.shell[data-shell-mode="${value}"]`).waitFor();
+      assert.equal(new URL(target.url()).searchParams.has("mode"), false);
+      return;
     }
+    await target.evaluate(async (mode) => {
+      const device = globalThis.localStorage.getItem("rumahl.browser-profile.v1");
+      const revision = Number(globalThis.document.querySelector(".shell")?.getAttribute("data-preferences-revision") ?? 0);
+      const response = await globalThis.fetch(`/api/v1/shell/preferences?device=${encodeURIComponent(device)}`, {
+        method: "PUT", credentials: "same-origin", cache: "no-store",
+        headers: { "Content-Type": "application/json", Accept: "application/json" },
+        body: JSON.stringify({ settingsVersion: 1, revision, scope: "device", key: "shell.mode", value: mode })
+      });
+      if (!response.ok) throw new Error(`set mode failed with ${response.status}`);
+    }, value);
     await target.locator(`.shell[data-shell-mode="${value}"]`).waitFor();
     assert.equal(new URL(target.url()).searchParams.has("mode"), false);
   }
@@ -52,7 +75,7 @@ try {
     }, credentials);
     await target.locator('button[type="submit"]').click();
     await target.locator(".shell").waitFor();
-    await target.waitForFunction(() => !globalThis.document.querySelector('select[aria-label="Shell mode"]').disabled);
+    await target.waitForFunction(modeReady);
   }
   const errors = [];
   page.on("pageerror", (error) => errors.push(error.message));
@@ -98,14 +121,14 @@ try {
   assert.equal(await page.locator(".shell").getAttribute("data-shell-mode"), "launcher");
   assert.equal(await page.getByRole("button", { name: "Close App manager", exact: true }).count(), 0);
   await page.getByRole("navigation", { name: "Main navigation" }).getByRole("link", { name: "Settings" }).click();
-  await page.getByRole("navigation", { name: "Settings", exact: true }).getByRole("link", { name: "Shell mode" }).click();
+  await page.getByRole("navigation", { name: "Settings", exact: true }).getByRole("link", { name: "Personalization" }).click();
   assert.equal(new URL(page.url()).pathname, "/settings/display");
   await page.reload();
-  await page.getByRole("heading", { name: "Shell mode" }).waitFor();
+  await page.getByRole("heading", { name: "Personalization" }).waitFor();
   await page.goBack();
   await page.getByRole("heading", { name: "Settings", exact: true, level: 1 }).waitFor();
   await page.goForward();
-  await page.getByRole("heading", { name: "Shell mode" }).waitFor();
+  await page.getByRole("heading", { name: "Personalization" }).waitFor();
   await setMode("desktop");
   await page.getByRole("region", { name: "Settings", exact: true }).waitFor();
   await page.getByRole("navigation", { name: "Main navigation" }).getByRole("link", { name: "Home", exact: true }).click();
@@ -164,15 +187,15 @@ try {
   await page.locator(".shell").waitFor();
   // One account, two independent browser profiles, and a second tab of one profile.
   await page.goto(`${info.origin}/settings/display`);
-  await page.getByRole("combobox", { name: "Save for" }).selectOption("device");
+  await choose("Save for", "This browser profile", page);
   await page.getByRole("button", { name: "Use account setting", exact: true }).click();
   await page.waitForFunction(() => !globalThis.document.querySelector('fieldset').disabled);
-  const secondContext = await browser.newContext();
+  const secondContext = await browser.newContext(reducedMotion);
   try {
     const second = await secondContext.newPage();
     second.on("pageerror", (error) => errors.push(error.message));
     await login(second);
-    await page.getByRole("combobox", { name: "Save for" }).selectOption("user");
+    await choose("Save for", "My account · all devices", page);
     await page.getByRole("button", { name: "Launcher", exact: true }).click();
     await page.locator('.shell[data-shell-mode="launcher"]').waitFor();
     await second.locator('.shell[data-shell-mode="launcher"]').waitFor();
@@ -185,7 +208,10 @@ try {
     assert.equal(await second.locator(".shell").getAttribute("data-shell-mode"), "desktop");
     const sameProfileTab = await secondContext.newPage();
     await sameProfileTab.goto(`${info.origin}/`);
-    await sameProfileTab.waitForFunction(() => !globalThis.document.querySelector('select[aria-label="Shell mode"]').disabled);
+    await sameProfileTab.waitForFunction(() => {
+      const trigger = globalThis.document.querySelector('button[aria-label="Shell mode"]');
+      return Boolean(trigger) && !trigger.disabled;
+    });
     assert.equal(await sameProfileTab.locator(".shell").getAttribute("data-shell-mode"), "desktop");
     await synchronized(second, page);
     await setMode("launcher", second);
@@ -242,7 +268,7 @@ try {
   await files.getByRole("alertdialog").getByRole("button", { name: "Delete", exact: true }).click();
   await files.getByRole("link", { name: "renamed.txt", exact: true }).waitFor({ state: "detached" });
   // Saved account folders are delivered to an independent browser profile.
-  const workspaceContext = await browser.newContext();
+  const workspaceContext = await browser.newContext(reducedMotion);
   const workspacePage = await workspaceContext.newPage();
   await login(workspacePage);
   await workspacePage.getByRole("button", { name: "Launcher home", exact: true }).click();

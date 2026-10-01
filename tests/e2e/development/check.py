@@ -38,7 +38,7 @@ def frontend_copy(destination):
     shutil.copytree(original, destination, ignore=shutil.ignore_patterns("node_modules", "dist", "coverage"))
     # Third-party dependencies are shared; workspace imports point to the copy.
     (destination / "node_modules").symlink_to(original / "node_modules", target_is_directory=True)
-    for name in ["shell", "ssr"]:
+    for name in ["shell", "ssr", "ui"]:
         modules = destination / "packages" / name / "node_modules"
         modules.mkdir()
         for dependency in (original / "packages" / name / "node_modules").iterdir():
@@ -162,7 +162,7 @@ def run(browser=False):
 
             assert event()["type"] == "connected"
             app = project / "frontend/packages/shell/src/shell/ShellLayout.tsx"
-            app.write_text(app.read_text().replace('className="shell"', 'className="shell" data-dev-probe="changed"'))
+            app.write_text(app.read_text().replace("data-shell-mode={mode}", 'data-shell-mode={mode} data-dev-probe="changed"'))
             assert event()["type"] in ("update", "full-reload")
             for _ in range(100):
                 body = request("/", cookie=cookie)[2]

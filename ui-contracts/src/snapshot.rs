@@ -379,7 +379,9 @@ impl ShellApp {
         if !valid_namespaced_id(&id) {
             return Err(ShellSnapshotError::InvalidAppId);
         }
-        if title.trim().is_empty() || title.chars().count() > 256 || title.chars().any(char::is_control)
+        if title.trim().is_empty()
+            || title.chars().count() > 256
+            || title.chars().any(char::is_control)
         {
             return Err(ShellSnapshotError::InvalidAppTitle);
         }
@@ -461,8 +463,8 @@ impl ShellTheme {
     }
 
     fn from_wire(wire: WireShellTheme) -> Result<Self, ShellSnapshotError> {
-        let window_chrome =
-            WindowChromeVariant::parse(&wire.window_chrome).ok_or(ShellSnapshotError::InvalidJson)?;
+        let window_chrome = WindowChromeVariant::parse(&wire.window_chrome)
+            .ok_or(ShellSnapshotError::InvalidJson)?;
         let shell_layout =
             ShellLayoutVariant::parse(&wire.shell_layout).ok_or(ShellSnapshotError::InvalidJson)?;
         let launcher_layout = LauncherLayoutVariant::parse(&wire.launcher_layout)
@@ -605,6 +607,7 @@ impl ExtensionContribution {
 }
 
 impl ShellSnapshot {
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         shell_build_id: impl Into<String>,
         revision: impl Into<String>,
@@ -642,15 +645,14 @@ impl ShellSnapshot {
         if app_ids.windows(2).any(|pair| pair[0] == pair[1]) {
             return Err(ShellSnapshotError::DuplicateApp);
         }
-        if let Some(workspace) = &workspace {
-            if workspace.len() > MAX_WORKSPACE_BYTES
+        if let Some(workspace) = &workspace
+            && (workspace.len() > MAX_WORKSPACE_BYTES
                 || !matches!(
                     serde_json::from_str::<serde_json::Value>(workspace),
                     Ok(serde_json::Value::Object(_))
-                )
-            {
-                return Err(ShellSnapshotError::InvalidWorkspace);
-            }
+                ))
+        {
+            return Err(ShellSnapshotError::InvalidWorkspace);
         }
         let snapshot = Self {
             snapshot_version: SNAPSHOT_VERSION,

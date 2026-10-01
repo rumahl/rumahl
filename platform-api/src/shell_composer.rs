@@ -322,8 +322,11 @@ mod tests {
         let mut sources = sources(user);
         sources.change_revision = true;
 
-        let result =
-            compose(&sources).load_for_user(&ShellSnapshotSubject::new(user, CorrelationId::new(), None));
+        let result = compose(&sources).load_for_user(&ShellSnapshotSubject::new(
+            user,
+            CorrelationId::new(),
+            None,
+        ));
 
         assert!(matches!(
             result,

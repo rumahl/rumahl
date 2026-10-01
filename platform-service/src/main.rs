@@ -114,11 +114,9 @@ async fn run() -> Result<(), ServiceError> {
         .map_err(|_| std::io::Error::other("invalid app host configuration"))?,
     );
     let events = Arc::new(InMemoryShellEvents::new(128));
-    let snapshot_store = Arc::new(
-        rumahl_persistence_sqlite::SqliteShellPreferences::open(
-            state_dir.join("preferences.sqlite"),
-        )?,
-    );
+    let snapshot_store = Arc::new(rumahl_persistence_sqlite::SqliteShellPreferences::open(
+        state_dir.join("preferences.sqlite"),
+    )?);
     let snapshots = PersistentShellSnapshots::open(&accounts, &platform, build_id, &locale)?
         .with_preferences(snapshot_store.clone())
         .with_workspace(snapshot_store.clone());
@@ -159,60 +157,55 @@ async fn run() -> Result<(), ServiceError> {
             }),
         );
     }
-    let app = app
-        .layer(middleware::from_fn(move |request: Request, next: Next| {
-            let authority = authority.clone();
-            let apps = apps.clone();
-            async move {
-                let host = request
-                    .headers()
-                    .get("host")
-                    .and_then(|h| h.to_str().ok())
-                    .unwrap_or("")
-                    .to_owned();
-                if request.headers().get_all("host").iter().count() != 1 {
+    let app = app.layer(middleware::from_fn(move |request: Request, next: Next| {
+        let authority = authority.clone();
+        let apps = apps.clone();
+        async move {
+            let host = request
+                .headers()
+                .get("host")
+                .and_then(|h| h.to_str().ok())
+                .unwrap_or("")
+                .to_owned();
+            if request.headers().get_all("host").iter().count() != 1 {
+                return rumahl_platform_web::app_error(rumahl_platform_web::AppAccessError::Denied);
+            }
+            if apps.accepts_host(&host) {
+                if request.method() != axum::http::Method::GET
+                    && request.method() != axum::http::Method::HEAD
+                {
                     return rumahl_platform_web::app_error(
                         rumahl_platform_web::AppAccessError::Denied,
                     );
                 }
-                if apps.accepts_host(&host) {
-                    if request.method() != axum::http::Method::GET
-                        && request.method() != axum::http::Method::HEAD
-                    {
-                        return rumahl_platform_web::app_error(
-                            rumahl_platform_web::AppAccessError::Denied,
-                        );
-                    }
-                    let path = request.uri().path().to_owned();
-                    let head = request.method() == axum::http::Method::HEAD;
-                    let loader = apps.clone();
-                    let load_host = host.clone();
-                    return match tokio::task::spawn_blocking(move || {
-                        loader.resource(&load_host, &path)
-                    })
+                let path = request.uri().path().to_owned();
+                let head = request.method() == axum::http::Method::HEAD;
+                let loader = apps.clone();
+                let load_host = host.clone();
+                return match tokio::task::spawn_blocking(move || loader.resource(&load_host, &path))
                     .await
-                    {
-                        Ok(Ok(asset)) => {
-                            let mut response = apps.asset_response(&host, asset);
-                            if head {
-                                *response.body_mut() = Body::empty();
-                            }
-                            response
+                {
+                    Ok(Ok(asset)) => {
+                        let mut response = apps.asset_response(&host, asset);
+                        if head {
+                            *response.body_mut() = Body::empty();
                         }
-                        Ok(Err(error)) => rumahl_platform_web::app_error(error),
-                        Err(_) => rumahl_platform_web::app_error(
-                            rumahl_platform_web::AppAccessError::Unavailable,
-                        ),
-                    };
-                }
-                if host != authority.trim_end_matches('/') {
-                    let mut response = Response::new(Body::empty());
-                    *response.status_mut() = StatusCode::MISDIRECTED_REQUEST;
-                    return response;
-                }
-                next.run(request).await
+                        response
+                    }
+                    Ok(Err(error)) => rumahl_platform_web::app_error(error),
+                    Err(_) => rumahl_platform_web::app_error(
+                        rumahl_platform_web::AppAccessError::Unavailable,
+                    ),
+                };
             }
-        }));
+            if host != authority.trim_end_matches('/') {
+                let mut response = Response::new(Body::empty());
+                *response.status_mut() = StatusCode::MISDIRECTED_REQUEST;
+                return response;
+            }
+            next.run(request).await
+        }
+    }));
     // Poll persisted data; the bus is only a notification layer. Reconnecting
     // clients always reload an authoritative snapshot after service restarts.
     let snapshots = Arc::new(snapshots);
