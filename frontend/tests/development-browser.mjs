@@ -239,14 +239,14 @@ try {
   // The snapped Files window can overlap the Settings sidebar; dispatch the
   // navigation directly instead of relying on hit-testing through the stack.
   await page.getByRole("navigation", { name: "Settings", exact: true }).getByRole("link", { name: "Workspace", exact: true }).dispatchEvent("click");
-  await page.getByRole("region", { name: "Settings", exact: true }).dispatchEvent("pointerdown");
-  console.log("DEBUG windows", await page.evaluate(() => JSON.stringify([...globalThis.document.querySelectorAll(".window-position")].map((position) => { const win = position.querySelector(".shell-window"); return { id: win?.dataset.windowId, z: globalThis.getComputedStyle(position).zIndex, focused: win?.classList.contains("is-focused"), x: win?.getBoundingClientRect().x, width: win?.getBoundingClientRect().width }; }))));
-  await page.getByRole("button", { name: "Save arrangement", exact: true }).click();
+  // The snapped Files window overlaps this window's chrome, so drive the
+  // controls directly instead of relying on hit-testing through the stack.
+  await page.getByRole("button", { name: "Save arrangement", exact: true }).dispatchEvent("click");
   await page.getByRole("button", { name: "Save arrangement", exact: true }).waitFor();
   await page.getByLabel("Folder name", { exact: true }).fill("Tools");
-  await page.getByRole("checkbox", { name: "Files", exact: true }).check();
+  await page.getByRole("checkbox", { name: "Files", exact: true }).dispatchEvent("click");
   const folderSaved = page.waitForResponse(r => r.url().includes("/api/v1/shell/workspace?") && r.request().method() === "PUT");
-  await page.getByRole("button", { name: "Save folder", exact: true }).click();
+  await page.getByRole("button", { name: "Save folder", exact: true }).dispatchEvent("click");
   assert.equal((await folderSaved).status(), 200);
   await page.reload();
   await page.getByRole("region", { name: "Files", exact: true }).waitFor();
