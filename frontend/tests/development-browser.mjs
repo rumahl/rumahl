@@ -243,8 +243,9 @@ try {
   // controls directly instead of relying on hit-testing through the stack.
   await page.getByRole("button", { name: "Save arrangement", exact: true }).dispatchEvent("click");
   await page.getByRole("button", { name: "Save arrangement", exact: true }).waitFor();
+  await page.getByText("Create app folder", { exact: true }).dispatchEvent("click");
   await page.getByLabel("Folder name", { exact: true }).fill("Tools");
-  await page.getByRole("checkbox", { name: "Files", exact: true }).dispatchEvent("click");
+  await page.getByRole("checkbox", { name: "Files", exact: true }).evaluate((element) => element.click());
   const folderSaved = page.waitForResponse(r => r.url().includes("/api/v1/shell/workspace?") && r.request().method() === "PUT");
   await page.getByRole("button", { name: "Save folder", exact: true }).dispatchEvent("click");
   assert.equal((await folderSaved).status(), 200);
