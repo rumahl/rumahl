@@ -12,7 +12,7 @@ futures-util = "0.3"
 http-body-util = "0.1"
 hyper = { version = "1", features = ["client", "http1"] }
 hyper-util = { version = "0.1", features = ["tokio"] }
-rand = "0.9"
+rand = "0.10"
 rumahl-core = { path = "../core" }
 rumahl-oidc-provider = { path = "../oidc-provider" }
 rumahl-platform-api = { path = "../platform-api" }
