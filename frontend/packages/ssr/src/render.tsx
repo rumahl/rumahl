@@ -6,6 +6,7 @@ import { App } from "@rumahl/shell/App";
 import { SHELL_BUILD_ID } from "@rumahl/shell/build-id";
 import { EMBEDDED_SNAPSHOT_ID } from "@rumahl/shell/embedded-snapshot";
 import { resolveLocale } from "@rumahl/shell/i18n";
+import { appearanceCss, windowPositionCss } from "@rumahl/shell/ssr";
 
 export interface ShellAssets {
   script: string;
@@ -24,8 +25,13 @@ export const SSR_SHELL_BUILD_ID = SHELL_BUILD_ID;
 export function renderShellDocument(
   value: unknown,
   assets: ShellAssets,
-  nonce: string
+  nonce: string,
+  requestPath: string = "/"
 ): Promise<RenderedShell> {
+  if (typeof requestPath !== "string" || requestPath.length > 2048 ||
+      !requestPath.startsWith("/") || requestPath.startsWith("//") || (/[\\#]/.test(requestPath) || Array.from(requestPath).some((char) => char.charCodeAt(0) <= 32))) {
+    throw new Error("invalid shell request path");
+  }
   const snapshot = parseShellSnapshot(value);
   if (snapshot.shellBuildId !== SHELL_BUILD_ID) {
     throw new Error("incompatible shell build");
@@ -41,7 +47,7 @@ export function renderShellDocument(
   return new Promise((resolve, reject) => {
     let ready = false;
     const renderer = renderToPipeableStream(
-      <ShellDocument assets={assets} embedded={embedded} nonce={nonce} snapshot={snapshot} />,
+      <ShellDocument assets={assets} embedded={embedded} nonce={nonce} snapshot={snapshot} requestPath={requestPath} />,
       {
         nonce,
         onShellReady() {
@@ -72,12 +78,14 @@ function ShellDocument({
   assets,
   embedded,
   nonce,
-  snapshot
+  snapshot,
+  requestPath
 }: {
   assets: ShellAssets;
   embedded: string;
   nonce: string;
   snapshot: ShellSnapshotV1;
+  requestPath: string;
 }) {
   return (
     <html lang={resolveLocale(snapshot.user.locale)}>
@@ -87,10 +95,11 @@ function ShellDocument({
         <title>rumahl OS</title>
         <link href={assets.stylesheet} rel="stylesheet" />
         <link href={snapshot.theme.stylesheetUrl} rel="stylesheet" />
+        <style nonce={nonce} dangerouslySetInnerHTML={{ __html: appearanceCss(snapshot) + windowPositionCss(snapshot) }} />
       </head>
       <body>
         <div data-shell-ssr="1" id="root">
-          <App snapshot={snapshot} />
+          <App snapshot={snapshot} router="static" initialLocation={requestPath} />
         </div>
         <script
           dangerouslySetInnerHTML={{ __html: embedded }}

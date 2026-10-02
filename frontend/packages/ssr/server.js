@@ -36,7 +36,7 @@ if (clientBuild.shellBuildId !== SSR_SHELL_BUILD_ID) {
   throw new Error("SSR and client assets belong to different shell builds");
 }
 const server = createRendererServer((payload) =>
-  renderShellDocument(payload.snapshot, assets, payload.nonce)
+  renderShellDocument(payload.snapshot, assets, payload.nonce, payload.requestPath)
 );
 
 server.listen(socketPath, () => {

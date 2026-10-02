@@ -32,8 +32,8 @@ test("hydrates the server markup with the same snapshot and interactive controls
     root = hydrateShell(snapshot!);
   });
 
-  expect(document.getElementById("root")?.innerHTML).toContain("Everything at home.");
-  expect(initialMarkup).toContain("Everything at home.");
+  expect(document.getElementById("root")?.innerHTML).toContain("A place for everything.");
+  expect(initialMarkup).toContain("A place for everything.");
   // Server and browser renderers share one module instance only inside this test process.
   expect(
     errors.mock.calls
@@ -41,7 +41,7 @@ test("hydrates the server markup with the same snapshot and interactive controls
       .map(String)
       .filter((message) => !message.includes("Detected multiple renderers concurrently"))
   ).toEqual([]);
-  fireEvent.click(screen.getByRole("button", { name: "Open app manager" }));
+  fireEvent.click(screen.getByRole("link", { name: "App manager" }));
   expect(screen.getByRole("region", { name: "App manager" })).toBeInTheDocument();
   await act(async () => root?.unmount());
 });

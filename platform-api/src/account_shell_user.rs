@@ -100,7 +100,7 @@ mod tests {
     fn projects_real_account_name_with_english_default_or_german_preference() {
         let mut state = AccountState::new();
         let user_id = state.create_account("ada", "Ada Example").unwrap();
-        let subject = ShellSnapshotSubject::new(user_id, CorrelationId::new());
+        let subject = ShellSnapshotSubject::new(user_id, CorrelationId::new(), None);
 
         let english =
             AccountStateShellUserSource::new(MemoryAccounts(state.clone()), DefaultEnglishLocale)
@@ -125,6 +125,7 @@ mod tests {
             .load_user(&ShellSnapshotSubject::new(
                 UserId::new(),
                 CorrelationId::new(),
+                None,
             ))
             .unwrap_err();
 

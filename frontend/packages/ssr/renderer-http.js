@@ -3,7 +3,7 @@ import { createServer } from "node:http";
 import { URL } from "node:url";
 
 // Both deployments use the same bounded snapshot-only renderer protocol.
-export function createRendererServer(render, { development = false } = {}) {
+export function createRendererServer(render) {
   let inFlight = 0;
 
   return createServer(async (request, response) => {
@@ -32,7 +32,7 @@ export function createRendererServer(render, { development = false } = {}) {
     try {
       const payload = JSON.parse(await readBoundedBody(request));
       const keys = payload && typeof payload === "object" ? Object.keys(payload).sort().join(",") : "";
-      if (keys !== "nonce,snapshot" && keys !== "frameOrigins,nonce,snapshot") {
+      if (!["nonce,snapshot", "frameOrigins,nonce,snapshot", "nonce,requestPath,snapshot", "frameOrigins,nonce,requestPath,snapshot"].includes(keys)) {
         reply(response, 400);
         return;
       }
@@ -40,7 +40,7 @@ export function createRendererServer(render, { development = false } = {}) {
       const { stream, abort } = await render(payload);
       response.writeHead(200, {
         "Cache-Control": "private, no-store",
-        "Content-Security-Policy": `default-src 'none'; script-src 'self' 'nonce-${payload.nonce}'; style-src 'self'${development ? ` 'nonce-${payload.nonce}'` : ""}; img-src 'self' data:; connect-src 'self'; frame-src 'self'${frameOrigins.length ? ` ${frameOrigins.join(" ")}` : ""}; base-uri 'none'; object-src 'none'; form-action 'self'; frame-ancestors 'none'`,
+        "Content-Security-Policy": `default-src 'none'; script-src 'self' 'nonce-${payload.nonce}'; style-src 'self' 'nonce-${payload.nonce}'; img-src 'self' data: blob:; media-src 'self' blob: data:; connect-src 'self'; frame-src 'self'${frameOrigins.length ? ` ${frameOrigins.join(" ")}` : ""}; base-uri 'none'; object-src 'none'; form-action 'self'; frame-ancestors 'none'`,
         "Content-Type": "text/html; charset=utf-8",
         "X-Content-Type-Options": "nosniff"
       });

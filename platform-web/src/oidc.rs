@@ -577,6 +577,7 @@ mod tests {
         fn snapshot(
             &self,
             _: &str,
+            _device: Option<rumahl_core::BrowserProfileId>,
         ) -> Result<rumahl_ui_contracts::ShellSnapshot, ShellBackendError> {
             Err(ShellBackendError::Unavailable)
         }
@@ -660,6 +661,10 @@ mod tests {
             events: Arc::new(InMemoryShellEvents::new(4)),
             widgets: Arc::new(NoWidgets),
             streams: None,
+            apps: None,
+            preferences: None,
+            workspace: None,
+            files: None,
             browser_sessions: None,
             login_slots: Arc::new(tokio::sync::Semaphore::new(2)),
             oidc: Some(Arc::new(protocol)),

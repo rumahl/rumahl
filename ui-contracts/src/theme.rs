@@ -4,7 +4,10 @@ use std::fmt;
 
 use serde::Deserialize;
 
-use crate::{MANIFEST_VERSION, UI_CONTRACT_VERSION, WindowChromeVariant};
+use crate::{
+    LauncherLayoutVariant, MANIFEST_VERSION, ShellLayoutVariant, UI_CONTRACT_VERSION,
+    WindowChromeVariant,
+};
 
 const MAX_MANIFEST_BYTES: usize = 64 * 1024;
 const MAX_THEME_ID_BYTES: usize = 128;
@@ -14,6 +17,7 @@ const MAX_VARIANTS: usize = 16;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum ThemeToken {
+    // Legacy colour/geometry tokens (`--rumahl-*`).
     ColorCanvasBackground,
     ColorPanelBackground,
     ColorTextPrimary,
@@ -23,12 +27,40 @@ pub enum ThemeToken {
     ColorWindowTitlebarForeground,
     RadiusWindow,
     SpaceShellGap,
+    // Extended presentation tokens (`--rumahl-ui-*`).
+    ColorAccent,
+    ColorAccentStrong,
+    ColorSurface,
+    ColorSurfaceStrong,
+    ColorOutline,
+    ColorOnWallpaper,
+    ColorOnAccent,
+    ColorShadow,
+    ColorWallpaperTint,
+    MaterialBlur,
+    MaterialSaturation,
+    MaterialOpacity,
+    MaterialMorphism,
+    ShapeRadiusDock,
+    ShapeRadiusIcon,
+    ShapeIconSize,
+    ShapeIconSizeLarge,
+    MotionDuration,
+    MotionDurationFast,
+    MotionEasingSpring,
+    LayoutDockOffset,
+    IconGradient,
+    TextureWallpaper,
+    TypographyFamily,
+    TypographyScale,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ThemeTokenValue {
     Color(String),
     Pixels(u8),
+    Millis(u16),
+    Css(String),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -37,6 +69,8 @@ pub struct ThemeManifest {
     name: String,
     tokens: BTreeMap<ThemeToken, ThemeTokenValue>,
     window_chrome: WindowChromeVariant,
+    shell_layout: ShellLayoutVariant,
+    launcher_layout: LauncherLayoutVariant,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -45,6 +79,8 @@ pub struct ResolvedTheme {
     name: String,
     tokens: BTreeMap<ThemeToken, ThemeTokenValue>,
     window_chrome: WindowChromeVariant,
+    shell_layout: ShellLayoutVariant,
+    launcher_layout: LauncherLayoutVariant,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -78,7 +114,7 @@ struct WireThemeManifest {
 }
 
 impl ThemeToken {
-    pub const ALL: [Self; 9] = [
+    pub const ALL: [Self; 34] = [
         Self::ColorCanvasBackground,
         Self::ColorPanelBackground,
         Self::ColorTextPrimary,
@@ -88,6 +124,31 @@ impl ThemeToken {
         Self::ColorWindowTitlebarForeground,
         Self::RadiusWindow,
         Self::SpaceShellGap,
+        Self::ColorAccent,
+        Self::ColorAccentStrong,
+        Self::ColorSurface,
+        Self::ColorSurfaceStrong,
+        Self::ColorOutline,
+        Self::ColorOnWallpaper,
+        Self::ColorOnAccent,
+        Self::ColorShadow,
+        Self::ColorWallpaperTint,
+        Self::MaterialBlur,
+        Self::MaterialSaturation,
+        Self::MaterialOpacity,
+        Self::MaterialMorphism,
+        Self::ShapeRadiusDock,
+        Self::ShapeRadiusIcon,
+        Self::ShapeIconSize,
+        Self::ShapeIconSizeLarge,
+        Self::MotionDuration,
+        Self::MotionDurationFast,
+        Self::MotionEasingSpring,
+        Self::LayoutDockOffset,
+        Self::IconGradient,
+        Self::TextureWallpaper,
+        Self::TypographyFamily,
+        Self::TypographyScale,
     ];
 
     pub fn id(self) -> &'static str {
@@ -101,6 +162,31 @@ impl ThemeToken {
             Self::ColorWindowTitlebarForeground => "color.window.titlebar.foreground",
             Self::RadiusWindow => "radius.window",
             Self::SpaceShellGap => "space.shell.gap",
+            Self::ColorAccent => "color.accent",
+            Self::ColorAccentStrong => "color.accent.strong",
+            Self::ColorSurface => "color.surface",
+            Self::ColorSurfaceStrong => "color.surface.strong",
+            Self::ColorOutline => "color.outline",
+            Self::ColorOnWallpaper => "color.on.wallpaper",
+            Self::ColorOnAccent => "color.on.accent",
+            Self::ColorShadow => "color.shadow",
+            Self::ColorWallpaperTint => "color.wallpaper.tint",
+            Self::MaterialBlur => "material.blur",
+            Self::MaterialSaturation => "material.saturation",
+            Self::MaterialOpacity => "material.opacity",
+            Self::MaterialMorphism => "material.morphism",
+            Self::ShapeRadiusDock => "shape.radius.dock",
+            Self::ShapeRadiusIcon => "shape.radius.icon",
+            Self::ShapeIconSize => "shape.icon.size",
+            Self::ShapeIconSizeLarge => "shape.icon.size.large",
+            Self::MotionDuration => "motion.duration",
+            Self::MotionDurationFast => "motion.duration.fast",
+            Self::MotionEasingSpring => "motion.easing.spring",
+            Self::LayoutDockOffset => "layout.dock.offset",
+            Self::IconGradient => "icon.gradient",
+            Self::TextureWallpaper => "texture.wallpaper",
+            Self::TypographyFamily => "typography.family",
+            Self::TypographyScale => "typography.scale",
         }
     }
 
@@ -115,6 +201,31 @@ impl ThemeToken {
             Self::ColorWindowTitlebarForeground => "--rumahl-color-window-titlebar-foreground",
             Self::RadiusWindow => "--rumahl-radius-window",
             Self::SpaceShellGap => "--rumahl-space-shell-gap",
+            Self::ColorAccent => "--rumahl-ui-color-accent",
+            Self::ColorAccentStrong => "--rumahl-ui-color-accent-strong",
+            Self::ColorSurface => "--rumahl-ui-color-surface",
+            Self::ColorSurfaceStrong => "--rumahl-ui-color-surface-strong",
+            Self::ColorOutline => "--rumahl-ui-color-outline",
+            Self::ColorOnWallpaper => "--rumahl-ui-color-on-wallpaper",
+            Self::ColorOnAccent => "--rumahl-ui-color-on-accent",
+            Self::ColorShadow => "--rumahl-ui-color-shadow",
+            Self::ColorWallpaperTint => "--rumahl-ui-color-wallpaper-tint",
+            Self::MaterialBlur => "--rumahl-ui-material-blur",
+            Self::MaterialSaturation => "--rumahl-ui-material-saturation",
+            Self::MaterialOpacity => "--rumahl-ui-material-opacity",
+            Self::MaterialMorphism => "--rumahl-ui-material-morphism",
+            Self::ShapeRadiusDock => "--rumahl-ui-shape-radius-dock",
+            Self::ShapeRadiusIcon => "--rumahl-ui-shape-radius-icon",
+            Self::ShapeIconSize => "--rumahl-ui-shape-icon-size",
+            Self::ShapeIconSizeLarge => "--rumahl-ui-shape-icon-size-large",
+            Self::MotionDuration => "--rumahl-ui-motion-duration",
+            Self::MotionDurationFast => "--rumahl-ui-motion-duration-fast",
+            Self::MotionEasingSpring => "--rumahl-ui-motion-easing-spring",
+            Self::LayoutDockOffset => "--rumahl-ui-layout-dock-offset",
+            Self::IconGradient => "--rumahl-ui-icon-gradient",
+            Self::TextureWallpaper => "--rumahl-ui-texture-wallpaper",
+            Self::TypographyFamily => "--rumahl-ui-typography-family",
+            Self::TypographyScale => "--rumahl-ui-typography-scale",
         }
     }
 
@@ -131,8 +242,19 @@ impl ThemeToken {
             | Self::ColorAccentPrimary
             | Self::ColorWindowTitlebarBackground
             | Self::ColorWindowTitlebarForeground => parse_color(value),
-            Self::RadiusWindow => parse_pixels(value, 32),
-            Self::SpaceShellGap => parse_pixels(value, 64),
+            Self::RadiusWindow => parse_pixels_between(value, 0, 32),
+            Self::SpaceShellGap => parse_pixels_between(value, 0, 64),
+            Self::MaterialBlur => parse_pixels_between(value, 0, 64),
+            Self::ShapeRadiusDock => parse_pixels_between(value, 0, 64),
+            Self::ShapeRadiusIcon => parse_pixels_between(value, 0, 64),
+            Self::MaterialSaturation => parse_decimal_between(value, 1.0, 3.0),
+            Self::MaterialOpacity => parse_decimal_between(value, 0.0, 1.0),
+            Self::MaterialMorphism => parse_decimal_between(value, 0.0, 1.0),
+            Self::ShapeIconSize => parse_pixels_between(value, 16, 128),
+            Self::ShapeIconSizeLarge => parse_pixels_between(value, 16, 192),
+            Self::MotionDuration | Self::MotionDurationFast => parse_millis(value, 0, 2_000),
+            Self::LayoutDockOffset => parse_pixels_between(value, 0, 128),
+            _ => parse_css_value(value),
         }
     }
 }
@@ -140,8 +262,9 @@ impl ThemeToken {
 impl ThemeTokenValue {
     pub fn as_css_value(&self) -> String {
         match self {
-            Self::Color(value) => value.clone(),
+            Self::Color(value) | Self::Css(value) => value.clone(),
             Self::Pixels(value) => format!("{value}px"),
+            Self::Millis(value) => format!("{value}ms"),
         }
     }
 }
@@ -186,17 +309,29 @@ impl ThemeManifest {
                 .ok_or_else(|| ThemeManifestError::UnknownToken(id.clone()))?;
             let value = token
                 .parse_value(&value)
-                .ok_or(ThemeManifestError::InvalidTokenValue(id))?;
+                .ok_or_else(|| ThemeManifestError::InvalidTokenValue(id.clone()))?;
             tokens.insert(token, value);
         }
 
         let mut window_chrome = WindowChromeVariant::Standard;
+        let mut shell_layout = ShellLayoutVariant::Dock;
+        let mut launcher_layout = LauncherLayoutVariant::Springboard;
         for (id, value) in wire.variants {
-            if id != "window.chrome" {
-                return Err(ThemeManifestError::UnknownVariant(id));
+            match id.as_str() {
+                "window.chrome" => {
+                    window_chrome = WindowChromeVariant::parse(&value)
+                        .ok_or(ThemeManifestError::InvalidVariantValue(id))?;
+                }
+                "shell.layout" => {
+                    shell_layout = ShellLayoutVariant::parse(&value)
+                        .ok_or(ThemeManifestError::InvalidVariantValue(id))?;
+                }
+                "launcher.layout" => {
+                    launcher_layout = LauncherLayoutVariant::parse(&value)
+                        .ok_or(ThemeManifestError::InvalidVariantValue(id))?;
+                }
+                _ => return Err(ThemeManifestError::UnknownVariant(id)),
             }
-            window_chrome = WindowChromeVariant::parse(&value)
-                .ok_or(ThemeManifestError::InvalidVariantValue(id))?;
         }
 
         let manifest = Self {
@@ -204,6 +339,8 @@ impl ThemeManifest {
             name: name.to_owned(),
             tokens,
             window_chrome,
+            shell_layout,
+            launcher_layout,
         };
         ResolvedTheme::resolve(&manifest).validate_protected_contrast()?;
         Ok(manifest)
@@ -224,15 +361,37 @@ impl ThemeManifest {
     pub fn window_chrome(&self) -> WindowChromeVariant {
         self.window_chrome
     }
+
+    pub fn shell_layout(&self) -> ShellLayoutVariant {
+        self.shell_layout
+    }
+
+    pub fn launcher_layout(&self) -> LauncherLayoutVariant {
+        self.launcher_layout
+    }
 }
 
 impl ResolvedTheme {
     pub fn stock() -> Self {
         Self {
-            id: "com.rumahl.stock".to_owned(),
+            id: crate::DEFAULT_THEME_ID.to_owned(),
             name: "rumahl".to_owned(),
             tokens: stock_tokens(),
             window_chrome: WindowChromeVariant::Standard,
+            shell_layout: ShellLayoutVariant::Dock,
+            launcher_layout: LauncherLayoutVariant::Springboard,
+        }
+    }
+
+    /// The deliberately different fixture theme (opaque, square, taskbar + drawer).
+    pub fn classic() -> Self {
+        Self {
+            id: "com.rumahl.classic".to_owned(),
+            name: "Classic".to_owned(),
+            tokens: classic_tokens(),
+            window_chrome: WindowChromeVariant::Compact,
+            shell_layout: ShellLayoutVariant::Taskbar,
+            launcher_layout: LauncherLayoutVariant::Drawer,
         }
     }
 
@@ -244,6 +403,8 @@ impl ResolvedTheme {
             name: manifest.name.clone(),
             tokens,
             window_chrome: manifest.window_chrome,
+            shell_layout: manifest.shell_layout,
+            launcher_layout: manifest.launcher_layout,
         }
     }
 
@@ -263,6 +424,14 @@ impl ResolvedTheme {
         self.window_chrome
     }
 
+    pub fn shell_layout(&self) -> ShellLayoutVariant {
+        self.shell_layout
+    }
+
+    pub fn launcher_layout(&self) -> LauncherLayoutVariant {
+        self.launcher_layout
+    }
+
     pub fn compile_css(&self) -> String {
         let mut css = String::from(":root {\n");
         for token in ThemeToken::ALL {
@@ -270,6 +439,11 @@ impl ResolvedTheme {
                 .tokens
                 .get(&token)
                 .expect("resolved themes contain every public token");
+            // The `default` sentinel means "the shell's bundled asset"; the
+            // client substitutes a concrete URL, so it is not emitted here.
+            if matches!(value, ThemeTokenValue::Css(text) if text == "default") {
+                continue;
+            }
             css.push_str("  ");
             css.push_str(token.css_property());
             css.push_str(": ");
@@ -319,55 +493,177 @@ impl ResolvedTheme {
 }
 
 fn stock_tokens() -> BTreeMap<ThemeToken, ThemeTokenValue> {
+    use ThemeToken::*;
     BTreeMap::from([
+        // Neutral system surfaces; only the accent carries the brand hue.
+        (ColorCanvasBackground, color("#c9c9ce")),
+        (ColorPanelBackground, color("#f5f5f7")),
+        (ColorTextPrimary, color("#1d1d1f")),
+        (ColorTextMuted, color("#6e6e73")),
+        (ColorAccentPrimary, color("#28694c")),
+        (ColorWindowTitlebarBackground, color("#f5f5f7")),
+        (ColorWindowTitlebarForeground, color("#1d1d1f")),
+        (RadiusWindow, ThemeTokenValue::Pixels(12)),
+        (SpaceShellGap, ThemeTokenValue::Pixels(16)),
+        (ColorAccent, color("#28694c")),
+        (ColorAccentStrong, color("#4f8f78")),
+        (ColorSurface, color("#ffffffd9")),
+        (ColorSurfaceStrong, color("#ffffff")),
+        (ColorOutline, color("#0000001f")),
+        (ColorOnWallpaper, color("#ffffff")),
+        (ColorOnAccent, color("#ffffff")),
+        (ColorShadow, color("#00000029")),
+        (ColorWallpaperTint, color("#00000000")),
+        (MaterialBlur, css("60px")),
+        (MaterialSaturation, css("1.8")),
+        (MaterialOpacity, css("0.7")),
+        (MaterialMorphism, css("1")),
+        (ShapeRadiusDock, ThemeTokenValue::Pixels(24)),
+        (ShapeRadiusIcon, ThemeTokenValue::Pixels(15)),
+        (ShapeIconSize, ThemeTokenValue::Pixels(52)),
+        (ShapeIconSizeLarge, ThemeTokenValue::Pixels(68)),
+        (MotionDuration, ThemeTokenValue::Millis(180)),
+        (MotionDurationFast, ThemeTokenValue::Millis(120)),
+        (MotionEasingSpring, css("cubic-bezier(.32, .72, 0, 1)")),
+        (LayoutDockOffset, ThemeTokenValue::Pixels(10)),
         (
-            ThemeToken::ColorCanvasBackground,
-            ThemeTokenValue::Color("#eef1f5".to_owned()),
+            IconGradient,
+            css("linear-gradient(150deg, #4f8f78, #28694c)"),
         ),
+        (TextureWallpaper, css("default")),
         (
-            ThemeToken::ColorPanelBackground,
-            ThemeTokenValue::Color("#ffffff".to_owned()),
+            TypographyFamily,
+            css("system-ui, \"Segoe UI\", Roboto, \"Noto Sans\", sans-serif"),
         ),
-        (
-            ThemeToken::ColorTextPrimary,
-            ThemeTokenValue::Color("#15171a".to_owned()),
-        ),
-        (
-            ThemeToken::ColorTextMuted,
-            ThemeTokenValue::Color("#5c6470".to_owned()),
-        ),
-        (
-            ThemeToken::ColorAccentPrimary,
-            ThemeTokenValue::Color("#315efb".to_owned()),
-        ),
-        (
-            ThemeToken::ColorWindowTitlebarBackground,
-            ThemeTokenValue::Color("#ffffff".to_owned()),
-        ),
-        (
-            ThemeToken::ColorWindowTitlebarForeground,
-            ThemeTokenValue::Color("#15171a".to_owned()),
-        ),
-        (ThemeToken::RadiusWindow, ThemeTokenValue::Pixels(12)),
-        (ThemeToken::SpaceShellGap, ThemeTokenValue::Pixels(16)),
+        (TypographyScale, css("1")),
     ])
+}
+
+fn classic_tokens() -> BTreeMap<ThemeToken, ThemeTokenValue> {
+    use ThemeToken::*;
+    let mut tokens = stock_tokens();
+    for (token, value) in [
+        (ColorAccent, "#3465a4"),
+        (ColorAccentStrong, "#5b8ac6"),
+        (ColorSurface, "#ececec"),
+        (ColorSurfaceStrong, "#f4f4f4"),
+        (ColorOutline, "#00000047"),
+        (ColorOnWallpaper, "#ffffff"),
+        (ColorOnAccent, "#ffffff"),
+        (ColorShadow, "#00000066"),
+        (MaterialBlur, "0px"),
+        (MaterialSaturation, "1"),
+        (MaterialOpacity, "1"),
+        (MaterialMorphism, "0"),
+        (ShapeRadiusDock, "6px"),
+        (ShapeRadiusIcon, "6px"),
+        (ShapeIconSize, "40px"),
+        (ShapeIconSizeLarge, "56px"),
+        (MotionDuration, "90ms"),
+        (MotionDurationFast, "70ms"),
+        (MotionEasingSpring, "ease-out"),
+        (LayoutDockOffset, "0px"),
+        (IconGradient, "linear-gradient(160deg, #5b8ac6, #3465a4)"),
+        (TextureWallpaper, "none"),
+        (TypographyFamily, "Tahoma, Verdana, sans-serif"),
+        (TypographyScale, "0.95"),
+    ] {
+        let parsed = token
+            .parse_value(value)
+            .expect("classic theme values are valid");
+        tokens.insert(token, parsed);
+    }
+    tokens
+}
+
+pub(crate) fn is_known_token_id(id: &str) -> bool {
+    ThemeToken::parse(id).is_some()
+}
+
+pub(crate) fn valid_token_value(value: &str) -> bool {
+    parse_css_value(value).is_some()
+}
+
+/// Resolves a built-in theme id. Unknown ids return `None` so the caller can fall back.
+pub fn theme_by_id(id: &str) -> Option<ResolvedTheme> {
+    match id {
+        crate::DEFAULT_THEME_ID | "com.rumahl.stock" => Some(ResolvedTheme::stock()),
+        "com.rumahl.classic" => Some(ResolvedTheme::classic()),
+        _ => None,
+    }
+}
+
+fn color(value: &str) -> ThemeTokenValue {
+    ThemeTokenValue::Color(value.to_owned())
+}
+
+fn css(value: &str) -> ThemeTokenValue {
+    ThemeTokenValue::Css(value.to_owned())
 }
 
 fn parse_color(value: &str) -> Option<ThemeTokenValue> {
     let hex = value.strip_prefix('#')?;
-    if hex.len() != 6 || !hex.bytes().all(|byte| byte.is_ascii_hexdigit()) {
-        return None;
+    if (hex.len() == 6 || hex.len() == 8) && hex.bytes().all(|byte| byte.is_ascii_hexdigit()) {
+        Some(ThemeTokenValue::Color(format!("#{}", hex.to_lowercase())))
+    } else {
+        None
     }
-    Some(ThemeTokenValue::Color(format!("#{}", hex.to_lowercase())))
 }
 
-fn parse_pixels(value: &str, maximum: u8) -> Option<ThemeTokenValue> {
+fn parse_pixels_between(value: &str, minimum: u8, maximum: u8) -> Option<ThemeTokenValue> {
     let number = value.strip_suffix("px")?;
     if number.is_empty() || (number.len() > 1 && number.starts_with('0')) {
         return None;
     }
-    let value = number.parse::<u8>().ok()?;
-    (value <= maximum).then_some(ThemeTokenValue::Pixels(value))
+    let parsed = number.parse::<u8>().ok()?;
+    (parsed >= minimum && parsed <= maximum).then_some(ThemeTokenValue::Pixels(parsed))
+}
+
+fn parse_decimal_between(value: &str, minimum: f64, maximum: f64) -> Option<ThemeTokenValue> {
+    if value.is_empty() || value.len() > 8 {
+        return None;
+    }
+    if !value
+        .bytes()
+        .all(|byte| byte.is_ascii_digit() || byte == b'.')
+    {
+        return None;
+    }
+    let parsed = value.parse::<f64>().ok()?;
+    (parsed.is_finite() && parsed >= minimum && parsed <= maximum)
+        .then(|| ThemeTokenValue::Css(value.to_owned()))
+}
+
+fn parse_millis(value: &str, minimum: u16, maximum: u16) -> Option<ThemeTokenValue> {
+    let number = value.strip_suffix("ms")?;
+    if number.is_empty() || (number.len() > 1 && number.starts_with('0')) {
+        return None;
+    }
+    let parsed = number.parse::<u16>().ok()?;
+    (parsed >= minimum && parsed <= maximum).then_some(ThemeTokenValue::Millis(parsed))
+}
+
+/// Strict, non-executable CSS value: rejects declaration/rule breakouts and
+/// only permits same-origin shell assets for `url(...)`.
+fn parse_css_value(value: &str) -> Option<ThemeTokenValue> {
+    let value = value.trim();
+    if value.is_empty() || value.len() > 256 {
+        return None;
+    }
+    let safe = value
+        .chars()
+        .all(|c| !c.is_control() && !matches!(c, ';' | '{' | '}' | '\\' | '<' | '>' | '@'));
+    if !safe {
+        return None;
+    }
+    if value.contains("url(") {
+        let inner = value.strip_prefix("url(")?.strip_suffix(')')?;
+        let path = inner.trim_matches(['"', '\'']);
+        if !path.starts_with("/shell/assets/") || path.contains("..") {
+            return None;
+        }
+    }
+    Some(ThemeTokenValue::Css(value.to_owned()))
 }
 
 fn color_components(value: &ThemeTokenValue) -> [u8; 3] {

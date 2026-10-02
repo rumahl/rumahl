@@ -5,6 +5,7 @@
   "type": "module",
   "exports": {
     "./App": "./src/App.tsx",
+    "./ssr": "./src/ssr.ts",
     "./build-id": "./src/build-id.ts",
     "./i18n": "./src/i18n/index.tsx",
     "./embedded-snapshot": "./src/embedded-snapshot.ts"
@@ -18,8 +19,11 @@
   },
   "dependencies": {
     "@rumahl/contracts": "workspace:*",
+    "@rumahl/ui": "workspace:*",
+    "motion": "^13.4.4",
     "react": "19.3.0",
-    "react-dom": "19.3.0"
+    "react-dom": "19.3.0",
+    "react-router": "7.18.4"
   },
   "devDependencies": {
     "@testing-library/jest-dom": "7.0.1",

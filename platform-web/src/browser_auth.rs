@@ -4,7 +4,7 @@ use crate::{GatewayState, ShellBackendError};
 use axum::{
     Router,
     body::{Body, Bytes},
-    extract::{DefaultBodyLimit, State},
+    extract::{DefaultBodyLimit, Query, State},
     http::{
         HeaderMap, HeaderValue, StatusCode,
         header::{CONTENT_SECURITY_POLICY, CONTENT_TYPE, SET_COOKIE},
@@ -41,11 +41,66 @@ pub(crate) fn login_redirect() -> Response {
     response
 }
 
-async fn login_page(State(state): State<Arc<GatewayState>>, headers: HeaderMap) -> Response {
+/// Same-host shell targets only; never bounce through API/auth/resource routes.
+pub(crate) fn valid_shell_target(target: &str) -> bool {
+    if target.len() > 2048
+        || !target.starts_with('/')
+        || target.starts_with("//")
+        || target
+            .chars()
+            .any(|c| c.is_control() || c == '\\' || c == '#' || c == ' ')
+    {
+        return false;
+    }
+    let Ok(url) = url::Url::parse(&format!("https://shell.invalid{target}")) else {
+        return false;
+    };
+    let first = url.path().split('/').nth(1).unwrap_or("");
+    !first.contains('%')
+        && !first.starts_with('.')
+        && !first.starts_with('@')
+        && ![
+            "api",
+            "assets",
+            "shell",
+            "login",
+            "logout",
+            "recovery",
+            "oauth2",
+            "src",
+            "node_modules",
+            "favicon.ico",
+            "robots.txt",
+            "manifest.webmanifest",
+        ]
+        .contains(&first)
+}
+
+pub(crate) fn login_redirect_to(target: &str) -> Response {
+    if target == "/" || !valid_shell_target(target) {
+        return login_redirect();
+    }
+    let query = url::form_urlencoded::Serializer::new(String::new())
+        .append_pair("next", target)
+        .finish();
+    let mut response = Redirect::to(&format!("/login?{query}")).into_response();
+    secure_headers(&mut response);
+    response
+}
+
+async fn login_page(
+    State(state): State<Arc<GatewayState>>,
+    Query(query): Query<std::collections::BTreeMap<String, String>>,
+    headers: HeaderMap,
+) -> Response {
     if state.browser_sessions.is_none() {
         return failure(StatusCode::SERVICE_UNAVAILABLE);
     }
-    page(&headers, false, false)
+    let next = query
+        .get("next")
+        .filter(|target| valid_shell_target(target))
+        .map_or("/", String::as_str);
+    page_with_next(&headers, false, false, next)
 }
 
 async fn logout_page(headers: HeaderMap) -> Response {
@@ -73,13 +128,18 @@ async fn login(
     }
     let mut username = None;
     let mut password = None;
+    let mut next = None;
     for (key, value) in url::form_urlencoded::parse(&body) {
         match key.as_ref() {
             "username" if username.is_none() => username = Some(value.into_owned()),
             "password" if password.is_none() => password = Some(Zeroizing::new(value.into_owned())),
+            "next" if next.is_none() && valid_shell_target(&value) => {
+                next = Some(value.into_owned())
+            }
             _ => return failure(StatusCode::BAD_REQUEST),
         }
     }
+    let next = next.as_deref().unwrap_or("/");
     let (Some(username), Some(mut password)) = (username, password) else {
         return failure(StatusCode::BAD_REQUEST);
     };
@@ -106,13 +166,13 @@ async fn login(
                 return failure(StatusCode::SERVICE_UNAVAILABLE);
             };
             cookie.set_sensitive(true);
-            let mut response = Redirect::to("/").into_response();
+            let mut response = Redirect::to(next).into_response();
             response.headers_mut().insert(SET_COOKIE, cookie);
             secure_headers(&mut response);
             response
         }
         Ok(Err(ShellBackendError::Unauthorized)) => {
-            let mut response = page(&headers, false, true);
+            let mut response = page_with_next(&headers, false, true, next);
             *response.status_mut() = StatusCode::UNAUTHORIZED;
             response
         }
@@ -153,6 +213,15 @@ fn failure(status: StatusCode) -> Response {
 }
 
 fn page(headers: &HeaderMap, logout: bool, invalid: bool) -> Response {
+    page_with_next(headers, logout, invalid, "/")
+}
+
+fn page_with_next(headers: &HeaderMap, logout: bool, invalid: bool, next: &str) -> Response {
+    let next = next
+        .replace('&', "&amp;")
+        .replace('"', "&quot;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;");
     let de = headers
         .get("accept-language")
         .and_then(|h| h.to_str().ok())
@@ -190,7 +259,7 @@ fn page(headers: &HeaderMap, logout: bool, invalid: bool) -> Response {
     };
     let action = if logout { "/logout" } else { "/login" };
     let html = format!(
-        r#"<!doctype html><html lang="{lang}"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>{title} · rumahl</title><style>html{{font:18px system-ui;background:#f4f5f7;color:#17202e}}main{{max-width:24rem;margin:12vh auto;padding:2rem;background:white;border-radius:1rem}}label,input,button{{display:block}}label{{margin:1rem 0}}input{{box-sizing:border-box;width:100%;padding:.7rem;font:inherit}}button{{padding:.7rem 1.2rem;font:inherit;cursor:pointer}}a{{display:inline-block;margin-top:1rem}}:focus-visible{{outline:3px solid #365ac4;outline-offset:3px}}</style><main><p>rumahl OS</p><h1>{title}</h1>{error}<form method="post" action="{action}">{fields}<button type="submit">{title}</button></form><a href="/recovery">{recovery}</a></main></html>"#
+        r#"<!doctype html><html lang="{lang}"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>{title} · rumahl</title><style>html{{font:18px system-ui;background:#f4f5f7;color:#17202e}}main{{max-width:24rem;margin:12vh auto;padding:2rem;background:white;border-radius:1rem}}label,input,button{{display:block}}label{{margin:1rem 0}}input{{box-sizing:border-box;width:100%;padding:.7rem;font:inherit}}button{{padding:.7rem 1.2rem;font:inherit;cursor:pointer}}a{{display:inline-block;margin-top:1rem}}:focus-visible{{outline:3px solid #365ac4;outline-offset:3px}}</style><main><p>rumahl OS</p><h1>{title}</h1>{error}<form method="post" action="{action}"><input type="hidden" name="next" value="{next}">{fields}<button type="submit">{title}</button></form><a href="/recovery">{recovery}</a></main></html>"#
     );
     let mut response = Response::new(Body::from(html));
     response.headers_mut().insert(
@@ -205,6 +274,36 @@ fn page(headers: &HeaderMap, logout: bool, invalid: bool) -> Response {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn return_targets_cannot_escape_shell_or_bypass_reserved_routes() {
+        for target in [
+            "/",
+            "/app/test/documents?mode=launcher",
+            "/settings/display",
+        ] {
+            assert!(valid_shell_target(target));
+        }
+        for target in [
+            "//evil.test",
+            "https://evil.test",
+            "/\\evil.test",
+            "/api/private",
+            "/x/../api/private",
+            "/%61pi/private",
+            "/login",
+            "/assets/missing.js",
+            "/.well-known/openid-configuration",
+            "/x\n",
+        ] {
+            assert!(!valid_shell_target(target), "{target}");
+        }
+        let response = login_redirect_to("/app/test?mode=launcher");
+        assert_eq!(
+            response.headers()["location"],
+            "/login?next=%2Fapp%2Ftest%3Fmode%3Dlauncher"
+        );
+    }
 
     #[test]
     fn auth_forms_preserve_same_origin_for_csrf_validation() {

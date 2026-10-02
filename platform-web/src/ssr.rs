@@ -18,6 +18,7 @@ pub async fn render(
     snapshot_json: &str,
     nonce: &str,
     frame_origins: &[String],
+    request_path: &str,
 ) -> Result<RenderedHtml, ()> {
     tokio::time::timeout(Duration::from_secs(7), async {
         let stream = UnixStream::connect(socket).await.map_err(|_| ())?;
@@ -32,6 +33,7 @@ pub async fn render(
             "snapshot": snapshot,
             "nonce": nonce,
             "frameOrigins": frame_origins,
+            "requestPath": request_path,
         });
         let body = serde_json::to_vec(&payload).map_err(|_| ())?;
         if body.len() > 300 * 1024 {
@@ -124,6 +126,7 @@ mod tests {
             assert!(request.contains("\"frameOrigins\":[\"https://weather.apps.rumahl.dev\"]"));
             let payload: serde_json::Value =
                 serde_json::from_str(request.split_once("\r\n\r\n").unwrap().1).unwrap();
+            assert_eq!(payload["requestPath"], "/app/test/documents?mode=launcher");
             assert_eq!(payload["nonce"].as_str(), Some(expected_nonce.as_str()));
             let body = "<html></html>";
             let response = format!(
@@ -137,6 +140,7 @@ mod tests {
             r#"{"snapshotVersion":1}"#,
             &nonce,
             &["https://weather.apps.rumahl.dev".to_owned()],
+            "/app/test/documents?mode=launcher",
         )
         .await
         .unwrap();

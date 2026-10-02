@@ -38,7 +38,7 @@ def frontend_copy(destination):
     shutil.copytree(original, destination, ignore=shutil.ignore_patterns("node_modules", "dist", "coverage"))
     # Third-party dependencies are shared; workspace imports point to the copy.
     (destination / "node_modules").symlink_to(original / "node_modules", target_is_directory=True)
-    for name in ["shell", "ssr"]:
+    for name in ["shell", "ssr", "ui"]:
         modules = destination / "packages" / name / "node_modules"
         modules.mkdir()
         for dependency in (original / "packages" / name / "node_modules").iterdir():
@@ -111,6 +111,12 @@ def run(browser=False):
             assert credentials["password"].encode() not in body and cookie.encode() not in body
             assert b'RUMAHL_DEV_NONCE_PLACEHOLDER' not in body
             assert "'unsafe-inline'" not in headers["content-security-policy"]
+            code, _, deep_html = request("/app/app-manager?mode=launcher", cookie=cookie)
+            assert code == 200 and b'data-shell-mode="desktop"' in deep_html
+            assert b'data-window-id="app:app-manager"' in deep_html
+            assert request("/api/missing", cookie=cookie)[0] == 404
+            assert request("/assets/missing.js", cookie=cookie)[0] == 404
+            assert request("/login", "POST", {**credentials, "next": "//foreign.test"}, extra={"Origin": origin})[0] == 400
             snapshot = json.loads(request("/api/v1/shell/snapshot", cookie=cookie)[2])
             assert snapshot["user"]["displayName"] == "Developer"
             assert request("/src/main.tsx")[0] == 200
@@ -120,7 +126,7 @@ def run(browser=False):
             print("PASS: real login, TLS, SSR/build coherence and development origin/file boundaries", flush=True)
 
             # Register an actual React module with Vite, then observe a real HMR update.
-            assert request("/src/App.tsx")[0] == 200
+            assert request("/src/shell/ShellLayout.tsx")[0] == 200
             client = request("/@vite/client")[2].decode()
             token = re.search(r'const wsToken = "([^"]+)"', client).group(1)
             ws = context.wrap_socket(socket.create_connection(("127.0.0.1", port)), server_hostname="localhost")
@@ -155,8 +161,8 @@ def run(browser=False):
                 return json.loads(receive_exact(length))
 
             assert event()["type"] == "connected"
-            app = project / "frontend/packages/shell/src/App.tsx"
-            app.write_text(app.read_text().replace('className="shell"', 'className="shell" data-dev-probe="changed"'))
+            app = project / "frontend/packages/shell/src/shell/ShellLayout.tsx"
+            app.write_text(app.read_text().replace("data-shell-mode={mode}", 'data-shell-mode={mode} data-dev-probe="changed"'))
             assert event()["type"] in ("update", "full-reload")
             for _ in range(100):
                 body = request("/", cookie=cookie)[2]
@@ -168,7 +174,9 @@ def run(browser=False):
             print("PASS: authenticated HTTPS HMR connection and updated SSR without restarting", flush=True)
 
             if browser:
-                subprocess.run([NODE, str(project / "frontend/tests/development-browser.mjs"), str(state)],
+                fixture = REPO / "target/debug/examples/app_host_fixture"
+                subprocess.run([str(fixture), "seed", str(state / "data"), credentials["username"]], check=True)
+                subprocess.run([NODE, str(project / "frontend/tests/development-browser.mjs"), str(state), str(fixture)],
                                check=True, timeout=120)
 
             duplicate = subprocess.run(command, stdout=log, stderr=log, timeout=20)

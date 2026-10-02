@@ -1,0 +1,102 @@
+/* Settings composition: one persistent navigation area and one content scroller. */
+.shell-window__content:has(> .settings-layout) { display: flex; overflow: hidden; padding: 0; container-type: inline-size; container-name: settings; }
+.settings-layout { display: grid; grid-template-columns: 184px minmax(0, 1fr); width: 100%; height: 100%; min-height: 0; }
+.settings-sidebar { min-height: 0; overflow-y: auto; padding: 24px 12px; background: var(--material-sidebar, var(--surface-fill)); border-right: 1px solid var(--material-line, var(--surface-edge)); }
+.settings-identity { display: grid; grid-template-columns: 34px minmax(0, 1fr); gap: 4px 10px; align-items: center; padding: 0 8px 26px; }
+.settings-identity svg { width: 28px; height: 32px; grid-row: span 2; color: var(--rumahl-ui-color-accent); }
+.settings-identity strong { font-size: 14px; letter-spacing: -.02em; }
+.settings-identity span { font-size: 11px; line-height: 1.4; overflow-wrap: anywhere; color: var(--rumahl-ui-color-text-muted); }
+.settings-sidebar nav { display: grid; gap: 4px; }
+.settings-sidebar a { display: flex; gap: 9px; align-items: center; padding: 10px; border-radius: 9px; color: var(--rumahl-ui-color-text-primary); text-decoration: none; font-size: 13px; line-height: 1.4; }
+.settings-sidebar a svg { width: 17px; height: 17px; flex-shrink: 0; }
+.settings-sidebar a:hover { background: var(--material-line, #0000000a); }
+.settings-sidebar a[aria-current="page"] { background: var(--rumahl-ui-color-accent); color: var(--rumahl-ui-color-on-accent); }
+.settings-content { min-width: 0; min-height: 0; overflow-y: auto; padding: 28px 30px 36px; scrollbar-gutter: stable; }
+.settings-page-heading { margin-bottom: 28px; }
+.settings-page-heading > span { font-size: 11px; color: var(--rumahl-ui-color-text-muted); }
+.shell .settings-content .settings-page-heading h1 { margin: 8px 0; font-size: 26px; font-weight: 650; letter-spacing: -.04em; }
+.settings-content p { font-size: 13px; line-height: 1.6; color: var(--rumahl-ui-color-text-primary); }
+.settings-overview-links { display: grid; }
+.settings-overview-links a { display: flex; align-items: center; gap: 16px; padding: 20px 0; border-bottom: 1px solid var(--material-line); color: inherit; text-decoration: none; }
+.settings-overview-links a > svg { width: 26px; height: 26px; color: var(--rumahl-ui-color-accent); }
+.settings-overview-links a > span:nth-child(2) { flex: 1; display: grid; gap: 6px; }
+.settings-overview-links strong { font-size: 14px; font-weight: 600; }
+.settings-overview-links small { font-size: 12px; line-height: 1.5; }
+.shell .settings-content fieldset { border: 0; border-top: 1px solid var(--material-line); border-radius: 0; padding: 18px 0 4px; margin: 26px 0 0; background: transparent; }
+.shell .settings-content legend { padding: 0 8px 0 0; font-size: 13px; font-weight: 600; color: var(--rumahl-ui-color-text-primary); }
+.settings-row, .settings-content .theme-parameter { display: grid; grid-template-columns: minmax(100px, 1fr) minmax(110px, 1fr); align-items: center; gap: 12px; padding: 14px 0; margin: 0; border-bottom: 1px solid var(--material-line); font-size: 13px; }
+.settings-content .theme-parameter input[type="color"] { justify-self: end; width: 36px; height: 28px; border-radius: 8px; }
+.settings-content .theme-parameter .theme-swatches { grid-column: 2; justify-self: end; display: flex; gap: 5px; }
+.settings-content .theme-parameter output { grid-column: 2; justify-self: end; font-size: 11px; color: var(--rumahl-ui-color-text-muted); }
+.settings-content .appearance-switch { border-bottom: 1px solid var(--material-line); padding: 16px 0; gap: 18px; font-size: 13px; }
+.settings-content .appearance-switch small { font-size: 12px; line-height: 1.5; }
+.shell .settings-content :is(button:not(.theme-swatch), select, input[type="text"], input:not([type]), textarea) {
+  border: 1px solid var(--material-line); border-radius: 9px; padding: 8px 11px; background: var(--material-soft, var(--surface-base)); color: var(--rumahl-ui-color-text-primary); font: inherit; font-size: 13px; max-width: 100%; box-shadow: none; backdrop-filter: none; -webkit-backdrop-filter: none;
+}
+.shell .settings-content button[aria-pressed="true"] { background: var(--rumahl-ui-color-accent); color: var(--rumahl-ui-color-on-accent); border-color: transparent; }
+.shell .settings-content :is(.segmented, .appearance-switch input) { backdrop-filter: none; -webkit-backdrop-filter: none; box-shadow: none; }
+.settings-content :is(button, select, input, a):focus-visible { outline: 2px solid var(--rumahl-ui-color-accent); outline-offset: 3px; }
+.shell .settings-content .theme-custom-variant { background: transparent; border: 1px solid var(--material-line); box-shadow: none; }
+.settings-content .material-presets { gap: 8px; }
+.settings-content .theme-custom-variant { margin-top: 22px; }
+@container settings (max-width: 580px) {
+  .settings-layout { grid-template-columns: 140px minmax(0, 1fr); }
+  .settings-sidebar { padding: 18px 8px; }
+  .settings-identity { grid-template-columns: 1fr; }
+  .settings-identity svg { display: none; }
+  .settings-content { padding: 20px 16px; }
+  .settings-content .theme-parameter, .settings-row { grid-template-columns: 1fr; }
+  .settings-content .theme-parameter :is(output, .theme-swatches) { grid-column: 1; }
+  .settings-content .appearance-switch { flex-wrap: wrap; }
+  .settings-content .material-presets { grid-template-columns: 1fr; }
+}
+@container settings (max-width: 380px) {
+  .settings-layout { grid-template-columns: 100px minmax(0, 1fr); }
+  .settings-sidebar a { padding: 9px 5px; font-size: 12px; }
+  .settings-sidebar a svg { display: none; }
+  .settings-identity { padding-inline: 4px; }
+}
+.settings-sidebar a svg, .settings-overview-links svg { stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+.settings-identity span { color: var(--rumahl-ui-color-text-primary); }
+
+/* Drill-in navigation rows (Settings overview, System sub-pages, links). */
+.settings-nav__row { display: flex; align-items: center; gap: 15px; padding: 15px 18px; color: inherit; text-decoration: none; transition: background .15s ease; }
+.settings-nav__row + .settings-nav__row { border-top: 1px solid var(--divider); }
+.settings-nav__row:hover { background: color-mix(in srgb, var(--accent) 10%, transparent); }
+.settings-nav__icon { display: grid; place-items: center; width: 34px; height: 34px; flex: none; border-radius: 10px; color: var(--accent); background: color-mix(in srgb, var(--accent) 16%, transparent); }
+.settings-nav__icon svg { width: 18px; height: 18px; }
+.settings-nav__text { flex: 1; min-width: 0; display: grid; gap: 4px; }
+.settings-nav__text strong { font-size: 13px; font-weight: 620; color: var(--rumahl-ui-color-text-primary); }
+.settings-nav__text small { font-size: 11.5px; color: var(--muted); }
+.settings-nav__chevron { color: var(--muted); font-size: 17px; line-height: 1; }
+.settings-nav__ext { width: 15px; height: 15px; flex: none; color: var(--muted); }
+.settings-nav svg { stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+
+.about-identity__mark { display: grid; place-items: center; width: 44px; height: 44px; flex: none; border-radius: 13px; background: #0b0d12; color: #ffffff; }
+.about-identity__mark svg { width: 24px; height: 27px; }
+body.light .about-identity__mark { background: #ffffff; color: #0b0d12; }
+
+/* Read-only value rows are styled in reference.css (unlayered) so they win over
+   the base `.setting` rules. */
+.theme-parameter__auto { margin-left: 7px; color: var(--muted); font-size: 10px; font-style: normal; font-weight: 600; }
+.theme-custom-variant__state { color: var(--muted); font-size: 10.5px; font-weight: 600; }
+
+.settings-footnote { margin-top: 10px; font-size: 11.5px; color: var(--muted); }
+
+.workspace-actions { display: flex; flex-wrap: wrap; gap: 8px; justify-content: flex-end; }
+.settings-empty { padding: 16px 18px; color: var(--muted); font-size: 12.5px; }
+
+
+/* Settings sub-page header: back button before the title. */
+.settings-heading { display: flex; align-items: center; gap: 12px; margin: 8px 0; }
+.settings-heading .pagetitle { margin: 0; }
+.settings-back { display: grid; place-items: center; width: 34px; height: 34px; flex: none; border: 1px solid var(--control-border); border-radius: 999px; background: var(--control-fill); color: var(--rumahl-ui-color-text-primary); box-shadow: var(--control-inset); transition: background 150ms ease, border-color 150ms ease; }
+.settings-back:hover { background: var(--control-hover); border-color: var(--control-border-hover); }
+.settings-back svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+
+/* Settings always use the readable text token (never an inherited white). */
+.settings-layout, .settings-content, .settings-sidebar { color: var(--rumahl-ui-color-text-primary); }
+
+/* Settings identity: the signed-in user instead of the rumahl OS brand. */
+.settings-identity .settings-avatar { display: grid; place-items: center; width: 34px; height: 34px; grid-row: span 2; border-radius: 50%; background: linear-gradient(135deg, var(--rumahl-ui-color-accent), color-mix(in srgb, var(--rumahl-ui-color-accent) 55%, #65caa8)); color: var(--rumahl-ui-color-on-accent, #152136); font-size: 14px; font-weight: 800; }
+.settings-identity .small { color: var(--rumahl-ui-color-text-muted); font-size: 11px; line-height: 1.4; overflow-wrap: anywhere; }

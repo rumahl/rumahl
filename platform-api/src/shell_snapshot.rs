@@ -1,18 +1,21 @@
 use std::error::Error;
 use std::fmt;
 
-use rumahl_core::{CorrelationId, Identity, UserId};
+use rumahl_core::{BrowserProfileId, CorrelationId, Identity, UserId};
 use rumahl_ui_contracts::ShellSnapshot;
 
 use crate::PlatformRequest;
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
-pub struct ShellSnapshotQuery;
+pub struct ShellSnapshotQuery {
+    pub device: Option<BrowserProfileId>,
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ShellSnapshotSubject {
     user_id: UserId,
     correlation_id: CorrelationId,
+    device: Option<BrowserProfileId>,
 }
 
 pub trait ShellSnapshotProvider {
@@ -32,10 +35,15 @@ pub enum ShellSnapshotRequestError<E> {
 }
 
 impl ShellSnapshotSubject {
-    pub(crate) fn new(user_id: UserId, correlation_id: CorrelationId) -> Self {
+    pub(crate) fn new(
+        user_id: UserId,
+        correlation_id: CorrelationId,
+        device: Option<BrowserProfileId>,
+    ) -> Self {
         Self {
             user_id,
             correlation_id,
+            device,
         }
     }
 
@@ -45,6 +53,10 @@ impl ShellSnapshotSubject {
 
     pub fn correlation_id(&self) -> &CorrelationId {
         &self.correlation_id
+    }
+
+    pub fn device(&self) -> Option<BrowserProfileId> {
+        self.device
     }
 }
 
@@ -60,7 +72,7 @@ where
         &self,
         request: PlatformRequest<ShellSnapshotQuery>,
     ) -> Result<ShellSnapshot, ShellSnapshotRequestError<P::Error>> {
-        let (context, _) = request.into_parts();
+        let (context, query) = request.into_parts();
         let Identity::User(identity) = context.actor() else {
             return Err(ShellSnapshotRequestError::DirectUserSessionRequired);
         };
@@ -68,7 +80,8 @@ where
             return Err(ShellSnapshotRequestError::DirectUserSessionRequired);
         }
 
-        let subject = ShellSnapshotSubject::new(*identity.id(), *context.correlation_id());
+        let subject =
+            ShellSnapshotSubject::new(*identity.id(), *context.correlation_id(), query.device);
         self.provider
             .load_for_user(&subject)
             .map_err(ShellSnapshotRequestError::Provider)
@@ -126,7 +139,7 @@ mod tests {
         UserIdentity,
     };
     use rumahl_ui_contracts::{
-        ShellSystemStatus, ShellTheme, ShellUser, SystemProtectionStatus, WindowChromeVariant,
+        ResolvedTheme, ShellSystemStatus, ShellTheme, ShellUser, SystemProtectionStatus,
     };
 
     use crate::{AuthenticatedPrincipal, PlatformRequestGateway, RequestAuthenticator};
@@ -193,7 +206,8 @@ mod tests {
             service.provider().subjects.borrow().as_slice(),
             &[ShellSnapshotSubject {
                 user_id,
-                correlation_id
+                correlation_id,
+                device: None
             }]
         );
     }
@@ -245,7 +259,7 @@ mod tests {
 
     fn gateway_request(principal: AuthenticatedPrincipal) -> PlatformRequest<ShellSnapshotQuery> {
         PlatformRequestGateway::new(FixedAuthenticator(principal))
-            .authenticate("credential", ShellSnapshotQuery)
+            .authenticate("credential", ShellSnapshotQuery::default())
             .unwrap()
     }
 
@@ -262,11 +276,13 @@ mod tests {
             "shell-build-001",
             "revision-001",
             ShellUser::new("Example User", "en-US").unwrap(),
-            ShellTheme::new(
+            ShellTheme::from_theme(
                 "/shell/themes/sha256-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.css",
-                WindowChromeVariant::Standard,
+                &ResolvedTheme::stock(),
             )
             .unwrap(),
+            Vec::new(),
+            None,
             ShellSystemStatus::new(SystemProtectionStatus::Active, 0, 1, None).unwrap(),
             Vec::new(),
         )

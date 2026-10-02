@@ -14,6 +14,7 @@
   "dependencies": {
     "@rumahl/contracts": "workspace:*",
     "@rumahl/shell": "workspace:*",
+    "@rumahl/ui": "workspace:*",
     "react": "19.3.0",
     "react-dom": "19.3.0"
   },

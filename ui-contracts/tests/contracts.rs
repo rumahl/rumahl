@@ -29,7 +29,7 @@ fn resolves_stock_and_contrasting_themes_deterministically() {
     );
     assert_eq!(contrast.compile_css(), contrast.compile_css());
     assert_ne!(stock.compile_css(), contrast.compile_css());
-    assert_eq!(contrast.compile_css().matches("--rumahl-").count(), 9);
+    assert_eq!(contrast.compile_css().matches("--rumahl-").count(), 33);
     assert!(!contrast.compile_css().contains("url("));
 }
 
@@ -139,11 +139,13 @@ fn rejects_oversized_composed_snapshot() {
         "shell-build-001",
         "revision-001",
         ShellUser::new("Ada", "en-US").unwrap(),
-        ShellTheme::new(
+        ShellTheme::from_theme(
             "/shell/themes/sha256-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.css",
-            WindowChromeVariant::Standard,
+            &ResolvedTheme::stock(),
         )
         .unwrap(),
+        Vec::new(),
+        None,
         ShellSystemStatus::new(SystemProtectionStatus::Active, 0, 1, None).unwrap(),
         contributions,
     )

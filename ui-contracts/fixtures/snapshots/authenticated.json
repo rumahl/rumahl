@@ -9,9 +9,22 @@
     "locale": "de-DE"
   },
   "theme": {
+    "id": "com.rumahl.default",
     "stylesheetUrl": "/shell/themes/sha256-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.css",
-    "windowChrome": "compact"
+    "windowChrome": "compact",
+    "shellLayout": "dock",
+    "launcherLayout": "springboard",
+    "tokens": {
+      "color.accent": "#28694c",
+      "material.blur": "34px"
+    }
   },
+  "apps": [
+    { "id": "com.example.notes", "title": "Notizen", "launchable": true },
+    { "id": "com.example.weather", "title": "Wetter", "launchable": true }
+  ],
+  "workspace": null,
+  "mode": "desktop",
   "systemStatus": {
     "protection": "active",
     "installedAppCount": 12,

@@ -48,3 +48,8 @@ pub use session_credential_repository::{
 
 mod browser_session_repository;
 pub use browser_session_repository::{BrowserSessionError, SqliteBrowserSessionRepository};
+
+mod shell_preferences;
+pub use shell_preferences::SqliteShellPreferences;
+mod personal_files;
+pub use personal_files::SqlitePersonalFiles;

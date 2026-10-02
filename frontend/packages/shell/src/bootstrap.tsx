@@ -3,6 +3,7 @@ import { createRoot, hydrateRoot } from "react-dom/client";
 import type { ShellSnapshotV1 } from "@rumahl/contracts";
 import { App } from "./App";
 import type { ShellLiveSource } from "./live-updates";
+import { preloadAppearance } from "./theme";
 import "./styles.css";
 
 export function renderShell(snapshot: ShellSnapshotV1, live?: ShellLiveSource): void {
@@ -10,10 +11,11 @@ export function renderShell(snapshot: ShellSnapshotV1, live?: ShellLiveSource): 
   if (!root) {
     throw new Error("rumahl shell root element is missing");
   }
+  preloadAppearance(snapshot);
 
   createRoot(root).render(
     <StrictMode>
-      <App live={live} snapshot={snapshot} />
+      <App live={live} snapshot={snapshot} router={live?.allowDevelopmentLoopback ? "memory" : "browser"} />
     </StrictMode>
   );
 }
@@ -23,10 +25,11 @@ export function hydrateShell(snapshot: ShellSnapshotV1, live?: ShellLiveSource):
   if (!root || root.dataset.shellSsr !== "1" || !root.hasChildNodes()) {
     throw new Error("server-rendered shell root is missing");
   }
+  preloadAppearance(snapshot);
   return hydrateRoot(
     root,
     <StrictMode>
-      <App live={live} snapshot={snapshot} />
+      <App live={live} snapshot={snapshot} router={live?.allowDevelopmentLoopback ? "memory" : "browser"} />
     </StrictMode>
   );
 }

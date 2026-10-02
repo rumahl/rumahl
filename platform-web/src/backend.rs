@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use rumahl_core::{Identity, SessionId, UserId};
+use rumahl_core::{BrowserProfileId, Identity, SessionId, UserId};
 use rumahl_platform_api::{
     AuthenticatedShellSnapshotService, LocalSessionAuthenticationError, PlatformRequestGateway,
     RequestAuthenticator, ShellSnapshotProvider, ShellSnapshotQuery, ShellSnapshotRequestError,
@@ -38,7 +38,11 @@ impl<R, S, C> ShellAuthenticationError for LocalSessionAuthenticationError<R, S,
 /// must revalidate it on every call; WebSocket connections call this repeatedly.
 pub trait ShellBackend: Send + Sync + 'static {
     fn authenticate(&self, credential: &str) -> Result<ShellIdentity, ShellBackendError>;
-    fn snapshot(&self, credential: &str) -> Result<ShellSnapshot, ShellBackendError>;
+    fn snapshot(
+        &self,
+        credential: &str,
+        device: Option<BrowserProfileId>,
+    ) -> Result<ShellSnapshot, ShellBackendError>;
 }
 
 pub struct PlatformShellBackend<A, P> {
@@ -84,10 +88,14 @@ where
         })
     }
 
-    fn snapshot(&self, credential: &str) -> Result<ShellSnapshot, ShellBackendError> {
+    fn snapshot(
+        &self,
+        credential: &str,
+        device: Option<BrowserProfileId>,
+    ) -> Result<ShellSnapshot, ShellBackendError> {
         let request = self
             .gateway
-            .authenticate(credential, ShellSnapshotQuery)
+            .authenticate(credential, ShellSnapshotQuery { device })
             .map_err(|error| error.authentication_error().category())?;
         self.snapshots.load(request).map_err(|error| match error {
             ShellSnapshotRequestError::DirectUserSessionRequired => ShellBackendError::Unauthorized,
@@ -101,8 +109,12 @@ impl<T: ShellBackend + ?Sized> ShellBackend for Arc<T> {
         (**self).authenticate(credential)
     }
 
-    fn snapshot(&self, credential: &str) -> Result<ShellSnapshot, ShellBackendError> {
-        (**self).snapshot(credential)
+    fn snapshot(
+        &self,
+        credential: &str,
+        device: Option<BrowserProfileId>,
+    ) -> Result<ShellSnapshot, ShellBackendError> {
+        (**self).snapshot(credential, device)
     }
 }
 

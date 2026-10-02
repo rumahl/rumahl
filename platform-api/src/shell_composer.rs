@@ -142,6 +142,8 @@ where
             revision,
             user,
             theme,
+            Vec::new(),
+            None,
             status,
             contributions,
         )
@@ -198,7 +200,7 @@ mod tests {
     use std::io;
 
     use rumahl_core::{CorrelationId, UserId};
-    use rumahl_ui_contracts::{ShellSystemStatus, SystemProtectionStatus, WindowChromeVariant};
+    use rumahl_ui_contracts::{ResolvedTheme, ShellSystemStatus, SystemProtectionStatus};
 
     use super::*;
 
@@ -229,9 +231,9 @@ mod tests {
             if self.fail_theme {
                 return Err(io::Error::other("internal theme failure").into());
             }
-            Ok(ShellTheme::new(
+            Ok(ShellTheme::from_theme(
                 "/shell/themes/sha256-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.css",
-                WindowChromeVariant::Standard,
+                &ResolvedTheme::stock(),
             )?)
         }
     }
@@ -303,7 +305,7 @@ mod tests {
         let user = UserId::new();
         let sources = sources(user);
         let snapshot = compose(&sources)
-            .load_for_user(&ShellSnapshotSubject::new(user, CorrelationId::new()))
+            .load_for_user(&ShellSnapshotSubject::new(user, CorrelationId::new(), None))
             .unwrap();
 
         assert_eq!(snapshot.user().display_name(), "Ada");
@@ -320,8 +322,11 @@ mod tests {
         let mut sources = sources(user);
         sources.change_revision = true;
 
-        let result =
-            compose(&sources).load_for_user(&ShellSnapshotSubject::new(user, CorrelationId::new()));
+        let result = compose(&sources).load_for_user(&ShellSnapshotSubject::new(
+            user,
+            CorrelationId::new(),
+            None,
+        ));
 
         assert!(matches!(
             result,
@@ -336,7 +341,7 @@ mod tests {
         sources.fail_theme = true;
 
         let error = compose(&sources)
-            .load_for_user(&ShellSnapshotSubject::new(user, CorrelationId::new()))
+            .load_for_user(&ShellSnapshotSubject::new(user, CorrelationId::new(), None))
             .unwrap_err();
 
         assert!(matches!(

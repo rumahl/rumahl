@@ -61,7 +61,7 @@ def run():
         origin = f"https://localhost:{port}"
         key, cert = root / "key.pem", root / "cert.pem"
         subprocess.run(["openssl", "req", "-x509", "-newkey", "rsa:2048", "-nodes", "-days", "1",
-                        "-subj", "/CN=localhost", "-addext", "subjectAltName=DNS:localhost",
+                        "-subj", "/CN=localhost", "-addext", "subjectAltName=DNS:localhost,DNS:*.apps.localhost",
                         "-keyout", str(key), "-out", str(cert)], check=True, stdout=log, stderr=log)
         context = ssl.create_default_context(cafile=str(cert))
         blocklist = root / "blocked.txt"
@@ -70,7 +70,7 @@ def run():
                    RUMAHL_GATEWAY_SOCKET=str(root / "gateway/http.sock"), RUMAHL_GATEWAY_SOCKET_ACCESS="owner",
                    RUMAHL_SSR_SOCKET=str(root / "renderer/ssr.sock"), RUMAHL_SSR_SOCKET_ACCESS="owner",
                    RUMAHL_CLIENT_BUILD=str(REPO / "frontend/packages/shell/dist/build-id.json"),
-                   RUMAHL_PASSWORD_BLOCKLIST=str(blocklist), RUMAHL_LOCALE="en", NODE_ENV="production")
+                   RUMAHL_APP_HOST_SUFFIX="apps.localhost", RUMAHL_PASSWORD_BLOCKLIST=str(blocklist), RUMAHL_LOCALE="en", NODE_ENV="production")
         passwords = {name: secrets.token_urlsafe(30) for name in ["alice", "bob"]}
         for name, password in passwords.items():
             subprocess.run([str(BINARY), "provision-account", name, name.title(), "--password-stdin"],
@@ -94,6 +94,7 @@ def run():
         replacements = {
             "listen 443 ssl;": f"listen 127.0.0.1:{port} ssl;",
             "rumahl.home.arpa": "localhost",
+            r"rumahl\.home\.arpa": "localhost",
             "/run/rumahl-platform/gateway.sock": str(root / "gateway/http.sock"),
             "/etc/rumahl/tls/fullchain.pem": str(cert),
             "/etc/rumahl/tls/key.pem": str(key),
@@ -122,12 +123,18 @@ http {{
         subprocess.run([NGINX, "-t", "-p", str(root), "-c", str(config)], check=True, stdout=log, stderr=log)
         edge = launch([NGINX, "-p", str(root), "-c", str(config)])
 
-        def request(path, method="GET", body=None, cookie=None, request_origin=None):
+        def request(path, method="GET", body=None, cookie=None, request_origin=None, json_body=None, binary_body=None):
             connection = http.client.HTTPSConnection("localhost", port, context=context, timeout=10)
             headers = {}
             if body is not None:
                 headers["Content-Type"] = "application/x-www-form-urlencoded"
                 body = urllib.parse.urlencode(body)
+            if json_body is not None:
+                headers["Content-Type"] = "application/json"
+                body = json.dumps(json_body)
+            if binary_body is not None:
+                headers["Content-Type"] = "application/octet-stream"
+                body = binary_body
             if cookie:
                 headers["Cookie"] = cookie
             if request_origin:
@@ -142,6 +149,9 @@ http {{
             wait_for(lambda: request("/login")[0] == 200, edge)
             assert request("/")[0] == 303
             assert request("/api/v1/shell/snapshot")[0] == 401
+            deep_redirect = request("/app/app-manager?mode=launcher")
+            assert deep_redirect[0] == 303 and "next=" in deep_redirect[1]["location"]
+            assert request("/api/missing")[0] == 404
             assert request("/login", "POST", {"username": "alice", "password": passwords["alice"]}, request_origin="https://foreign.test")[0] == 403
             cookies = {}
             for name in passwords:
@@ -162,11 +172,59 @@ http {{
                 snapshot = json.loads(request("/api/v1/shell/snapshot", cookie=cookies[name])[2])
                 assert snapshot["user"]["displayName"] == name.title()
                 assert snapshot["systemStatus"]["installedAppCount"] == 0
+            code, _, deep_html = request("/app/app-manager?mode=launcher", cookie=cookies["alice"])
+            assert code == 200 and b'data-shell-mode="desktop"' in deep_html
+            assert b'data-window-id="app:app-manager"' in deep_html
+            code, _, deep_html = request("/app/app-manager", cookie=cookies["alice"])
+            assert code == 200 and b'data-window-id="app:app-manager"' in deep_html
             print("PASS: trusted HTTPS, login, isolated SQLite users, SSR and immutable assets", flush=True)
+            fixture = REPO / "target/debug/examples/app_host_fixture"
+            subprocess.run([str(fixture), "seed", str(root / "state"), "alice"], check=True)
+            catalog = json.loads(request("/api/v1/shell/apps", cookie=cookies["alice"])[2])
+            assert len(catalog["apps"]) == 1
+            assert json.loads(request("/api/v1/shell/apps", cookie=cookies["bob"])[2])["apps"] == []
+            status, _, descriptor = request("/api/v1/shell/apps/com.rumahl.host-test/launch", "POST", cookie=cookies["alice"], request_origin=origin, json_body={"installationId": catalog["apps"][0]["installationId"]})
+            assert status == 200
+            frame = urllib.parse.urlsplit(json.loads(descriptor)["frameUrl"])
+            def app_request(path):
+                connection = http.client.HTTPConnection(frame.hostname, port, timeout=10)
+                connection.sock = context.wrap_socket(socket.create_connection(("127.0.0.1", port)), server_hostname=frame.hostname)
+                connection.request("GET", path, headers={"Cookie": cookies["alice"]})
+                response = connection.getresponse()
+                result = response.status, dict(response.getheaders()), response.read()
+                connection.close()
+                return result
+            status, headers, asset = app_request(frame.path)
+            assert status == 200 and b"Host test" in asset
+            assert "sandbox allow-scripts" in headers["content-security-policy"]
+            assert "no-store" in headers["cache-control"]
+            assert app_request("/api/v1/shell/snapshot")[0] == 404
+            subprocess.run([str(fixture), "revoke", str(root / "state")], check=True)
+            assert app_request(frame.path)[0] == 404
+            print("PASS: production nginx wildcard TLS, authorized catalog, isolated app host and revocation", flush=True)
+            # The shipped edge must accept document uploads beyond its default 16 KiB cap.
+            document = b"personal document\n" * 4096
+            assert request("/api/v1/files?parent=root&name=sample.txt&directory=false", "POST", cookie=cookies["alice"], request_origin=origin, binary_body=document)[0] == 204
+            documents = json.loads(request("/api/v1/files?parent=root", cookie=cookies["alice"])[2])
+            content_path = "/api/v1/files/content?id=" + documents[0]["id"]
+            assert request(content_path, cookie=cookies["alice"])[2] == document
+            assert request(content_path, cookie=cookies["bob"])[0] == 404
+            assert request(content_path, cookie=cookies["alice"])[1]["content-disposition"].startswith("attachment;")
+            print("PASS: production document upload limits, download and owner isolation", flush=True)
+            preferences_path = "/api/v1/shell/preferences?device=00000000-0000-4000-8000-000000000001"
+            settings = json.loads(request(preferences_path, cookie=cookies["alice"])[2])
+            status, _, result = request(preferences_path, "PUT", cookie=cookies["alice"], request_origin=origin,
+                                       json_body={"settingsVersion": 1, "revision": settings["revision"], "scope": "user", "key": "shell.mode", "value": "launcher"})
+            assert status == 200 and json.loads(result)["effective"]["shellMode"] == "launcher"
+
             stop(gateway)
             (root / "gateway/http.sock").unlink()
             gateway = launch([str(BINARY), "serve"])
             wait_for(lambda: request("/api/v1/shell/snapshot", cookie=cookies["alice"])[0] == 200, gateway)
+            assert json.loads(request(preferences_path, cookie=cookies["alice"])[2])["effective"]["shellMode"] == "launcher"
+            assert json.loads(request(preferences_path, cookie=cookies["bob"])[2])["effective"]["shellMode"] == "desktop"
+            assert request(content_path, cookie=cookies["alice"])[2] == document
+            print("PASS: user preferences survive process restart and remain isolated", flush=True)
             # Real authenticated WebSocket: logout must notify an already open tab.
             ws = context.wrap_socket(socket.create_connection(("127.0.0.1", port)), server_hostname="localhost")
             stack.callback(ws.close)

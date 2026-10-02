@@ -141,3 +141,13 @@ mod tests {
         assert_eq!(grant.resources(), &[file]);
     }
 }
+
+mod shell_preferences;
+pub use shell_preferences::{
+    BrowserProfileId, DEFAULT_THEME_ID, PreferenceScope, ShellMode, ShellPreferenceUpdate,
+    ShellPreferences, ShellPreferencesError, ShellPreferencesRepository, valid_theme_id,
+};
+mod workspace;
+pub use workspace::{WorkspacePreferences, WorkspaceRepository};
+mod personal_files;
+pub use personal_files::{FileError, PersonalFile, PersonalFiles};
