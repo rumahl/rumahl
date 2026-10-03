@@ -1003,6 +1003,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "rumahl-app-packages"
+version = "0.1.0"
+dependencies = [
+ "base64 0.23.1",
+ "ed25519-dalek",
+ "rumahl-core",
+ "serde",
+ "serde_json",
+ "sha2 0.11.0",
+ "tempfile",
+]
+
+[[package]]
 name = "rumahl-core"
 version = "0.1.0"
 dependencies = [
