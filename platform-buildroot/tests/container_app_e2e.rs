@@ -159,12 +159,14 @@ fn docker_output(docker: &Path, arguments: &[&str]) -> Result<String, Unexpected
         .map_err(|_| UnexpectedCall)
 }
 
+#[allow(clippy::too_many_arguments)]
 fn start_supervisor(
     docker: &Path,
     runtime_root: &Path,
     image_root: &Path,
     control_socket: &Path,
     secret_socket: &Path,
+    image_socket: &Path,
     supervisor_instance: &str,
     platform_user: &str,
 ) -> SupervisorProcess {
@@ -183,6 +185,8 @@ fn start_supervisor(
         .arg(control_socket)
         .arg("--secret-socket")
         .arg(secret_socket)
+        .arg("--image-socket")
+        .arg(image_socket)
         .arg("--platform-user")
         .arg(platform_user)
         .env_clear()
@@ -195,7 +199,7 @@ fn start_supervisor(
     let mut process = SupervisorProcess { child: Some(child) };
     let deadline = Instant::now() + Duration::from_secs(10);
     while Instant::now() < deadline {
-        if control_socket.exists() && secret_socket.exists() {
+        if control_socket.exists() && secret_socket.exists() && image_socket.exists() {
             return process;
         }
         if let Some(status) = process.child.as_mut().unwrap().try_wait().unwrap() {
@@ -293,6 +297,7 @@ fn installs_runs_and_uninstalls_real_container_app() {
     fs::create_dir(&image_root).unwrap();
     let control_socket = root.join("runtime.sock");
     let secret_socket = root.join("secrets.sock");
+    let image_socket = root.join("images.sock");
     let supervisor_instance = format!("e2e-{}", InstallationId::new());
     let _cleanup = Cleanup {
         root: root.clone(),
@@ -305,6 +310,7 @@ fn installs_runs_and_uninstalls_real_container_app() {
         &image_root,
         &control_socket,
         &secret_socket,
+        &image_socket,
         &supervisor_instance,
         &platform_user,
     );
@@ -377,12 +383,14 @@ fn installs_runs_and_uninstalls_real_container_app() {
     supervisor.stop();
     fs::remove_file(&control_socket).unwrap();
     fs::remove_file(&secret_socket).unwrap();
+    fs::remove_file(&image_socket).unwrap();
     let _restarted_supervisor = start_supervisor(
         &docker,
         &runtime_root,
         &image_root,
         &control_socket,
         &secret_socket,
+        &image_socket,
         &supervisor_instance,
         &platform_user,
     );
