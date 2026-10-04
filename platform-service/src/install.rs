@@ -392,16 +392,24 @@ impl Error for InstallError {
 
 #[cfg(test)]
 mod tests {
+    use std::fs;
+    use std::os::unix::fs::MetadataExt;
+    use std::sync::{Arc, Mutex};
+    use std::thread;
+
     use rumahl_app_packages::{GeneratedKey, PackageManifest, trust_store_json};
     use rumahl_core::{
         AppId, AppManifest, AppManifestValidator, AppVersion, InstalledApp, PackagePath,
         PublisherId, RuntimeDescriptor, RuntimeEndpointId, RuntimeEntrypoint, RuntimeEntrypointId,
     };
+    use rumahl_platform_buildroot::{
+        DockerImageReference, DockerImageTarget, RuntimeControlTarget, RuntimeControlTargetOutcome,
+        RuntimeInstallationSpec, StagedDockerImageWriter, UnixDockerImageServer,
+        UnixDockerImageServerConfig, UnixRuntimeControlServer, UnixRuntimeControlServerConfig,
+    };
     use serde_json::json;
 
     use super::*;
-
-    use std::fs;
 
     fn installed_app() -> InstalledApp {
         let mut runtime = RuntimeDescriptor::web();
@@ -588,6 +596,239 @@ mod tests {
         assert_eq!(
             fs::read(installation.join("frontend/index.html")).unwrap(),
             b"<html>notes</html>"
+        );
+    }
+
+    /// Fake supervisor runtime target: preparation fails until the image
+    /// reference has been staged, mirroring the Docker resolver's fail-closed
+    /// behaviour.
+    #[derive(Clone)]
+    struct FakeRuntimeTarget {
+        image_root: PathBuf,
+    }
+
+    impl RuntimeControlTarget for FakeRuntimeTarget {
+        type Error = std::io::Error;
+
+        fn prepare(
+            &self,
+            spec: RuntimeInstallationSpec,
+        ) -> Result<RuntimeControlTargetOutcome, Self::Error> {
+            let installation = spec.identity().installation_id();
+            let staged = self
+                .image_root
+                .join(installation.to_string())
+                .join("image-reference")
+                .is_file();
+            Ok(if staged {
+                RuntimeControlTargetOutcome::Accepted {
+                    state: AppRuntimeInstallationState::Prepared,
+                    changed: true,
+                }
+            } else {
+                RuntimeControlTargetOutcome::Rejected
+            })
+        }
+
+        fn activate(
+            &self,
+            _spec: RuntimeInstallationSpec,
+        ) -> Result<RuntimeControlTargetOutcome, Self::Error> {
+            Ok(RuntimeControlTargetOutcome::Accepted {
+                state: AppRuntimeInstallationState::Active,
+                changed: true,
+            })
+        }
+
+        fn installation_state(
+            &self,
+            _installation_id: rumahl_core::InstallationId,
+        ) -> Result<RuntimeControlTargetOutcome, Self::Error> {
+            Ok(RuntimeControlTargetOutcome::Accepted {
+                state: AppRuntimeInstallationState::Active,
+                changed: false,
+            })
+        }
+
+        fn deactivate(
+            &self,
+            _installation_id: rumahl_core::InstallationId,
+        ) -> Result<RuntimeControlTargetOutcome, Self::Error> {
+            Ok(RuntimeControlTargetOutcome::Accepted {
+                state: AppRuntimeInstallationState::Prepared,
+                changed: false,
+            })
+        }
+
+        fn remove(
+            &self,
+            _installation_id: rumahl_core::InstallationId,
+        ) -> Result<RuntimeControlTargetOutcome, Self::Error> {
+            Ok(RuntimeControlTargetOutcome::Accepted {
+                state: AppRuntimeInstallationState::Absent,
+                changed: false,
+            })
+        }
+    }
+
+    /// Fake supervisor image target: records the archive and publishes the RDI1
+    /// reference the runtime target checks.
+    #[derive(Clone)]
+    struct FakeImageTarget {
+        image_root: PathBuf,
+        imported: Arc<Mutex<Vec<(String, String)>>>,
+    }
+
+    impl DockerImageTarget for FakeImageTarget {
+        type Error = std::io::Error;
+
+        fn import_archive(
+            &self,
+            installation_id: &rumahl_core::InstallationId,
+            artifact: &PackagePath,
+            archive: &[u8],
+        ) -> Result<(), Self::Error> {
+            if archive.is_empty() {
+                return Err(std::io::Error::other("empty archive"));
+            }
+            self.imported
+                .lock()
+                .unwrap()
+                .push((installation_id.to_string(), artifact.as_str().to_owned()));
+            let reference =
+                DockerImageReference::parse(format!("sha256:{}", "a".repeat(64))).unwrap();
+            StagedDockerImageWriter::new(&self.image_root)
+                .unwrap()
+                .write(installation_id, artifact, &reference)
+                .unwrap();
+            Ok(())
+        }
+    }
+
+    fn spawn_control_server(
+        socket: &Path,
+        uid: u32,
+        target: FakeRuntimeTarget,
+    ) -> thread::JoinHandle<()> {
+        let server = UnixRuntimeControlServer::bind(
+            UnixRuntimeControlServerConfig::new(socket, uid).unwrap(),
+            target,
+        )
+        .unwrap();
+        thread::spawn(move || while server.serve_once().is_ok() {})
+    }
+
+    fn spawn_image_server(
+        socket: &Path,
+        uid: u32,
+        target: FakeImageTarget,
+    ) -> thread::JoinHandle<()> {
+        let server = UnixDockerImageServer::bind(
+            UnixDockerImageServerConfig::new(socket, uid).unwrap(),
+            target,
+        )
+        .unwrap();
+        thread::spawn(move || while server.serve_once().is_ok() {})
+    }
+
+    #[test]
+    fn installs_a_signed_container_package_end_to_end() {
+        let state = tempfile::tempdir().unwrap();
+        let package = tempfile::tempdir().unwrap();
+        let image_root = state.path().join("images");
+        fs::create_dir(&image_root).unwrap();
+        let uid = fs::metadata(state.path()).unwrap().uid();
+
+        let generated = GeneratedKey::generate("publisher-1").unwrap();
+        let trust_store_path = state.path().join("trust-store.json");
+        fs::write(
+            &trust_store_path,
+            serde_json::to_vec(&trust_store_json(
+                "publisher-1",
+                "com.rumahl",
+                &generated.public_key(),
+            ))
+            .unwrap(),
+        )
+        .unwrap();
+
+        fs::create_dir_all(package.path().join("runtime")).unwrap();
+        fs::write(
+            package.path().join("runtime/server.oci"),
+            b"not-a-real-image",
+        )
+        .unwrap();
+        let template = json!({
+            "formatVersion": 1,
+            "publisherId": "com.rumahl",
+            "app": {
+                "appId": "com.rumahl.cloud",
+                "version": "1.0.0",
+                "displayName": "Cloud",
+                "runtime": {
+                    "kind": "container",
+                    "entrypoints": [
+                        { "id": "service", "kind": "container-artifact", "path": "runtime/server.oci" },
+                        { "id": "main", "kind": "endpoint", "endpoint": "web" },
+                    ],
+                },
+            },
+        });
+        let manifest =
+            PackageManifest::from_bytes(&serde_json::to_vec(&template).unwrap()).unwrap();
+        generated
+            .key_store()
+            .signer()
+            .unwrap()
+            .sign(package.path(), &manifest)
+            .unwrap();
+
+        let control_socket = state.path().join("control.sock");
+        let image_socket = state.path().join("image.sock");
+        let imported = Arc::new(Mutex::new(Vec::new()));
+        let _control = spawn_control_server(
+            &control_socket,
+            uid,
+            FakeRuntimeTarget {
+                image_root: image_root.clone(),
+            },
+        );
+        let _images = spawn_image_server(
+            &image_socket,
+            uid,
+            FakeImageTarget {
+                image_root: image_root.clone(),
+                imported: Arc::clone(&imported),
+            },
+        );
+
+        let config = InstallConfig {
+            runtime_uid: uid,
+            control_socket,
+            secret_socket: state.path().join("secret.sock"),
+            image_socket,
+            trust_store: trust_store_path,
+            tpm_executable: PathBuf::from("/usr/bin/tpm2_unseal"),
+            secret_key_id: SecretEncryptionKeyId::parse("root-1").unwrap(),
+            secret_key_object: state.path().join("root-1.ctx"),
+            secret_key_policy_session: None,
+            app_host_suffix: "apps.rumahl.test".to_owned(),
+        };
+
+        install_with(&config, state.path(), package.path()).unwrap();
+
+        let snapshot = SqliteSnapshotRepository::open(state.path().join("platform.sqlite"))
+            .unwrap()
+            .load()
+            .unwrap()
+            .unwrap();
+        assert_eq!(snapshot.installed_apps().len(), 1);
+
+        // The image was imported exactly once for the installed app.
+        let installation_id = snapshot.installed_apps()[0].installation_id();
+        assert_eq!(
+            imported.lock().unwrap().as_slice(),
+            &[(installation_id.to_string(), "runtime/server.oci".to_owned())]
         );
     }
 }
