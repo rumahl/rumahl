@@ -1,8 +1,9 @@
 # Shell routing and presentation
 
 This document describes the implemented routing foundation and authorized static
-web-app host. Package import/publication and container web proxies remain separate
-work; an installation record alone is not enough to launch an app.
+web-app host. Signed package import/publication is implemented; container web
+proxies remain separate work, and an installation record alone is not enough to
+launch an app.
 
 ## One address, two presentations
 

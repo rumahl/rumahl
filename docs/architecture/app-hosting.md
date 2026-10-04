@@ -74,8 +74,13 @@ and activate them atomically. Directory/file reads use `openat` and `O_NOFOLLOW`
 reject nonregular files and traversal, allowlist MIME types, and limit individual
 files to 2 MiB. Unpublished apps appear as not launchable in the authorized catalog.
 
-Production package verification/import, automatic publication and an end-user
-permission-management flow remain separate work. `app_host_fixture` is only a
+Package verification, import and publication are implemented. `rumahl-app-packages`
+verifies a signed directory package (detached Ed25519 signature over the exact
+manifest bytes, plus SHA-256 per payload file) and `PackageImporter` publishes the
+verified web assets under the installation root or stages the container image
+reference through the runtime supervisor. The `rumahl-package` CLI generates
+signing keys, signs packages and verifies them offline. An end-user
+permission-management flow remains separate work. `app_host_fixture` is only a
 disposable integration helper; it is not packaged into OS images. Container web
 proxies, OIDC app login, networked app backends and an action/message bridge need
 separate authorization contracts; this host does not silently grant them access.

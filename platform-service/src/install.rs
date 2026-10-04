@@ -13,8 +13,8 @@ use std::path::{Path, PathBuf};
 
 use rumahl_app_operations::{AppOperationRunner, AppRuntimeServices};
 use rumahl_core::{
-    InMemoryGrantStore, InstalledApp, PlatformRecovery, PlatformSnapshotRepository, PlatformState,
-    RuntimeEntrypointId,
+    AppRuntimeInstallationState, AppRuntimeProvider, InMemoryGrantStore, InstalledApp,
+    PlatformRecovery, PlatformSnapshotRepository, PlatformState, RuntimeEntrypointId, RuntimeKind,
 };
 use rumahl_oidc_provider::InstalledAppOriginResolver;
 use rumahl_persistence_sqlite::{
@@ -24,9 +24,79 @@ use rumahl_persistence_sqlite::{
 use rumahl_platform_buildroot::{
     PackageImportError, PackageImporter, PackageImporterConfig, PackageImporterConfigError,
     Tpm2Authorization, Tpm2SealedKey, Tpm2UnsealKeyProvider, UnixAppRuntimeProvider,
-    UnixAppRuntimeProviderConfig, UnixDockerImageImporter, UnixDockerImageImporterConfig,
-    UnixRuntimeSecretDelivery, UnixRuntimeSecretDeliveryConfig,
+    UnixAppRuntimeProviderConfig, UnixAppRuntimeProviderError, UnixDockerImageImporter,
+    UnixDockerImageImporterConfig, UnixRuntimeSecretDelivery, UnixRuntimeSecretDeliveryConfig,
 };
+
+/// Routes app runtime operations: container apps use the supervisor, static web
+/// apps have no external runtime and are accepted as a no-op.
+struct PlatformRuntimeProvider {
+    supervisor: UnixAppRuntimeProvider,
+}
+
+#[derive(Debug)]
+pub enum PlatformRuntimeError {
+    Supervisor(UnixAppRuntimeProviderError),
+}
+
+impl PlatformRuntimeProvider {
+    fn new(supervisor: UnixAppRuntimeProvider) -> Self {
+        Self { supervisor }
+    }
+
+    fn is_web(app: &InstalledApp) -> bool {
+        app.manifest().runtime().kind() == RuntimeKind::Web
+    }
+}
+
+impl AppRuntimeProvider for PlatformRuntimeProvider {
+    type Error = PlatformRuntimeError;
+
+    fn prepare_installation(&self, app: &InstalledApp) -> Result<(), Self::Error> {
+        if Self::is_web(app) {
+            return Ok(());
+        }
+        self.supervisor
+            .prepare_installation(app)
+            .map_err(PlatformRuntimeError::Supervisor)
+    }
+
+    fn activate_installation(&self, app: &InstalledApp) -> Result<(), Self::Error> {
+        if Self::is_web(app) {
+            return Ok(());
+        }
+        self.supervisor
+            .activate_installation(app)
+            .map_err(PlatformRuntimeError::Supervisor)
+    }
+
+    fn installation_state(
+        &self,
+        installation_id: &rumahl_core::InstallationId,
+    ) -> Result<AppRuntimeInstallationState, Self::Error> {
+        self.supervisor
+            .installation_state(installation_id)
+            .map_err(PlatformRuntimeError::Supervisor)
+    }
+
+    fn deactivate_installation(
+        &self,
+        installation_id: &rumahl_core::InstallationId,
+    ) -> Result<bool, Self::Error> {
+        self.supervisor
+            .deactivate_installation(installation_id)
+            .map_err(PlatformRuntimeError::Supervisor)
+    }
+
+    fn remove_installation(
+        &self,
+        installation_id: &rumahl_core::InstallationId,
+    ) -> Result<bool, Self::Error> {
+        self.supervisor
+            .remove_installation(installation_id)
+            .map_err(PlatformRuntimeError::Supervisor)
+    }
+}
 
 /// Derives an installed app's origin from its installation host.
 pub struct InstallationHostOriginResolver {
@@ -98,10 +168,10 @@ pub fn install_package(state_dir: &Path, package_dir: &Path) -> Result<(), Insta
         .map_err(InstallError::provider)?;
     let oidc_repository =
         SqliteOidcClientRepository::open(&platform).map_err(InstallError::provider)?;
-    let runtime_provider = UnixAppRuntimeProvider::new(
+    let runtime_provider = PlatformRuntimeProvider::new(UnixAppRuntimeProvider::new(
         UnixAppRuntimeProviderConfig::new(control_socket, runtime_uid)
             .map_err(InstallError::provider)?,
-    );
+    ));
     let secret_delivery = UnixRuntimeSecretDelivery::new(
         UnixRuntimeSecretDeliveryConfig::new(secret_socket, runtime_uid)
             .map_err(InstallError::provider)?,
@@ -225,6 +295,22 @@ impl fmt::Display for InstallationHostOriginError {
 
 impl Error for InstallationHostOriginError {}
 
+impl fmt::Display for PlatformRuntimeError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Supervisor(error) => write!(f, "runtime supervisor operation failed: {error}"),
+        }
+    }
+}
+
+impl Error for PlatformRuntimeError {
+    fn source(&self) -> Option<&(dyn Error + 'static)> {
+        match self {
+            Self::Supervisor(error) => Some(error),
+        }
+    }
+}
+
 impl From<io::Error> for InstallError {
     fn from(error: io::Error) -> Self {
         Self::Io(error)
@@ -264,7 +350,7 @@ impl Error for InstallError {
 mod tests {
     use rumahl_core::{
         AppId, AppManifest, AppManifestValidator, AppVersion, InstalledApp, PackagePath,
-        PublisherId, RuntimeDescriptor, RuntimeEntrypoint, RuntimeEntrypointId,
+        PublisherId, RuntimeDescriptor, RuntimeEndpointId, RuntimeEntrypoint, RuntimeEntrypointId,
     };
 
     use super::*;
@@ -286,6 +372,56 @@ mod tests {
         )
         .unwrap();
         InstalledApp::create(manifest, &AppManifestValidator::new()).unwrap()
+    }
+
+    fn container_app() -> InstalledApp {
+        let mut runtime = RuntimeDescriptor::container();
+        runtime
+            .add_entrypoint(RuntimeEntrypoint::container_artifact(
+                RuntimeEntrypointId::parse("service").unwrap(),
+                PackagePath::parse("runtime/server.oci").unwrap(),
+            ))
+            .unwrap();
+        runtime
+            .add_entrypoint(RuntimeEntrypoint::endpoint(
+                RuntimeEntrypointId::parse("main").unwrap(),
+                RuntimeEndpointId::parse("web").unwrap(),
+            ))
+            .unwrap();
+        let manifest = AppManifest::new(
+            AppId::parse("com.rumahl.cloud").unwrap(),
+            PublisherId::parse("com.rumahl").unwrap(),
+            AppVersion::new(1, 0, 0),
+            "Cloud",
+            runtime,
+        )
+        .unwrap();
+        InstalledApp::create(manifest, &AppManifestValidator::new()).unwrap()
+    }
+
+    fn runtime_provider() -> PlatformRuntimeProvider {
+        let config = UnixAppRuntimeProviderConfig::new("/run/rumahl/control.sock", 0).unwrap();
+        PlatformRuntimeProvider::new(UnixAppRuntimeProvider::new(config))
+    }
+
+    #[test]
+    fn static_web_apps_need_no_supervisor_runtime() {
+        let provider = runtime_provider();
+        let app = installed_app();
+
+        provider.prepare_installation(&app).unwrap();
+        provider.activate_installation(&app).unwrap();
+    }
+
+    #[test]
+    fn container_apps_are_delegated_to_the_supervisor() {
+        let provider = runtime_provider();
+        let app = container_app();
+
+        assert!(matches!(
+            provider.prepare_installation(&app),
+            Err(PlatformRuntimeError::Supervisor(_))
+        ));
     }
 
     #[test]
