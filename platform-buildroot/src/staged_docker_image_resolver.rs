@@ -9,8 +9,8 @@ use rumahl_core::PackagePath;
 
 use crate::{DockerImageReference, DockerImageResolver, RuntimeInstallationSpec};
 
-const METADATA_FILE: &str = "image-reference";
-const FORMAT_VERSION: &str = "RDI1";
+pub(crate) const METADATA_FILE: &str = "image-reference";
+pub(crate) const FORMAT_VERSION: &str = "RDI1";
 const MAX_METADATA_LENGTH: u64 = 2048;
 
 #[derive(Debug, Clone)]

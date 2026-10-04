@@ -18,12 +18,17 @@
 
 mod digest;
 mod manifest;
+mod publish;
 mod signature;
 mod verifier;
 
 pub use manifest::{
     MANIFEST_FILE, MAX_FILE_BYTES, MAX_FILES, MAX_MANIFEST_BYTES, MAX_PACKAGE_BYTES,
     PackageAppManifest, PackageFile, PackageManifest, PackageManifestError,
+};
+pub use publish::{
+    PublishedAssets, WebAssetPublishError, WebAssetPublisher, WebAssetPublisherConfig,
+    WebAssetPublisherConfigError,
 };
 pub use signature::{
     MAX_SIGNATURE_BYTES, MAX_TRUST_STORE_BYTES, SIGNATURE_FILE, SignatureEnvelope,

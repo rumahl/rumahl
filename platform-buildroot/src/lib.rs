@@ -9,6 +9,7 @@ mod runtime_provider;
 mod runtime_secret_server;
 mod runtime_secrets;
 mod staged_docker_image_resolver;
+mod staged_docker_image_writer;
 #[cfg(test)]
 mod test_support;
 mod tpm2_key_provider;
@@ -39,6 +40,10 @@ pub use runtime_secrets::{
 pub use staged_docker_image_resolver::{
     StagedDockerImageResolver, StagedDockerImageResolverConfig,
     StagedDockerImageResolverConfigError, StagedDockerImageResolverError,
+};
+pub use staged_docker_image_writer::{
+    StagedDockerImageWriter, StagedDockerImageWriterConfig, StagedDockerImageWriterConfigError,
+    StagedDockerImageWriterError,
 };
 pub use tpm2_key_provider::{
     Tpm2Authorization, Tpm2SealedKey, Tpm2SealedKeyError, Tpm2UnsealKeyProvider,
