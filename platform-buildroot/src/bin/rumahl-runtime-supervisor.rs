@@ -91,8 +91,9 @@ fn main() -> ExitCode {
 fn run(arguments: impl IntoIterator<Item = OsString>) -> Result<(), SupervisorError> {
     let args = parse_args(arguments).map_err(SupervisorError::Arguments)?;
     let platform_uid = user_uid(&args.platform_user)?;
+    let image_root = args.image_root;
     let resolver = StagedDockerImageResolver::new(
-        StagedDockerImageResolverConfig::new(args.image_root)
+        StagedDockerImageResolverConfig::new(&image_root)
             .map_err(SupervisorError::ImageResolverConfig)?,
     );
     let runtime_root = args.runtime_root;
@@ -120,7 +121,7 @@ fn run(arguments: impl IntoIterator<Item = OsString>) -> Result<(), SupervisorEr
         .map_err(SupervisorError::SecretServerBind)?;
 
     let image_importer = DockerImageImporter::new(
-        DockerImageImporterConfig::with_default_timeout(&docker, &runtime_root)
+        DockerImageImporterConfig::with_default_timeout(&docker, &runtime_root, &image_root)
             .map_err(SupervisorError::ImageImporterConfig)?,
     );
     let image_server_config = UnixDockerImageServerConfig::new(args.image_socket, platform_uid)

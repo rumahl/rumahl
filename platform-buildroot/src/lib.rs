@@ -23,7 +23,7 @@ pub use docker_image_channel::{
     UnixDockerImageServerConfigError, UnixDockerImageServerError,
 };
 pub use docker_image_importer::{
-    DockerImageImportError, DockerImageImporter, DockerImageImporterConfig,
+    ContainerImageImporter, DockerImageImportError, DockerImageImporter, DockerImageImporterConfig,
     DockerImageImporterConfigError, DockerImageTarget, MAX_ARCHIVE_BYTES,
 };
 pub use docker_runtime_target::{
@@ -35,7 +35,7 @@ pub use namespace_secret_target::{
     NamespaceRuntimeSecretTargetConfigError, NamespaceRuntimeSecretTargetError,
 };
 pub use package_importer::{
-    ContainerImageImporter, PackageImportError, PackageImporter, PackageImporterConfig,
+    InstalledPackage, PackageImportError, PackageImporter, PackageImporterConfig,
     PackageImporterConfigError, PublishedInstall,
 };
 pub use runtime_provider::{

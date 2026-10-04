@@ -10,7 +10,10 @@ use std::time::{Duration, Instant};
 
 use rumahl_core::{InstallationId, PackagePath};
 
-use crate::{ContainerImageImporter, DockerImageReference, DockerImageReferenceError};
+use crate::{
+    DockerImageReference, DockerImageReferenceError, StagedDockerImageWriter,
+    StagedDockerImageWriterError,
+};
 
 const DEFAULT_IMPORT_TIMEOUT: Duration = Duration::from_secs(120);
 const WAIT_INTERVAL: Duration = Duration::from_millis(10);
@@ -22,10 +25,37 @@ const ARCHIVE_FILE_MODE: u32 = 0o600;
 /// Upper bound for one imported image archive.
 pub const MAX_ARCHIVE_BYTES: usize = 64 * 1024 * 1024;
 
+/// Stages the declared OCI/Docker artifact of an installation so the runtime
+/// resolver can hand the supervisor an immutable image reference.
+pub trait ContainerImageImporter {
+    type Error: Error + Send + Sync + 'static;
+
+    fn stage_image(
+        &self,
+        installation_id: &InstallationId,
+        package_root: &Path,
+        artifact: &PackagePath,
+    ) -> Result<(), Self::Error>;
+}
+
+/// Host-side boundary for loading an image archive into the Docker engine and
+/// recording the immutable reference for an installation.
+pub trait DockerImageTarget {
+    type Error: Error + Send + Sync + 'static;
+
+    fn import_archive(
+        &self,
+        installation_id: &InstallationId,
+        artifact: &PackagePath,
+        archive: &[u8],
+    ) -> Result<(), Self::Error>;
+}
+
 #[derive(Debug, Clone)]
 pub struct DockerImageImporterConfig {
     executable: PathBuf,
     work_root: PathBuf,
+    image_root: PathBuf,
     timeout: Duration,
 }
 
@@ -33,17 +63,8 @@ pub struct DockerImageImporterConfig {
 pub enum DockerImageImporterConfigError {
     ExecutableMustBeAbsolute,
     WorkRootMustBeAbsolute,
+    ImageRootMustBeAbsolute,
     ZeroTimeout,
-}
-
-/// Host-side boundary for loading an image archive into the Docker engine.
-///
-/// Implementations own the engine-specific import and must return an immutable,
-/// digest-pinned reference.
-pub trait DockerImageTarget {
-    type Error: Error + Send + Sync + 'static;
-
-    fn import_archive(&self, archive: &[u8]) -> Result<DockerImageReference, Self::Error>;
 }
 
 /// Imports a package's OCI/Docker archive through a fixed Docker executable.
@@ -51,9 +72,10 @@ pub trait DockerImageTarget {
 /// The process runs without a shell, with a cleared environment and bounded
 /// output/time. It lives on the supervisor side of the trust boundary: the
 /// platform service deliberately has no Docker access.
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct DockerImageImporter {
     config: DockerImageImporterConfig,
+    writer: StagedDockerImageWriter,
 }
 
 #[derive(Debug)]
@@ -78,6 +100,7 @@ pub enum DockerImageImportError {
     UnparsableOutput,
     AmbiguousImage,
     InvalidReference(DockerImageReferenceError),
+    StagedReference(StagedDockerImageWriterError),
 }
 
 #[derive(Debug)]
@@ -91,6 +114,7 @@ impl DockerImageImporterConfig {
     pub fn new(
         executable: impl Into<PathBuf>,
         work_root: impl Into<PathBuf>,
+        image_root: impl Into<PathBuf>,
         timeout: Duration,
     ) -> Result<Self, DockerImageImporterConfigError> {
         let executable = executable.into();
@@ -101,12 +125,17 @@ impl DockerImageImporterConfig {
         if !work_root.is_absolute() {
             return Err(DockerImageImporterConfigError::WorkRootMustBeAbsolute);
         }
+        let image_root = image_root.into();
+        if !image_root.is_absolute() {
+            return Err(DockerImageImporterConfigError::ImageRootMustBeAbsolute);
+        }
         if timeout.is_zero() {
             return Err(DockerImageImporterConfigError::ZeroTimeout);
         }
         Ok(Self {
             executable,
             work_root,
+            image_root,
             timeout,
         })
     }
@@ -114,8 +143,9 @@ impl DockerImageImporterConfig {
     pub fn with_default_timeout(
         executable: impl Into<PathBuf>,
         work_root: impl Into<PathBuf>,
+        image_root: impl Into<PathBuf>,
     ) -> Result<Self, DockerImageImporterConfigError> {
-        Self::new(executable, work_root, DEFAULT_IMPORT_TIMEOUT)
+        Self::new(executable, work_root, image_root, DEFAULT_IMPORT_TIMEOUT)
     }
 
     pub fn executable(&self) -> &Path {
@@ -126,6 +156,10 @@ impl DockerImageImporterConfig {
         &self.work_root
     }
 
+    pub fn image_root(&self) -> &Path {
+        &self.image_root
+    }
+
     pub fn timeout(&self) -> Duration {
         self.timeout
     }
@@ -133,7 +167,9 @@ impl DockerImageImporterConfig {
 
 impl DockerImageImporter {
     pub fn new(config: DockerImageImporterConfig) -> Self {
-        Self { config }
+        let writer = StagedDockerImageWriter::new(config.image_root.clone())
+            .expect("image root was validated as absolute");
+        Self { config, writer }
     }
 
     pub fn config(&self) -> &DockerImageImporterConfig {
@@ -203,7 +239,12 @@ impl DockerImageImporter {
 impl DockerImageTarget for DockerImageImporter {
     type Error = DockerImageImportError;
 
-    fn import_archive(&self, archive: &[u8]) -> Result<DockerImageReference, Self::Error> {
+    fn import_archive(
+        &self,
+        installation_id: &InstallationId,
+        artifact: &PackagePath,
+        archive: &[u8],
+    ) -> Result<(), Self::Error> {
         if archive.is_empty() {
             return Err(DockerImageImportError::ArchiveEmpty);
         }
@@ -228,7 +269,11 @@ impl DockerImageTarget for DockerImageImporter {
                 .map_err(DockerImageImportError::ArchiveWrite)?;
         }
 
-        let outcome = self.load_archive(&path);
+        let outcome = self.load_archive(&path).and_then(|reference| {
+            self.writer
+                .write(installation_id, artifact, &reference)
+                .map_err(DockerImageImportError::StagedReference)
+        });
         let _ = fs::remove_file(&path);
         outcome
     }
@@ -237,11 +282,12 @@ impl DockerImageTarget for DockerImageImporter {
 impl ContainerImageImporter for DockerImageImporter {
     type Error = DockerImageImportError;
 
-    fn import_image(
+    fn stage_image(
         &self,
+        installation_id: &InstallationId,
         package_root: &Path,
         artifact: &PackagePath,
-    ) -> Result<DockerImageReference, Self::Error> {
+    ) -> Result<(), Self::Error> {
         let path = package_root.join(artifact.as_str());
         let metadata =
             fs::symlink_metadata(&path).map_err(|_| DockerImageImportError::ArtifactNotRegular)?;
@@ -256,7 +302,7 @@ impl ContainerImageImporter for DockerImageImporter {
         }
 
         let archive = fs::read(&path).map_err(DockerImageImportError::ArtifactRead)?;
-        self.import_archive(&archive)
+        self.import_archive(installation_id, artifact, &archive)
     }
 }
 
@@ -407,6 +453,7 @@ impl fmt::Display for DockerImageImporterConfigError {
         match self {
             Self::ExecutableMustBeAbsolute => write!(f, "docker executable path must be absolute"),
             Self::WorkRootMustBeAbsolute => write!(f, "docker import work root must be absolute"),
+            Self::ImageRootMustBeAbsolute => write!(f, "staged image root must be absolute"),
             Self::ZeroTimeout => write!(f, "docker import timeout must be non-zero"),
         }
     }
@@ -443,6 +490,9 @@ impl fmt::Display for DockerImageImportError {
             Self::InvalidReference(error) => {
                 write!(f, "docker image reference is not immutable: {error}")
             }
+            Self::StagedReference(error) => {
+                write!(f, "staged image reference could not be written: {error}")
+            }
         }
     }
 }
@@ -458,6 +508,7 @@ impl Error for DockerImageImportError {
             | Self::Wait(error)
             | Self::Terminate(error) => Some(error),
             Self::InvalidReference(error) => Some(error),
+            Self::StagedReference(error) => Some(error),
             Self::ArtifactSymlink
             | Self::ArtifactNotRegular
             | Self::ArtifactTooLarge
@@ -478,6 +529,8 @@ impl Error for DockerImageImportError {
 mod tests {
     use std::os::unix::fs::{PermissionsExt, symlink};
 
+    use rumahl_core::PackagePath;
+
     use super::*;
     use crate::test_support::{process_spawn_guard, unique_test_root};
 
@@ -489,7 +542,7 @@ mod tests {
         fs::set_permissions(path, fs::Permissions::from_mode(0o700)).unwrap();
     }
 
-    fn fixture() -> (PathBuf, PathBuf, PathBuf) {
+    fn fixture() -> (PathBuf, PathBuf, PathBuf, PathBuf) {
         let root = unique_test_root('p');
         let package = root.join("package");
         fs::create_dir(&package).unwrap();
@@ -497,13 +550,31 @@ mod tests {
         fs::write(package.join("runtime/server.oci"), b"archive").unwrap();
         let work = root.join("work");
         fs::create_dir(&work).unwrap();
-        (root, package, work)
+        let images = root.join("images");
+        fs::create_dir(&images).unwrap();
+        (root, package, work, images)
+    }
+
+    fn importer(executable: &Path, work: &Path, images: &Path) -> DockerImageImporter {
+        DockerImageImporter::new(
+            DockerImageImporterConfig::new(executable, work, images, Duration::from_secs(30))
+                .unwrap(),
+        )
+    }
+
+    fn reference_file(images: &Path, installation_id: &InstallationId) -> String {
+        fs::read_to_string(
+            images
+                .join(installation_id.to_string())
+                .join("image-reference"),
+        )
+        .unwrap()
     }
 
     #[test]
     fn imports_image_from_load_output() {
         let _guard = process_spawn_guard();
-        let (root, package, work) = fixture();
+        let (root, package, work, images) = fixture();
         let executable = root.join("docker");
         write_script(
             &executable,
@@ -511,15 +582,20 @@ mod tests {
                 "#!/bin/sh\ncase \"$1\" in\n  load) printf 'Loaded image ID: sha256:%s\\n' '{DIGEST_A}' >&2; exit 0 ;;\n  *) exit 1 ;;\nesac\n"
             ),
         );
+        let installation_id = InstallationId::new();
 
-        let importer = DockerImageImporter::new(
-            DockerImageImporterConfig::new(&executable, &work, Duration::from_secs(30)).unwrap(),
-        );
-        let reference = importer
-            .import_image(&package, &PackagePath::parse("runtime/server.oci").unwrap())
+        importer(&executable, &work, &images)
+            .stage_image(
+                &installation_id,
+                &package,
+                &PackagePath::parse("runtime/server.oci").unwrap(),
+            )
             .unwrap();
 
-        assert_eq!(reference.as_str(), format!("sha256:{DIGEST_A}"));
+        assert_eq!(
+            reference_file(&images, &installation_id),
+            format!("RDI1\nruntime/server.oci\nsha256:{DIGEST_A}\n")
+        );
         assert_eq!(fs::read_dir(&work).unwrap().count(), 0);
         fs::remove_dir_all(root).unwrap();
     }
@@ -527,7 +603,7 @@ mod tests {
     #[test]
     fn inspects_named_image_after_load() {
         let _guard = process_spawn_guard();
-        let (root, package, work) = fixture();
+        let (root, package, work, images) = fixture();
         let executable = root.join("docker");
         write_script(
             &executable,
@@ -535,30 +611,36 @@ mod tests {
                 "#!/bin/sh\ncase \"$1\" in\n  load) printf 'Loaded image: test/app:1\\n' >&2; exit 0 ;;\n  image) printf 'sha256:%s\\n' '{DIGEST_B}'; exit 0 ;;\n  *) exit 1 ;;\nesac\n"
             ),
         );
+        let installation_id = InstallationId::new();
 
-        let importer = DockerImageImporter::new(
-            DockerImageImporterConfig::new(&executable, &work, Duration::from_secs(30)).unwrap(),
-        );
-        let reference = importer
-            .import_image(&package, &PackagePath::parse("runtime/server.oci").unwrap())
+        importer(&executable, &work, &images)
+            .stage_image(
+                &installation_id,
+                &package,
+                &PackagePath::parse("runtime/server.oci").unwrap(),
+            )
             .unwrap();
 
-        assert_eq!(reference.as_str(), format!("sha256:{DIGEST_B}"));
+        assert_eq!(
+            reference_file(&images, &installation_id),
+            format!("RDI1\nruntime/server.oci\nsha256:{DIGEST_B}\n")
+        );
         fs::remove_dir_all(root).unwrap();
     }
 
     #[test]
     fn rejects_failed_load() {
         let _guard = process_spawn_guard();
-        let (root, package, work) = fixture();
+        let (root, package, work, images) = fixture();
         let executable = root.join("docker");
         write_script(&executable, "#!/bin/sh\nexit 2\n");
 
-        let importer = DockerImageImporter::new(
-            DockerImageImporterConfig::new(&executable, &work, Duration::from_secs(30)).unwrap(),
-        );
-        let error = importer
-            .import_image(&package, &PackagePath::parse("runtime/server.oci").unwrap())
+        let error = importer(&executable, &work, &images)
+            .stage_image(
+                &InstallationId::new(),
+                &package,
+                &PackagePath::parse("runtime/server.oci").unwrap(),
+            )
             .unwrap_err();
 
         assert!(matches!(error, DockerImageImportError::LoadFailed(Some(2))));
@@ -568,18 +650,18 @@ mod tests {
 
     #[test]
     fn rejects_symlinked_artifact() {
-        let (root, package, work) = fixture();
+        let (root, package, work, images) = fixture();
         let artifact = package.join("runtime/server.oci");
         let outside = package.join("runtime/outside.oci");
         fs::rename(&artifact, &outside).unwrap();
         symlink(&outside, &artifact).unwrap();
 
-        let importer = DockerImageImporter::new(
-            DockerImageImporterConfig::new("/usr/bin/docker", &work, Duration::from_secs(30))
-                .unwrap(),
-        );
-        let error = importer
-            .import_image(&package, &PackagePath::parse("runtime/server.oci").unwrap())
+        let error = importer(Path::new("/usr/bin/docker"), &work, &images)
+            .stage_image(
+                &InstallationId::new(),
+                &package,
+                &PackagePath::parse("runtime/server.oci").unwrap(),
+            )
             .unwrap_err();
 
         assert!(matches!(error, DockerImageImportError::ArtifactSymlink));
@@ -588,32 +670,53 @@ mod tests {
 
     #[test]
     fn rejects_empty_archive() {
-        let (root, _package, work) = fixture();
-        let importer = DockerImageImporter::new(
-            DockerImageImporterConfig::new("/usr/bin/docker", &work, Duration::from_secs(30))
-                .unwrap(),
-        );
-        let error = importer.import_archive(b"").unwrap_err();
+        let (root, _package, work, images) = fixture();
+        let error = importer(Path::new("/usr/bin/docker"), &work, &images)
+            .import_archive(
+                &InstallationId::new(),
+                &PackagePath::parse("runtime/server.oci").unwrap(),
+                b"",
+            )
+            .unwrap_err();
         assert!(matches!(error, DockerImageImportError::ArchiveEmpty));
         fs::remove_dir_all(root).unwrap();
     }
 
     #[test]
     fn validates_configuration() {
-        let work = unique_test_root('w');
+        let root = unique_test_root('w');
+        let work = root.join("work");
+        let images = root.join("images");
         assert_eq!(
-            DockerImageImporterConfig::new("docker", &work, Duration::from_secs(30)).unwrap_err(),
+            DockerImageImporterConfig::new("docker", &work, &images, Duration::from_secs(30))
+                .unwrap_err(),
             DockerImageImporterConfigError::ExecutableMustBeAbsolute
         );
         assert_eq!(
-            DockerImageImporterConfig::new("/usr/bin/docker", "work", Duration::from_secs(30))
-                .unwrap_err(),
+            DockerImageImporterConfig::new(
+                "/usr/bin/docker",
+                "work",
+                &images,
+                Duration::from_secs(30)
+            )
+            .unwrap_err(),
             DockerImageImporterConfigError::WorkRootMustBeAbsolute
         );
         assert_eq!(
-            DockerImageImporterConfig::new("/usr/bin/docker", &work, Duration::ZERO).unwrap_err(),
+            DockerImageImporterConfig::new(
+                "/usr/bin/docker",
+                &work,
+                "images",
+                Duration::from_secs(30)
+            )
+            .unwrap_err(),
+            DockerImageImporterConfigError::ImageRootMustBeAbsolute
+        );
+        assert_eq!(
+            DockerImageImporterConfig::new("/usr/bin/docker", &work, &images, Duration::ZERO)
+                .unwrap_err(),
             DockerImageImporterConfigError::ZeroTimeout
         );
-        fs::remove_dir_all(work).unwrap();
+        fs::remove_dir_all(root).unwrap();
     }
 }

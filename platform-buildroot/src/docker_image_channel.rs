@@ -7,24 +7,22 @@ use std::os::unix::net::{UnixListener, UnixStream};
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
-use rumahl_core::PackagePath;
+use rumahl_core::{InstallationId, PackagePath};
 
 use crate::docker_image_importer::MAX_ARCHIVE_BYTES;
 use crate::runtime_secrets::peer_uid;
-use crate::{
-    ContainerImageImporter, DockerImageReference, DockerImageReferenceError, DockerImageTarget,
-};
+use crate::{ContainerImageImporter, DockerImageTarget};
 
 pub(crate) const PROTOCOL_MAGIC: &[u8; 4] = b"DPI1";
 pub(crate) const OP_IMPORT: u8 = 1;
 pub(crate) const STATUS_OK: u8 = 0;
 pub(crate) const STATUS_REJECTED: u8 = 2;
-const HEADER_LENGTH: usize = 13;
-const DIGEST_LENGTH: usize = 64;
-const RESPONSE_OK_LENGTH: usize = 5 + DIGEST_LENGTH;
+const HEADER_LENGTH: usize = 6;
+const IMPORT_FIELD_COUNT: u8 = 3;
+const MAX_STRING_FIELD: usize = 1024;
 const OWNER_ONLY_SOCKET_MODE: u32 = 0o600;
 const OWNER_GROUP_SOCKET_MODE: u32 = 0o660;
-const DEFAULT_TIMEOUT: Duration = Duration::from_secs(30);
+const DEFAULT_TIMEOUT: Duration = Duration::from_secs(120);
 
 #[derive(Debug, Clone)]
 pub struct UnixDockerImageImporterConfig {
@@ -58,7 +56,6 @@ pub enum UnixDockerImageImporterError {
     Read(io::Error),
     InvalidResponse,
     Rejected,
-    InvalidReference(DockerImageReferenceError),
 }
 
 #[derive(Debug, Clone)]
@@ -94,6 +91,12 @@ pub enum UnixDockerImageServerError {
     InvalidRequest,
     Target,
     Write(io::Error),
+}
+
+struct ImportRequest {
+    installation_id: InstallationId,
+    artifact: PackagePath,
+    archive: Vec<u8>,
 }
 
 impl UnixDockerImageImporterConfig {
@@ -203,43 +206,8 @@ impl UnixDockerImageImporter {
     pub fn config(&self) -> &UnixDockerImageImporterConfig {
         &self.config
     }
-}
 
-impl ContainerImageImporter for UnixDockerImageImporter {
-    type Error = UnixDockerImageImporterError;
-
-    fn import_image(
-        &self,
-        package_root: &Path,
-        artifact: &PackagePath,
-    ) -> Result<DockerImageReference, Self::Error> {
-        let path = package_root.join(artifact.as_str());
-        let metadata = fs::symlink_metadata(&path)
-            .map_err(|_| UnixDockerImageImporterError::ArtifactNotRegular)?;
-        if metadata.file_type().is_symlink() {
-            return Err(UnixDockerImageImporterError::ArtifactSymlink);
-        }
-        if !metadata.file_type().is_file() {
-            return Err(UnixDockerImageImporterError::ArtifactNotRegular);
-        }
-        if metadata.len() > MAX_ARCHIVE_BYTES as u64 {
-            return Err(UnixDockerImageImporterError::ArtifactTooLarge);
-        }
-
-        let archive = fs::read(&path).map_err(UnixDockerImageImporterError::ArtifactRead)?;
-        self.exchange(&archive)
-    }
-}
-
-impl UnixDockerImageImporter {
-    fn exchange(
-        &self,
-        archive: &[u8],
-    ) -> Result<DockerImageReference, UnixDockerImageImporterError> {
-        if archive.is_empty() || archive.len() > MAX_ARCHIVE_BYTES {
-            return Err(UnixDockerImageImporterError::FieldTooLarge);
-        }
-
+    fn exchange(&self, fields: [&[u8]; 3]) -> Result<(), UnixDockerImageImporterError> {
         let mut stream = UnixStream::connect(&self.config.socket_path)
             .map_err(UnixDockerImageImporterError::Connect)?;
         stream
@@ -258,41 +226,70 @@ impl UnixDockerImageImporter {
             });
         }
 
-        let mut header = [0_u8; HEADER_LENGTH];
-        header[..4].copy_from_slice(PROTOCOL_MAGIC);
-        header[4] = OP_IMPORT;
-        header[5..].copy_from_slice(&(archive.len() as u64).to_be_bytes());
+        let mut request = Vec::new();
+        request.extend_from_slice(PROTOCOL_MAGIC);
+        request.push(OP_IMPORT);
+        request.push(IMPORT_FIELD_COUNT);
+        for field in fields {
+            let length = u32::try_from(field.len())
+                .map_err(|_| UnixDockerImageImporterError::FieldTooLarge)?;
+            request.extend_from_slice(&length.to_be_bytes());
+            request.extend_from_slice(field);
+        }
         stream
-            .write_all(&header)
-            .map_err(UnixDockerImageImporterError::Write)?;
-        stream
-            .write_all(archive)
+            .write_all(&request)
             .map_err(UnixDockerImageImporterError::Write)?;
         stream
             .shutdown(std::net::Shutdown::Write)
             .map_err(UnixDockerImageImporterError::Write)?;
 
-        let mut response = [0_u8; RESPONSE_OK_LENGTH];
+        let mut response = [0_u8; 5];
         stream
-            .read_exact(&mut response[..5])
+            .read_exact(&mut response)
             .map_err(UnixDockerImageImporterError::Read)?;
         if &response[..4] != PROTOCOL_MAGIC {
             return Err(UnixDockerImageImporterError::InvalidResponse);
         }
-
         match response[4] {
-            STATUS_OK => {
-                stream
-                    .read_exact(&mut response[5..])
-                    .map_err(UnixDockerImageImporterError::Read)?;
-                let digest = std::str::from_utf8(&response[5..])
-                    .map_err(|_| UnixDockerImageImporterError::InvalidResponse)?;
-                DockerImageReference::parse(format!("sha256:{digest}"))
-                    .map_err(UnixDockerImageImporterError::InvalidReference)
-            }
+            STATUS_OK => Ok(()),
             STATUS_REJECTED => Err(UnixDockerImageImporterError::Rejected),
             _ => Err(UnixDockerImageImporterError::InvalidResponse),
         }
+    }
+}
+
+impl ContainerImageImporter for UnixDockerImageImporter {
+    type Error = UnixDockerImageImporterError;
+
+    fn stage_image(
+        &self,
+        installation_id: &InstallationId,
+        package_root: &Path,
+        artifact: &PackagePath,
+    ) -> Result<(), Self::Error> {
+        let path = package_root.join(artifact.as_str());
+        let metadata = fs::symlink_metadata(&path)
+            .map_err(|_| UnixDockerImageImporterError::ArtifactNotRegular)?;
+        if metadata.file_type().is_symlink() {
+            return Err(UnixDockerImageImporterError::ArtifactSymlink);
+        }
+        if !metadata.file_type().is_file() {
+            return Err(UnixDockerImageImporterError::ArtifactNotRegular);
+        }
+        if metadata.len() > MAX_ARCHIVE_BYTES as u64 {
+            return Err(UnixDockerImageImporterError::ArtifactTooLarge);
+        }
+
+        let archive = fs::read(&path).map_err(UnixDockerImageImporterError::ArtifactRead)?;
+        if archive.is_empty() || archive.len() > MAX_ARCHIVE_BYTES {
+            return Err(UnixDockerImageImporterError::FieldTooLarge);
+        }
+
+        self.exchange([
+            installation_id.to_string().as_bytes(),
+            artifact.as_str().as_bytes(),
+            &archive,
+        ])
     }
 }
 
@@ -349,8 +346,8 @@ where
             });
         }
 
-        let archive = match read_request(&mut stream) {
-            Ok(archive) => archive,
+        let request = match read_request(&mut stream) {
+            Ok(request) => request,
             Err(error) => {
                 write_status(&mut stream, STATUS_REJECTED)
                     .map_err(UnixDockerImageServerError::Write)?;
@@ -358,9 +355,14 @@ where
             }
         };
 
-        match self.target.import_archive(&archive) {
-            Ok(reference) => write_reference(&mut stream, reference.as_str())
-                .map_err(UnixDockerImageServerError::Write),
+        match self.target.import_archive(
+            &request.installation_id,
+            &request.artifact,
+            &request.archive,
+        ) {
+            Ok(()) => {
+                write_status(&mut stream, STATUS_OK).map_err(UnixDockerImageServerError::Write)
+            }
             Err(_) => {
                 write_status(&mut stream, STATUS_REJECTED)
                     .map_err(UnixDockerImageServerError::Write)?;
@@ -370,32 +372,63 @@ where
     }
 }
 
-fn read_request(stream: &mut UnixStream) -> Result<Vec<u8>, UnixDockerImageServerError> {
+fn read_request(stream: &mut UnixStream) -> Result<ImportRequest, UnixDockerImageServerError> {
     let mut header = [0_u8; HEADER_LENGTH];
     stream
         .read_exact(&mut header)
         .map_err(UnixDockerImageServerError::Read)?;
-    if &header[..4] != PROTOCOL_MAGIC || header[4] != OP_IMPORT {
+    if &header[..4] != PROTOCOL_MAGIC || header[4] != OP_IMPORT || header[5] != IMPORT_FIELD_COUNT {
         return Err(UnixDockerImageServerError::InvalidRequest);
     }
 
-    let length = u64::from_be_bytes(header[5..].try_into().expect("header has eight bytes"));
-    let length = usize::try_from(length).map_err(|_| UnixDockerImageServerError::InvalidRequest)?;
-    if length == 0 || length > MAX_ARCHIVE_BYTES {
-        return Err(UnixDockerImageServerError::InvalidRequest);
-    }
-
-    let mut archive = vec![0_u8; length];
-    stream
-        .read_exact(&mut archive)
-        .map_err(UnixDockerImageServerError::Read)?;
+    let installation_field = read_field(stream, MAX_STRING_FIELD)?;
+    let artifact_field = read_field(stream, MAX_STRING_FIELD)?;
+    let archive = read_field(stream, MAX_ARCHIVE_BYTES)?;
 
     let mut trailing = [0_u8; 1];
     match stream.read(&mut trailing) {
-        Ok(0) => Ok(archive),
-        Ok(_) => Err(UnixDockerImageServerError::InvalidRequest),
-        Err(error) => Err(UnixDockerImageServerError::Read(error)),
+        Ok(0) => {}
+        Ok(_) => return Err(UnixDockerImageServerError::InvalidRequest),
+        Err(error) => return Err(UnixDockerImageServerError::Read(error)),
     }
+
+    let installation_id = std::str::from_utf8(&installation_field)
+        .ok()
+        .and_then(|value| InstallationId::parse(value).ok())
+        .ok_or(UnixDockerImageServerError::InvalidRequest)?;
+    let artifact = std::str::from_utf8(&artifact_field)
+        .ok()
+        .and_then(|value| PackagePath::parse(value).ok())
+        .ok_or(UnixDockerImageServerError::InvalidRequest)?;
+    if archive.is_empty() {
+        return Err(UnixDockerImageServerError::InvalidRequest);
+    }
+
+    Ok(ImportRequest {
+        installation_id,
+        artifact,
+        archive,
+    })
+}
+
+fn read_field(
+    stream: &mut UnixStream,
+    maximum: usize,
+) -> Result<Vec<u8>, UnixDockerImageServerError> {
+    let mut length_bytes = [0_u8; 4];
+    stream
+        .read_exact(&mut length_bytes)
+        .map_err(UnixDockerImageServerError::Read)?;
+    let length = usize::try_from(u32::from_be_bytes(length_bytes))
+        .map_err(|_| UnixDockerImageServerError::InvalidRequest)?;
+    if length == 0 || length > maximum {
+        return Err(UnixDockerImageServerError::InvalidRequest);
+    }
+    let mut field = vec![0_u8; length];
+    stream
+        .read_exact(&mut field)
+        .map_err(UnixDockerImageServerError::Read)?;
+    Ok(field)
 }
 
 fn write_status(stream: &mut UnixStream, status: u8) -> io::Result<()> {
@@ -406,17 +439,6 @@ fn write_status(stream: &mut UnixStream, status: u8) -> io::Result<()> {
         PROTOCOL_MAGIC[3],
         status,
     ])
-}
-
-fn write_reference(stream: &mut UnixStream, reference: &str) -> io::Result<()> {
-    let digest = reference
-        .rsplit("sha256:")
-        .next()
-        .filter(|digest| digest.len() == DIGEST_LENGTH)
-        .unwrap_or("");
-    stream.write_all(PROTOCOL_MAGIC)?;
-    stream.write_all(&[STATUS_OK])?;
-    stream.write_all(digest.as_bytes())
 }
 
 impl fmt::Display for UnixDockerImageImporterConfigError {
@@ -454,9 +476,6 @@ impl fmt::Display for UnixDockerImageImporterError {
             Self::Read(_) => write!(f, "docker image import response failed"),
             Self::InvalidResponse => write!(f, "docker image import response is invalid"),
             Self::Rejected => write!(f, "docker image import was rejected"),
-            Self::InvalidReference(error) => {
-                write!(f, "docker image reference is not immutable: {error}")
-            }
         }
     }
 }
@@ -469,7 +488,6 @@ impl Error for UnixDockerImageImporterError {
             | Self::PeerCredentials(error)
             | Self::Write(error)
             | Self::Read(error) => Some(error),
-            Self::InvalidReference(error) => Some(error),
             Self::ArtifactSymlink
             | Self::ArtifactNotRegular
             | Self::ArtifactTooLarge
@@ -547,28 +565,33 @@ mod tests {
     use super::*;
     use crate::test_support::unique_test_root;
 
-    const DIGEST: &str = "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc";
-
     fn current_uid() -> u32 {
         // SAFETY: `geteuid` has no preconditions.
         unsafe { libc::geteuid() }
     }
 
-    fn reference(digest: &str) -> DockerImageReference {
-        DockerImageReference::parse(format!("sha256:{digest}")).unwrap()
-    }
-
     #[derive(Clone, Default)]
     struct RecordingTarget {
-        archives: Arc<Mutex<Vec<Vec<u8>>>>,
+        requests: Arc<Mutex<Vec<RecordedRequest>>>,
     }
+
+    type RecordedRequest = (InstallationId, String, Vec<u8>);
 
     impl DockerImageTarget for RecordingTarget {
         type Error = Infallible;
 
-        fn import_archive(&self, archive: &[u8]) -> Result<DockerImageReference, Self::Error> {
-            self.archives.lock().unwrap().push(archive.to_vec());
-            Ok(reference(DIGEST))
+        fn import_archive(
+            &self,
+            installation_id: &InstallationId,
+            artifact: &PackagePath,
+            archive: &[u8],
+        ) -> Result<(), Self::Error> {
+            self.requests.lock().unwrap().push((
+                *installation_id,
+                artifact.as_str().to_owned(),
+                archive.to_vec(),
+            ));
+            Ok(())
         }
     }
 
@@ -577,7 +600,12 @@ mod tests {
     impl DockerImageTarget for FailingTarget {
         type Error = io::Error;
 
-        fn import_archive(&self, _archive: &[u8]) -> Result<DockerImageReference, Self::Error> {
+        fn import_archive(
+            &self,
+            _installation_id: &InstallationId,
+            _artifact: &PackagePath,
+            _archive: &[u8],
+        ) -> Result<(), Self::Error> {
             Err(io::Error::other("image import failed"))
         }
     }
@@ -600,19 +628,22 @@ mod tests {
         )
         .unwrap();
         let (package, artifact) = write_artifact(&root, b"archive-bytes");
+        let installation_id = InstallationId::new();
 
         let worker = thread::spawn(move || server.serve_once());
         let importer = UnixDockerImageImporter::new(
             UnixDockerImageImporterConfig::new(&socket_path, current_uid()).unwrap(),
         );
-        let image = importer.import_image(&package, &artifact).unwrap();
+        importer
+            .stage_image(&installation_id, &package, &artifact)
+            .unwrap();
         worker.join().unwrap().unwrap();
 
-        assert_eq!(image.as_str(), format!("sha256:{DIGEST}"));
-        assert_eq!(
-            target.archives.lock().unwrap().as_slice(),
-            [b"archive-bytes".to_vec()]
-        );
+        let requests = target.requests.lock().unwrap();
+        assert_eq!(requests.len(), 1);
+        assert_eq!(requests[0].0, installation_id);
+        assert_eq!(requests[0].1, "runtime/server.oci");
+        assert_eq!(requests[0].2, b"archive-bytes");
         assert_eq!(
             fs::metadata(&socket_path).unwrap().permissions().mode() & 0o777,
             OWNER_ONLY_SOCKET_MODE
@@ -635,7 +666,9 @@ mod tests {
         let importer = UnixDockerImageImporter::new(
             UnixDockerImageImporterConfig::new(&socket_path, current_uid()).unwrap(),
         );
-        let error = importer.import_image(&package, &artifact).unwrap_err();
+        let error = importer
+            .stage_image(&InstallationId::new(), &package, &artifact)
+            .unwrap_err();
 
         assert!(matches!(error, UnixDockerImageImporterError::Rejected));
         assert!(matches!(
@@ -658,10 +691,11 @@ mod tests {
 
         let worker = thread::spawn(move || server.serve_once());
         let mut stream = UnixStream::connect(&socket_path).unwrap();
-        let mut header = Vec::from(*PROTOCOL_MAGIC);
-        header.push(OP_IMPORT);
-        header.extend_from_slice(&(u64::MAX).to_be_bytes());
-        stream.write_all(&header).unwrap();
+        let mut request = Vec::from(*PROTOCOL_MAGIC);
+        request.push(OP_IMPORT);
+        request.push(IMPORT_FIELD_COUNT);
+        request.extend_from_slice(&u32::MAX.to_be_bytes());
+        stream.write_all(&request).unwrap();
         stream.shutdown(std::net::Shutdown::Write).unwrap();
         let mut response = [0_u8; 5];
         stream.read_exact(&mut response).unwrap();
@@ -671,7 +705,7 @@ mod tests {
             worker.join().unwrap(),
             Err(UnixDockerImageServerError::InvalidRequest)
         ));
-        assert!(target.archives.lock().unwrap().is_empty());
+        assert!(target.requests.lock().unwrap().is_empty());
         fs::remove_dir_all(root).unwrap();
     }
 

@@ -17,29 +17,12 @@ use rumahl_core::{
 };
 use rumahl_oidc_provider::{InstalledAppOriginResolver, OidcClientRepository};
 
-use crate::{
-    DockerImageReference, StagedDockerImageWriter, StagedDockerImageWriterConfig,
-    StagedDockerImageWriterConfigError, StagedDockerImageWriterError,
-};
-
-/// Loads and verifies the declared OCI artifact and returns an immutable,
-/// digest-pinned reference. Implementations own the engine-specific import
-/// (`docker load`, containerd, …); this trait only fixes the handoff.
-pub trait ContainerImageImporter {
-    type Error: Error + Send + Sync + 'static;
-
-    fn import_image(
-        &self,
-        package_root: &Path,
-        artifact: &PackagePath,
-    ) -> Result<DockerImageReference, Self::Error>;
-}
+use crate::ContainerImageImporter;
 
 #[derive(Debug, Clone)]
 pub struct PackageImporterConfig {
     trust_store: PathBuf,
     assets: WebAssetPublisherConfig,
-    images: StagedDockerImageWriterConfig,
 }
 
 #[derive(Debug)]
@@ -47,14 +30,12 @@ pub enum PackageImporterConfigError {
     TrustStoreRead(io::Error),
     TrustStore(TrustStoreError),
     AssetRoot(WebAssetPublisherConfigError),
-    ImageRoot(StagedDockerImageWriterConfigError),
 }
 
 /// Coordinates verification with publication for one package.
 pub struct PackageImporter<I> {
     verifier: PackageVerifier,
     assets: WebAssetPublisher,
-    images: StagedDockerImageWriter,
     image_importer: I,
 }
 
@@ -77,7 +58,6 @@ pub enum PackageImportError {
     Verification(PackageVerificationError),
     Manifest(rumahl_app_packages::PackageManifestError),
     Publisher(WebAssetPublishError),
-    StagedImage(StagedDockerImageWriterError),
     ImageImport(Box<dyn Error + Send + Sync + 'static>),
     Journal(Box<dyn Error + Send + Sync + 'static>),
     Install(Box<AppOperationRunnerError>),
@@ -90,16 +70,12 @@ impl PackageImporterConfig {
     pub fn new(
         trust_store: impl Into<PathBuf>,
         asset_root: impl Into<PathBuf>,
-        image_root: impl Into<PathBuf>,
     ) -> Result<Self, PackageImporterConfigError> {
         let assets = WebAssetPublisherConfig::new(asset_root)
             .map_err(PackageImporterConfigError::AssetRoot)?;
-        let images = StagedDockerImageWriterConfig::new(image_root)
-            .map_err(PackageImporterConfigError::ImageRoot)?;
         Ok(Self {
             trust_store: trust_store.into(),
             assets,
-            images,
         })
     }
 }
@@ -117,8 +93,6 @@ impl<I> PackageImporter<I> {
         Ok(Self {
             verifier: PackageVerifier::new(trust_store),
             assets: WebAssetPublisher::new(config.assets),
-            images: StagedDockerImageWriter::new(config.images.root().to_path_buf())
-                .expect("image root was validated as absolute"),
             image_importer,
         })
     }
@@ -154,13 +128,9 @@ impl<I: ContainerImageImporter> PackageImporter<I> {
             RuntimeKind::Container => {
                 let artifacts = container_artifacts(package)?;
                 for artifact in &artifacts {
-                    let image = self
-                        .image_importer
-                        .import_image(package_root, artifact)
+                    self.image_importer
+                        .stage_image(installation_id, package_root, artifact)
                         .map_err(|error| PackageImportError::ImageImport(Box::new(error)))?;
-                    self.images
-                        .write(installation_id, artifact, &image)
-                        .map_err(PackageImportError::StagedImage)?;
                 }
                 Ok(PublishedInstall::Container {
                     images: artifacts.len(),
@@ -314,7 +284,6 @@ impl fmt::Display for PackageImporterConfigError {
             }
             Self::TrustStore(error) => write!(f, "package trust store is invalid: {error}"),
             Self::AssetRoot(error) => write!(f, "web asset root is invalid: {error}"),
-            Self::ImageRoot(error) => write!(f, "staged image root is invalid: {error}"),
         }
     }
 }
@@ -325,7 +294,6 @@ impl Error for PackageImporterConfigError {
             Self::TrustStoreRead(error) => Some(error),
             Self::TrustStore(error) => Some(error),
             Self::AssetRoot(error) => Some(error),
-            Self::ImageRoot(error) => Some(error),
         }
     }
 }
@@ -336,7 +304,6 @@ impl fmt::Display for PackageImportError {
             Self::Verification(error) => write!(f, "package verification failed: {error}"),
             Self::Manifest(error) => write!(f, "package manifest is invalid: {error}"),
             Self::Publisher(error) => write!(f, "package publication failed: {error}"),
-            Self::StagedImage(error) => write!(f, "image reference staging failed: {error}"),
             Self::ImageImport(error) => write!(f, "image import failed: {error}"),
             Self::Journal(_) => write!(f, "app operation journal failed"),
             Self::Install(error) => write!(f, "app installation failed: {error}"),
@@ -362,7 +329,6 @@ impl Error for PackageImportError {
             Self::Verification(error) => Some(error),
             Self::Manifest(error) => Some(error),
             Self::Publisher(error) => Some(error),
-            Self::StagedImage(error) => Some(error),
             Self::ImageImport(error) => Some(error.as_ref()),
             Self::Journal(error) => Some(error.as_ref()),
             Self::Install(error) => Some(error),
@@ -394,24 +360,34 @@ mod tests {
 
     use super::*;
     use crate::{
-        DockerImageResolver, RuntimeInstallationSpec, StagedDockerImageResolver,
-        StagedDockerImageResolverConfig, test_support::unique_test_root,
+        DockerImageReference, DockerImageResolver, RuntimeInstallationSpec,
+        StagedDockerImageResolver, StagedDockerImageResolverConfig, StagedDockerImageWriter,
+        test_support::unique_test_root,
     };
 
     const KEY_ID: &str = "publisher-key-1";
     const PUBLISHER: &str = "com.rumahl";
 
-    struct TestImageImporter;
+    struct TestImageImporter {
+        image_root: PathBuf,
+    }
 
     impl ContainerImageImporter for TestImageImporter {
         type Error = std::convert::Infallible;
 
-        fn import_image(
+        fn stage_image(
             &self,
+            installation_id: &InstallationId,
             _package_root: &Path,
-            _artifact: &PackagePath,
-        ) -> Result<DockerImageReference, Self::Error> {
-            Ok(DockerImageReference::parse(format!("sha256:{}", "a".repeat(64))).unwrap())
+            artifact: &PackagePath,
+        ) -> Result<(), Self::Error> {
+            let reference =
+                DockerImageReference::parse(format!("sha256:{}", "a".repeat(64))).unwrap();
+            StagedDockerImageWriter::new(&self.image_root)
+                .unwrap()
+                .write(installation_id, artifact, &reference)
+                .unwrap();
+            Ok(())
         }
     }
 
@@ -420,11 +396,12 @@ mod tests {
     impl ContainerImageImporter for FailingImageImporter {
         type Error = std::io::Error;
 
-        fn import_image(
+        fn stage_image(
             &self,
+            _installation_id: &InstallationId,
             _package_root: &Path,
             _artifact: &PackagePath,
-        ) -> Result<DockerImageReference, Self::Error> {
+        ) -> Result<(), Self::Error> {
             Err(std::io::Error::other("image import disabled"))
         }
     }
@@ -527,8 +504,10 @@ mod tests {
         let asset_root = unique_test_root('a');
         let image_root = unique_test_root('g');
         let importer = PackageImporter::new(
-            PackageImporterConfig::new(&trust_store, &asset_root, &image_root).unwrap(),
-            TestImageImporter,
+            PackageImporterConfig::new(&trust_store, &asset_root).unwrap(),
+            TestImageImporter {
+                image_root: image_root.clone(),
+            },
         )
         .unwrap();
 
@@ -570,8 +549,10 @@ mod tests {
         let asset_root = unique_test_root('a');
         let image_root = unique_test_root('g');
         let importer = PackageImporter::new(
-            PackageImporterConfig::new(&trust_store, &asset_root, &image_root).unwrap(),
-            TestImageImporter,
+            PackageImporterConfig::new(&trust_store, &asset_root).unwrap(),
+            TestImageImporter {
+                image_root: image_root.clone(),
+            },
         )
         .unwrap();
 
@@ -618,7 +599,7 @@ mod tests {
         let asset_root = unique_test_root('a');
         let image_root = unique_test_root('g');
         let importer = PackageImporter::new(
-            PackageImporterConfig::new(&trust_store, &asset_root, &image_root).unwrap(),
+            PackageImporterConfig::new(&trust_store, &asset_root).unwrap(),
             FailingImageImporter,
         )
         .unwrap();
@@ -644,8 +625,10 @@ mod tests {
         let asset_root = unique_test_root('a');
         let image_root = unique_test_root('g');
         let importer = PackageImporter::new(
-            PackageImporterConfig::new(&trust_store, &asset_root, &image_root).unwrap(),
-            TestImageImporter,
+            PackageImporterConfig::new(&trust_store, &asset_root).unwrap(),
+            TestImageImporter {
+                image_root: image_root.clone(),
+            },
         )
         .unwrap();
 
@@ -952,8 +935,10 @@ mod tests {
         let asset_root = unique_test_root('a');
         let image_root = unique_test_root('g');
         let importer = PackageImporter::new(
-            PackageImporterConfig::new(&trust_store, &asset_root, &image_root).unwrap(),
-            TestImageImporter,
+            PackageImporterConfig::new(&trust_store, &asset_root).unwrap(),
+            TestImageImporter {
+                image_root: image_root.clone(),
+            },
         )
         .unwrap();
 
