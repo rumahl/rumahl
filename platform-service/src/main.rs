@@ -85,6 +85,16 @@ async fn run() -> Result<(), ServiceError> {
         println!("Local account created.");
         return Ok(());
     }
+    if args.first().map(String::as_str) == Some("install-package") {
+        if args.len() != 2 {
+            return Err(std::io::Error::other(
+                "usage: install-package PACKAGE_DIR (see install module)",
+            )
+            .into());
+        }
+        install::install_package(&state_dir, std::path::Path::new(&args[1]))?;
+        return Ok(());
+    }
     if args.as_slice() != ["serve"] {
         return Err(std::io::Error::other("usage: rumahl-platform-service serve").into());
     }

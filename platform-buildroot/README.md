@@ -184,8 +184,8 @@ directory owned by the dedicated `rumahl-runtime-control` group. Only
 still insufficient on its own because the server also requires the exact
 configured platform UID. Library users keep the owner-only `0600` default.
 
-`StagedDockerImageResolver` is the handoff from a future package importer. For
-installation `<id>`, the importer must atomically create the supervisor-owned
+`StagedDockerImageResolver` is the handoff from the package importer. For
+installation `<id>`, the importer atomically creates the supervisor-owned
 file `<image-root>/<id>/image-reference` with mode `0600` or `0640`
 and this exact bounded format:
 
@@ -194,6 +194,11 @@ RDI1
 runtime/server.oci
 sha256:<64 lowercase hexadecimal digits>
 ```
+
+`DockerImageImporter` loads the signed archive through Docker and writes this
+file. The platform service holds no Docker access and requests the import over
+the authenticated image-import socket (`--image-socket`); the supervisor
+authenticates the peer UID and owns the archive and image roots.
 
 The resolver rejects symlinked files, non-regular files, unexpected ownership,
 group/world-writable paths, oversized or non-canonical metadata, mismatched

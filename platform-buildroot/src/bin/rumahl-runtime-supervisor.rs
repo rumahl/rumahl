@@ -6,14 +6,16 @@ use std::path::PathBuf;
 use std::process::ExitCode;
 
 use rumahl_platform_buildroot::{
+    DockerImageImporter, DockerImageImporterConfig, DockerImageImporterConfigError,
     DockerRuntimeTarget, DockerRuntimeTargetConfig, DockerRuntimeTargetConfigError,
     DockerRuntimeTargetError, NamespaceRuntimeSecretTarget, NamespaceRuntimeSecretTargetConfig,
     NamespaceRuntimeSecretTargetConfigError, StagedDockerImageResolver,
     StagedDockerImageResolverConfig, StagedDockerImageResolverConfigError,
-    StagedDockerImageResolverError, UnixRuntimeControlServer, UnixRuntimeControlServerConfig,
-    UnixRuntimeControlServerConfigError, UnixRuntimeControlServerError, UnixRuntimeSecretServer,
-    UnixRuntimeSecretServerConfig, UnixRuntimeSecretServerConfigError,
-    UnixRuntimeSecretServerError,
+    StagedDockerImageResolverError, UnixDockerImageServer, UnixDockerImageServerConfig,
+    UnixDockerImageServerConfigError, UnixDockerImageServerError, UnixRuntimeControlServer,
+    UnixRuntimeControlServerConfig, UnixRuntimeControlServerConfigError,
+    UnixRuntimeControlServerError, UnixRuntimeSecretServer, UnixRuntimeSecretServerConfig,
+    UnixRuntimeSecretServerConfigError, UnixRuntimeSecretServerError,
 };
 
 const HELP: &str = "\
@@ -25,6 +27,7 @@ Usage: rumahl-runtime-supervisor \\
   --instance NAME \\
   --control-socket PATH \\
   --secret-socket PATH \\
+  --image-socket PATH \\
   --platform-user NAME
 ";
 const MAX_PASSWD_BUFFER: usize = 1024 * 1024;
@@ -38,6 +41,7 @@ struct SupervisorArgs {
     instance: String,
     control_socket: PathBuf,
     secret_socket: PathBuf,
+    image_socket: PathBuf,
     platform_user: String,
 }
 
@@ -65,6 +69,9 @@ enum SupervisorError {
     SecretServerConfig(UnixRuntimeSecretServerConfigError),
     SecretServerBind(UnixRuntimeSecretServerError),
     SecretServerAccept,
+    ImageImporterConfig(DockerImageImporterConfigError),
+    ImageServerConfig(UnixDockerImageServerConfigError),
+    ImageServerBind(UnixDockerImageServerError),
 }
 
 fn main() -> ExitCode {
@@ -84,13 +91,15 @@ fn main() -> ExitCode {
 fn run(arguments: impl IntoIterator<Item = OsString>) -> Result<(), SupervisorError> {
     let args = parse_args(arguments).map_err(SupervisorError::Arguments)?;
     let platform_uid = user_uid(&args.platform_user)?;
+    let image_root = args.image_root;
     let resolver = StagedDockerImageResolver::new(
-        StagedDockerImageResolverConfig::new(args.image_root)
+        StagedDockerImageResolverConfig::new(&image_root)
             .map_err(SupervisorError::ImageResolverConfig)?,
     );
     let runtime_root = args.runtime_root;
+    let docker = args.docker;
     let target = DockerRuntimeTarget::new(
-        DockerRuntimeTargetConfig::new(args.docker, &runtime_root, args.network, args.instance)
+        DockerRuntimeTargetConfig::new(&docker, &runtime_root, args.network, args.instance)
             .map_err(SupervisorError::TargetConfig)?,
         resolver,
     );
@@ -102,7 +111,7 @@ fn run(arguments: impl IntoIterator<Item = OsString>) -> Result<(), SupervisorEr
         .map_err(SupervisorError::ServerBind)?;
 
     let secret_target = NamespaceRuntimeSecretTarget::new(
-        NamespaceRuntimeSecretTargetConfig::new(runtime_root)
+        NamespaceRuntimeSecretTargetConfig::new(&runtime_root)
             .map_err(SupervisorError::SecretTargetConfig)?,
     );
     let secret_server_config = UnixRuntimeSecretServerConfig::new(args.secret_socket, platform_uid)
@@ -110,6 +119,16 @@ fn run(arguments: impl IntoIterator<Item = OsString>) -> Result<(), SupervisorEr
         .map_err(SupervisorError::SecretServerConfig)?;
     let secret_server = UnixRuntimeSecretServer::bind(secret_server_config, secret_target)
         .map_err(SupervisorError::SecretServerBind)?;
+
+    let image_importer = DockerImageImporter::new(
+        DockerImageImporterConfig::with_default_timeout(&docker, &runtime_root, &image_root)
+            .map_err(SupervisorError::ImageImporterConfig)?,
+    );
+    let image_server_config = UnixDockerImageServerConfig::new(args.image_socket, platform_uid)
+        .and_then(|config| config.with_socket_mode(0o660))
+        .map_err(SupervisorError::ImageServerConfig)?;
+    let image_server = UnixDockerImageServer::bind(image_server_config, image_importer)
+        .map_err(SupervisorError::ImageServerBind)?;
 
     std::thread::spawn(move || {
         loop {
@@ -120,6 +139,19 @@ fn run(arguments: impl IntoIterator<Item = OsString>) -> Result<(), SupervisorEr
                     std::process::exit(1);
                 }
                 Err(error) => eprintln!("runtime supervisor rejected one control request: {error}"),
+            }
+        }
+    });
+
+    std::thread::spawn(move || {
+        loop {
+            match image_server.serve_once() {
+                Ok(()) => {}
+                Err(UnixDockerImageServerError::Accept(_)) => {
+                    eprintln!("runtime supervisor image listener failed");
+                    std::process::exit(1);
+                }
+                Err(error) => eprintln!("runtime supervisor rejected one image request: {error}"),
             }
         }
     });
@@ -147,6 +179,7 @@ fn parse_args(
     let mut instance = None;
     let mut control_socket = None;
     let mut secret_socket = None;
+    let mut image_socket = None;
     let mut platform_user = None;
     let mut arguments = arguments.into_iter();
 
@@ -171,6 +204,7 @@ fn parse_args(
             )?,
             "--control-socket" => set_once(&mut control_socket, PathBuf::from(value))?,
             "--secret-socket" => set_once(&mut secret_socket, PathBuf::from(value))?,
+            "--image-socket" => set_once(&mut image_socket, PathBuf::from(value))?,
             "--platform-user" => set_once(
                 &mut platform_user,
                 value
@@ -191,6 +225,7 @@ fn parse_args(
             .ok_or(SupervisorArgsError::MissingOption("--control-socket"))?,
         secret_socket: secret_socket
             .ok_or(SupervisorArgsError::MissingOption("--secret-socket"))?,
+        image_socket: image_socket.ok_or(SupervisorArgsError::MissingOption("--image-socket"))?,
         platform_user: platform_user
             .ok_or(SupervisorArgsError::MissingOption("--platform-user"))?,
     })
@@ -278,6 +313,11 @@ impl fmt::Display for SupervisorError {
             }
             Self::SecretServerBind(_) => write!(f, "runtime secret server startup failed"),
             Self::SecretServerAccept => write!(f, "runtime secret server accept loop failed"),
+            Self::ImageImporterConfig(_) => {
+                write!(f, "Docker image importer configuration failed")
+            }
+            Self::ImageServerConfig(_) => write!(f, "Docker image server configuration failed"),
+            Self::ImageServerBind(_) => write!(f, "Docker image server startup failed"),
         }
     }
 }
@@ -295,6 +335,9 @@ impl Error for SupervisorError {
             Self::SecretTargetConfig(error) => Some(error),
             Self::SecretServerConfig(error) => Some(error),
             Self::SecretServerBind(error) => Some(error),
+            Self::ImageImporterConfig(error) => Some(error),
+            Self::ImageServerConfig(error) => Some(error),
+            Self::ImageServerBind(error) => Some(error),
             Self::PlatformUserContainsNul
             | Self::UnknownPlatformUser
             | Self::SecretServerAccept => None,
@@ -324,6 +367,8 @@ mod tests {
             "/run/rumahl-runtime-supervisor/control.sock",
             "--secret-socket",
             "/run/rumahl-runtime-supervisor/secrets.sock",
+            "--image-socket",
+            "/run/rumahl-runtime-supervisor/images.sock",
             "--platform-user",
             "rumahl-platform",
         ]
