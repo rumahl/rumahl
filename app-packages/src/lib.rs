@@ -19,6 +19,7 @@
 mod digest;
 mod manifest;
 mod publish;
+mod sign;
 mod signature;
 mod verifier;
 
@@ -29,6 +30,9 @@ pub use manifest::{
 pub use publish::{
     PublishedAssets, WebAssetPublishError, WebAssetPublisher, WebAssetPublisherConfig,
     WebAssetPublisherConfigError,
+};
+pub use sign::{
+    GeneratedKey, KeyStore, PackageSignError, PackageSigner, trust_store_json, write_key_store,
 };
 pub use signature::{
     MAX_SIGNATURE_BYTES, MAX_TRUST_STORE_BYTES, SIGNATURE_FILE, SignatureEnvelope,

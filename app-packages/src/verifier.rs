@@ -74,10 +74,10 @@ pub struct PackageVerifier {
     trust_store: TrustStore,
 }
 
-struct FoundFile {
-    path: String,
-    size: u64,
-    absolute: PathBuf,
+pub(crate) struct FoundFile {
+    pub(crate) path: String,
+    pub(crate) size: u64,
+    pub(crate) absolute: PathBuf,
 }
 
 impl PackageVerifier {
@@ -246,7 +246,7 @@ fn read_document(
     fs::read(path).map_err(|source| PackageVerificationError::DocumentRead { file, source })
 }
 
-fn collect_payload_files(
+pub(crate) fn collect_payload_files(
     directory: &Path,
     prefix: &str,
     found: &mut Vec<FoundFile>,

@@ -87,6 +87,7 @@ struct RawManifest {
     format_version: u32,
     publisher_id: String,
     app: RawApp,
+    #[serde(default)]
     files: Vec<RawFile>,
 }
 
