@@ -1070,12 +1070,17 @@ dependencies = [
 name = "rumahl-platform-buildroot"
 version = "0.1.0"
 dependencies = [
+ "base64 0.23.1",
+ "ed25519-dalek",
  "libc",
  "rumahl-app-operations",
+ "rumahl-app-packages",
  "rumahl-core",
  "rumahl-oidc-provider",
  "rumahl-persistence-sqlite",
+ "serde_json",
  "sha2 0.11.0",
+ "tempfile",
  "zeroize",
 ]
 
