@@ -151,37 +151,76 @@ impl InstalledAppOriginResolver for InstallationHostOriginResolver {
     }
 }
 
+/// Explicit configuration for a package installation.
+struct InstallConfig {
+    runtime_uid: u32,
+    control_socket: PathBuf,
+    secret_socket: PathBuf,
+    image_socket: PathBuf,
+    trust_store: PathBuf,
+    tpm_executable: PathBuf,
+    secret_key_id: SecretEncryptionKeyId,
+    secret_key_object: PathBuf,
+    secret_key_policy_session: Option<PathBuf>,
+    app_host_suffix: String,
+}
+
+impl InstallConfig {
+    fn from_env() -> Result<Self, InstallError> {
+        let secret_key_id = SecretEncryptionKeyId::parse(required("RUMAHL_SECRET_KEY_ID")?)
+            .map_err(|_| InstallError::InvalidEnv("RUMAHL_SECRET_KEY_ID"))?;
+        let secret_key_policy_session = match env::var("RUMAHL_SECRET_KEY_POLICY_SESSION") {
+            Ok(path) if !path.is_empty() => Some(PathBuf::from(path)),
+            _ => None,
+        };
+        Ok(Self {
+            runtime_uid: required_u32("RUMAHL_RUNTIME_UID")?,
+            control_socket: required_path("RUMAHL_RUNTIME_CONTROL_SOCKET")?,
+            secret_socket: required_path("RUMAHL_RUNTIME_SECRET_SOCKET")?,
+            image_socket: required_path("RUMAHL_RUNTIME_IMAGE_SOCKET")?,
+            trust_store: required_path("RUMAHL_PACKAGE_TRUST_STORE")?,
+            tpm_executable: required_path("RUMAHL_TPM2_EXECUTABLE")?,
+            secret_key_id,
+            secret_key_object: required_path("RUMAHL_SECRET_KEY_OBJECT")?,
+            secret_key_policy_session,
+            app_host_suffix: app_host_suffix()?,
+        })
+    }
+}
+
 /// Verifies and installs a package, recovering interrupted container installs.
 pub fn install_package(state_dir: &Path, package_dir: &Path) -> Result<(), InstallError> {
+    install_with(&InstallConfig::from_env()?, state_dir, package_dir)
+}
+
+fn install_with(
+    config: &InstallConfig,
+    state_dir: &Path,
+    package_dir: &Path,
+) -> Result<(), InstallError> {
     let platform = state_dir.join("platform.sqlite");
-    let runtime_uid = required_u32("RUMAHL_RUNTIME_UID")?;
-    let control_socket = required_path("RUMAHL_RUNTIME_CONTROL_SOCKET")?;
-    let secret_socket = required_path("RUMAHL_RUNTIME_SECRET_SOCKET")?;
-    let image_socket = required_path("RUMAHL_RUNTIME_IMAGE_SOCKET")?;
-    let trust_store = required_path("RUMAHL_PACKAGE_TRUST_STORE")?;
-    let suffix = app_host_suffix()?;
 
-    let origin = InstallationHostOriginResolver::new(suffix).map_err(InstallError::provider)?;
-
+    let origin = InstallationHostOriginResolver::new(config.app_host_suffix.clone())
+        .map_err(InstallError::provider)?;
     let journal = SqliteAppOperationRepository::open(&platform).map_err(InstallError::provider)?;
     let databases = SqliteAppDatabaseProvider::open(state_dir.join("databases"))
         .map_err(InstallError::provider)?;
     let oidc_repository =
         SqliteOidcClientRepository::open(&platform).map_err(InstallError::provider)?;
     let runtime_provider = PlatformRuntimeProvider::new(UnixAppRuntimeProvider::new(
-        UnixAppRuntimeProviderConfig::new(control_socket, runtime_uid)
+        UnixAppRuntimeProviderConfig::new(&config.control_socket, config.runtime_uid)
             .map_err(InstallError::provider)?,
     ));
     let secret_delivery = UnixRuntimeSecretDelivery::new(
-        UnixRuntimeSecretDeliveryConfig::new(secret_socket, runtime_uid)
+        UnixRuntimeSecretDeliveryConfig::new(&config.secret_socket, config.runtime_uid)
             .map_err(InstallError::provider)?,
     );
     let image_importer = UnixDockerImageImporter::new(
-        UnixDockerImageImporterConfig::new(image_socket, runtime_uid)
+        UnixDockerImageImporterConfig::new(&config.image_socket, config.runtime_uid)
             .map_err(InstallError::provider)?,
     );
 
-    let key_provider = secret_key_provider()?;
+    let key_provider = secret_key_provider(config)?;
     let secret_store =
         SqliteSecretStore::open(&platform, key_provider).map_err(InstallError::provider)?;
 
@@ -206,7 +245,7 @@ pub fn install_package(state_dir: &Path, package_dir: &Path) -> Result<(), Insta
     );
 
     let importer = PackageImporter::new(
-        PackageImporterConfig::new(&trust_store, state_dir.join("app-assets"))
+        PackageImporterConfig::new(&config.trust_store, state_dir.join("app-assets"))
             .map_err(InstallError::Importer)?,
         image_importer,
     )
@@ -224,18 +263,23 @@ pub fn install_package(state_dir: &Path, package_dir: &Path) -> Result<(), Insta
     Ok(())
 }
 
-fn secret_key_provider() -> Result<Tpm2UnsealKeyProvider, InstallError> {
-    let executable = required_path("RUMAHL_TPM2_EXECUTABLE")?;
-    let key_id = SecretEncryptionKeyId::parse(required("RUMAHL_SECRET_KEY_ID")?)
-        .map_err(|_| InstallError::InvalidEnv("RUMAHL_SECRET_KEY_ID"))?;
-    let object_context = required_path("RUMAHL_SECRET_KEY_OBJECT")?;
-    let authorization = match env::var("RUMAHL_SECRET_KEY_POLICY_SESSION") {
-        Ok(path) if !path.is_empty() => Tpm2Authorization::PolicySession(PathBuf::from(path)),
-        _ => Tpm2Authorization::Passwordless,
+fn secret_key_provider(config: &InstallConfig) -> Result<Tpm2UnsealKeyProvider, InstallError> {
+    let authorization = match &config.secret_key_policy_session {
+        Some(path) => Tpm2Authorization::PolicySession(path.clone()),
+        None => Tpm2Authorization::Passwordless,
     };
-    let sealed_key = Tpm2SealedKey::new(key_id.clone(), object_context, authorization)
-        .map_err(InstallError::provider)?;
-    Tpm2UnsealKeyProvider::new(executable, key_id, [sealed_key]).map_err(InstallError::provider)
+    let sealed_key = Tpm2SealedKey::new(
+        config.secret_key_id.clone(),
+        &config.secret_key_object,
+        authorization,
+    )
+    .map_err(InstallError::provider)?;
+    Tpm2UnsealKeyProvider::new(
+        &config.tpm_executable,
+        config.secret_key_id.clone(),
+        [sealed_key],
+    )
+    .map_err(InstallError::provider)
 }
 
 fn app_host_suffix() -> Result<String, InstallError> {
@@ -348,12 +392,16 @@ impl Error for InstallError {
 
 #[cfg(test)]
 mod tests {
+    use rumahl_app_packages::{GeneratedKey, PackageManifest, trust_store_json};
     use rumahl_core::{
         AppId, AppManifest, AppManifestValidator, AppVersion, InstalledApp, PackagePath,
         PublisherId, RuntimeDescriptor, RuntimeEndpointId, RuntimeEntrypoint, RuntimeEntrypointId,
     };
+    use serde_json::json;
 
     use super::*;
+
+    use std::fs;
 
     fn installed_app() -> InstalledApp {
         let mut runtime = RuntimeDescriptor::web();
@@ -456,6 +504,90 @@ mod tests {
         assert_eq!(
             origin,
             format!("https://{}.apps.rumahl.test", app.installation_id())
+        );
+    }
+
+    #[test]
+    fn installs_a_signed_web_package_end_to_end() {
+        let state = tempfile::tempdir().unwrap();
+        let package = tempfile::tempdir().unwrap();
+
+        // A key pair plus the trust store that authorizes it.
+        let generated = GeneratedKey::generate("publisher-1").unwrap();
+        let trust_store_path = state.path().join("trust-store.json");
+        fs::write(
+            &trust_store_path,
+            serde_json::to_vec(&trust_store_json(
+                "publisher-1",
+                "com.rumahl",
+                &generated.public_key(),
+            ))
+            .unwrap(),
+        )
+        .unwrap();
+
+        // Payload and the signed manifest.
+        fs::create_dir_all(package.path().join("frontend")).unwrap();
+        fs::write(
+            package.path().join("frontend/index.html"),
+            b"<html>notes</html>",
+        )
+        .unwrap();
+        let template = json!({
+            "formatVersion": 1,
+            "publisherId": "com.rumahl",
+            "app": {
+                "appId": "com.rumahl.notes",
+                "version": "1.0.0",
+                "displayName": "Notes",
+                "runtime": {
+                    "kind": "web",
+                    "entrypoints": [
+                        { "id": "main", "kind": "web-asset", "path": "frontend/index.html" },
+                    ],
+                },
+            },
+        });
+        let manifest =
+            PackageManifest::from_bytes(&serde_json::to_vec(&template).unwrap()).unwrap();
+        generated
+            .key_store()
+            .signer()
+            .unwrap()
+            .sign(package.path(), &manifest)
+            .unwrap();
+
+        let config = InstallConfig {
+            runtime_uid: 0,
+            control_socket: state.path().join("control.sock"),
+            secret_socket: state.path().join("secret.sock"),
+            image_socket: state.path().join("image.sock"),
+            trust_store: trust_store_path,
+            tpm_executable: PathBuf::from("/usr/bin/tpm2_unseal"),
+            secret_key_id: SecretEncryptionKeyId::parse("root-1").unwrap(),
+            secret_key_object: state.path().join("root-1.ctx"),
+            secret_key_policy_session: None,
+            app_host_suffix: "apps.rumahl.test".to_owned(),
+        };
+
+        install_with(&config, state.path(), package.path()).unwrap();
+
+        // The snapshot records the app and its assets are published.
+        let snapshot = SqliteSnapshotRepository::open(state.path().join("platform.sqlite"))
+            .unwrap()
+            .load()
+            .unwrap()
+            .unwrap();
+        assert_eq!(snapshot.installed_apps().len(), 1);
+
+        let installation = fs::read_dir(state.path().join("app-assets"))
+            .unwrap()
+            .map(|entry| entry.unwrap().path())
+            .find(|path| path.is_dir())
+            .unwrap();
+        assert_eq!(
+            fs::read(installation.join("frontend/index.html")).unwrap(),
+            b"<html>notes</html>"
         );
     }
 }

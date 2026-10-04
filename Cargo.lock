@@ -1093,6 +1093,7 @@ dependencies = [
  "http-body-util",
  "rumahl-account-auth",
  "rumahl-app-operations",
+ "rumahl-app-packages",
  "rumahl-core",
  "rumahl-oidc-provider",
  "rumahl-persistence-sqlite",
