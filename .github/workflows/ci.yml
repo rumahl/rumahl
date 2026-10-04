@@ -48,12 +48,15 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+      - name: Install pinned frontend package manager
+        run: npm install --global pnpm@11.19.0
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
         with:
           node-version: '24'
-      - name: Install pinned frontend package manager and HTTPS test server
+          cache: pnpm
+          cache-dependency-path: frontend/pnpm-lock.yaml
+      - name: Install HTTPS test server
         run: |
-          npm install --global pnpm@11.19.0
           sudo apt-get update
           sudo apt-get install -y nginx
       - name: Install frontend dependencies
@@ -76,3 +79,37 @@ jobs:
         run: pnpm exec playwright install --with-deps chromium
       - name: Exercise developer HTTPS, browser HMR and persistent sessions
         run: python3 tests/e2e/development/check.py --browser
+
+  supply-chain:
+    name: Rust dependency checks
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Check advisories, licenses, bans and sources
+        uses: EmbarkStudios/cargo-deny-action@9c67a826e39827395bfa619cd85cb2aaeb43cfaa
+        with:
+          arguments: --all-features --locked
+          command: check
+          command-arguments: advisories licenses bans sources
+
+  workflows:
+    name: GitHub Actions checks
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Install verified actionlint
+        working-directory: ${{ runner.temp }}
+        run: |
+          curl --fail --silent --show-error --location --retry 3 \
+            https://github.com/rhysd/actionlint/releases/download/v1.7.12/actionlint_1.7.12_linux_amd64.tar.gz \
+            --output actionlint.tar.gz
+          echo '8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8  actionlint.tar.gz' | sha256sum --check
+          tar -xzf actionlint.tar.gz actionlint
+      - name: Lint all workflows
+        run: '"${{ runner.temp }}/actionlint" -color'
