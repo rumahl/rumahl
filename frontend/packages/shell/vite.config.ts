@@ -59,15 +59,7 @@ export default defineConfig(({ mode, command }) => ({
   build: {
     manifest: true,
     sourcemap: true,
-    target: "es2022",
-
-    rollupOptions: {
-      output: {
-        assetFileNames: "assets/[name].[hash][extname]",
-        chunkFileNames: "assets/[name].[hash].js",
-        entryFileNames: "assets/[name].[hash].js"
-      }
-    }
+    target: "es2022"
   },
 
   test: {
