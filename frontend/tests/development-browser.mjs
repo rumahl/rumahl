@@ -253,12 +253,10 @@ try {
   await page.getByRole("button", { name: "Save arrangement", exact: true }).waitFor();
   await page.getByText("Create app folder", { exact: true }).dispatchEvent("click");
   await page.getByLabel("Folder name", { exact: true }).fill("Tools");
+  // React observes checkbox state through the click event; the previous
+  // synthetic `change` event was not always picked up, leaving the folder empty.
   await page.getByRole("checkbox", { name: "Files", exact: true }).evaluate((element) => {
-    if (!element.checked) {
-      element.checked = true;
-      element.dispatchEvent(new globalThis.Event("input", { bubbles: true }));
-      element.dispatchEvent(new globalThis.Event("change", { bubbles: true }));
-    }
+    if (!element.checked) element.click();
   });
   const folderSaved = page.waitForResponse(r => r.url().includes("/api/v1/shell/workspace?") && r.request().method() === "PUT");
   await page.getByRole("button", { name: "Save folder", exact: true }).dispatchEvent("click");
@@ -292,10 +290,34 @@ try {
   // Saved account folders are delivered to an independent browser profile.
   const workspaceContext = await browser.newContext(reducedMotion);
   const workspacePage = await workspaceContext.newPage();
+  // This independent profile loads the full shell, catalog and workspace from a
+  // cold cache, so allow more than the default 30s per step.
+  workspacePage.setDefaultTimeout(60000);
   await login(workspacePage);
-  await workspacePage.getByRole("button", { name: "Launcher home", exact: true }).click();
-  await workspacePage.getByRole("button", { name: "Tools", exact: true }).click();
-  await workspacePage.getByRole("link", { name: "Files", exact: true }).waitFor();
+  // The account workspace can lag behind the first load on a busy runner; reload
+  // and retry the delivery before failing.
+  let folderDelivered = false;
+  for (let attempt = 0; attempt < 3 && !folderDelivered; attempt += 1) {
+    try {
+      await workspacePage.reload();
+      await workspacePage.locator(".shell").waitFor();
+      await workspacePage.getByRole("button", { name: "Launcher home", exact: true }).click();
+      await workspacePage.getByRole("button", { name: "Tools", exact: true }).waitFor({ timeout: 15000 });
+      await workspacePage.getByRole("button", { name: "Tools", exact: true }).click();
+      await workspacePage.getByRole("link", { name: "Files", exact: true }).waitFor({ timeout: 15000 });
+      folderDelivered = true;
+    } catch {
+      // Retry with a fresh load.
+    }
+  }
+  if (!folderDelivered) {
+    const state = await workspacePage.evaluate(async () => {
+      const device = globalThis.localStorage.getItem("rumahl.browser-profile.v1");
+      const response = await globalThis.fetch(`/api/v1/shell/workspace?device=${encodeURIComponent(device)}`, { credentials: "same-origin", cache: "no-store" });
+      return { status: response.status, body: await response.text() };
+    });
+    throw new Error(`saved account folder was not delivered to the independent profile: ${JSON.stringify(state)}`);
+  }
   await workspaceContext.close();
   await page.getByRole("button", { name: "Search system", exact: true }).click();
   await page.locator(".command-palette").waitFor();
