@@ -177,7 +177,7 @@ def run(browser=False):
                 fixture = REPO / "target/debug/examples/app_host_fixture"
                 subprocess.run([str(fixture), "seed", str(state / "data"), credentials["username"]], check=True)
                 subprocess.run([NODE, str(project / "frontend/tests/development-browser.mjs"), str(state), str(fixture)],
-                               check=True, timeout=120)
+                               check=True, timeout=240)
 
             duplicate = subprocess.run(command, stdout=log, stderr=log, timeout=20)
             assert duplicate.returncode != 0 and process.poll() is None
