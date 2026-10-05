@@ -16,7 +16,7 @@ concurrency:
 jobs:
   rust:
     name: Rust checks
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 15
     env:
       CARGO_TERM_COLOR: always
@@ -42,7 +42,7 @@ jobs:
 
   shell-integration:
     name: Frontend and local HTTPS shell
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -71,7 +71,7 @@ jobs:
           pnpm build
           pnpm --filter @rumahl/ssr test:smoke
       - name: Upload RelativeCI bundle stats
-        uses: relative-ci/agent-upload-artifact-action@v2
+        uses: relative-ci/agent-upload-artifact-action@a2b5741b4f7e6a989c84ec1a3059696b23c152e5 # v2.0.0
         with:
           webpackStatsFile: frontend/packages/shell/dist/webpack-stats.json
       - name: Build platform service
@@ -86,7 +86,7 @@ jobs:
 
   supply-chain:
     name: Rust dependency checks
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -101,7 +101,7 @@ jobs:
 
   workflows:
     name: GitHub Actions checks
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
