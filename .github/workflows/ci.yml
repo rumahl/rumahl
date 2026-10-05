@@ -99,6 +99,53 @@ jobs:
           command: check
           command-arguments: advisories licenses bans sources
 
+  dco:
+    name: DCO sign-off
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    env:
+      BASE_REF: ${{ github.base_ref }}
+      HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Verify every commit is signed off
+        run: |
+          set -euo pipefail
+          if [ "${GITHUB_EVENT_NAME}" != "pull_request" ]; then
+            echo "Not a pull request; skipping DCO check."
+            exit 0
+          fi
+          base="$(git merge-base "origin/${BASE_REF}" "${HEAD_SHA}")"
+          failed=0
+          while IFS= read -r sha; do
+            body="$(git log -1 --format=%B "${sha}")"
+            if ! grep -qE '^Signed-off-by: .+ <[^>]+@[^>]+>$' <<<"${body}"; then
+              echo "::error::Commit ${sha} is missing a DCO 'Signed-off-by' line."
+              failed=1
+            fi
+          done < <(git rev-list "${base}..${HEAD_SHA}")
+          if [ "${failed}" -ne 0 ]; then
+            echo "Sign off with 'git commit -s' (see CONTRIBUTING.md)."
+            exit 1
+          fi
+          echo "All commits are signed off."
+
+  reuse:
+    name: REUSE license compliance
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Check REUSE compliance
+        uses: fsfe/reuse-action@676e2d560c9a403aa252096d99fcab3e1132b0f5 # v6.0.0
+        with:
+          args: lint
+
   workflows:
     name: GitHub Actions checks
     runs-on: ubuntu-24.04

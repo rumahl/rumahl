@@ -22,9 +22,9 @@ allow = [
 confidence-threshold = 0.8
 
 [licenses.private]
-# Internal workspace crates currently use publish = false and have no
-# package-level license metadata. External dependencies are still checked.
-ignore = true
+# Internal workspace crates declare license = "Apache-2.0" at the package
+# level, so they are checked like any other package.
+ignore = false
 
 [bans]
 multiple-versions = "warn"

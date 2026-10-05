@@ -2,14 +2,16 @@
   "name": "@rumahl/ssr",
   "version": "0.1.0",
   "private": true,
+  "license": "Apache-2.0",
   "type": "module",
   "scripts": {
-    "build": "tsc --noEmit && vite build --ssr src/render.tsx --outDir dist",
+    "assets": "node ../../../scripts/fetch-assets.mjs && node ../../../scripts/sync-assets.mjs",
+    "build": "pnpm assets && tsc --noEmit && vite build --ssr src/render.tsx --outDir dist",
     "start": "node server.js",
     "test:smoke": "node scripts/smoke.js",
-    "test": "vitest run --pool=threads --maxWorkers=1",
-    "typecheck": "tsc --noEmit",
-    "dev": "node dev/start.js"
+    "test": "pnpm assets && vitest run --pool=threads --maxWorkers=1",
+    "typecheck": "pnpm assets && tsc --noEmit",
+    "dev": "pnpm assets && node dev/start.js"
   },
   "dependencies": {
     "@rumahl/contracts": "workspace:*",

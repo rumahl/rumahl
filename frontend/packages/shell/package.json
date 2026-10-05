@@ -2,6 +2,7 @@
   "name": "@rumahl/shell",
   "version": "0.1.0",
   "private": true,
+  "license": "Apache-2.0",
   "type": "module",
   "exports": {
     "./App": "./src/App.tsx",
@@ -11,11 +12,12 @@
     "./embedded-snapshot": "./src/embedded-snapshot.ts"
   },
   "scripts": {
-    "build": "tsc --noEmit && vite build && node scripts/verify-production-bundle.js",
-    "dev": "vite",
-    "dev:demo": "vite --mode demo --open /demo.html",
-    "test": "vitest run --pool=threads --maxWorkers=1",
-    "typecheck": "tsc --noEmit"
+    "assets": "node ../../../scripts/fetch-assets.mjs && node ../../../scripts/sync-assets.mjs",
+    "build": "pnpm assets && tsc --noEmit && vite build && node scripts/verify-production-bundle.js",
+    "dev": "pnpm assets && vite",
+    "dev:demo": "pnpm assets && vite --mode demo --open /demo.html",
+    "test": "pnpm assets && vitest run --pool=threads --maxWorkers=1",
+    "typecheck": "pnpm assets && tsc --noEmit"
   },
   "dependencies": {
     "@rumahl/contracts": "workspace:*",

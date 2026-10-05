@@ -7,6 +7,11 @@ node_modules/
 /frontend/coverage
 *.tsbuildinfo
 
+# Generated: assets copied from the stores by scripts/sync-assets.mjs.
+/frontend/packages/shell/src/assets/
+# Fetched: pinned rumahl/assets checkout by scripts/fetch-assets.mjs.
+/assets/upstream/
+
 /.local-tools/
 
 __pycache__/
