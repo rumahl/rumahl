@@ -2,9 +2,11 @@
   "name": "rumahl-frontend",
   "version": "0.1.0",
   "private": true,
+  "license": "Apache-2.0",
   "type": "module",
   "packageManager": "pnpm@11.19.0",
   "scripts": {
+    "assets:update": "node ../scripts/fetch-assets.mjs && node ../scripts/sync-assets.mjs",
     "build": "pnpm --filter @rumahl/shell build && pnpm --filter @rumahl/ssr build",
     "dev": "pnpm --filter @rumahl/ssr dev",
     "dev:demo": "pnpm --filter @rumahl/shell dev:demo",
