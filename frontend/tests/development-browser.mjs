@@ -292,18 +292,18 @@ try {
   // Saved account folders are delivered to an independent browser profile.
   const workspaceContext = await browser.newContext(reducedMotion);
   const workspacePage = await workspaceContext.newPage();
+  // This independent profile loads the full shell, catalog and workspace from a
+  // cold cache, so allow more than the default 30s per step.
+  workspacePage.setDefaultTimeout(60000);
   await login(workspacePage);
   // The account workspace is fetched asynchronously after login; wait for the
   // delivery (or the next poll) instead of racing it, then open the launcher.
   await workspacePage.waitForResponse(
     (response) => response.url().includes("/api/v1/shell/workspace?") &&
-      response.request().method() === "GET" && response.status() === 200,
-    { timeout: 60000 }
+      response.request().method() === "GET" && response.status() === 200
   );
   await workspacePage.getByRole("button", { name: "Launcher home", exact: true }).click();
-  const toolsFolder = workspacePage.getByRole("button", { name: "Tools", exact: true });
-  await toolsFolder.waitFor({ timeout: 60000 });
-  await toolsFolder.click();
+  await workspacePage.getByRole("button", { name: "Tools", exact: true }).click();
   await workspacePage.getByRole("link", { name: "Files", exact: true }).waitFor();
   await workspaceContext.close();
   await page.getByRole("button", { name: "Search system", exact: true }).click();
