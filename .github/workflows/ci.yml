@@ -70,6 +70,10 @@ jobs:
           pnpm test
           pnpm build
           pnpm --filter @rumahl/ssr test:smoke
+      - name: Upload RelativeCI bundle stats
+        uses: relative-ci/agent-upload-artifact-action@v2
+        with:
+          webpackStatsFile: frontend/packages/shell/dist/webpack-stats.json
       - name: Build platform service
         run: cargo build --locked -p rumahl-platform-service --bins --example app_host_fixture
       - name: Exercise real HTTPS, SSR, persistent sessions and recovery

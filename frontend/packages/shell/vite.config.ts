@@ -3,6 +3,7 @@ import { defineConfig } from "vitest/config";
 import { readFileSync } from "node:fs";
 import { createServer } from "node:http";
 import { URL } from "node:url";
+import webpackStatsPlugin from "rollup-plugin-webpack-stats";
 import { shellBuildId } from "./scripts/build-id.js";
 
 const blockDemoEntry = {
@@ -46,14 +47,29 @@ type Middleware = (
   next: () => void
 ) => void;
 
-export default defineConfig(({ mode }) => ({
+export default defineConfig(({ mode, command }) => ({
   define: { __RUMAHL_SHELL_BUILD_ID__: JSON.stringify(shellBuildId()) },
-  plugins: [react(), ...(mode === "demo" ? [demoWidgetHost] : [blockDemoEntry])],
+
+  plugins: [
+    react(),
+    ...(mode === "demo" ? [demoWidgetHost] : [blockDemoEntry]),
+    ...(command === "build" ? [webpackStatsPlugin()] : [])
+  ],
+
   build: {
     manifest: true,
     sourcemap: true,
-    target: "es2022"
+    target: "es2022",
+
+    rollupOptions: {
+      output: {
+        assetFileNames: "assets/[name].[hash][extname]",
+        chunkFileNames: "assets/[name].[hash].js",
+        entryFileNames: "assets/[name].[hash].js"
+      }
+    }
   },
+
   test: {
     environment: "jsdom",
     setupFiles: "./src/test/setup.ts"
