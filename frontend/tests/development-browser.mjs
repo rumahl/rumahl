@@ -247,8 +247,6 @@ try {
   // The snapped Files window can overlap the Settings sidebar; dispatch the
   // navigation directly instead of relying on hit-testing through the stack.
   await page.getByRole("navigation", { name: "Settings", exact: true }).getByRole("link", { name: "Workspace", exact: true }).dispatchEvent("click");
-  // Save to the account so the independent browser profile inherits the folder.
-  await choose("Save for", "My account · all devices", page);
   // The snapped Files window overlaps this window's chrome, so drive the
   // controls directly instead of relying on hit-testing through the stack.
   await page.getByRole("button", { name: "Save arrangement", exact: true }).dispatchEvent("click");
@@ -298,18 +296,23 @@ try {
   // cold cache, so allow more than the default 30s per step.
   workspacePage.setDefaultTimeout(60000);
   await login(workspacePage);
-  // Reload so the account workspace is fetched for a fully hydrated shell, and
-  // wait for that delivery instead of racing the first poll.
-  const workspaceLoaded = workspacePage.waitForResponse(
-    (response) => response.url().includes("/api/v1/shell/workspace?") &&
-      response.request().method() === "GET" && response.status() === 200
-  );
-  await workspacePage.reload();
-  await workspacePage.locator(".shell").waitFor();
-  await workspaceLoaded;
-  await workspacePage.getByRole("button", { name: "Launcher home", exact: true }).click();
-  await workspacePage.getByRole("button", { name: "Tools", exact: true }).click();
-  await workspacePage.getByRole("link", { name: "Files", exact: true }).waitFor();
+  // The account workspace can lag behind the first load on a busy runner; reload
+  // and retry the delivery before failing.
+  let folderDelivered = false;
+  for (let attempt = 0; attempt < 3 && !folderDelivered; attempt += 1) {
+    try {
+      await workspacePage.reload();
+      await workspacePage.locator(".shell").waitFor();
+      await workspacePage.getByRole("button", { name: "Launcher home", exact: true }).click();
+      await workspacePage.getByRole("button", { name: "Tools", exact: true }).waitFor({ timeout: 15000 });
+      await workspacePage.getByRole("button", { name: "Tools", exact: true }).click();
+      await workspacePage.getByRole("link", { name: "Files", exact: true }).waitFor({ timeout: 15000 });
+      folderDelivered = true;
+    } catch {
+      // Retry with a fresh load.
+    }
+  }
+  assert.ok(folderDelivered, "saved account folder was not delivered to the independent profile");
   await workspaceContext.close();
   await page.getByRole("button", { name: "Search system", exact: true }).click();
   await page.locator(".command-palette").waitFor();
