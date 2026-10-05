@@ -1,0 +1,90 @@
+# Path-based labels for pull requests. Applied by .github/workflows/labeler.yml.
+# Labels must exist in the repository; see .github/labels.json.
+
+backend:
+  - changed-files:
+      - any-glob-to-any-file:
+          - "core/**"
+          - "account-auth/**"
+          - "oidc-provider/**"
+          - "persistence-sqlite/**"
+          - "platform-*/**"
+          - "app-operations/**"
+          - "app-packages/**"
+          - "ui-contracts/**"
+          - "Cargo.toml"
+          - "Cargo.lock"
+          - "deny.toml"
+
+frontend:
+  - changed-files:
+      - any-glob-to-any-file: "frontend/**"
+
+core:
+  - changed-files:
+      - any-glob-to-any-file: "core/**"
+
+auth:
+  - changed-files:
+      - any-glob-to-any-file:
+          - "account-auth/**"
+          - "oidc-provider/**"
+
+persistence:
+  - changed-files:
+      - any-glob-to-any-file: "persistence-sqlite/**"
+
+platform:
+  - changed-files:
+      - any-glob-to-any-file:
+          - "platform-api/**"
+          - "platform-service/**"
+          - "platform-web/**"
+
+buildroot:
+  - changed-files:
+      - any-glob-to-any-file: "platform-buildroot/**"
+
+"app-operations":
+  - changed-files:
+      - any-glob-to-any-file: "app-operations/**"
+
+"app-packages":
+  - changed-files:
+      - any-glob-to-any-file: "app-packages/**"
+
+"ui-contracts":
+  - changed-files:
+      - any-glob-to-any-file: "ui-contracts/**"
+
+"frontend/shell":
+  - changed-files:
+      - any-glob-to-any-file: "frontend/packages/shell/**"
+
+"frontend/ssr":
+  - changed-files:
+      - any-glob-to-any-file: "frontend/packages/ssr/**"
+
+"frontend/ui":
+  - changed-files:
+      - any-glob-to-any-file: "frontend/packages/ui/**"
+
+"frontend/contracts":
+  - changed-files:
+      - any-glob-to-any-file: "frontend/packages/contracts/**"
+
+assets:
+  - changed-files:
+      - any-glob-to-any-file:
+          - "assets/**"
+          - "scripts/**"
+
+docs:
+  - changed-files:
+      - any-glob-to-any-file:
+          - "docs/**"
+          - "**/*.md"
+
+ci:
+  - changed-files:
+      - any-glob-to-any-file: ".github/**"
