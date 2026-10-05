@@ -224,3 +224,21 @@ assume a relicensing right because you signed off.
 
 Keep changes focused, match existing conventions, and never add a file that
 contradicts its declaration in `REUSE.toml`.
+
+## Labels
+
+Pull requests and issues share one label set, defined in
+[`.github/labels.json`](.github/labels.json). Pull requests are labeled
+automatically by changed path ([`.github/labeler.yml`](.github/labeler.yml)),
+and Dependabot adds `dependencies` plus `backend`, `frontend` or `ci` to its
+updates. Apply the same labels to issues where they fit.
+
+- **Area** — `backend`, `frontend`, `ci`, `dependencies`, `docs`, `assets`,
+  `security`
+- **Component** — `core`, `auth`, `persistence`, `platform`, `buildroot`,
+  `app-operations`, `app-packages`, `ui-contracts`, `frontend/shell`,
+  `frontend/ssr`, `frontend/ui`, `frontend/contracts`
+
+The exact set is recorded in [`.github/labels.json`](.github/labels.json).
+Update the labels in the repository (for example with
+`gh label create --force`) when you change it.
