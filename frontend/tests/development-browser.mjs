@@ -312,7 +312,14 @@ try {
       // Retry with a fresh load.
     }
   }
-  assert.ok(folderDelivered, "saved account folder was not delivered to the independent profile");
+  if (!folderDelivered) {
+    const state = await workspacePage.evaluate(async () => {
+      const device = globalThis.localStorage.getItem("rumahl.browser-profile.v1");
+      const response = await globalThis.fetch(`/api/v1/shell/workspace?device=${encodeURIComponent(device)}`, { credentials: "same-origin", cache: "no-store" });
+      return { status: response.status, body: await response.text() };
+    });
+    throw new Error(`saved account folder was not delivered to the independent profile: ${JSON.stringify(state)}`);
+  }
   await workspaceContext.close();
   await page.getByRole("button", { name: "Search system", exact: true }).click();
   await page.locator(".command-palette").waitFor();
