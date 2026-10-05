@@ -253,12 +253,10 @@ try {
   await page.getByRole("button", { name: "Save arrangement", exact: true }).waitFor();
   await page.getByText("Create app folder", { exact: true }).dispatchEvent("click");
   await page.getByLabel("Folder name", { exact: true }).fill("Tools");
+  // React observes checkbox state through the click event; the previous
+  // synthetic `change` event was not always picked up, leaving the folder empty.
   await page.getByRole("checkbox", { name: "Files", exact: true }).evaluate((element) => {
-    if (!element.checked) {
-      element.checked = true;
-      element.dispatchEvent(new globalThis.Event("input", { bubbles: true }));
-      element.dispatchEvent(new globalThis.Event("change", { bubbles: true }));
-    }
+    if (!element.checked) element.click();
   });
   const folderSaved = page.waitForResponse(r => r.url().includes("/api/v1/shell/workspace?") && r.request().method() === "PUT");
   await page.getByRole("button", { name: "Save folder", exact: true }).dispatchEvent("click");
