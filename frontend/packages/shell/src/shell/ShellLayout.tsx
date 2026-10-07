@@ -96,6 +96,13 @@ export function ShellLayout({ snapshot, live }: { snapshot: ShellSnapshotV1; liv
   }, [mode, routedWindow, route.presentation]);
   const [internalReady, setInternalReady] = useState(false);
   useEffect(() => {
+    // Internal tools (the design lab) are gated by the OS mode.
+    if (!osMode.policy.browseSystemFiles) {
+      setInternalReady(false);
+      dispatch({ type: "restore-workspace", windows: state.windows.filter(w => !w.location || !isInternalTarget(shellLocation(w.location))) });
+      return;
+    }
+    setInternalReady(true);
     const saved = readInternalWindows().map(w => ({ ...w, id: describeRoute(w.location!).id, title: t(describeRoute(w.location!).title), subtitle: t("appManager.subtitle") }));
     if (saved.length) dispatch({ type: "restore-workspace", windows: [
       ...saved.filter(w => !state.windows.some(current => current.location === w.location)),
@@ -104,8 +111,7 @@ export function ShellLayout({ snapshot, live }: { snapshot: ShellSnapshotV1; liv
         return previous ? { ...current, ...previous, minimized: current.location === path ? false : previous.minimized } : current;
       })
     ] });
-    setInternalReady(true);
-  }, []);
+  }, [osMode.policy.browseSystemFiles]);
   useEffect(() => { if (internalReady) writeInternalWindows(state.windows); }, [state.windows, internalReady]);
   const restored = useRef(-1);
   useEffect(() => {
