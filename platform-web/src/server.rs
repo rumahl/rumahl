@@ -96,6 +96,8 @@ pub struct GatewayState {
     pub files: Option<Arc<dyn rumahl_core::PersonalFiles>>,
     pub workspace: Option<Arc<dyn rumahl_core::WorkspaceRepository>>,
     pub preferences: Option<Arc<dyn rumahl_core::ShellPreferencesRepository>>,
+    /// Exposure-mode policy; None keeps the guided default.
+    pub os_mode: Option<Arc<dyn rumahl_core::OsModeRepository>>,
     /// None leaves the Shell and recovery routes usable while OIDC is offline.
     pub oidc: Option<Arc<dyn oidc::OidcGateway>>,
     pub browser_sessions: Option<Arc<dyn crate::BrowserSessions>>,
@@ -125,6 +127,7 @@ pub fn router(state: GatewayState) -> Router {
         .route("/recovery", get(recovery))
         .merge(oidc::routes())
         .merge(crate::preferences::routes())
+        .merge(crate::os_mode::routes())
         .merge(crate::workspace::routes())
         .merge(crate::files::routes())
         .merge(crate::browser_auth::routes())
@@ -1041,6 +1044,7 @@ mod tests {
             streams: None,
             apps: None,
             preferences: None,
+            os_mode: None,
             workspace: None,
             files: None,
             oidc: None,
@@ -1168,6 +1172,7 @@ mod tests {
             streams: Some(Arc::new(StreamAccess::new(provider))),
             apps: None,
             preferences: None,
+            os_mode: None,
             workspace: None,
             files: None,
             oidc: None,
@@ -1300,6 +1305,7 @@ mod tests {
             streams: Some(Arc::new(StreamAccess::new(provider))),
             apps: None,
             preferences: None,
+            os_mode: None,
             workspace: None,
             files: None,
             oidc: None,

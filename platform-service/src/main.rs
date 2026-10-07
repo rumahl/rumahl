@@ -153,6 +153,11 @@ async fn run() -> Result<(), ServiceError> {
                 state_dir.join("preferences.sqlite"),
             )?,
         )),
+        os_mode: Some(Arc::new(
+            rumahl_persistence_sqlite::SqliteOsModeRepository::open(
+                state_dir.join("preferences.sqlite"),
+            )?,
+        )),
         oidc: None,
     };
     // Serve every built-in theme stylesheet so the account theme renders on the

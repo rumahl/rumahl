@@ -228,6 +228,7 @@ Subsystem-specific decisions and implementation details are documented separatel
 - [Buildroot acceptance](docs/architecture/buildroot-acceptance.md)
 - [Buildroot migration](docs/architecture/buildroot-migration.md)
 - [Filesystem layout](docs/architecture/filesystem-layout.md)
+- [Injection safety](docs/architecture/injection-safety.md)
 - [Secret store](docs/architecture/secret-store.md)
 - [Shell preferences](docs/architecture/shell-preferences.md)
 - [Shell routing](docs/architecture/shell-routing.md)

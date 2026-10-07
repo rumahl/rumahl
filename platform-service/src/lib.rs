@@ -110,6 +110,28 @@ impl BrowserSessions for LocalBrowserSessions {
                 BrowserSessionError::Storage => ShellBackendError::Unavailable,
             })
     }
+    fn reauthenticate(&self, user_id: UserId, password: String) -> Result<(), ShellBackendError> {
+        let mut password = Zeroizing::new(password);
+        let now = UnixTimestamp::now().map_err(|_| ShellBackendError::Unavailable)?;
+        let state = self
+            .accounts
+            .load()
+            .map_err(|_| ShellBackendError::Unavailable)?;
+        let username = state
+            .accounts()
+            .accounts()
+            .iter()
+            .find(|account| *account.user_id() == user_id)
+            .map(|account| account.username().as_str().to_owned())
+            .ok_or(ShellBackendError::Unauthorized)?;
+        self.passwords
+            .authenticate(&state, &username, std::mem::take(&mut *password), now)
+            .map_err(|error| match error {
+                PasswordAuthenticationError::InvalidCredentials => ShellBackendError::Unauthorized,
+                _ => ShellBackendError::Unavailable,
+            })?;
+        Ok(())
+    }
     fn logout(&self, credential: &str) -> Result<(), ShellBackendError> {
         let Ok(token) = SessionToken::parse(credential) else {
             return Ok(());

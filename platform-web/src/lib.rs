@@ -29,5 +29,7 @@ pub use apps::{AppAccess, AppAccessError, AppAsset, AppProvider, CatalogApp, app
 
 mod preferences;
 
+mod os_mode;
+
 mod files;
 mod workspace;

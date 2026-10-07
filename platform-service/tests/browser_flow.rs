@@ -30,6 +30,7 @@ fn app(root: &Path) -> Router {
         streams: None,
         apps: None,
         preferences: None,
+        os_mode: None,
         workspace: None,
         files: None,
         oidc: None,

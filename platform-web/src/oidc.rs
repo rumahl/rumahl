@@ -663,6 +663,7 @@ mod tests {
             streams: None,
             apps: None,
             preferences: None,
+            os_mode: None,
             workspace: None,
             files: None,
             browser_sessions: None,

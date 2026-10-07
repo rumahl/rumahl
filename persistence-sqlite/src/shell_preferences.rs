@@ -249,6 +249,14 @@ fn ensure_column(
     column: &str,
     definition: &str,
 ) -> Result<(), rusqlite::Error> {
+    // Defense in depth: this helper builds DDL by interpolation, so the
+    // identifiers are restricted to a safe set even though every caller passes
+    // a compile-time constant. `definition` stays an internal constant.
+    if !valid_identifier(table) || !valid_identifier(column) {
+        return Err(rusqlite::Error::InvalidParameterName(format!(
+            "invalid SQL identifier for {table}.{column}"
+        )));
+    }
     let mut statement = connection.prepare(&format!("PRAGMA table_info({table})"))?;
     let columns = statement
         .query_map([], |row| row.get::<_, String>(1))?
@@ -259,4 +267,12 @@ fn ensure_column(
         ))?;
     }
     Ok(())
+}
+
+fn valid_identifier(value: &str) -> bool {
+    !value.is_empty()
+        && value.len() <= 64
+        && value
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || byte == b'_')
 }
