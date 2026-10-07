@@ -24,6 +24,7 @@ use rumahl_ui_contracts::{
     SystemProtectionStatus, theme_by_id,
 };
 use sha2::{Digest, Sha256};
+use std::os::unix::fs::PermissionsExt;
 use std::{collections::HashSet, path::Path, sync::Arc};
 use zeroize::Zeroizing;
 
@@ -59,6 +60,41 @@ pub fn provision(
         password,
         UnixTimestamp::now()?,
     )?;
+    Ok(())
+}
+
+/// State-volume databases, in backup order.
+pub const STATE_DATABASES: [&str; 5] = [
+    "accounts.sqlite",
+    "platform.sqlite",
+    "preferences.sqlite",
+    "files.sqlite",
+    "audit.sqlite",
+];
+
+/// Writes a consistent snapshot of every state database into `destination`.
+///
+/// The destination is forced owner-only (`0700`) because backups contain
+/// accounts and personal files. Every source is schema-checked first, so a
+/// database written by a newer binary is refused instead of copied. Snapshots
+/// use the SQLite online backup API, never a live file copy.
+pub fn backup_state(state_dir: &Path, destination: &Path) -> Result<(), ServiceError> {
+    std::fs::create_dir_all(destination)?;
+    let metadata = std::fs::symlink_metadata(destination)?;
+    if !metadata.is_dir() || metadata.file_type().is_symlink() {
+        return Err(std::io::Error::other("backup destination must be a directory").into());
+    }
+    std::fs::set_permissions(destination, std::fs::Permissions::from_mode(0o700))?;
+    for name in STATE_DATABASES {
+        let source = state_dir.join(name);
+        if !source.exists() {
+            continue;
+        }
+        rumahl_persistence_sqlite::verify_schema(&source).map_err(|error| {
+            std::io::Error::other(format!("database schema check failed: {error}"))
+        })?;
+        rumahl_persistence_sqlite::backup_database(&source, &destination.join(name))?;
+    }
     Ok(())
 }
 

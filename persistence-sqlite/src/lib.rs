@@ -8,6 +8,7 @@ mod account_repository;
 mod app_database_provider;
 mod app_operation_repository;
 mod audit_log;
+mod backup;
 mod field_cipher;
 mod identity_schema;
 mod local_account_administration_repository;
@@ -30,6 +31,7 @@ pub use app_operation_repository::{
     SqliteAppOperationRepository, SqliteAppOperationRepositoryError,
 };
 pub use audit_log::{MAX_RECENT_EVENTS, SqliteAuditLog, SqliteAuditLogError};
+pub use backup::{SqliteBackupError, backup_database, checkpoint_and_sync};
 pub use field_cipher::{FieldCipherError, FieldEnvelope, FieldKeyProvider, open_field, seal_field};
 pub use local_account_administration_repository::{
     SqliteLocalAccountAdministrationRepository, SqliteLocalAccountAdministrationRepositoryError,

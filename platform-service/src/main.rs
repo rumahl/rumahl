@@ -130,6 +130,14 @@ async fn run() -> Result<(), ServiceError> {
         install::install_package(&state_dir, std::path::Path::new(&args[1]))?;
         return Ok(());
     }
+    if args.first().map(String::as_str) == Some("backup") {
+        if args.len() != 2 {
+            return Err(std::io::Error::other("usage: backup DESTINATION_DIR").into());
+        }
+        backup_state(&state_dir, std::path::Path::new(&args[1]))?;
+        println!("State backup written.");
+        return Ok(());
+    }
     if args.as_slice() != ["serve"] {
         return Err(std::io::Error::other("usage: rumahl-platform-service serve").into());
     }

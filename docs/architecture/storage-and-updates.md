@@ -45,9 +45,11 @@ transaction and bumps the version; an older slot then refuses to start instead o
 corrupting the database.
 
 **Cleanly synchronised.** Only one platform service may write at a time. Before a
-slot switch or update the service checkpoints WAL and fsyncs. Backups use a
-consistent snapshot (SQLite backup API or a copy-on-write volume snapshot), never
-a live file copy.
+slot switch or update the service checkpoints WAL and `fsync`s. Backups use a
+consistent snapshot (the SQLite online backup API, `backup_database`), never a
+live file copy. `checkpoint_and_sync` flushes and `fsync`s a database in place;
+`rumahl-platform-service backup DESTINATION` schema-checks every state database
+and snapshots each one into an owner-only (`0700`) directory.
 
 ## Updates
 
@@ -56,6 +58,36 @@ The bootloader selects the active slot. Because the data schema is versioned and
 migrated explicitly, an older slot can detect an incompatible database and refuse
 to run instead of corrupting it. Signed updates, boot verification and rollback
 policy are separate milestones.
+
+### Update execution boundary
+
+This milestone deliberately splits *data safety* (implemented) from *slot
+execution* (a later milestone):
+
+Implemented now.
+
+- The `state`, `home` and `apps` volumes are separate from the system slot, so an
+  update can replace the OS without touching them.
+- Every database records `PRAGMA user_version` (`SCHEMA_VERSION`); `verify_schema`
+  stamps fresh databases and refuses one written by a newer binary. A newer slot
+  migrates in a transaction and bumps the version; an older slot then refuses to
+  start.
+- `checkpoint_and_sync` and `backup_state` produce a consistent, durable snapshot
+  and are the supported way to preserve data before a switch.
+
+Deferred to update execution.
+
+- Writing the inactive slot, computing and verifying its signature and the boot
+  artifact.
+- The bootloader slot switch and rollback policy, and marking a slot good only
+  after the platform and data migrations succeed.
+- Refusing an update whose required `SCHEMA_VERSION` is higher than the running
+  binary understands, before activating the slot.
+
+The contract between the two is narrow: update execution must (1) never touch the
+data volumes while writing a slot, (2) take a `backup_state` snapshot before the
+first schema migration in a new slot, and (3) treat a `verify_schema` refusal as a
+failed update to roll back, never as corruption to force through.
 
 ## Development image (approximation)
 
