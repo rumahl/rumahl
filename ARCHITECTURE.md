@@ -227,6 +227,8 @@ Subsystem-specific decisions and implementation details are documented separatel
 - [App resource operations](docs/architecture/app-resource-operations.md)
 - [Buildroot acceptance](docs/architecture/buildroot-acceptance.md)
 - [Buildroot migration](docs/architecture/buildroot-migration.md)
+- [Filesystem layout](docs/architecture/filesystem-layout.md)
 - [Secret store](docs/architecture/secret-store.md)
 - [Shell preferences](docs/architecture/shell-preferences.md)
 - [Shell routing](docs/architecture/shell-routing.md)
+- [Storage and updates](docs/architecture/storage-and-updates.md)

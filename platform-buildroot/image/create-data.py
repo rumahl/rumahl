@@ -13,6 +13,10 @@ seed = args.seed.resolve(strict=True)
 for required in ["lib/rumahl/accounts.sqlite", "lib/rumahl-tls/fullchain.pem", "lib/rumahl-tls/key.pem"]:
     if not (seed / required).is_file():
         parser.error(f"missing provisioned {required}")
+# Stable user and app trees live on the data disk; the image binds them to
+# /home and /apps (see board/qemu/overlay/etc/fstab).
+for directory in ["home", "apps"]:
+    (seed / directory).mkdir(mode=0o755, exist_ok=True)
 # Exclusive creation prevents accidental formatting of an existing disk/device.
 fd = os.open(args.output, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
 with os.fdopen(fd, "wb") as disk:
