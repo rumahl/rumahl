@@ -105,7 +105,10 @@ pub use events::{
     EventSubscription, EventSubscriptionError,
 };
 
-pub use platform::{OsMode, OsModeError, OsModePolicy, PlatformState};
+pub use platform::{
+    OsMode, OsModeError, OsModePolicy, OsModeRepository, OsModeSettings, OsModeStoreError,
+    PlatformState,
+};
 
 #[cfg(test)]
 mod tests {

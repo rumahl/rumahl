@@ -13,6 +13,8 @@
 use std::error::Error;
 use std::fmt;
 
+use crate::{BrowserProfileId, PreferenceScope, UserId};
+
 /// How much of the system is exposed to the user.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum OsMode {
@@ -95,6 +97,57 @@ impl OsModePolicy {
     }
 }
 
+/// Persisted per-user/per-device exposure mode. Kept separate from the
+/// presentation preferences because it is security policy.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct OsModeSettings {
+    pub revision: u64,
+    pub user_mode: OsMode,
+    pub device_mode: Option<OsMode>,
+}
+
+impl Default for OsModeSettings {
+    fn default() -> Self {
+        Self {
+            revision: 0,
+            user_mode: OsMode::Guided,
+            device_mode: None,
+        }
+    }
+}
+
+impl OsModeSettings {
+    pub fn effective_mode(&self) -> OsMode {
+        self.device_mode.unwrap_or(self.user_mode)
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum OsModeStoreError {
+    Conflict,
+    Unavailable,
+    Limit,
+}
+
+/// Persistence boundary for the exposure mode.
+pub trait OsModeRepository: Send + Sync + 'static {
+    fn load(
+        &self,
+        user: UserId,
+        device: BrowserProfileId,
+    ) -> Result<OsModeSettings, OsModeStoreError>;
+
+    /// `None` removes a device override, or restores the guided default at user scope.
+    fn save(
+        &self,
+        user: UserId,
+        device: BrowserProfileId,
+        revision: u64,
+        scope: PreferenceScope,
+        mode: Option<OsMode>,
+    ) -> Result<OsModeSettings, OsModeStoreError>;
+}
+
 impl fmt::Display for OsMode {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str(self.as_str())
@@ -108,6 +161,18 @@ impl fmt::Display for OsModeError {
         }
     }
 }
+
+impl fmt::Display for OsModeStoreError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Conflict => write!(f, "rumahl OS mode revision conflict"),
+            Self::Unavailable => write!(f, "rumahl OS mode storage unavailable"),
+            Self::Limit => write!(f, "too many rumahl OS mode device overrides"),
+        }
+    }
+}
+
+impl Error for OsModeStoreError {}
 
 impl Error for OsModeError {}
 
@@ -127,6 +192,19 @@ mod tests {
     #[test]
     fn defaults_to_guided() {
         assert_eq!(OsMode::default(), OsMode::Guided);
+    }
+
+    #[test]
+    fn settings_resolve_the_device_override() {
+        let settings = OsModeSettings::default();
+        assert_eq!(settings.effective_mode(), OsMode::Guided);
+
+        let settings = OsModeSettings {
+            revision: 3,
+            user_mode: OsMode::Advanced,
+            device_mode: Some(OsMode::Developer),
+        };
+        assert_eq!(settings.effective_mode(), OsMode::Developer);
     }
 
     #[test]

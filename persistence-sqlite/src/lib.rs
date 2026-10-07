@@ -14,6 +14,7 @@ mod oidc_authorization_store;
 mod oidc_client_repository;
 mod oidc_refresh_token_store;
 mod oidc_schema;
+mod os_mode;
 mod password_credential_repository;
 mod repository;
 mod secret_store;
@@ -34,6 +35,7 @@ pub use oidc_authorization_store::{
 };
 pub use oidc_client_repository::{SqliteOidcClientRepository, SqliteOidcClientRepositoryError};
 pub use oidc_refresh_token_store::{SqliteOidcRefreshTokenStore, SqliteOidcRefreshTokenStoreError};
+pub use os_mode::SqliteOsModeRepository;
 pub use password_credential_repository::{
     SqlitePasswordCredentialRepository, SqlitePasswordCredentialRepositoryError,
 };
