@@ -32,6 +32,11 @@ into the user- or app-visible path namespace. Only the platform service mounts i
 owner-only (`0700`). The path/grant policy denies every access and apps never
 receive a handle into it. Field- and process-level encryption protect the values.
 
+Sensitive column values (personal file content) are additionally sealed per row
+with AES-256-GCM under the OS key provider, bound to the owning row. A deployment
+without a TPM key stores them as plaintext and logs that encryption is disabled;
+the `encrypted` column lets sealed and legacy plaintext rows coexist.
+
 **A/B safe.** Both slots share the same `state` volume. Every database records
 its schema version in `PRAGMA user_version`; on startup the platform stamps a
 fresh (or pre-versioning) database and refuses to run against one written by a

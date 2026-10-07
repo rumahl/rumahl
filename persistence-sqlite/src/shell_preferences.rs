@@ -8,6 +8,8 @@ use std::{
     time::Duration,
 };
 
+use crate::schema::ensure_column;
+
 const DEVICE_LIMIT: i64 = 128;
 
 /// Separate from account/session tables; no credentials are stored here.
@@ -240,39 +242,4 @@ fn read_workspace(
     device: BrowserProfileId,
 ) -> Result<rumahl_core::WorkspacePreferences, Error> {
     connection.query_row("SELECT revision, (SELECT value FROM shell_workspaces WHERE user_id=?1 AND profile=''), (SELECT value FROM shell_workspaces WHERE user_id=?1 AND profile=?2) FROM shell_workspace_revisions WHERE user_id=?1", params![user.to_string(), device.to_string()], |r| Ok(rumahl_core::WorkspacePreferences { revision: r.get::<_, i64>(0)? as u64, user: r.get(1)?, device: r.get(2)? })).optional().map(|v| v.unwrap_or_default()).map_err(|_| Error::Unavailable)
-}
-
-/// Adds a column to an existing table exactly once. Identifiers are internal constants.
-fn ensure_column(
-    connection: &Connection,
-    table: &str,
-    column: &str,
-    definition: &str,
-) -> Result<(), rusqlite::Error> {
-    // Defense in depth: this helper builds DDL by interpolation, so the
-    // identifiers are restricted to a safe set even though every caller passes
-    // a compile-time constant. `definition` stays an internal constant.
-    if !valid_identifier(table) || !valid_identifier(column) {
-        return Err(rusqlite::Error::InvalidParameterName(format!(
-            "invalid SQL identifier for {table}.{column}"
-        )));
-    }
-    let mut statement = connection.prepare(&format!("PRAGMA table_info({table})"))?;
-    let columns = statement
-        .query_map([], |row| row.get::<_, String>(1))?
-        .collect::<Result<Vec<_>, _>>()?;
-    if !columns.iter().any(|name| name == column) {
-        connection.execute_batch(&format!(
-            "ALTER TABLE {table} ADD COLUMN {column} {definition}"
-        ))?;
-    }
-    Ok(())
-}
-
-fn valid_identifier(value: &str) -> bool {
-    !value.is_empty()
-        && value.len() <= 64
-        && value
-            .bytes()
-            .all(|byte| byte.is_ascii_alphanumeric() || byte == b'_')
 }

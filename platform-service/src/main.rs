@@ -47,6 +47,30 @@ fn private_directory(path: &std::path::Path) -> Result<(), ServiceError> {
     }
     Ok(())
 }
+
+/// Builds the field-encryption key provider from the TPM environment, if set.
+/// A deployment without TPM stores file content as plaintext.
+fn optional_key_provider() -> Option<Arc<dyn rumahl_persistence_sqlite::FieldKeyProvider>> {
+    let executable = env::var("RUMAHL_TPM2_EXECUTABLE").ok()?;
+    let key_id = rumahl_persistence_sqlite::SecretEncryptionKeyId::parse(
+        env::var("RUMAHL_SECRET_KEY_ID").ok()?,
+    )
+    .ok()?;
+    let object = PathBuf::from(env::var("RUMAHL_SECRET_KEY_OBJECT").ok()?);
+    let authorization = match env::var("RUMAHL_SECRET_KEY_POLICY_SESSION") {
+        Ok(value) if !value.is_empty() => {
+            rumahl_platform_buildroot::Tpm2Authorization::PolicySession(PathBuf::from(value))
+        }
+        _ => rumahl_platform_buildroot::Tpm2Authorization::Passwordless,
+    };
+    let sealed =
+        rumahl_platform_buildroot::Tpm2SealedKey::new(key_id.clone(), object, authorization)
+            .ok()?;
+    rumahl_platform_buildroot::Tpm2UnsealKeyProvider::new(executable, key_id, [sealed])
+        .ok()
+        .map(|provider| Arc::new(provider) as Arc<dyn rumahl_persistence_sqlite::FieldKeyProvider>)
+}
+
 async fn run() -> Result<(), ServiceError> {
     let args: Vec<String> = env::args().skip(1).collect();
     let state_dir = PathBuf::from(required("RUMAHL_STATE_DIR")?);
@@ -151,9 +175,22 @@ async fn run() -> Result<(), ServiceError> {
         widgets: Arc::new(NoWidgets),
         streams: None,
         apps: Some(apps.clone()),
-        files: Some(Arc::new(
-            rumahl_persistence_sqlite::SqlitePersonalFiles::open(state_dir.join("files.sqlite"))?,
-        )),
+        files: Some(match optional_key_provider() {
+            Some(provider) => Arc::new(
+                rumahl_persistence_sqlite::SqlitePersonalFiles::open_encrypted(
+                    state_dir.join("files.sqlite"),
+                    provider,
+                )?,
+            ),
+            None => {
+                eprintln!(
+                    "rumahl platform: file content encryption disabled (no TPM key configured)"
+                );
+                Arc::new(rumahl_persistence_sqlite::SqlitePersonalFiles::open(
+                    state_dir.join("files.sqlite"),
+                )?)
+            }
+        }),
         workspace: Some(Arc::new(
             rumahl_persistence_sqlite::SqliteShellPreferences::open(
                 state_dir.join("preferences.sqlite"),

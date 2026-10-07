@@ -7,6 +7,7 @@
 mod account_repository;
 mod app_database_provider;
 mod app_operation_repository;
+mod field_cipher;
 mod identity_schema;
 mod local_account_administration_repository;
 mod oidc_access_token_store;
@@ -27,6 +28,7 @@ pub use app_database_provider::{SqliteAppDatabaseProvider, SqliteAppDatabaseProv
 pub use app_operation_repository::{
     SqliteAppOperationRepository, SqliteAppOperationRepositoryError,
 };
+pub use field_cipher::{FieldCipherError, FieldEnvelope, FieldKeyProvider, open_field, seal_field};
 pub use local_account_administration_repository::{
     SqliteLocalAccountAdministrationRepository, SqliteLocalAccountAdministrationRepositoryError,
 };
