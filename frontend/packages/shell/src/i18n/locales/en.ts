@@ -372,7 +372,25 @@ export const english = {
   "window.close": "Close {title}",
   "window.controls": "Window controls",
   "window.minimize": "Minimize {title}",
-  "window.minimized": "Minimized windows"
+  "window.minimized": "Minimized windows",
+  "osMode.title": "OS mode",
+  "osMode.titleHelp": "Choose how much of rumahl OS is exposed.",
+  "osMode.current": "Current mode",
+  "osMode.guided": "Guided",
+  "osMode.guidedHelp": "Everything is handled for you. The safe default.",
+  "osMode.advanced": "Advanced",
+  "osMode.advancedHelp": "Most of the system, without developer tools.",
+  "osMode.developer": "Developer",
+  "osMode.developerHelp": "Full access plus terminal, SSH and web console.",
+  "osMode.password": "Account password",
+  "osMode.passwordHelp": "Required to unlock advanced or developer mode.",
+  "osMode.apply": "Apply",
+  "osMode.saved": "OS mode updated.",
+  "osMode.error.conflict": "The mode changed elsewhere. Review and try again.",
+  "osMode.error.forbidden": "The password was not accepted.",
+  "osMode.error.unavailable": "The mode could not be changed.",
+  "settings.osMode": "OS mode",
+  "settings.osModeHelp": "Guided, advanced or developer access."
 } as const;
 
 export type MessageKey = keyof typeof english;
