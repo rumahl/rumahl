@@ -166,10 +166,15 @@ async fn run() -> Result<(), ServiceError> {
         .with_preferences(snapshot_store.clone())
         .with_workspace(snapshot_store.clone());
     let account_feed = SqliteAccountStateRepository::open(&accounts)?;
+    let audit: Arc<dyn rumahl_core::AuditLog> = Arc::new(
+        rumahl_persistence_sqlite::SqliteAuditLog::open(state_dir.join("audit.sqlite"))?,
+    );
     let state = GatewayState {
         config,
         backend: shell_backend(&accounts, &platform, build_id, &locale)?,
-        browser_sessions: Some(Arc::new(LocalBrowserSessions::open(&accounts)?)),
+        browser_sessions: Some(Arc::new(
+            LocalBrowserSessions::open(&accounts)?.with_audit(audit.clone()),
+        )),
         login_slots: Arc::new(tokio::sync::Semaphore::new(2)),
         events: events.clone(),
         widgets: Arc::new(NoWidgets),
@@ -201,11 +206,12 @@ async fn run() -> Result<(), ServiceError> {
                 state_dir.join("preferences.sqlite"),
             )?,
         )),
-        os_mode: Some(Arc::new(
-            rumahl_persistence_sqlite::SqliteOsModeRepository::open(
+        os_mode: Some(Arc::new(AuditedOsModeRepository::new(
+            Arc::new(rumahl_persistence_sqlite::SqliteOsModeRepository::open(
                 state_dir.join("preferences.sqlite"),
-            )?,
-        )),
+            )?),
+            audit.clone(),
+        ))),
         oidc: None,
     };
     // Serve every built-in theme stylesheet so the account theme renders on the

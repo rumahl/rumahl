@@ -106,8 +106,9 @@ pub use events::{
 };
 
 pub use platform::{
-    OsMode, OsModeError, OsModePolicy, OsModeRepository, OsModeSettings, OsModeStoreError,
-    PlatformState,
+    AuditAction, AuditActor, AuditError, AuditEvent, AuditLog, AuditOutcome, MAX_TARGET_BYTES,
+    NewAuditEvent, OsMode, OsModeError, OsModePolicy, OsModeRepository, OsModeSettings,
+    OsModeStoreError, PlatformState,
 };
 
 #[cfg(test)]
