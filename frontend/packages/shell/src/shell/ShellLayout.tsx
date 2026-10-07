@@ -23,6 +23,7 @@ import { CommandPalette } from "./CommandPalette";
 import { DesktopWindows } from "./DesktopWindows";
 import { useShellPreferences } from "../preferences/ShellPreferences";
 import { useWorkspace } from "../preferences/Workspace";
+import { useOsMode } from "../preferences/OsMode";
 import { HomePage } from "../pages/HomePage";
 
 function WallpaperVideo({ src }: { src: string }) {
@@ -51,6 +52,7 @@ export function ShellLayout({ snapshot, live }: { snapshot: ShellSnapshotV1; liv
   const { t } = useI18n();
   const path = shellLocation(location.pathname + location.search + location.hash);
   const preferences = useShellPreferences();
+  const osMode = useOsMode();
   const mode = preferences.mode;
   useEffect(() => {
     if (new URLSearchParams(location.search).has("mode")) void navigate(localPath(location.pathname + location.search + location.hash), { replace: true });
@@ -269,7 +271,7 @@ export function ShellLayout({ snapshot, live }: { snapshot: ShellSnapshotV1; liv
     return () => { document.adoptedStyleSheets = previous; };
   }, [theme.css]);
   return <ShellContext value={{ snapshot, live, state, dispatch, mode, setMode, open }}>
-    <div className={`scene shell${showVideo ? "" : " image-mode"}${appearance.wallpaperMotion === false || svgActive || performanceMode ? " no-motion" : ""}`} data-theme={theme.id} data-material={material} data-glass={glassEngine} data-scheme={scheme} data-maximized={windowMaximized ? "true" : undefined} data-launcher={launcherWindow ? "app" : undefined} data-inactive={inactive ? "true" : undefined} data-debug={debug ? "true" : undefined} data-animations={animations ? undefined : "off"} data-shell-build={snapshot.shellBuildId} data-shell-mode={mode} data-preferences-revision={preferences.preferences?.revision}>
+    <div className={`scene shell${showVideo ? "" : " image-mode"}${appearance.wallpaperMotion === false || svgActive || performanceMode ? " no-motion" : ""}`} data-theme={theme.id} data-material={material} data-glass={glassEngine} data-scheme={scheme} data-maximized={windowMaximized ? "true" : undefined} data-launcher={launcherWindow ? "app" : undefined} data-inactive={inactive ? "true" : undefined} data-debug={debug ? "true" : undefined} data-animations={animations ? undefined : "off"} data-shell-build={snapshot.shellBuildId} data-shell-mode={mode} data-os-mode={osMode.mode} data-preferences-revision={preferences.preferences?.revision}>
       <div className="wallpaper media-wall" aria-hidden="true">
         {showVideo
           ? media.video ? <WallpaperVideo key={media.video} src={media.video} />
