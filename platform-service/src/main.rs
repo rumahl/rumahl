@@ -55,6 +55,17 @@ async fn run() -> Result<(), ServiceError> {
     }
     private_directory(&state_dir)?;
     let accounts = state_dir.join("accounts.sqlite");
+    // Refuse a database written by a newer binary before any provider opens it.
+    for database in [
+        accounts.clone(),
+        state_dir.join("platform.sqlite"),
+        state_dir.join("preferences.sqlite"),
+        state_dir.join("files.sqlite"),
+    ] {
+        rumahl_persistence_sqlite::verify_schema(&database).map_err(|error| {
+            std::io::Error::other(format!("database schema check failed: {error}"))
+        })?;
+    }
     if args.first().map(String::as_str) == Some("provision-account") {
         if args.len() != 4 || args[3] != "--password-stdin" || std::io::stdin().is_terminal() {
             return Err(std::io::Error::other("usage: provision-account USER DISPLAY_NAME --password-stdin (pipe from a hidden prompt)").into());

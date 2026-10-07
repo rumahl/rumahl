@@ -17,6 +17,7 @@ mod oidc_schema;
 mod os_mode;
 mod password_credential_repository;
 mod repository;
+mod schema;
 mod secret_store;
 mod session_credential_repository;
 mod wire;
@@ -40,6 +41,7 @@ pub use password_credential_repository::{
     SqlitePasswordCredentialRepository, SqlitePasswordCredentialRepositoryError,
 };
 pub use repository::{SqliteSnapshotRepository, SqliteSnapshotRepositoryError};
+pub use schema::{SCHEMA_VERSION, SchemaVersionError, verify_schema};
 pub use secret_store::{
     SecretEncryptionKey, SecretEncryptionKeyId, SecretEncryptionKeyIdError,
     SecretEncryptionKeyProvider, SqliteSecretStore, SqliteSecretStoreError,

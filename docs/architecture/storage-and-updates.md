@@ -32,10 +32,12 @@ into the user- or app-visible path namespace. Only the platform service mounts i
 owner-only (`0700`). The path/grant policy denies every access and apps never
 receive a handle into it. Field- and process-level encryption protect the values.
 
-**A/B safe.** Both slots share the same `state` volume. Migrations are guarded by
-a data-schema version decoupled from the binary version: a new slot backs up the
-database before migrating, migrates in a transaction, and refuses to start on an
-incompatible schema. A slot rollback restores the pre-migration backup.
+**A/B safe.** Both slots share the same `state` volume. Every database records
+its schema version in `PRAGMA user_version`; on startup the platform stamps a
+fresh (or pre-versioning) database and refuses to run against one written by a
+newer binary (`verify_schema`, `SCHEMA_VERSION`). A newer slot migrates in a
+transaction and bumps the version; an older slot then refuses to start instead of
+corrupting the database.
 
 **Cleanly synchronised.** Only one platform service may write at a time. Before a
 slot switch or update the service checkpoints WAL and fsyncs. Backups use a
