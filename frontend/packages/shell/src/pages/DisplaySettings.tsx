@@ -1,5 +1,5 @@
 import { RumahlButtonGroup } from "../components/RumahlButtonGroup";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useTheme } from "@rumahl/ui";
 import { themes } from "@rumahl/ui/themes";
 import type { ColorParameter } from "@rumahl/ui/themes";
@@ -12,7 +12,20 @@ import { RumahlSelect } from "../components/RumahlSelect";
 import { RumahlColorPicker } from "../components/RumahlColorPicker";
 import { Button } from "../components/Button";
 import { SettingsHeading } from "../components/SettingsHeading";
-import { setGlassAdjust } from "../glass-engine/useGlassEngine";
+import { setGlassAdjust, svgRefractionSupported, webglSupported } from "../glass-engine/useGlassEngine";
+
+/** Resting/middle value of the glass adjustment sliders (a soft detent). */
+const REFRACTION_DEFAULT = 50;
+const CHROMA_DEFAULT = 30;
+const TINT_DEFAULT = 50;
+/** Tint is a milky rgba overlay; the slider scales its alpha around the default. */
+const TINT_MAX_ALPHA = 0.1;
+const tintColor = (percent: number): string => `rgba(30,37,66,${((percent / 100) * TINT_MAX_ALPHA).toFixed(3)})`;
+
+/** Magnetic snap: within `threshold` of the target, pull back to it. */
+function withSnap(value: number, target: number, threshold: number): number {
+  return Math.abs(value - target) <= threshold ? target : value;
+}
 
 export function DisplaySettings() {
   const { t } = useI18n();
@@ -23,8 +36,16 @@ export function DisplaySettings() {
   const effectiveTheme = themes.find((item) => item.id === settings.theme);
   const { tokens, theme: activeTheme } = useTheme();
   const { tuning, setSeed, setMode, setToken, clearToken, autoColors, setTransparency, setAutoColor, setWallpaperTint, setWallpaperMotion, setGlassEnabled, setGlassBackend, setGlassQuality, setGlassReduced, setAnimations, setPerformanceMode, setMaterialPreset, reset } = useThemeTuning();
-  const [refraction, setRefraction] = useState(56);
-  const [chromaPercent, setChromaPercent] = useState(28);
+  const [refraction, setRefraction] = useState(REFRACTION_DEFAULT);
+  const [chromaPercent, setChromaPercent] = useState(CHROMA_DEFAULT);
+  const [tintPercent, setTintPercent] = useState(TINT_DEFAULT);
+  // Capabilities are browser-only, so resolve them after mount (hydration-safe).
+  const [capabilities, setCapabilities] = useState({ svg: true, webgl: true });
+  useEffect(() => { setCapabilities({ svg: svgRefractionSupported(), webgl: webglSupported() }); }, []);
+  const backendWarning: Partial<Record<"svg" | "webgl", string>> = {
+    ...(capabilities.svg ? {} : { svg: t("theme.glass.backend.svgUnsupported") }),
+    ...(capabilities.webgl ? {} : { webgl: t("theme.glass.backend.webglUnsupported") }),
+  };
   const performanceMode = tuning.performanceMode === true;
   const transparencyOff = performanceMode || Number(tokens["material.opacity"]) >= 1 || Number(tokens["material.morphism"]) <= 0;
   const reduced = tuning.glassReduced === true || performanceMode;
@@ -145,7 +166,10 @@ export function DisplaySettings() {
       <div className="setting">
         <div className="copy"><strong>{t("theme.glass.backend")}</strong><p>{t("theme.glass.backendHelp")}</p></div>
         <div className="visual"><RumahlSelect label={t("theme.glass.backend")} disabled={reduced || transparencyOff} value={tuning.glassBackend ?? "auto"} onChange={value => setGlassBackend(value as "auto" | "svg" | "webgl" | "css")}
-          options={(["auto", "svg", "webgl", "css"] as const).map(backend => ({ value: backend, label: t(`theme.glass.backend.${backend}`) }))} /></div>
+          options={(["auto", "svg", "webgl", "css"] as const).map(backend => {
+            const warning = backend === "svg" || backend === "webgl" ? backendWarning[backend] : undefined;
+            return { value: backend, label: t(`theme.glass.backend.${backend}`), disabled: warning !== undefined, warning };
+          })} /></div>
       </div>
       <div className="setting">
         <div className="copy"><strong>{t("theme.glass.quality")}</strong><p>{t("theme.glass.qualityHelp")}</p></div>
@@ -154,11 +178,15 @@ export function DisplaySettings() {
       </div>
       <div className="setting">
         <div className="copy"><strong>{t("theme.glass.refraction")}</strong><p>{t("theme.glass.refractionHelp")}</p></div>
-        <div className="visual"><input className="range" type="range" aria-label={t("theme.glass.refraction")} disabled={reduced || transparencyOff} min={0} max={100} value={refraction} onChange={event => { const value = Number(event.target.value); setRefraction(value); setGlassAdjust({ refraction: value }); }} /></div>
+        <div className="visual visual--range"><input className="range" type="range" aria-label={t("theme.glass.refraction")} disabled={reduced || transparencyOff} min={0} max={100} value={refraction} onChange={event => { const value = withSnap(Number(event.target.value), REFRACTION_DEFAULT, 4); setRefraction(value); setGlassAdjust({ refraction: value }); }} /><output>{refraction}%</output></div>
       </div>
       <div className="setting">
         <div className="copy"><strong>{t("theme.glass.chroma")}</strong><p>{t("theme.glass.chromaHelp")}</p></div>
-        <div className="visual"><input className="range" type="range" aria-label={t("theme.glass.chroma")} disabled={reduced || transparencyOff} min={0} max={60} value={chromaPercent} onChange={event => { const value = Number(event.target.value); setChromaPercent(value); setGlassAdjust({ chroma: value / 100 }); }} /></div>
+        <div className="visual visual--range"><input className="range" type="range" aria-label={t("theme.glass.chroma")} disabled={reduced || transparencyOff} min={0} max={60} value={chromaPercent} onChange={event => { const value = withSnap(Number(event.target.value), CHROMA_DEFAULT, 2); setChromaPercent(value); setGlassAdjust({ chroma: value / 100 }); }} /><output>{chromaPercent}%</output></div>
+      </div>
+      <div className="setting">
+        <div className="copy"><strong>{t("theme.glass.tint")}</strong><p>{t("theme.glass.tintHelp")}</p></div>
+        <div className="visual visual--range"><input className="range" type="range" aria-label={t("theme.glass.tint")} disabled={reduced || transparencyOff} min={0} max={100} value={tintPercent} onChange={event => { const value = withSnap(Number(event.target.value), TINT_DEFAULT, 4); setTintPercent(value); setGlassAdjust({ tint: tintColor(value) }); }} /><output>{tintPercent}%</output></div>
       </div>
       <div className="setting">
         <div className="copy"><strong>{t("theme.glass.testImage")}</strong><p>{t("theme.glass.testImageHelp")}</p></div>

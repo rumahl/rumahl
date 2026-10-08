@@ -1,11 +1,17 @@
 import {DEFAULT_MATERIAL,PROFILES,normalizeMaterial,percentile,chooseProfile} from './core.js';
+import {mountSurface} from './surface.js';
 import {SvgBackdrop,svgBackdropSupported} from './svg-backdrop.js';
 import {WebGLWallpaper} from './webgl-wallpaper.js';
 
+// One probe, once: creating a canvas context per capability read leaks WebGL
+// contexts until the browser refuses new ones, which silently degrades WebGL to
+// CSS. Probe here and release the context again.
+function probeWebgl(){try{const canvas=document.createElement('canvas');const gl=canvas.getContext('webgl')||canvas.getContext('experimental-webgl');if(!gl)return false;gl.getExtension('WEBGL_lose_context')?.loseContext();return true}catch{return false}}
+
 class CssFrosted {
-  constructor(host,material){this.host=host;this.layer=document.createElement('div');this.layer.className='rumahl-glass-surface';host.prepend(this.layer);this.setMaterial(material)}
+  constructor(host,material){this.host=host;this.layer=document.createElement('div');this.layer.className='rumahl-glass-surface';this.frame=mountSurface(host,this.layer);this.setMaterial(material)}
   setMaterial(material){const m=normalizeMaterial(material);this.layer.style.backdropFilter=`blur(${Math.max(8,m.blur*4)}px) saturate(${m.saturation}) brightness(${m.brightness})`;this.layer.style.webkitBackdropFilter=this.layer.style.backdropFilter;this.layer.style.background=m.tint}
-  destroy(){this.layer.remove()}
+  destroy(){this.frame.remove()}
 }
 /** Stable theme API: surface attributes are the contract, shaders are private. */
 export class GlassEngine extends EventTarget {
@@ -13,13 +19,14 @@ export class GlassEngine extends EventTarget {
     super();this.source=source;this.preference=quality;this.requestedBackend=backend;this.targetFps=targetFps;
     this.profile=quality==='auto'?'high':quality;this.backendIndex=0;this.lastChange=performance.now();this.surfaces=new Map();this.alive=true;
     this.samples=[];this.lastSample=performance.now();this.prevFrame=this.lastSample;this.slowWindows=0;this.fastWindows=0;this.longTasks=0;
+    this.webglAvailable=probeWebgl();
     this.reduced=matchMedia('(prefers-reduced-transparency: reduce)');this.contrast=matchMedia('(prefers-contrast: more)');
     this.onPreference=()=>this.reconcile();this.reduced.addEventListener('change',this.onPreference);this.contrast.addEventListener('change',this.onPreference);
     try{this.longObserver=new PerformanceObserver(list=>{this.longTasks+=list.getEntries().length});this.longObserver.observe({entryTypes:['longtask']})}catch{}
     this.tick=this.tick.bind(this);this.raf=requestAnimationFrame(this.tick);
   }
-  get capability(){return {svgBackdrop:svgBackdropSupported(),webgl:!!document.createElement('canvas').getContext('webgl'),reducedTransparency:this.reduced.matches||this.contrast.matches}}
-  get ladder(){const l=[];if(svgBackdropSupported())l.push('svg');if(this.capability.webgl)l.push('webgl');l.push('css');return l;}
+  get capability(){return {svgBackdrop:svgBackdropSupported(),webgl:this.webglAvailable,reducedTransparency:this.reduced.matches||this.contrast.matches}}
+  get ladder(){const l=[];if(svgBackdropSupported())l.push('svg');if(this.webglAvailable)l.push('webgl');l.push('css');return l;}
   get renderer(){if(this.reduced.matches||this.contrast.matches)return'css';
     if(this.requestedBackend==='css')return'css';if(this.requestedBackend==='svg')return svgBackdropSupported()?'svg':'css';
     if(this.requestedBackend==='webgl')return this.capability.webgl?'webgl':'css';

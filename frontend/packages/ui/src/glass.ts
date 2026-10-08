@@ -39,7 +39,9 @@ export type GlassQuality = "auto" | "high" | "balanced" | "low";
 
 /** Named materials any theme or app may reuse. */
 export const GLASS_MATERIALS = {
-  dock: { radius: 29, bevel: 22, refraction: 56, chroma: 0.32, blur: 1.2, saturation: 1.05, brightness: 1, tint: "rgba(30,37,66,.05)" },
+  // Same glass as the desktop widgets, so dock and widget look identical
+  // (only the corner radius follows the dock's shape).
+  dock: { radius: 29, bevel: 20, refraction: 40, chroma: 0.28, blur: 1.2, saturation: 1.05, brightness: 1, tint: "rgba(30,37,66,.05)" },
   widget: { radius: 23, bevel: 20, refraction: 40, chroma: 0.28, blur: 1.2, saturation: 1.05, brightness: 1, tint: "rgba(30,37,66,.05)" },
   bar: { radius: 14, bevel: 16, refraction: 14, chroma: 0.08, blur: 2.1, saturation: 1.05, brightness: 1, tint: "rgba(20,28,47,.10)" }
 } as const satisfies Record<string, GlassMaterial>;

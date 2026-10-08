@@ -15,7 +15,7 @@ export class SvgBackdrop {
     this.svg=make('svg',{width:0,height:0,'aria-hidden':'true'});
     Object.assign(this.svg.style,{position:'absolute',width:'0',height:'0',pointerEvents:'none'});
     this.filter=null;document.body.append(this.svg);
-    this.layer=document.createElement('div');this.layer.className='rumahl-glass-effect';this.frame=mountSurface(host,this.layer);
+    this.layer=document.createElement('div');this.layer.className='rumahl-glass-surface rumahl-glass-effect';this.frame=mountSurface(host,this.layer);
     this.geometry='';this.resize=new ResizeObserver(()=>this.schedule());this.resize.observe(host);this.schedule();
   }
   setMaterial(material,profile){this.material=normalizeMaterial(material);this.profile=profile;this.schedule()}

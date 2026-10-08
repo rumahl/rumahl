@@ -1,4 +1,3 @@
-import { RumahlButtonGroup } from "../../components/RumahlButtonGroup";
 import { SearchIcon } from "../../icons";
 import { useI18n } from "../../i18n";
 import { ArrowLeftIcon, ArrowRightIcon, ArrowUpIcon, FilePlusIcon, GridViewIcon, ListViewIcon, MoveIcon, PlusIcon, UploadIcon } from "./icons";
@@ -47,7 +46,13 @@ export function Toolbar(props: ToolbarProps) {
       <SearchIcon className="files-search__icon" />
       <input aria-label={t("files.search")} value={props.search} onChange={(event) => props.onSearch(event.target.value)} placeholder={t("files.search")} maxLength={255} />
     </label>
-    <RumahlButtonGroup label={`${t("files.grid")} / ${t("files.list")}`} iconOnly value={props.view} onChange={props.onView}
-      options={[{ value: "grid", label: t("files.grid"), icon: <GridViewIcon /> }, { value: "list", label: t("files.list"), icon: <ListViewIcon /> }]} />
+    <label className="files-view-switch" title={`${t("files.grid")} / ${t("files.list")}`}>
+      <input type="checkbox" role="switch" aria-label={`${t("files.grid")} / ${t("files.list")}`} checked={props.view === "list"} onChange={event => props.onView(event.target.checked ? "list" : "grid")} />
+      <span className="files-view-switch__track">
+        <span className="files-view-switch__thumb" aria-hidden="true" />
+        <span className="files-view-switch__icon files-view-switch__icon--grid"><GridViewIcon /></span>
+        <span className="files-view-switch__icon files-view-switch__icon--list"><ListViewIcon /></span>
+      </span>
+    </label>
   </div>;
 }

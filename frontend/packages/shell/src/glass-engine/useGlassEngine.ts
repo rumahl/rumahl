@@ -44,6 +44,22 @@ export function svgRefractionSupported(): boolean {
   return typeof window !== "undefined" && svgBackdropSupported();
 }
 
+let webglProbe: boolean | null = null;
+/** True when this browser can create a WebGL context (probed once). */
+export function webglSupported(): boolean {
+  if (webglProbe !== null) return webglProbe;
+  if (typeof document === "undefined") return false;
+  try {
+    const canvas = document.createElement("canvas");
+    const gl = (canvas.getContext("webgl") ?? canvas.getContext("experimental-webgl")) as WebGLRenderingContext | null;
+    webglProbe = !!gl;
+    gl?.getExtension("WEBGL_lose_context")?.loseContext();
+  } catch {
+    webglProbe = false;
+  }
+  return webglProbe;
+}
+
 function wallpaperSource(): HTMLImageElement | HTMLVideoElement | null {
   if (typeof document === "undefined") return null;
   return document.querySelector<HTMLVideoElement>(".wallpaper-video") ?? document.querySelector<HTMLImageElement>(".wallpaper-image");

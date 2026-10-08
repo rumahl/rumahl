@@ -184,9 +184,9 @@
 .shell .shell-window__titlebar[hidden], .window-resize[hidden] { display: none; }
 
 .shell .shell-window--stream { resize: none; }
-.workspace-settings fieldset, .files-app fieldset { border: 1px solid var(--line); border-radius: 12px; margin-block: 16px; padding: 14px; }
-.workspace-settings button, .files-app button { padding: 8px 12px; margin: 4px; border: 1px solid var(--line); border-radius: 8px; background: var(--rumahl-ui-color-panel-background, var(--rumahl-color-panel-background)); color: var(--rumahl-ui-color-text-primary, var(--rumahl-color-text-primary)); }
-.workspace-settings input:not([type="checkbox"]), .files-app input:not([type="file"]) { padding: 8px; border: 1px solid var(--line); border-radius: 8px; max-width: 100%; }
+.workspace-settings fieldset { border: 1px solid var(--line); border-radius: 12px; margin-block: 16px; padding: 14px; }
+.workspace-settings button { padding: 8px 12px; margin: 4px; border: 1px solid var(--line); border-radius: 8px; background: var(--rumahl-ui-color-panel-background, var(--rumahl-color-panel-background)); color: var(--rumahl-ui-color-text-primary, var(--rumahl-color-text-primary)); }
+.workspace-settings input:not([type="checkbox"]) { padding: 8px; border: 1px solid var(--line); border-radius: 8px; max-width: 100%; }
 .folder-members { display: grid; gap: 8px; margin-block: 16px; }
 .workspace-settings li, .file-list li { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; padding: 8px; border-bottom: 1px solid var(--line); overflow-wrap: anywhere; }
 .file-list { padding: 0; list-style: none; }

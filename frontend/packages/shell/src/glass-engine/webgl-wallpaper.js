@@ -11,12 +11,19 @@ function shader(gl,type,source){const s=gl.createShader(type);gl.shaderSource(s,
 export class WebGLWallpaper {
   constructor(host,material,profile,getSource){
     this.host=host;this.getSource=getSource;this.material=normalizeMaterial(material);this.profile=profile;
-    this.canvas=document.createElement('canvas');this.canvas.className='rumahl-glass-webgl';
+    this.canvas=document.createElement('canvas');this.canvas.className='rumahl-glass-surface rumahl-glass-webgl';
     // The GPU drawing buffer MUST NOT participate in CSS layout. Intrinsic
     // canvas width/height change every time the renderer chooses resolution;
     // strict containment prevents those dimensions feeding back into flex sizing.
     Object.assign(this.canvas.style,{position:'absolute',inset:'0',width:'100%',height:'100%',maxWidth:'100%',maxHeight:'100%',minWidth:'0',minHeight:'0',contain:'strict',pointerEvents:'none',opacity:'0'});
-    this.frame=mountSurface(host,this.canvas);
+    // `this.frame` is the rAF callback below, so the mount wrapper needs its own name.
+    this.frameElement=mountSurface(host,this.canvas);
+    // The GPU canvas is opaque, so the CSS surface tint is hidden behind it.
+    // Layer the material tint on top of the refracted wallpaper instead, to
+    // match the SVG and CSS renderers.
+    this.tint=document.createElement('div');
+    Object.assign(this.tint.style,{position:'absolute',inset:'0',borderRadius:'inherit',pointerEvents:'none',background:this.material.tint});
+    this.frameElement.append(this.tint);
     const gl=this.canvas.getContext('webgl',{alpha:false,antialias:false,preserveDrawingBuffer:false});if(!gl)throw Error('WebGL unavailable');this.gl=gl;
     this.lost=false;this.dead=false;this.last='';this.uploaded=null;this.lastVideoTime=-1;this.lastDraw=0;
     this.onLost=e=>{e.preventDefault();this.lost=true;this.canvas.style.opacity='0'};
@@ -24,14 +31,21 @@ export class WebGLWallpaper {
     this.canvas.addEventListener('webglcontextlost',this.onLost);this.canvas.addEventListener('webglcontextrestored',this.onRestore);
     this.init();this.visible=true;
     this.observer=new IntersectionObserver(entries=>{this.visible=!!entries[0]?.isIntersecting});this.observer.observe(host);
+    // Firefox's compositor ignores the rounded `overflow` clip for a
+    // GPU-composited canvas, so the effect shows as a rectangle. `clip-path` is
+    // honoured by both engines, and the WebGL subtree has no `backdrop-filter`,
+    // so mirroring the host radius here is safe.
+    this.setClip();
+    try{this.clipObserver=new ResizeObserver(()=>this.setClip());this.clipObserver.observe(host)}catch{}
     this.frame=this.frame.bind(this);this.frameId=requestAnimationFrame(this.frame);
   }
+  setClip(){const r=getComputedStyle(this.host).borderRadius;this.frameElement.style.clipPath=r&&r!=='0px'?`inset(0 round ${r})`:''}
   init(){const gl=this.gl;const vert=shader(gl,gl.VERTEX_SHADER,VS),frag=shader(gl,gl.FRAGMENT_SHADER,FS),program=gl.createProgram();gl.attachShader(program,vert);gl.attachShader(program,frag);gl.linkProgram(program);if(!gl.getProgramParameter(program,gl.LINK_STATUS))throw Error(gl.getProgramInfoLog(program)||'Program linking error');this.vert=vert;this.frag=frag;this.program=program;
     gl.useProgram(program);this.buffer=gl.createBuffer();gl.bindBuffer(gl.ARRAY_BUFFER,this.buffer);gl.bufferData(gl.ARRAY_BUFFER,new Float32Array([-1,-1,3,-1,-1,3]),gl.STATIC_DRAW);const loc=gl.getAttribLocation(program,'position');gl.enableVertexAttribArray(loc);gl.vertexAttribPointer(loc,2,gl.FLOAT,false,0,0);
     this.texture=gl.createTexture();gl.bindTexture(gl.TEXTURE_2D,this.texture);gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MIN_FILTER,gl.LINEAR);gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MAG_FILTER,gl.LINEAR);gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_S,gl.CLAMP_TO_EDGE);gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_T,gl.CLAMP_TO_EDGE);
     this.uniform={};for(const name of ['size','offset','step','radius','bevel','bend','chroma','brightness','saturation','blur'])this.uniform[name]=gl.getUniformLocation(program,name);
   }
-  setMaterial(material,profile){this.material=normalizeMaterial(material);this.profile=profile;this.last=''}
+  setMaterial(material,profile){this.material=normalizeMaterial(material);this.profile=profile;this.last='';if(this.tint)this.tint.style.background=this.material.tint}
   frame(now){if(this.dead)return;this.frameId=requestAnimationFrame(this.frame);if(this.lost||!this.visible)return;
     if(now-this.lastDraw<1000/this.profile.maxFps-1)return;
     const source=this.getSource();if(!sourceReady(source))return;
@@ -60,5 +74,5 @@ export class WebGLWallpaper {
     for(const [key,val] of Object.entries({radius:Math.min(m.radius,w/2,h/2),bevel:m.bevel,bend:m.refraction*p.refraction,chroma:m.chroma,brightness:m.brightness,saturation:m.saturation,blur:m.blur*p.blur}))gl.uniform1f(this.uniform[key],val);
     gl.drawArrays(gl.TRIANGLES,0,3);this.canvas.style.opacity='1';this.last=state;this.lastVideoTime=isVideo?source.currentTime:-1;this.lastDraw=now;
   }
-  destroy(){this.dead=true;cancelAnimationFrame(this.frameId);this.observer.disconnect();this.canvas.removeEventListener('webglcontextlost',this.onLost);this.canvas.removeEventListener('webglcontextrestored',this.onRestore);const gl=this.gl;if(!gl.isContextLost()){gl.deleteTexture(this.texture);gl.deleteBuffer(this.buffer);gl.deleteProgram(this.program);gl.deleteShader(this.vert);gl.deleteShader(this.frag)}this.frame.remove()}
+  destroy(){this.dead=true;cancelAnimationFrame(this.frameId);this.observer.disconnect();this.clipObserver?.disconnect();this.canvas.removeEventListener('webglcontextlost',this.onLost);this.canvas.removeEventListener('webglcontextrestored',this.onRestore);const gl=this.gl;if(!gl.isContextLost()){gl.deleteTexture(this.texture);gl.deleteBuffer(this.buffer);gl.deleteProgram(this.program);gl.deleteShader(this.vert);gl.deleteShader(this.frag)}this.frameElement.remove()}
 }

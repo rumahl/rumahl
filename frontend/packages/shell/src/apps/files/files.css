@@ -28,27 +28,29 @@
   text-transform: uppercase;
   color: var(--rumahl-ui-color-text-muted, var(--rumahl-color-text-muted));
 }
-.files-app__sidebar nav { display: grid; gap: 2px; }
+.files-app__sidebar nav { display: grid; gap: 6px; }
 .files-nav {
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 0 10px;
+  padding: 0 12px;
   min-height: 34px;
   color: var(--rumahl-ui-color-text-secondary, var(--rumahl-ui-color-text-primary));
   font: inherit;
   font-size: 13px;
   text-align: start;
-  background: transparent;
-  border: 0;
-  border-radius: 7px;
+  background: var(--control-fill);
+  border: 1px solid transparent;
+  border-radius: 12px;
+  box-shadow: none;
   cursor: pointer;
 }
-.files-nav:hover { background: color-mix(in srgb, currentColor 8%, transparent); }
+.files-nav:hover { background: var(--control-hover); border-color: var(--control-border); color: var(--rumahl-ui-color-text-primary); }
 .files-nav.is-active {
   color: var(--rumahl-ui-color-text-primary);
-  background: color-mix(in srgb, currentColor 9%, transparent);
-  box-shadow: inset 2px 0 var(--rumahl-ui-color-accent);
+  background: var(--control-raised);
+  border-color: var(--control-border);
+  box-shadow: 0 1px 2px #0000001a;
 }
 .files-nav__icon { width: 17px; height: 17px; flex-shrink: 0; }
 
@@ -294,13 +296,16 @@
 
 /* Match Settings capsule controls, including light/solid material variants. */
 .shell .files-toolbar__group {
-  padding: 3px; gap: 3px; border: 1px solid var(--control-border); border-radius: 999px;
+  display: inline-flex; align-items: center; padding: 3px; gap: 0; border: 1px solid var(--control-border); border-radius: 999px;
   background: var(--control-recess), var(--control-fill); box-shadow: var(--control-inset);
 }
 .shell .files-toolbar__group .files-icon-btn {
-  width: 28px; height: 28px; min-height: 28px;
+  width: 30px; height: 28px; min-height: 28px; border-radius: 0;
   background: var(--control-raised); box-shadow: var(--control-button-shadow);
 }
+.shell .files-toolbar__group > .files-icon-btn:first-child { border-top-left-radius: 999px; border-bottom-left-radius: 999px; }
+.shell .files-toolbar__group > .files-icon-btn:last-child { border-top-right-radius: 999px; border-bottom-right-radius: 999px; }
+.shell .files-toolbar__group > .files-icon-btn + .files-icon-btn { border-left: 1px solid var(--control-border); }
 .shell .files-toolbar__group .files-icon-btn:disabled,
 .shell .files-toolbar__group .files-icon-btn:has(input:disabled) { background: transparent; box-shadow: none; opacity: .4; }
 .shell .files-toolbar__group .files-icon-btn:active:not(:disabled) { box-shadow: var(--control-inset); }
@@ -316,5 +321,24 @@
 .shell .files-search input { width: 100%; min-width: 0; font-size: 12px; }
 .shell .files-search:focus-within, .shell .files-upload:focus-within { outline: 2px solid var(--rumahl-ui-color-accent); outline-offset: 3px; }
 .shell .files-search input:focus-visible { outline: none; }
+/* The grid/list view control is a switch (sliding thumb), not a button group. */
+.shell .files-view-switch { position: relative; display: inline-flex; flex: 0 0 auto; cursor: pointer; }
+.shell .files-view-switch input { position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; opacity: 0; cursor: pointer; }
+.shell .files-view-switch__track {
+  position: relative; display: inline-flex; padding: 3px; border: 1px solid var(--control-border);
+  border-radius: 999px; background: var(--control-recess), var(--control-fill); box-shadow: var(--control-inset);
+}
+.shell .files-view-switch__thumb {
+  position: absolute; top: 3px; left: 3px; width: 30px; height: 28px; border-radius: 999px;
+  background: var(--control-raised); box-shadow: var(--control-button-shadow);
+  transition: transform 180ms cubic-bezier(.2, .7, .2, 1);
+}
+.shell .files-view-switch__icon { position: relative; z-index: 1; display: grid; place-items: center; width: 30px; height: 28px; color: var(--rumahl-ui-color-text-muted); }
+.shell .files-view-switch__icon svg { width: 16px; height: 16px; }
+.shell .files-view-switch input:checked ~ .files-view-switch__track .files-view-switch__thumb { transform: translateX(30px); }
+.shell .files-view-switch input:not(:checked) ~ .files-view-switch__track .files-view-switch__icon--grid,
+.shell .files-view-switch input:checked ~ .files-view-switch__track .files-view-switch__icon--list { color: var(--rumahl-ui-color-text-primary); }
+.shell .files-view-switch input:focus-visible ~ .files-view-switch__track { outline: 2px solid var(--rumahl-ui-color-accent); outline-offset: 2px; }
+@media (prefers-reduced-motion: reduce) { .shell .files-view-switch__thumb { transition: none; } }
 .shell .files-draft { flex-wrap: wrap; }
 .shell .files-draft input { min-width: 0; flex: 1; }
