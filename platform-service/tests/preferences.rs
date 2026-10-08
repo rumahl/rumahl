@@ -34,6 +34,7 @@ async fn preferences_are_session_scoped_csrf_protected_and_revision_checked() {
     let alice = sessions.login("alice", password.clone()).unwrap();
     let bob = sessions.login("bob", password).unwrap();
     let app = router(GatewayState {
+        host_files: None,
         config: GatewayConfig::new("https://rumahl.test", root.join("ssr.sock")).unwrap(),
         backend: shell_backend(&accounts, &root.join("platform.sqlite"), "test", "en").unwrap(),
         browser_sessions: Some(sessions.clone()),

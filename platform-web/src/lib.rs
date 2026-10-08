@@ -32,6 +32,9 @@ pub use apps::{
 
 mod preferences;
 
+mod host_files;
+pub use host_files::{HostArea, HostEntry, HostError, HostFiles};
+
 mod os_mode;
 
 mod files;

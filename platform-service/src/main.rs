@@ -225,6 +225,9 @@ async fn run() -> Result<(), ServiceError> {
             )?),
             audit.clone(),
         ))),
+        host_files: Some(Arc::new(
+            rumahl_platform_service::host_files::LocalHostFiles::from_environment(),
+        )),
         oidc: None,
     };
     // Serve every built-in theme stylesheet so the account theme renders on the

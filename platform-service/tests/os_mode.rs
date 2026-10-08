@@ -32,6 +32,7 @@ async fn raising_the_mode_requires_reauthentication() {
     let alice = sessions.login("alice", password.clone()).unwrap();
 
     let app = router(GatewayState {
+        host_files: None,
         config: GatewayConfig::new("https://rumahl.test", root.join("ssr.sock")).unwrap(),
         backend: shell_backend(&accounts, &root.join("platform.sqlite"), "test", "en").unwrap(),
         browser_sessions: Some(sessions.clone()),

@@ -98,6 +98,8 @@ pub struct GatewayState {
     pub preferences: Option<Arc<dyn rumahl_core::ShellPreferencesRepository>>,
     /// Exposure-mode policy; None keeps the guided default.
     pub os_mode: Option<Arc<dyn rumahl_core::OsModeRepository>>,
+    /// Real host roots the explorer may browse; None disables them.
+    pub host_files: Option<Arc<dyn crate::HostFiles>>,
     /// None leaves the Shell and recovery routes usable while OIDC is offline.
     pub oidc: Option<Arc<dyn oidc::OidcGateway>>,
     pub browser_sessions: Option<Arc<dyn crate::BrowserSessions>>,
@@ -130,6 +132,7 @@ pub fn router(state: GatewayState) -> Router {
         .merge(oidc::routes())
         .merge(crate::preferences::routes())
         .merge(crate::os_mode::routes())
+        .merge(crate::host_files::routes())
         .merge(crate::workspace::routes())
         .merge(crate::files::routes())
         .merge(crate::browser_auth::routes())
@@ -1181,6 +1184,7 @@ mod tests {
 
     fn state(available: bool, widget_url: &'static str) -> GatewayState {
         GatewayState {
+            host_files: None,
             config: GatewayConfig::new("https://rumahl.dev", "/private/run/rumahl-ssr.sock")
                 .unwrap(),
             backend: Arc::new(TestBackend {
@@ -1312,6 +1316,7 @@ mod tests {
             .await
             .unwrap();
         let app = router(GatewayState {
+            host_files: None,
             config: GatewayConfig::new("https://rumahl.dev", "/private/run/rumahl-ssr.sock")
                 .unwrap(),
             backend: Arc::new(TestBackend {
@@ -1445,6 +1450,7 @@ mod tests {
             .await
             .unwrap();
         let app = router(GatewayState {
+            host_files: None,
             config: GatewayConfig::new("https://rumahl.dev", "/private/run/rumahl-ssr.sock")
                 .unwrap(),
             backend: Arc::new(TestBackend {
