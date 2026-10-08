@@ -1,6 +1,6 @@
 import type { RouteObject } from "react-router";
 import type { MessageKey } from "../i18n/locales/en";
-import { FilesApp } from "./FilesApp";
+import { FilesApp } from "./files/FilesApp";
 import { AppManager } from "./AppManager";
 
 export interface FirstPartyApp {

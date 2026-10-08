@@ -71,6 +71,9 @@ export const english = {
   "files.forward": "Forward",
   "files.up": "Up",
   "files.readOnly": "Read-only",
+  "files.name": "Name",
+  "files.size": "Size",
+  "files.modified": "Modified",
 
   "preferences.scope": "Save for",
   "preferences.user": "My account · all devices",

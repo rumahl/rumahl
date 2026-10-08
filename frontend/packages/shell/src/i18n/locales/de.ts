@@ -66,6 +66,9 @@ export const german = {
   "files.forward": "Vorwärts",
   "files.up": "Nach oben",
   "files.readOnly": "Schreibgeschützt",
+  "files.name": "Name",
+  "files.size": "Größe",
+  "files.modified": "Geändert",
 
   "preferences.scope": "Speichern für",
   "preferences.user": "Mein Konto · alle Geräte",
