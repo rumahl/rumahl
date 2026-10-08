@@ -4,36 +4,78 @@
   --control-fill: #10182014;
   --control-hover: #ffffff0c;
   --control-popup: color-mix(in srgb, var(--control-base) 94%, transparent);
-  --control-border: color-mix(in srgb, var(--rumahl-ui-color-text-primary) 10%, transparent);
-  --control-border-hover: color-mix(in srgb, var(--rumahl-ui-color-text-primary) 18%, transparent);
+  --control-border: color-mix(
+    in srgb,
+    var(--rumahl-ui-color-text-primary) 10%,
+    transparent
+  );
+  --control-border-hover: color-mix(
+    in srgb,
+    var(--rumahl-ui-color-text-primary) 18%,
+    transparent
+  );
   --control-recess: linear-gradient(180deg, #0000000d, transparent 65%);
-  --control-button-shadow: inset 0 1px 0 #ffffff24, 0 2px 4px #00000026, 0 5px 12px #0000000d;
+  --control-button-shadow:
+    inset 0 1px 0 #ffffff24, 0 2px 4px #00000026, 0 5px 12px #0000000d;
   --control-raised: #ffffff21;
   --control-thumb: #f5f7fc;
   --control-popup-shadow: 0 8px 24px #0000002e, inset 0 1px 0 #ffffff12;
-  --control-inset: inset 0 1px 3px #00000038, inset 0 0 0 1px #0000000a, 0 1px 0 #ffffff12;
+  --control-inset:
+    inset 0 1px 3px #00000038, inset 0 0 0 1px #0000000a, 0 1px 0 #ffffff12;
   --control-filter: none;
 }
 .shell[data-scheme="light"] {
   --control-fill: #3345630b;
   --control-hover: #33456310;
   --control-raised: #ffffffa6;
-  --control-button-shadow: inset 0 1px 0 #ffffffef, 0 2px 4px #53648024, 0 5px 12px #5364800d;
+  --control-button-shadow:
+    inset 0 1px 0 #ffffffef, 0 2px 4px #53648024, 0 5px 12px #5364800d;
   --control-border: #5364801c;
   --control-border-hover: #91a0b655;
   --control-popup-shadow: 0 8px 24px #677fa024, inset 0 1px 0 #ffffffbd;
-  --control-inset: inset 0 1px 3px #53648026, inset 0 0 0 1px #53648006, 0 1px 0 #ffffffa6;
+  --control-inset:
+    inset 0 1px 3px #53648026, inset 0 0 0 1px #53648006, 0 1px 0 #ffffffa6;
 }
 /* Solid keeps the capsule material opaque, without backdrop processing. */
 .shell[data-material="solid"] {
-  --control-fill: color-mix(in srgb, var(--control-base) 93%, var(--rumahl-ui-color-text-primary));
-  --control-hover: color-mix(in srgb, var(--control-base) 96%, var(--rumahl-ui-color-text-primary));
+  --control-fill: color-mix(
+    in srgb,
+    var(--control-base) 93%,
+    var(--rumahl-ui-color-text-primary)
+  );
+  --control-hover: color-mix(
+    in srgb,
+    var(--control-base) 96%,
+    var(--rumahl-ui-color-text-primary)
+  );
   --control-popup: var(--control-base);
   --control-filter: none;
 }
 
-
-.shell :is(.rumahl-input, .rumahl-textarea, .rumahl-select__trigger, .rumahl-color-picker__trigger, .settings-content input:where(:not([type]), [type="text"], [type="number"], [type="email"], [type="password"], [type="search"], [type="url"], [type="tel"], [type="date"], [type="time"]), .settings-content textarea, .settings-content select, .rumahl-color-picker__input, .rumahl-color-picker__rgb input) {
+.shell
+  :is(
+    .rumahl-input,
+    .rumahl-textarea,
+    .rumahl-select__trigger,
+    .rumahl-color-picker__trigger,
+    .settings-content
+      input:where(
+        :not([type]),
+        [type="text"],
+        [type="number"],
+        [type="email"],
+        [type="password"],
+        [type="search"],
+        [type="url"],
+        [type="tel"],
+        [type="date"],
+        [type="time"]
+      ),
+    .settings-content textarea,
+    .settings-content select,
+    .rumahl-color-picker__input,
+    .rumahl-color-picker__rgb input
+  ) {
   box-sizing: border-box;
   min-width: 0;
   min-height: 36px;
@@ -49,21 +91,64 @@
   font: inherit;
   font-size: 12px;
   font-weight: 560;
-  transition: background 150ms ease, border-color 150ms ease;
+  transition:
+    background 150ms ease,
+    border-color 150ms ease;
 }
-.shell :is(.rumahl-input, .rumahl-textarea, .rumahl-select__trigger, .rumahl-color-picker__trigger, .settings-content input:where(:not([type]), [type="text"], [type="number"], [type="email"], [type="password"], [type="search"], [type="url"], [type="tel"], [type="date"], [type="time"]), .settings-content textarea, .settings-content select, .rumahl-color-picker__input, .rumahl-color-picker__rgb input):hover:not(:disabled) {
+.shell
+  :is(
+    .rumahl-input,
+    .rumahl-textarea,
+    .rumahl-select__trigger,
+    .rumahl-color-picker__trigger,
+    .settings-content
+      input:where(
+        :not([type]),
+        [type="text"],
+        [type="number"],
+        [type="email"],
+        [type="password"],
+        [type="search"],
+        [type="url"],
+        [type="tel"],
+        [type="date"],
+        [type="time"]
+      ),
+    .settings-content textarea,
+    .settings-content select,
+    .rumahl-color-picker__input,
+    .rumahl-color-picker__rgb input
+  ):hover:not(:disabled) {
   border-color: var(--control-border-hover);
   background: var(--control-recess), var(--control-hover);
 }
-.shell :is(.rumahl-select, .rumahl-color-picker, .settings-content) :is(button, input, select, textarea, [tabindex]):focus-visible {
+.shell
+  :is(.rumahl-select, .rumahl-color-picker, .settings-content)
+  :is(button, input, select, textarea, [tabindex]):focus-visible {
   outline: 2px solid var(--rumahl-ui-color-accent);
   outline-offset: 3px;
 }
-.shell .settings-content :is(input, textarea)::placeholder { color: var(--rumahl-ui-color-text-muted); opacity: .8; }
-.shell :is(.rumahl-select__trigger, .settings-content input, .settings-content select, .settings-content textarea):disabled { opacity: .5; cursor: not-allowed; }
-.shell .settings-content :is(input, textarea)[aria-invalid="true"] { border-color: var(--rumahl-ui-color-danger, #d95d65); }
+.shell .settings-content :is(input, textarea)::placeholder {
+  color: var(--rumahl-ui-color-text-muted);
+  opacity: 0.8;
+}
+.shell
+  :is(
+    .rumahl-select__trigger,
+    .settings-content input,
+    .settings-content select,
+    .settings-content textarea
+  ):disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.shell .settings-content :is(input, textarea)[aria-invalid="true"] {
+  border-color: var(--rumahl-ui-color-danger, #d95d65);
+}
 
-.shell .settings-content input[type="file"]::file-selector-button {
+.shell
+  :is(.settings-content, .rumahl-file)
+  input[type="file"]::file-selector-button {
   padding: 8px 14px;
   border: 1px solid var(--control-border);
   border-radius: 999px;
@@ -75,10 +160,26 @@
   cursor: pointer;
 }
 
-.shell .rumahl-select { max-width: 100%; }
-.shell .rumahl-select__trigger { width: 100%; gap: 12px; text-align: left; display: flex; align-items: center; }
-.shell .rumahl-select__chevron { width: 14px; height: 14px; flex: none; color: var(--rumahl-ui-color-text-muted); transition: transform 150ms ease; }
-.shell .rumahl-select__trigger[aria-expanded="true"] .rumahl-select__chevron { transform: rotate(180deg); }
+.shell .rumahl-select {
+  max-width: 100%;
+}
+.shell .rumahl-select__trigger {
+  width: 100%;
+  gap: 12px;
+  text-align: left;
+  display: flex;
+  align-items: center;
+}
+.shell .rumahl-select__chevron {
+  width: 14px;
+  height: 14px;
+  flex: none;
+  color: var(--rumahl-ui-color-text-muted);
+  transition: transform 150ms ease;
+}
+.shell .rumahl-select__trigger[aria-expanded="true"] .rumahl-select__chevron {
+  transform: rotate(180deg);
+}
 .shell :is(.rumahl-select__menu, .rumahl-color-picker__popover) {
   border: 1px solid var(--control-border);
   border-radius: 14px;
@@ -87,30 +188,115 @@
   -webkit-backdrop-filter: var(--control-filter);
   color: var(--rumahl-ui-color-text-primary);
 }
-.shell .rumahl-select__menu { z-index: 110; max-height: 240px; overflow-y: auto; min-width: 100%; width: max-content; max-width: min(320px, 80vw); padding: 4px; gap: 1px; }
-.shell .rumahl-select__option { display: flex; align-items: center; gap: 10px; min-height: 28px; padding: 5px 9px; border: 0; border-radius: 9px; background: transparent; color: inherit; font-size: 12px; box-shadow: none; }
-.shell .rumahl-select__option::after { content: ""; width: 12px; flex: none; margin-left: auto; }
-.shell .rumahl-select__option.is-active::after { content: "✓"; color: var(--rumahl-ui-color-accent); }
-.shell .rumahl-select__option:hover { background: color-mix(in srgb, var(--rumahl-ui-color-text-primary) 7%, transparent); }
-.shell .rumahl-select__option.is-active { background: var(--control-fill); box-shadow: var(--control-inset); }
-.shell .rumahl-select__option[aria-disabled="true"] { color: var(--rumahl-ui-color-text-muted); cursor: not-allowed; }
-.shell .rumahl-select__option[aria-disabled="true"]:hover { background: transparent; }
-.shell .rumahl-select__warn { display: inline-flex; align-items: center; flex: none; margin-left: 2px; color: #e0a52e; vertical-align: middle; }
-.shell .rumahl-select__warn svg { width: 15px; height: 15px; }
-.shell .rumahl-color-picker__trigger { min-height: 36px; padding-block: 5px; }
-.shell .rumahl-color-picker__popover { overflow: visible; padding: 10px; }
-.shell .rumahl-color-picker__color-area { height: 144px; border: 1px solid var(--control-border); border-radius: 13px; }
-.shell .rumahl-color-picker__body { padding: 10px 0 0; gap: 10px; }
-.shell .rumahl-color-picker__format-row { align-items: end; }
-.shell .rumahl-color-picker__preset { padding: 0; border-radius: 7px; }
-.shell .rumahl-color-picker__hex { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+.shell .rumahl-select__menu {
+  z-index: 110;
+  max-height: 240px;
+  overflow-y: auto;
+  min-width: 100%;
+  width: max-content;
+  max-width: min(320px, 80vw);
+  padding: 4px;
+  gap: 1px;
+}
+.shell .rumahl-select__option {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 28px;
+  padding: 5px 9px;
+  border: 0;
+  border-radius: 9px;
+  background: transparent;
+  color: inherit;
+  font-size: 12px;
+  box-shadow: none;
+}
+.shell .rumahl-select__option::after {
+  content: "";
+  width: 12px;
+  flex: none;
+  margin-left: auto;
+}
+.shell .rumahl-select__option.is-active::after {
+  content: "✓";
+  color: var(--rumahl-ui-color-accent);
+}
+.shell .rumahl-select__option:hover {
+  background: color-mix(
+    in srgb,
+    var(--rumahl-ui-color-text-primary) 7%,
+    transparent
+  );
+}
+.shell .rumahl-select__option.is-active {
+  background: var(--control-fill);
+  box-shadow: var(--control-inset);
+}
+.shell .rumahl-select__option[aria-disabled="true"] {
+  color: var(--rumahl-ui-color-text-muted);
+  cursor: not-allowed;
+}
+.shell .rumahl-select__option[aria-disabled="true"]:hover {
+  background: transparent;
+}
+.shell .rumahl-select__warn {
+  display: inline-flex;
+  align-items: center;
+  flex: none;
+  margin-left: 2px;
+  color: #e0a52e;
+  vertical-align: middle;
+}
+.shell .rumahl-select__warn svg {
+  width: 15px;
+  height: 15px;
+}
+.shell .rumahl-color-picker__trigger {
+  min-height: 36px;
+  padding-block: 5px;
+}
+.shell .rumahl-color-picker__popover {
+  overflow: visible;
+  padding: 10px;
+}
+.shell .rumahl-color-picker__color-area {
+  height: 144px;
+  border: 1px solid var(--control-border);
+  border-radius: 13px;
+}
+.shell .rumahl-color-picker__body {
+  padding: 10px 0 0;
+  gap: 10px;
+}
+.shell .rumahl-color-picker__format-row {
+  align-items: end;
+}
+.shell .rumahl-color-picker__preset {
+  padding: 0;
+  border-radius: 7px;
+}
+.shell .rumahl-color-picker__hex {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
 
 @media (prefers-reduced-motion: reduce) {
-  .shell :is(.rumahl-select *, .rumahl-color-picker *, .settings-content input, .settings-content textarea, .settings-content select) { transition: none; }
+  .shell
+    :is(
+      .rumahl-select *,
+      .rumahl-color-picker *,
+      .settings-content input,
+      .settings-content textarea,
+      .settings-content select
+    ) {
+    transition: none;
+  }
 }
 
 /* The hue spectrum retains its dedicated color rendering. */
-.shell .settings-content input[type="range"]:not(.rumahl-color-picker__hue) {
+.shell
+  :is(.settings-content input[type="range"], .rumahl-range input):not(
+    .rumahl-color-picker__hue
+  ) {
   appearance: none;
   background: transparent;
   height: 36px;
@@ -121,21 +307,30 @@
   box-shadow: var(--control-inset);
   cursor: pointer;
 }
-.shell .settings-content input[type="range"]:not(.rumahl-color-picker__hue)::-webkit-slider-runnable-track {
+.shell
+  :is(.settings-content input[type="range"], .rumahl-range input):not(
+    .rumahl-color-picker__hue
+  )::-webkit-slider-runnable-track {
   height: 6px;
   border: 1px solid var(--control-border);
   border-radius: 999px;
   background: var(--control-recess), var(--control-fill);
   box-shadow: var(--control-inset);
 }
-.shell .settings-content input[type="range"]:not(.rumahl-color-picker__hue)::-moz-range-track {
+.shell
+  :is(.settings-content input[type="range"], .rumahl-range input):not(
+    .rumahl-color-picker__hue
+  )::-moz-range-track {
   height: 4px;
   border: 1px solid var(--control-border);
   border-radius: 999px;
   background: var(--control-recess), var(--control-fill);
   box-shadow: var(--control-inset);
 }
-.shell .settings-content input[type="range"]:not(.rumahl-color-picker__hue)::-webkit-slider-thumb {
+.shell
+  :is(.settings-content input[type="range"], .rumahl-range input):not(
+    .rumahl-color-picker__hue
+  )::-webkit-slider-thumb {
   appearance: none;
   width: 16px;
   height: 16px;
@@ -145,7 +340,10 @@
   background: var(--control-thumb);
   box-shadow: 0 3px 7px #0000002e;
 }
-.shell .settings-content input[type="range"]:not(.rumahl-color-picker__hue)::-moz-range-thumb {
+.shell
+  :is(.settings-content input[type="range"], .rumahl-range input):not(
+    .rumahl-color-picker__hue
+  )::-moz-range-thumb {
   width: 12px;
   height: 12px;
   border: 2px solid var(--control-base);
@@ -155,28 +353,67 @@
 }
 @media (prefers-reduced-transparency: reduce) {
   .shell {
-    --control-fill: color-mix(in srgb, var(--control-base) 93%, var(--rumahl-ui-color-text-primary));
-    --control-hover: color-mix(in srgb, var(--control-base) 96%, var(--rumahl-ui-color-text-primary));
+    --control-fill: color-mix(
+      in srgb,
+      var(--control-base) 93%,
+      var(--rumahl-ui-color-text-primary)
+    );
+    --control-hover: color-mix(
+      in srgb,
+      var(--control-base) 96%,
+      var(--rumahl-ui-color-text-primary)
+    );
     --control-popup: var(--control-base);
     --control-filter: none;
   }
 }
 @media (forced-colors: active) {
-  .shell .settings-content input[type="range"]:not(.rumahl-color-picker__hue) { appearance: auto; }
+  .shell
+    :is(.settings-content input[type="range"], .rumahl-range input):not(
+      .rumahl-color-picker__hue
+    ) {
+    appearance: auto;
+  }
 }
 
 /* Light scheme: the slider greys must not sink into the bright glass. */
-.shell[data-scheme="light"] .settings-content input[type="range"]:not(.rumahl-color-picker__hue) {
-  border-color: color-mix(in srgb, var(--rumahl-ui-color-text-primary) 18%, transparent);
+.shell[data-scheme="light"]
+  .settings-content
+  input[type="range"]:not(.rumahl-color-picker__hue) {
+  border-color: color-mix(
+    in srgb,
+    var(--rumahl-ui-color-text-primary) 18%,
+    transparent
+  );
 }
-.shell[data-scheme="light"] .settings-content input[type="range"]:not(.rumahl-color-picker__hue)::-webkit-slider-runnable-track,
-.shell[data-scheme="light"] .settings-content input[type="range"]:not(.rumahl-color-picker__hue)::-moz-range-track {
-  border-color: color-mix(in srgb, var(--rumahl-ui-color-text-primary) 26%, transparent);
-  background: var(--control-recess), color-mix(in srgb, var(--rumahl-ui-color-text-primary) 14%, transparent);
+.shell[data-scheme="light"]
+  .settings-content
+  input[type="range"]:not(
+    .rumahl-color-picker__hue
+  )::-webkit-slider-runnable-track,
+.shell[data-scheme="light"]
+  .settings-content
+  input[type="range"]:not(.rumahl-color-picker__hue)::-moz-range-track {
+  border-color: color-mix(
+    in srgb,
+    var(--rumahl-ui-color-text-primary) 26%,
+    transparent
+  );
+  background:
+    var(--control-recess),
+    color-mix(in srgb, var(--rumahl-ui-color-text-primary) 14%, transparent);
 }
-.shell[data-scheme="light"] .settings-content input[type="range"]:not(.rumahl-color-picker__hue)::-webkit-slider-thumb,
-.shell[data-scheme="light"] .settings-content input[type="range"]:not(.rumahl-color-picker__hue)::-moz-range-thumb {
-  border-color: color-mix(in srgb, var(--rumahl-ui-color-text-primary) 32%, transparent);
+.shell[data-scheme="light"]
+  .settings-content
+  input[type="range"]:not(.rumahl-color-picker__hue)::-webkit-slider-thumb,
+.shell[data-scheme="light"]
+  .settings-content
+  input[type="range"]:not(.rumahl-color-picker__hue)::-moz-range-thumb {
+  border-color: color-mix(
+    in srgb,
+    var(--rumahl-ui-color-text-primary) 32%,
+    transparent
+  );
   box-shadow: 0 2px 6px #00000040;
 }
 
@@ -206,98 +443,274 @@
   overscroll-behavior: contain;
   box-shadow: var(--control-popup-shadow);
 }
-.shell .rumahl-select__menu[popover]:not(:popover-open) { display: none; }
-.shell .rumahl-color-picker__trigger-swatch { width: 24px; height: 24px; border-radius: 50%; }
-.shell .rumahl-color-picker__label { display: none; }
-.shell .rumahl-color-picker__value { font-size: 12px; font-weight: 500; }
-.shell .rumahl-color-picker__presets { grid-template-columns: repeat(auto-fill, 24px); gap: 7px; }
-.shell .rumahl-color-picker__preset { width: 24px; height: 24px; max-width: 24px; border-radius: 50%; }
+.shell .rumahl-select__menu[popover]:not(:popover-open) {
+  display: none;
+}
+.shell .rumahl-color-picker__trigger-swatch {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+}
+.shell .rumahl-color-picker__label {
+  display: none;
+}
+.shell .rumahl-color-picker__value {
+  font-size: 12px;
+  font-weight: 500;
+}
+.shell .rumahl-color-picker__presets {
+  grid-template-columns: repeat(auto-fill, 24px);
+  gap: 7px;
+}
+.shell .rumahl-color-picker__preset {
+  width: 24px;
+  height: 24px;
+  max-width: 24px;
+  border-radius: 50%;
+}
 
 /* Multiline fields keep the capsule’s material with a practical corner radius. */
-.shell .settings-content textarea { border-radius: 18px; min-height: 88px; line-height: 1.5; resize: vertical; }
-.shell :is(.rumahl-select__trigger, .rumahl-color-picker__trigger, .rumahl-color-picker__input, .rumahl-color-picker__rgb input, .settings-content textarea, .settings-content select):focus-visible {
-  border-color: color-mix(in srgb, var(--rumahl-ui-color-accent) 40%, var(--control-border));
-  outline: 2px solid color-mix(in srgb, var(--rumahl-ui-color-accent) 40%, transparent);
+.shell .settings-content textarea {
+  border-radius: 18px;
+  min-height: 88px;
+  line-height: 1.5;
+  resize: vertical;
+}
+.shell
+  :is(
+    .rumahl-select__trigger,
+    .rumahl-color-picker__trigger,
+    .rumahl-color-picker__input,
+    .rumahl-color-picker__rgb input,
+    .settings-content textarea,
+    .settings-content select
+  ):focus-visible {
+  border-color: color-mix(
+    in srgb,
+    var(--rumahl-ui-color-accent) 40%,
+    var(--control-border)
+  );
+  outline: 2px solid
+    color-mix(in srgb, var(--rumahl-ui-color-accent) 40%, transparent);
   outline-offset: 2px;
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--rumahl-ui-color-accent) 10%, transparent), var(--control-inset);
+  box-shadow:
+    0 0 0 3px color-mix(in srgb, var(--rumahl-ui-color-accent) 10%, transparent),
+    var(--control-inset);
 }
-.shell .settings-content :is(.segmented, .settings-tabs) {
-  padding: 3px; gap: 3px; border-radius: 999px;
+.shell
+  :is(
+    .rumahl-toggle-group,
+    .settings-content .segmented,
+    .settings-content .settings-tabs
+  ) {
+  padding: 3px;
+  gap: 3px;
+  border-radius: 999px;
   border: 1px solid var(--control-border);
-  background: var(--control-fill); box-shadow: var(--control-inset);
+  background: var(--control-fill);
+  box-shadow: var(--control-inset);
 }
-.shell .settings-content :is(.segmented, .settings-tabs) button {
-  min-height: 28px; padding: 5px 12px; border: 0; border-radius: 999px;
-  background: transparent; color: var(--rumahl-ui-color-text-muted); box-shadow: none;
-  font-size: 12px; font-weight: 600;
+.shell
+  :is(
+    .rumahl-toggle-group,
+    .settings-content .segmented,
+    .settings-content .settings-tabs
+  )
+  button {
+  min-height: 28px;
+  padding: 5px 12px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--rumahl-ui-color-text-muted);
+  box-shadow: none;
+  font-size: 12px;
+  font-weight: 600;
 }
-.shell .settings-content :is(.segmented, .settings-tabs) button[aria-pressed="true"] {
-  background: var(--control-raised); color: var(--rumahl-ui-color-text-primary);
-  box-shadow: inset 0 1px 0 #ffffff1a, 0 1px 3px #0000001f, 0 2px 5px #0000000a;
+.shell
+  :is(
+    .rumahl-toggle-group,
+    .settings-content .segmented,
+    .settings-content .settings-tabs
+  )
+  button[aria-pressed="true"] {
+  background: var(--control-raised);
+  color: var(--rumahl-ui-color-text-primary);
+  box-shadow:
+    inset 0 1px 0 #ffffff1a,
+    0 1px 3px #0000001f,
+    0 2px 5px #0000000a;
 }
-.shell .settings-content :is(.appearance-switch input, input[role="switch"]) {
-  appearance: none; position: relative; flex: none; width: 44px; height: 26px; margin: 0;
-  padding: 0; border-radius: 999px; border: 1px solid var(--control-border);
-  background: var(--control-fill); box-shadow: var(--control-inset);
+.shell :is(.appearance-switch input, input[role="switch"]) {
+  appearance: none;
+  position: relative;
+  flex: none;
+  width: 44px;
+  height: 26px;
+  margin: 0;
+  padding: 0;
+  border-radius: 999px;
+  border: 1px solid var(--control-border);
+  background: var(--control-fill);
+  box-shadow: var(--control-inset);
 }
-.shell .settings-content :is(.appearance-switch input, input[role="switch"])::before {
-  content: ""; position: absolute; left: 3px; top: 3px; width: 18px; height: 18px;
-  border-radius: 50%; background: var(--control-thumb); box-shadow: 0 2px 6px #00000026;
-  transform: none; transition: transform 160ms ease;
+.shell :is(.appearance-switch input, input[role="switch"])::before {
+  content: "";
+  position: absolute;
+  left: 3px;
+  top: 3px;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--control-thumb);
+  box-shadow: 0 2px 6px #00000026;
+  transform: none;
+  transition: transform 160ms ease;
 }
-.shell .settings-content :is(.appearance-switch input, input[role="switch"]):checked {
-  background: color-mix(in srgb, var(--control-fill) 72%, var(--rumahl-ui-color-accent));
-  border-color: color-mix(in srgb, var(--control-border) 70%, var(--rumahl-ui-color-accent));
+.shell :is(.appearance-switch input, input[role="switch"]):checked {
+  background: color-mix(
+    in srgb,
+    var(--control-fill) 72%,
+    var(--rumahl-ui-color-accent)
+  );
+  border-color: color-mix(
+    in srgb,
+    var(--control-border) 70%,
+    var(--rumahl-ui-color-accent)
+  );
 }
-.shell .settings-content :is(.appearance-switch input, input[role="switch"]):checked::before { left: 3px; transform: translateX(18px); }
-.shell .settings-content input[type="checkbox"]:not([role="switch"]):not(.appearance-switch input) { accent-color: var(--rumahl-ui-color-accent); }
+.shell :is(.appearance-switch input, input[role="switch"]):checked::before {
+  left: 3px;
+  transform: translateX(18px);
+}
+.shell
+  .settings-content
+  input[type="checkbox"]:not([role="switch"]):not(.appearance-switch input) {
+  accent-color: var(--rumahl-ui-color-accent);
+}
 @media (prefers-reduced-motion: reduce) {
-  .shell .settings-content input[role="switch"]::before { transition: none; }
+  .shell .settings-content input[role="switch"]::before {
+    transition: none;
+  }
 }
 @media (forced-colors: active) {
-  .shell .settings-content :is(.appearance-switch input, input[role="switch"]) { appearance: auto; }
-  .shell .settings-content :is(.appearance-switch input, input[role="switch"])::before { display: none; }
+  .shell :is(.appearance-switch input, input[role="switch"]) {
+    appearance: auto;
+  }
+  .shell :is(.appearance-switch input, input[role="switch"])::before {
+    display: none;
+  }
 }
 
 .shell .settings-content input[type="file"] {
-  max-width: 100%; min-height: 36px; padding: 3px;
-  border: 1px solid var(--control-border); border-radius: 999px;
-  background: var(--control-fill); box-shadow: var(--control-inset);
-  color: var(--rumahl-ui-color-text-muted); font-size: 11px;
+  max-width: 100%;
+  min-height: 36px;
+  padding: 3px;
+  border: 1px solid var(--control-border);
+  border-radius: 999px;
+  background: var(--control-fill);
+  box-shadow: var(--control-inset);
+  color: var(--rumahl-ui-color-text-muted);
+  font-size: 11px;
 }
-.shell .settings-content input[type="file"]::file-selector-button {
-  min-height: 28px; padding: 4px 11px; margin-right: 8px;
-  border: 0; background: var(--control-raised); font-weight: 600;
+.shell
+  :is(.settings-content, .rumahl-file)
+  input[type="file"]::file-selector-button {
+  min-height: 28px;
+  padding: 4px 11px;
+  margin-right: 8px;
+  border: 0;
+  background: var(--control-raised);
+  font-weight: 600;
 }
 
 /* Compact triggers, with a fully themed popup in every context. */
-.shell .rumahl-select__value { display: flex; align-items: center; gap: 6px; min-width: 0; flex: 1 1 auto; }
-.shell .rumahl-select__value > .rumahl-tooltip-anchor { flex: none; }
-.shell .rumahl-select__label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.shell .rumahl-select__option { width: 100%; min-width: 0; margin: 0; box-sizing: border-box; line-height: 1.4; }
-.shell .rumahl-select__option:focus-visible { outline: none; background: color-mix(in srgb, var(--rumahl-ui-color-accent) 18%, transparent); box-shadow: inset 0 0 0 1px var(--rumahl-ui-color-accent); }
-.shell .rumahl-color-picker__format-row .rumahl-select__trigger { padding-inline: 10px; gap: 5px; }
-.shell .menubar__mode .rumahl-select__trigger { min-height: 24px; padding: 3px 9px; font-size: 11px; }
+.shell .rumahl-select__value {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  flex: 1 1 auto;
+}
+.shell .rumahl-select__value > .rumahl-tooltip-anchor {
+  flex: none;
+}
+.shell .rumahl-select__label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.shell .rumahl-select__option {
+  width: 100%;
+  min-width: 0;
+  margin: 0;
+  box-sizing: border-box;
+  line-height: 1.4;
+}
+.shell .rumahl-select__option:focus-visible {
+  outline: none;
+  background: color-mix(
+    in srgb,
+    var(--rumahl-ui-color-accent) 18%,
+    transparent
+  );
+  box-shadow: inset 0 0 0 1px var(--rumahl-ui-color-accent);
+}
+.shell .rumahl-color-picker__format-row .rumahl-select__trigger {
+  padding-inline: 10px;
+  gap: 5px;
+}
+.shell .menubar__mode .rumahl-select__trigger {
+  min-height: 24px;
+  padding: 3px 9px;
+  font-size: 11px;
+}
 
 /* Popup fields use the same capsule proportions at a compact, secondary size. */
-.shell .rumahl-color-picker__popover :is(.rumahl-select__trigger, .rumahl-color-picker__input, .rumahl-color-picker__rgb input) {
-  min-height: 30px; padding-block: 5px; font-size: 11px;
+.shell
+  .rumahl-color-picker__popover
+  :is(
+    .rumahl-select__trigger,
+    .rumahl-color-picker__input,
+    .rumahl-color-picker__rgb input
+  ) {
+  min-height: 30px;
+  padding-block: 5px;
+  font-size: 11px;
 }
-.shell .rumahl-color-picker__format-row { grid-template-columns: 72px minmax(0, 1fr); }
+.shell .rumahl-color-picker__format-row {
+  grid-template-columns: 72px minmax(0, 1fr);
+}
 @media (pointer: coarse) {
-  .shell .rumahl-select__option { min-height: 40px; }
+  .shell .rumahl-select__option {
+    min-height: 40px;
+  }
 }
 
 /* Light popup selections need a tint, not the white fill used by input fields. */
 .shell[data-scheme="light"] .rumahl-select__option.is-active {
-  background: color-mix(in srgb, var(--rumahl-ui-color-accent) 18%, var(--control-base));
-  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--rumahl-ui-color-accent) 32%, transparent);
+  background: color-mix(
+    in srgb,
+    var(--rumahl-ui-color-accent) 18%,
+    var(--control-base)
+  );
+  box-shadow: inset 0 0 0 1px
+    color-mix(in srgb, var(--rumahl-ui-color-accent) 32%, transparent);
 }
 .shell[data-scheme="light"] .rumahl-select__option:hover {
-  background: color-mix(in srgb, var(--rumahl-ui-color-text-primary) 9%, var(--control-base));
+  background: color-mix(
+    in srgb,
+    var(--rumahl-ui-color-text-primary) 9%,
+    var(--control-base)
+  );
 }
 .shell[data-scheme="light"] .rumahl-select__option.is-active:hover {
-  background: color-mix(in srgb, var(--rumahl-ui-color-accent) 24%, var(--control-base));
+  background: color-mix(
+    in srgb,
+    var(--rumahl-ui-color-accent) 24%,
+    var(--control-base)
+  );
 }
 .shell[data-scheme="light"] .rumahl-select__option:focus-visible {
   box-shadow: inset 0 0 0 1px var(--rumahl-ui-color-accent);
@@ -325,13 +738,35 @@
   white-space: nowrap;
   cursor: pointer;
   text-decoration: none;
-  transition: background 150ms ease, border-color 150ms ease, color 150ms ease, transform 150ms ease;
+  transition:
+    background 150ms ease,
+    border-color 150ms ease,
+    color 150ms ease,
+    transform 150ms ease;
 }
-.shell .btn svg { width: 14px; height: 14px; flex: none; }
-.shell .btn:hover:not(:disabled) { border-color: var(--control-border-hover); background: var(--control-recess), var(--control-hover); }
-.shell .btn:active:not(:disabled) { transform: translateY(1px); box-shadow: var(--control-inset); }
-.shell .btn:disabled, .shell .btn[aria-disabled="true"] { opacity: .5; cursor: not-allowed; }
-.shell .btn--sm { min-height: 28px; padding: 5px 12px; font-size: 11px; }
+.shell .btn svg {
+  width: 14px;
+  height: 14px;
+  flex: none;
+}
+.shell .btn:hover:not(:disabled) {
+  border-color: var(--control-border-hover);
+  background: var(--control-recess), var(--control-hover);
+}
+.shell .btn:active:not(:disabled) {
+  transform: translateY(1px);
+  box-shadow: var(--control-inset);
+}
+.shell .btn:disabled,
+.shell .btn[aria-disabled="true"] {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.shell .btn--sm {
+  min-height: 28px;
+  padding: 5px 12px;
+  font-size: 11px;
+}
 
 .shell .btn--primary {
   border-color: transparent;
@@ -339,7 +774,9 @@
   color: var(--rumahl-ui-color-on-accent);
   box-shadow: var(--control-inset);
 }
-.shell .btn--primary:hover:not(:disabled) { background: color-mix(in srgb, var(--rumahl-ui-color-accent) 88%, #000); }
+.shell .btn--primary:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--rumahl-ui-color-accent) 88%, #000);
+}
 
 .shell .btn--ghost {
   border-color: transparent;
@@ -347,181 +784,1334 @@
   box-shadow: none;
   color: var(--rumahl-ui-color-text-muted);
 }
-.shell .btn--ghost:hover:not(:disabled) { background: var(--control-fill); color: var(--rumahl-ui-color-text-primary); }
+.shell .btn--ghost:hover:not(:disabled) {
+  background: var(--control-fill);
+  color: var(--rumahl-ui-color-text-primary);
+}
 
 .shell .btn--danger {
   color: var(--rumahl-ui-color-danger, #e5484d);
-  border-color: color-mix(in srgb, var(--rumahl-ui-color-danger, #e5484d) 34%, var(--control-border));
-  background: color-mix(in srgb, var(--rumahl-ui-color-danger, #e5484d) 10%, transparent);
+  border-color: color-mix(
+    in srgb,
+    var(--rumahl-ui-color-danger, #e5484d) 34%,
+    var(--control-border)
+  );
+  background: color-mix(
+    in srgb,
+    var(--rumahl-ui-color-danger, #e5484d) 10%,
+    transparent
+  );
   box-shadow: none;
 }
 .shell .btn--danger:hover:not(:disabled) {
-  background: color-mix(in srgb, var(--rumahl-ui-color-danger, #e5484d) 18%, transparent);
-  border-color: color-mix(in srgb, var(--rumahl-ui-color-danger, #e5484d) 50%, var(--control-border));
+  background: color-mix(
+    in srgb,
+    var(--rumahl-ui-color-danger, #e5484d) 18%,
+    transparent
+  );
+  border-color: color-mix(
+    in srgb,
+    var(--rumahl-ui-color-danger, #e5484d) 50%,
+    var(--control-border)
+  );
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .shell .btn { transition: none; }
-  .shell .btn:active:not(:disabled) { transform: none; }
+  .shell .btn {
+    transition: none;
+  }
+  .shell .btn:active:not(:disabled) {
+    transform: none;
+  }
 }
-
 
 /* Reusable form controls retain native validation, keyboard and form behavior. */
-.shell .rumahl-textarea { width: 100%; min-height: 88px; border-radius: 18px; resize: vertical; line-height: 1.5; }
-.shell :is(.rumahl-input, .rumahl-textarea):focus-visible { outline: 2px solid var(--rumahl-ui-color-accent); outline-offset: 2px; }
-.shell :is(.rumahl-input, .rumahl-textarea):disabled { opacity: .5; cursor: not-allowed; }
-.shell :is(.rumahl-input, .rumahl-textarea)::placeholder { color: var(--rumahl-ui-color-text-muted); }
-.shell .rumahl-choice { display: inline-flex; align-items: center; gap: 9px; font-size: 12px; cursor: pointer; }
-.shell .rumahl-choice:has(input:disabled) { opacity: .5; cursor: not-allowed; }
-.shell .rumahl-choice input:is(.rumahl-checkbox, .rumahl-radio) {
-  appearance: none; display: grid; place-content: center; flex: none;
-  width: 18px; height: 18px; min-height: 0; padding: 0; margin: 0;
-  border: 1px solid var(--control-border); border-radius: 6px;
-  background: var(--control-fill); box-shadow: var(--control-inset); cursor: inherit;
+.shell .rumahl-textarea {
+  width: 100%;
+  min-height: 88px;
+  border-radius: 18px;
+  resize: vertical;
+  line-height: 1.5;
 }
-.shell .rumahl-choice input.rumahl-radio { border-radius: 50%; }
-.shell .rumahl-choice input:checked { background: color-mix(in srgb, var(--rumahl-ui-color-accent) 22%, var(--control-base)); border-color: var(--rumahl-ui-color-accent); }
-.shell .rumahl-choice input:focus-visible { outline: 2px solid var(--rumahl-ui-color-accent); outline-offset: 3px; }
-.shell .rumahl-checkbox:checked::before { content: ""; width: 4px; height: 8px; border: solid var(--rumahl-ui-color-text-primary); border-width: 0 2px 2px 0; transform: translateY(-1px) rotate(45deg); }
-.shell .rumahl-radio:checked::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: var(--rumahl-ui-color-text-primary); }
+.shell :is(.rumahl-input, .rumahl-textarea):focus-visible {
+  outline: 2px solid var(--rumahl-ui-color-accent);
+  outline-offset: 2px;
+}
+.shell :is(.rumahl-input, .rumahl-textarea):disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.shell :is(.rumahl-input, .rumahl-textarea)::placeholder {
+  color: var(--rumahl-ui-color-text-muted);
+}
+.shell .rumahl-choice {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  font-size: 12px;
+  cursor: pointer;
+}
+.shell .rumahl-choice:has(input:disabled) {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.shell .rumahl-choice input:is(.rumahl-checkbox, .rumahl-radio) {
+  appearance: none;
+  display: grid;
+  place-content: center;
+  flex: none;
+  width: 18px;
+  height: 18px;
+  min-height: 0;
+  padding: 0;
+  margin: 0;
+  border: 1px solid var(--control-border);
+  border-radius: 6px;
+  background: var(--control-fill);
+  box-shadow: var(--control-inset);
+  cursor: inherit;
+}
+.shell .rumahl-choice input.rumahl-radio {
+  border-radius: 50%;
+}
+.shell .rumahl-choice input:checked {
+  background: color-mix(
+    in srgb,
+    var(--rumahl-ui-color-accent) 22%,
+    var(--control-base)
+  );
+  border-color: var(--rumahl-ui-color-accent);
+}
+.shell .rumahl-choice input:focus-visible {
+  outline: 2px solid var(--rumahl-ui-color-accent);
+  outline-offset: 3px;
+}
+.shell .rumahl-checkbox:checked::before {
+  content: "";
+  width: 4px;
+  height: 8px;
+  border: solid var(--rumahl-ui-color-text-primary);
+  border-width: 0 2px 2px 0;
+  transform: translateY(-1px) rotate(45deg);
+}
+.shell .rumahl-radio:checked::before {
+  content: "";
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--rumahl-ui-color-text-primary);
+}
 @media (forced-colors: active) {
-  .shell .rumahl-choice input:is(.rumahl-checkbox, .rumahl-radio) { appearance: auto; }
-  .shell .rumahl-choice input::before { display: none; }
+  .shell .rumahl-choice input:is(.rumahl-checkbox, .rumahl-radio) {
+    appearance: auto;
+  }
+  .shell .rumahl-choice input::before {
+    display: none;
+  }
 }
 
-.design-lab { height: 100%; box-sizing: border-box; }
-.design-lab__grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 190px), 1fr)); gap: 18px; }
-.design-lab__grid > label:not(.rumahl-choice) { display: grid; gap: 7px; font-size: 12px; }
-.design-lab__buttons { display: flex; flex-wrap: wrap; gap: 8px; }
+.design-lab {
+  height: 100%;
+  box-sizing: border-box;
+}
+.design-lab__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 230px), 1fr));
+  gap: 18px;
+}
+.design-lab__grid > label:not(.rumahl-choice) {
+  display: grid;
+  gap: 7px;
+  font-size: 12px;
+}
+.design-lab__buttons {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
 
 /* Prevent grid stretch and inherited button dimensions from distorting controls. */
-.design-lab__grid { align-items: center; }
-.shell .settings-content .segmented { align-self: center; align-items: center; min-height: 36px; }
-.shell .settings-content .segmented button { margin: 0; flex: 1; }
+.design-lab__grid {
+  align-items: start;
+}
+.shell .settings-content .segmented {
+  align-self: center;
+  align-items: center;
+  min-height: 36px;
+}
+.shell .settings-content .segmented button {
+  margin: 0;
+  flex: 1;
+}
 .shell .rumahl-color-picker__presets .rumahl-color-picker__preset {
-  box-sizing: border-box; width: 24px; height: 24px; min-width: 24px; min-height: 24px;
-  max-width: 24px; max-height: 24px; padding: 0; margin: 0; border-radius: 50%; align-self: center;
+  box-sizing: border-box;
+  width: 24px;
+  height: 24px;
+  min-width: 24px;
+  min-height: 24px;
+  max-width: 24px;
+  max-height: 24px;
+  padding: 0;
+  margin: 0;
+  border-radius: 50%;
+  align-self: center;
 }
 .shell :is(.rumahl-calendar-popover, .rumahl-tooltip) {
-  position: fixed; inset: auto; margin: 0; box-sizing: border-box;
-  border: 1px solid var(--control-border); border-radius: 14px; padding: 8px;
-  background: var(--control-popup); color: var(--rumahl-ui-color-text-primary);
-  box-shadow: var(--control-popup-shadow); backdrop-filter: var(--control-filter);
-  -webkit-backdrop-filter: var(--control-filter); overflow: auto;
+  position: fixed;
+  inset: auto;
+  margin: 0;
+  box-sizing: border-box;
+  border: 1px solid var(--control-border);
+  border-radius: 14px;
+  padding: 8px;
+  background: var(--control-popup);
+  color: var(--rumahl-ui-color-text-primary);
+  box-shadow: var(--control-popup-shadow);
+  backdrop-filter: var(--control-filter);
+  -webkit-backdrop-filter: var(--control-filter);
+  overflow: auto;
 }
-.rumahl-tooltip-anchor { display: inline-flex; align-items: center; width: fit-content; max-width: 100%; }
-.shell .rumahl-tooltip { padding: 7px 10px; border-radius: 8px; font-size: 11px; line-height: 1.45; max-width: min(260px, calc(100vw - 24px)); white-space: normal; overflow-wrap: anywhere; }
-.shell .rumahl-calendar { width: 100%; max-width: 280px; min-width: 0; padding: 8px; box-sizing: border-box; }
-.rumahl-calendar__header { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 10px; }
-.rumahl-calendar__header strong { font-size: 12px; font-weight: 600; }
-.rumahl-calendar__week, .rumahl-calendar__days { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 3px; }
-.rumahl-calendar__week { margin-bottom: 5px; text-align: center; font-size: 10px; color: var(--rumahl-ui-color-text-muted); }
+.rumahl-tooltip-anchor {
+  display: inline-flex;
+  align-items: center;
+  width: fit-content;
+  max-width: 100%;
+}
+.shell .rumahl-tooltip {
+  padding: 7px 10px;
+  border-radius: 8px;
+  font-size: 11px;
+  line-height: 1.45;
+  max-width: min(260px, calc(100vw - 24px));
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+.shell .rumahl-calendar {
+  width: 100%;
+  max-width: 280px;
+  min-width: 0;
+  padding: 8px;
+  box-sizing: border-box;
+}
+.rumahl-calendar__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+.rumahl-calendar__header strong {
+  font-size: 12px;
+  font-weight: 600;
+}
+.rumahl-calendar__week,
+.rumahl-calendar__days {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 3px;
+}
+.rumahl-calendar__week {
+  margin-bottom: 5px;
+  text-align: center;
+  font-size: 10px;
+  color: var(--rumahl-ui-color-text-muted);
+}
 .shell .rumahl-calendar button {
-  min-width: 0; min-height: 30px; margin: 0; padding: 4px; border: 1px solid transparent;
-  border-radius: 8px; background: transparent; color: var(--rumahl-ui-color-text-primary);
-  font: inherit; font-size: 11px; box-shadow: none; backdrop-filter: none;
+  min-width: 0;
+  min-height: 30px;
+  margin: 0;
+  padding: 4px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--rumahl-ui-color-text-primary);
+  font: inherit;
+  font-size: 11px;
+  box-shadow: none;
+  backdrop-filter: none;
 }
-.shell .rumahl-calendar button:hover:not(:disabled) { background: var(--control-hover); border-color: var(--control-border); }
-.shell .rumahl-calendar button[aria-pressed="true"] { background: var(--rumahl-ui-color-accent); color: var(--rumahl-ui-color-on-accent); }
-.shell .rumahl-calendar button[aria-current="date"] { border-color: var(--rumahl-ui-color-accent); }
-.shell .rumahl-calendar button[data-outside] { color: var(--rumahl-ui-color-text-muted); }
-.shell .rumahl-calendar button:disabled { opacity: .35; cursor: not-allowed; }
-.shell .rumahl-calendar button:focus-visible { outline: 2px solid var(--rumahl-ui-color-accent); outline-offset: 1px; }
-.shell .rumahl-calendar .rumahl-calendar__today { width: 100%; margin-top: 8px; background: var(--control-fill); border-radius: 999px; }
-.rumahl-progress { display: grid; grid-template-columns: 1fr auto; gap: 7px; font-size: 12px; }
-.rumahl-progress progress { grid-column: 1 / -1; grid-row: 2; appearance: none; width: 100%; height: 6px; border: 0; border-radius: 999px; overflow: hidden; background: var(--control-fill); accent-color: var(--rumahl-ui-color-accent); }
-.rumahl-progress progress::-webkit-progress-bar { background: var(--control-fill); border-radius: 999px; }
-.rumahl-progress progress::-webkit-progress-value { background: var(--rumahl-ui-color-accent); border-radius: 999px; }
-.rumahl-progress progress::-moz-progress-bar { background: var(--rumahl-ui-color-accent); border-radius: 999px; }
-.rumahl-progress progress:indeterminate { background: linear-gradient(90deg, transparent, var(--rumahl-ui-color-accent), transparent); background-size: 200% 100%; animation: rumahl-progress 1.8s linear infinite; }
-.rumahl-progress progress:indeterminate::-webkit-progress-bar { background: transparent; }
-@keyframes rumahl-progress { to { background-position: -200% 0; } }
-@media (prefers-reduced-motion: reduce) { .rumahl-progress progress:indeterminate { animation: none; } }
+.shell .rumahl-calendar button:hover:not(:disabled) {
+  background: var(--control-hover);
+  border-color: var(--control-border);
+}
+.shell .rumahl-calendar button[aria-pressed="true"] {
+  background: var(--rumahl-ui-color-accent);
+  color: var(--rumahl-ui-color-on-accent);
+}
+.shell .rumahl-calendar button[aria-current="date"] {
+  border-color: var(--rumahl-ui-color-accent);
+}
+.shell .rumahl-calendar button[data-outside] {
+  color: var(--rumahl-ui-color-text-muted);
+}
+.shell .rumahl-calendar button:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+.shell .rumahl-calendar button:focus-visible {
+  outline: 2px solid var(--rumahl-ui-color-accent);
+  outline-offset: 1px;
+}
+.shell .rumahl-calendar .rumahl-calendar__today {
+  width: 100%;
+  margin-top: 8px;
+  background: var(--control-fill);
+  border-radius: 999px;
+}
+.rumahl-progress {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 7px;
+  font-size: 12px;
+}
+.rumahl-progress progress {
+  grid-column: 1 / -1;
+  grid-row: 2;
+  appearance: none;
+  width: 100%;
+  height: 6px;
+  border: 0;
+  border-radius: 999px;
+  overflow: hidden;
+  background: var(--control-fill);
+  accent-color: var(--rumahl-ui-color-accent);
+}
+.rumahl-progress progress::-webkit-progress-bar {
+  background: var(--control-fill);
+  border-radius: 999px;
+}
+.rumahl-progress progress::-webkit-progress-value {
+  background: var(--rumahl-ui-color-accent);
+  border-radius: 999px;
+}
+.rumahl-progress progress::-moz-progress-bar {
+  background: var(--rumahl-ui-color-accent);
+  border-radius: 999px;
+}
+.rumahl-progress progress:indeterminate {
+  background: linear-gradient(
+    90deg,
+    transparent,
+    var(--rumahl-ui-color-accent),
+    transparent
+  );
+  background-size: 200% 100%;
+  animation: rumahl-progress 1.8s linear infinite;
+}
+.rumahl-progress progress:indeterminate::-webkit-progress-bar {
+  background: transparent;
+}
+@keyframes rumahl-progress {
+  to {
+    background-position: -200% 0;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .rumahl-progress progress:indeterminate {
+    animation: none;
+  }
+}
 
 /* Account controls share capsule materials and keep identity imagery circular. */
-.rumahl-avatar { position: relative; display: inline-grid; place-items: center; flex: none; width: 40px; height: 40px; border-radius: 50%; box-sizing: border-box; background: color-mix(in srgb, var(--rumahl-ui-color-accent) 20%, var(--control-base)); border: 1px solid var(--control-border); color: var(--rumahl-ui-color-text-primary); font: 600 13px/1 Inter, system-ui, sans-serif; }
-.rumahl-avatar--sm { width: 28px; height: 28px; font-size: 10px; }
-.rumahl-avatar--lg { width: 64px; height: 64px; font-size: 20px; }
-.rumahl-avatar img { width: 100%; height: 100%; border-radius: inherit; object-fit: cover; }
-.rumahl-avatar__status { position: absolute; width: 9px; height: 9px; bottom: 0; right: 0; border: 2px solid var(--control-base); border-radius: 50%; background: var(--rumahl-ui-color-text-muted); }
-.rumahl-avatar__status[data-status="online"] { background: #39a77b; }
-.rumahl-avatar__status[data-status="away"] { background: #d5a347; }
-.rumahl-profile-card { display: flex; align-items: center; gap: 14px; min-width: 0; padding: 14px; border: 1px solid var(--control-border); border-radius: 18px; background: var(--control-fill); box-shadow: var(--control-inset); }
-.rumahl-profile-card > div { display: grid; gap: 5px; min-width: 0; }
-.rumahl-profile-card strong, .rumahl-profile-option strong { font-family: Inter, system-ui, sans-serif; font-size: 12px; font-weight: 600; }
-.rumahl-profile-card small, .rumahl-profile-option small, .rumahl-profile-card__status { font-size: 10px; color: var(--rumahl-ui-color-text-muted); }
-.shell .rumahl-select__trigger .rumahl-profile-option { display: flex; }
-.rumahl-profile-option { display: flex; align-items: center; gap: 9px; min-width: 0; text-align: left; }
-.rumahl-profile-option > span:last-child { display: grid; gap: 3px; min-width: 0; }
-.rumahl-profile-option strong, .rumahl-profile-option small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.rumahl-password { display: grid; gap: 7px; font-size: 12px; min-width: 0; }
-.rumahl-password__field { position: relative; }
-.shell .rumahl-password input { width: 100%; padding-right: 42px; }
-.shell .rumahl-password__toggle { position: absolute; right: 4px; top: 50%; transform: translateY(-50%); display: grid; place-items: center; width: 28px; height: 28px; min-height: 0; margin: 0; padding: 5px; border: 0; border-radius: 50%; background: transparent; color: var(--rumahl-ui-color-text-muted); box-shadow: none; }
-.shell .rumahl-password__toggle:hover:not(:disabled) { background: var(--control-hover); }
-.rumahl-password__toggle svg { width: 17px; height: 17px; }
-.rumahl-avatar-change { display: flex; align-items: center; flex-wrap: wrap; gap: 16px; margin-top: 18px; }
-.rumahl-avatar-change__actions { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 7px; }
-.rumahl-avatar-change small, .rumahl-password small { font-size: 11px; color: var(--rumahl-ui-color-text-muted); }
-.rumahl-avatar-change [role="alert"] { font-size: 12px; color: var(--rumahl-ui-color-danger, #c84848); }
+.rumahl-avatar {
+  position: relative;
+  display: inline-grid;
+  place-items: center;
+  flex: none;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  box-sizing: border-box;
+  background: color-mix(
+    in srgb,
+    var(--rumahl-ui-color-accent) 20%,
+    var(--control-base)
+  );
+  border: 1px solid var(--control-border);
+  color: var(--rumahl-ui-color-text-primary);
+  font:
+    600 13px/1 Inter,
+    system-ui,
+    sans-serif;
+}
+.rumahl-avatar--sm {
+  width: 28px;
+  height: 28px;
+  font-size: 10px;
+}
+.rumahl-avatar--lg {
+  width: 64px;
+  height: 64px;
+  font-size: 20px;
+}
+.rumahl-avatar img {
+  width: 100%;
+  height: 100%;
+  border-radius: inherit;
+  object-fit: cover;
+}
+.rumahl-avatar__status {
+  position: absolute;
+  width: 9px;
+  height: 9px;
+  bottom: 0;
+  right: 0;
+  border: 2px solid var(--control-base);
+  border-radius: 50%;
+  background: var(--rumahl-ui-color-text-muted);
+}
+.rumahl-avatar__status[data-status="online"] {
+  background: #39a77b;
+}
+.rumahl-avatar__status[data-status="away"] {
+  background: #d5a347;
+}
+.rumahl-profile-card {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  min-width: 0;
+  padding: 14px;
+  border: 1px solid var(--control-border);
+  border-radius: 18px;
+  background: var(--control-fill);
+  box-shadow: var(--control-inset);
+}
+.rumahl-profile-card > div {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+}
+.rumahl-profile-card strong,
+.rumahl-profile-option strong {
+  font-family: Inter, system-ui, sans-serif;
+  font-size: 12px;
+  font-weight: 600;
+}
+.rumahl-profile-card small,
+.rumahl-profile-option small,
+.rumahl-profile-card__status {
+  font-size: 10px;
+  color: var(--rumahl-ui-color-text-muted);
+}
+.shell .rumahl-select__trigger .rumahl-profile-option {
+  display: flex;
+}
+.rumahl-profile-option {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  min-width: 0;
+  text-align: left;
+}
+.rumahl-profile-option > span:last-child {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+.rumahl-profile-option strong,
+.rumahl-profile-option small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.rumahl-password {
+  display: grid;
+  gap: 7px;
+  font-size: 12px;
+  min-width: 0;
+}
+.rumahl-password__field {
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 6px;
+}
+.rumahl-password__field > .rumahl-input-feedback {
+  display: contents;
+}
+.rumahl-password__field > .rumahl-input,
+.rumahl-password__field .rumahl-input-feedback__control {
+  grid-area: 1 / 1;
+}
+.rumahl-password__field .rumahl-input-feedback__message {
+  grid-area: 2 / 1;
+}
+.shell .rumahl-password input {
+  width: 100%;
+  padding-right: 42px;
+}
+.shell .rumahl-password__toggle {
+  position: relative;
+  grid-area: 1 / 1;
+  justify-self: end;
+  align-self: center;
+  right: 4px;
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  min-height: 0;
+  margin: 0;
+  padding: 5px;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--rumahl-ui-color-text-muted);
+  box-shadow: none;
+}
+.shell .rumahl-password__toggle:hover:not(:disabled) {
+  background: var(--control-hover);
+}
+.rumahl-password__toggle svg {
+  width: 17px;
+  height: 17px;
+}
+.rumahl-avatar-change {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 16px;
+  margin-top: 18px;
+}
+.rumahl-avatar-change__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 7px;
+}
+.rumahl-avatar-change small,
+.rumahl-password small {
+  font-size: 11px;
+  color: var(--rumahl-ui-color-text-muted);
+}
+.rumahl-avatar-change [role="alert"] {
+  font-size: 12px;
+  color: var(--rumahl-ui-color-danger, #c84848);
+}
 
 /* Shared segmented controls: one connected track, buttons share their edges. */
 .shell .rumahl-button-group {
-  display: inline-flex; align-items: center; flex-wrap: wrap; gap: 0; padding: 3px;
-  max-width: 100%; width: fit-content; border: 1px solid var(--control-border);
-  border-radius: 20px; background: var(--control-recess), var(--control-fill); box-shadow: var(--control-inset);
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0;
+  padding: 3px;
+  max-width: 100%;
+  width: fit-content;
+  border: 1px solid var(--control-border);
+  border-radius: 20px;
+  background: var(--control-recess), var(--control-fill);
+  box-shadow: var(--control-inset);
 }
 .shell .rumahl-button-group > button {
-  display: inline-flex; align-items: center; justify-content: center; gap: 7px; flex: 1;
-  min-height: 28px; margin: 0; padding: 5px 14px; border: 0; border-radius: 0;
-  background: transparent; color: var(--rumahl-ui-color-text-muted); box-shadow: none;
-  font: inherit; font-size: 12px; font-weight: 600; white-space: nowrap; cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  flex: 1;
+  min-height: 28px;
+  margin: 0;
+  padding: 5px 14px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--rumahl-ui-color-text-muted);
+  box-shadow: none;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
 }
-.shell .rumahl-button-group > button + button { border-left: 1px solid var(--control-border); }
-.shell .rumahl-button-group > button:first-child { border-top-left-radius: 16px; border-bottom-left-radius: 16px; }
-.shell .rumahl-button-group > button:last-child { border-top-right-radius: 16px; border-bottom-right-radius: 16px; }
-.shell .rumahl-button-group > button:hover:not(:disabled) { background: var(--control-hover); color: var(--rumahl-ui-color-text-primary); }
-.shell .rumahl-button-group > button[aria-pressed="true"] { background: var(--control-raised); color: var(--rumahl-ui-color-text-primary); box-shadow: var(--control-button-shadow); }
-.shell .rumahl-button-group > button:disabled { opacity: .4; cursor: not-allowed; }
-.shell .rumahl-button-group > button:focus-visible, .shell .btn:focus-visible { outline: 2px solid var(--rumahl-ui-color-accent); outline-offset: 2px; }
-.rumahl-button-group svg { display: block; width: 16px; height: 16px; }
+.shell .rumahl-button-group > button + button {
+  border-left: 1px solid var(--control-border);
+}
+.shell .rumahl-button-group > button:first-child {
+  border-top-left-radius: 16px;
+  border-bottom-left-radius: 16px;
+}
+.shell .rumahl-button-group > button:last-child {
+  border-top-right-radius: 16px;
+  border-bottom-right-radius: 16px;
+}
+.shell .rumahl-button-group > button:hover:not(:disabled) {
+  background: var(--control-hover);
+  color: var(--rumahl-ui-color-text-primary);
+}
+.shell .rumahl-button-group > button[aria-pressed="true"] {
+  background: var(--control-raised);
+  color: var(--rumahl-ui-color-text-primary);
+  box-shadow: var(--control-button-shadow);
+}
+.shell .rumahl-button-group > button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+.shell .rumahl-button-group > button:focus-visible,
+.shell .btn:focus-visible {
+  outline: 2px solid var(--rumahl-ui-color-accent);
+  outline-offset: 2px;
+}
+.rumahl-button-group svg {
+  display: block;
+  width: 16px;
+  height: 16px;
+}
 .shell .rumahl-input-group {
-  display: inline-flex; align-items: center; gap: 8px; min-width: 0; max-width: 100%; padding: 3px 10px;
-  border: 1px solid var(--control-border); border-radius: 999px;
-  background: var(--control-recess), var(--control-fill); box-shadow: var(--control-inset);
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  max-width: 100%;
+  padding: 3px 10px;
+  border: 1px solid var(--control-border);
+  border-radius: 999px;
+  background: var(--control-recess), var(--control-fill);
+  box-shadow: var(--control-inset);
 }
-.shell .rumahl-input-group:focus-within { outline: 2px solid var(--rumahl-ui-color-accent); outline-offset: 2px; }
-.shell .rumahl-input-group > .rumahl-input { flex: 1; width: 100%; min-height: 28px; padding: 4px 2px; border: 0; background: transparent; box-shadow: none; backdrop-filter: none; outline: none; }
-.rumahl-input-group__affix { display: inline-flex; align-items: center; flex: none; color: var(--rumahl-ui-color-text-muted); font-size: 12px; }
-.rumahl-input-group__affix svg { width: 16px; height: 16px; }
-.shell .rumahl-input-group:has(input:disabled) { opacity: .5; }
-.shell :is(.rumahl-input, .rumahl-textarea, .rumahl-input-group):is([aria-invalid="true"], :has([aria-invalid="true"])) { border-color: var(--rumahl-ui-color-danger, #e5484d); }
+.shell .rumahl-input-group:focus-within {
+  outline: 2px solid var(--rumahl-ui-color-accent);
+  outline-offset: 2px;
+}
+.shell .rumahl-input-group > .rumahl-input {
+  flex: 1;
+  width: 100%;
+  min-height: 28px;
+  padding: 4px 2px;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+  backdrop-filter: none;
+  outline: none;
+}
+.rumahl-input-group__affix {
+  display: inline-flex;
+  align-items: center;
+  flex: none;
+  color: var(--rumahl-ui-color-text-muted);
+  font-size: 12px;
+}
+.rumahl-input-group__affix svg {
+  width: 16px;
+  height: 16px;
+}
+.shell .rumahl-input-group:has(input:disabled) {
+  opacity: 0.5;
+}
+.shell
+  :is(.rumahl-input, .rumahl-textarea, .rumahl-input-group):is(
+    [aria-invalid="true"],
+    :has([aria-invalid="true"])
+  ) {
+  border-color: var(--rumahl-ui-color-danger, #e5484d);
+}
 
 /* Compound fields have one glass recess, with elevated controls inside it. */
-.shell .rumahl-input-group { padding: 3px; }
-.shell .rumahl-input-group > .rumahl-input { padding-inline: 10px; }
-.shell .rumahl-input-group__affix { padding-inline: 8px; }
-.shell .rumahl-input-group__affix:has(.btn) { padding: 0; }
+.shell .rumahl-input-group {
+  padding: 3px;
+}
+.shell .rumahl-input-group > .rumahl-input {
+  padding-inline: 10px;
+}
+.shell .rumahl-input-group__affix {
+  padding-inline: 8px;
+}
+.shell .rumahl-input-group__affix:has(.btn) {
+  padding: 0;
+}
 .shell .rumahl-input-group__affix .btn:not(.btn--primary):not(.btn--danger),
 .shell .rumahl-password__toggle {
-  background: var(--control-raised); box-shadow: var(--control-button-shadow);
-  border: 1px solid var(--control-border); color: var(--rumahl-ui-color-text-primary);
+  background: var(--control-raised);
+  box-shadow: var(--control-button-shadow);
+  border: 1px solid var(--control-border);
+  color: var(--rumahl-ui-color-text-primary);
 }
-.shell .rumahl-input-group__affix .btn:hover:not(:disabled):not(.btn--primary):not(.btn--danger),
-.shell .rumahl-password__toggle:hover:not(:disabled) { background: var(--control-raised); border-color: var(--control-border-hover); }
-.shell .rumahl-input-group__affix .btn:active:not(:disabled) { box-shadow: var(--control-inset); }
+.shell
+  .rumahl-input-group__affix
+  .btn:hover:not(:disabled):not(.btn--primary):not(.btn--danger),
+.shell .rumahl-password__toggle:hover:not(:disabled) {
+  background: var(--control-raised);
+  border-color: var(--control-border-hover);
+}
+.shell .rumahl-input-group__affix .btn:active:not(:disabled) {
+  box-shadow: var(--control-inset);
+}
 
-.shell .rumahl-button-group > button[aria-selected="true"] { background: var(--control-raised); color: var(--rumahl-ui-color-text-primary); box-shadow: var(--control-button-shadow); border-color: var(--control-border); }
-.rumahl-tabs > [role="tabpanel"] { margin-top: 14px; padding: 14px; border: 1px solid var(--control-border); border-radius: 16px; background: var(--control-fill); box-shadow: var(--control-inset); }
-.rumahl-badge { display: inline-flex; align-items: center; gap: 6px; padding: 5px 9px; border: 1px solid var(--control-border); border-radius: 999px; background: var(--control-fill); box-shadow: var(--control-inset); font-size: 11px; }
-.rumahl-badge::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: var(--badge-color, currentColor); }
-.rumahl-badge--success { --badge-color: #39a77b; }
-.rumahl-badge--warning { --badge-color: #d5a347; }
-.rumahl-badge--danger { --badge-color: var(--rumahl-ui-color-danger, #e5484d); }
-.rumahl-notice { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; padding: 14px; border: 1px solid var(--control-border); border-radius: 18px; background: var(--control-recess), var(--control-fill); box-shadow: var(--control-inset); }
-.rumahl-notice > div { flex: 1; min-width: min(100%, 150px); }
-.rumahl-notice strong { font-size: 12px; }
-.rumahl-notice p { margin: 5px 0 0; color: var(--rumahl-ui-color-text-muted); font-size: 12px; line-height: 1.5; }
-.rumahl-notice__symbol { display: grid; place-items: center; width: 28px; height: 28px; flex: none; border-radius: 50%; background: var(--control-raised); box-shadow: var(--control-button-shadow); color: var(--rumahl-ui-color-accent); font-weight: 700; }
-.rumahl-notice--warning .rumahl-notice__symbol { color: #d5a347; }
-.rumahl-notice--danger .rumahl-notice__symbol { color: var(--rumahl-ui-color-danger, #e5484d); }
+.shell .rumahl-button-group > button[aria-selected="true"] {
+  background: var(--control-raised);
+  color: var(--rumahl-ui-color-text-primary);
+  box-shadow: var(--control-button-shadow);
+  border-color: var(--control-border);
+}
+.rumahl-tabs > [role="tabpanel"] {
+  margin-top: 14px;
+  padding: 14px;
+  border: 1px solid var(--control-border);
+  border-radius: 16px;
+  background: var(--control-fill);
+  box-shadow: var(--control-inset);
+}
+.rumahl-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 9px;
+  border: 1px solid var(--control-border);
+  border-radius: 999px;
+  background: var(--control-fill);
+  box-shadow: var(--control-inset);
+  font-size: 11px;
+}
+.rumahl-badge::before {
+  content: "";
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--badge-color, currentColor);
+}
+.rumahl-badge--success {
+  --badge-color: #39a77b;
+}
+.rumahl-badge--warning {
+  --badge-color: #d5a347;
+}
+.rumahl-badge--danger {
+  --badge-color: var(--rumahl-ui-color-danger, #e5484d);
+}
+.rumahl-notice {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+  padding: 14px;
+  border: 1px solid var(--control-border);
+  border-radius: 18px;
+  background: var(--control-recess), var(--control-fill);
+  box-shadow: var(--control-inset);
+}
+.rumahl-notice > div {
+  flex: 1;
+  min-width: min(100%, 150px);
+}
+.rumahl-notice strong {
+  font-size: 12px;
+}
+.rumahl-notice p {
+  margin: 5px 0 0;
+  color: var(--rumahl-ui-color-text-muted);
+  font-size: 12px;
+  line-height: 1.5;
+}
+.rumahl-notice__symbol {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  flex: none;
+  border-radius: 50%;
+  background: var(--control-raised);
+  box-shadow: var(--control-button-shadow);
+  color: var(--rumahl-ui-color-accent);
+  font-weight: 700;
+}
+.rumahl-notice--warning .rumahl-notice__symbol {
+  color: #d5a347;
+}
+.rumahl-notice--danger .rumahl-notice__symbol {
+  color: var(--rumahl-ui-color-danger, #e5484d);
+}
+
+/* One validation material for native inputs, compound controls and setting groups.
+   Success is explicit: an untouched required field never appears successful. */
+.shell {
+  --control-error: var(--rumahl-ui-color-danger, #e5484d);
+  --control-success: var(--rumahl-ui-color-success, #39a77b);
+}
+.shell :where([data-status="success"]) {
+  --control-status-color: var(--control-success);
+}
+.shell
+  :where(
+    [data-status="error"],
+    [aria-invalid="true"],
+    input:user-invalid,
+    textarea:user-invalid,
+    select:user-invalid
+  ) {
+  --control-status-color: var(--control-error);
+}
+.shell .rumahl-input-group:has(input:is([aria-invalid="true"], :user-invalid)) {
+  --control-status-color: var(--control-error);
+}
+.shell
+  .rumahl-choice
+  input:is(
+    [data-status="error"],
+    [data-status="success"],
+    [aria-invalid="true"]
+  ),
+.shell
+  :is(
+    input,
+    textarea,
+    select,
+    .rumahl-select__trigger,
+    .rumahl-color-picker__trigger,
+    .rumahl-input-group,
+    .rumahl-field-group,
+    .rumahl-range,
+    .rumahl-file
+  ):is(
+    [data-status="error"],
+    [data-status="success"],
+    [aria-invalid="true"],
+    :user-invalid
+  ),
+.shell .rumahl-input-group:has(input:is([aria-invalid="true"], :user-invalid)),
+.shell
+  .rumahl-field-group[data-status]:not([data-status="neutral"])
+  :is(
+    .rumahl-input,
+    .rumahl-textarea,
+    .rumahl-select__trigger,
+    .rumahl-input-group,
+    .rumahl-checkbox,
+    .rumahl-radio
+  ) {
+  --control-border: color-mix(
+    in srgb,
+    var(--control-status-color) 65%,
+    transparent
+  );
+  --control-border-hover: var(--control-status-color);
+  --control-fill: color-mix(
+    in srgb,
+    var(--control-status-color) 16%,
+    transparent
+  );
+  --control-hover: color-mix(
+    in srgb,
+    var(--control-status-color) 24%,
+    transparent
+  );
+  border-color: var(--control-border);
+  background: var(--control-recess), var(--control-fill);
+  box-shadow:
+    var(--control-inset),
+    inset 0 0 18px
+      color-mix(in srgb, var(--control-status-color) 9%, transparent);
+  accent-color: var(--control-status-color);
+}
+.shell
+  :is(
+    [data-status="error"],
+    [data-status="success"],
+    [aria-invalid="true"],
+    :user-invalid
+  ):focus-visible,
+.shell
+  .rumahl-input-group:is(
+    [data-status="error"],
+    [data-status="success"],
+    :has([aria-invalid="true"], :user-invalid)
+  ):focus-within {
+  outline-color: var(--control-status-color);
+}
+/* Keep affixes and the input on a single tinted glass surface. */
+.shell
+  .rumahl-input-group
+  > .rumahl-input:is([aria-invalid], [data-status], :user-invalid),
+.shell .rumahl-field-group[data-status] .rumahl-input-group > .rumahl-input {
+  background: transparent;
+  border: 0;
+  box-shadow: none;
+}
+.shell .rumahl-field-group {
+  min-width: 0;
+  margin: 0;
+  padding: 14px;
+  border: 1px solid var(--control-border);
+  border-radius: 18px;
+  background: var(--control-recess), var(--control-fill);
+  box-shadow: var(--control-inset);
+}
+.shell .rumahl-field-group > legend {
+  padding-inline: 6px;
+  font-size: 12px;
+  font-weight: 650;
+}
+.rumahl-field-group__fields {
+  display: grid;
+  gap: 12px;
+}
+.rumahl-field-group__fields > label:not(.rumahl-choice) {
+  display: grid;
+  gap: 7px;
+  font-size: 12px;
+}
+.rumahl-field-group > small {
+  display: block;
+  margin-top: 12px;
+  color: var(--rumahl-ui-color-text-muted);
+  line-height: 1.5;
+}
+.rumahl-field-group:disabled {
+  opacity: 0.5;
+}
+.shell :is(.rumahl-switch, .rumahl-range, .rumahl-file) {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid var(--control-border);
+  border-radius: 18px;
+  font-size: 12px;
+}
+.shell .rumahl-switch {
+  display: flex;
+  justify-content: space-between;
+}
+.shell :is(.rumahl-range, .rumahl-file) input {
+  width: 100%;
+  min-width: 0;
+}
+.shell :is(.rumahl-switch, .rumahl-range, .rumahl-file):has(input:disabled) {
+  opacity: 0.5;
+}
+.shell[data-material="solid"]
+  .rumahl-field-group[data-status]:not([data-status="neutral"])
+  :is(
+    .rumahl-input,
+    .rumahl-textarea,
+    .rumahl-select__trigger,
+    .rumahl-input-group,
+    .rumahl-checkbox,
+    .rumahl-radio
+  ),
+.shell[data-material="solid"]
+  :is(
+    [data-status="error"],
+    [data-status="success"],
+    [aria-invalid="true"],
+    :user-invalid,
+    .rumahl-input-group:has([aria-invalid="true"], :user-invalid)
+  ) {
+  --control-fill: color-mix(
+    in srgb,
+    var(--control-status-color) 16%,
+    var(--control-base)
+  );
+  --control-hover: color-mix(
+    in srgb,
+    var(--control-status-color) 24%,
+    var(--control-base)
+  );
+}
+
+/* Selection controls use the same independent capsule thumbs as Appearance. */
+.shell .rumahl-toggle-group {
+  display: inline-flex;
+  align-items: center;
+  width: fit-content;
+  max-width: 100%;
+  box-sizing: border-box;
+  flex-wrap: nowrap;
+  overflow-x: auto;
+}
+.shell .rumahl-toggle-group > button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  margin: 0;
+  min-width: max-content;
+  padding-inline: 8px;
+  white-space: nowrap;
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+.shell .rumahl-toggle-group > button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+.shell .rumahl-toggle-group > button:focus-visible {
+  outline: 2px solid var(--rumahl-ui-color-accent);
+  outline-offset: 2px;
+}
+.rumahl-toggle-group svg {
+  width: 16px;
+  height: 16px;
+}
+/* Action buttons share their edges and raised material, just like Files. */
+.shell .rumahl-button-group--actions {
+  box-sizing: border-box;
+  align-self: center;
+  flex-wrap: nowrap;
+  border-radius: 999px;
+  padding: 3px;
+}
+.shell .rumahl-button-group--actions > button {
+  box-sizing: border-box;
+  height: 28px;
+  line-height: 18px;
+}
+.shell .rumahl-button-group--actions > button {
+  background: var(--control-raised);
+  color: var(--rumahl-ui-color-text-primary);
+  box-shadow: var(--control-button-shadow);
+}
+.shell .rumahl-button-group--actions > button:disabled {
+  background: transparent;
+  box-shadow: none;
+}
+.shell .rumahl-button-group--actions > button:active:not(:disabled) {
+  box-shadow: var(--control-inset);
+}
+.shell .rumahl-switch {
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+}
+
+.rumahl-input-feedback {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+  max-width: 100%;
+}
+.rumahl-input-feedback__control {
+  position: relative;
+  display: flex;
+  min-width: 0;
+}
+.shell
+  .rumahl-input-feedback__control
+  > :is(.rumahl-input, .rumahl-textarea, .rumahl-input-group, .rumahl-select) {
+  width: 100%;
+}
+.shell
+  .rumahl-input-feedback__control:has(> .rumahl-input-feedback__icon)
+  > :is(.rumahl-input, .rumahl-textarea, .rumahl-input-group),
+.shell
+  .rumahl-input-feedback__control:has(> .rumahl-input-feedback__icon)
+  > .rumahl-select
+  .rumahl-select__trigger {
+  padding-right: 38px;
+}
+.rumahl-input-feedback__icon {
+  position: absolute;
+  right: 11px;
+  top: 50%;
+  transform: translateY(-50%);
+  display: grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--control-error);
+  color: white;
+  font: 750 12px/1 system-ui;
+  pointer-events: none;
+}
+.shell .rumahl-input-feedback__message {
+  color: var(--control-error);
+  font-size: 11px;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
+/* Compact native OS windows inherit shell material in the browser top layer. */
+.shell .rumahl-modal {
+  position: fixed;
+  inset: 0;
+  margin: auto;
+  box-sizing: border-box;
+  padding: 0;
+  width: min(520px, calc(100vw - 32px));
+  max-height: calc(100dvh - 48px);
+  overflow: auto;
+  color: var(--rumahl-ui-color-text-primary);
+  border: 1px solid var(--control-border-hover);
+  border-radius: var(--rumahl-ui-shape-radius-window, 18px);
+  background:
+    var(--surface-tint), var(--surface-sheen),
+    var(--material-overlay, var(--control-popup));
+  backdrop-filter: var(--surface-filter);
+  box-shadow:
+    var(--material-rim, inset 0 1px 0 #ffffff24),
+    var(--material-shadow, 0 24px 80px #00000055);
+  font: inherit;
+  text-align: left;
+}
+.shell .rumahl-modal::backdrop {
+  background: #07101c18;
+}
+.shell[data-material="solid"] .rumahl-modal {
+  background: var(--control-base);
+  backdrop-filter: none;
+}
+.rumahl-modal__titlebar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  min-height: 46px;
+  padding: 0 12px 0 20px;
+  border-bottom: 1px solid var(--material-line, var(--control-border));
+  font-size: 12px;
+  font-weight: 600;
+}
+.rumahl-modal__identity {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  font-size: 11px;
+  color: var(--rumahl-ui-color-text-muted);
+}
+.rumahl-modal__identity > svg {
+  width: 10px;
+  height: 19px;
+  color: var(--rumahl-ui-color-accent);
+  flex: none;
+}
+.rumahl-modal__identity > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.rumahl-modal__identity--alert {
+  padding: 20px 24px 0;
+}
+.shell .rumahl-modal__close {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+}
+.rumahl-modal__close svg {
+  width: 16px;
+  height: 16px;
+  stroke: currentColor;
+  stroke-width: 1.5;
+  fill: none;
+}
+.shell .rumahl-modal__close:hover {
+  background: var(--control-error);
+  color: white;
+}
+.rumahl-modal__body {
+  padding: 22px;
+}
+.shell .rumahl-modal__body h2 {
+  margin: 0 0 12px;
+  font-size: 17px;
+  line-height: 1.3;
+}
+.rumahl-modal__body > p {
+  margin: 0 0 18px;
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--rumahl-ui-color-text-muted);
+}
+.rumahl-modal__body > label {
+  display: grid;
+  gap: 8px;
+  font-size: 12px;
+}
+.rumahl-modal__actions {
+  display: flex;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 0 22px 22px;
+}
+.shell .rumahl-modal--alert {
+  width: min(440px, calc(100vw - 32px));
+  border-radius: 22px;
+}
+.rumahl-modal--alert .rumahl-modal__body {
+  position: relative;
+  padding-left: 78px;
+  min-height: 80px;
+}
+.rumahl-dialog__symbol {
+  position: absolute;
+  left: 22px;
+  top: 22px;
+  display: grid;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  border-radius: 12px;
+  background: var(--control-raised);
+  box-shadow: var(--control-button-shadow);
+  color: var(--rumahl-ui-color-accent);
+  font-size: 24px;
+  font-weight: 700;
+}
+.rumahl-dialog__symbol--danger {
+  color: var(--control-error);
+}
+.shell .rumahl-modal :is(button, input):focus-visible {
+  outline: 2px solid var(--rumahl-ui-color-accent);
+  outline-offset: 2px;
+}
+
+.shell .rumahl-password__field .rumahl-input-feedback__icon {
+  right: 48px;
+}
+.shell
+  .rumahl-password__field
+  .rumahl-input-feedback__control:has(> .rumahl-input-feedback__icon)
+  > .rumahl-input {
+  padding-right: 76px;
+}
+
+/* Multiline feedback sits alongside the first line, single-line feedback is centered. */
+.rumahl-input-feedback__control:has(> textarea) > .rumahl-input-feedback__icon {
+  top: 10px;
+  transform: none;
+}
+.shell .design-lab__grid > .rumahl-switch {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+/* Compound fields own one focus boundary in every app, including settings. */
+.shell .rumahl-input-group > input.rumahl-input:focus-visible {
+  outline: none;
+  box-shadow: none;
+  border: 0;
+  background: transparent;
+}
+.shell .rumahl-input-group > input[type="number"] {
+  appearance: textfield;
+  -moz-appearance: textfield;
+}
+.shell .rumahl-input-group > input[type="number"]::-webkit-inner-spin-button,
+.shell .rumahl-input-group > input[type="number"]::-webkit-outer-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+.shell .rumahl-input-group:focus-within {
+  outline-width: 2px;
+  outline-offset: 2px;
+}
+
+/* Shared motion belongs to controls, never to Design Lab or a particular app. */
+@keyframes rumahl-control-feedback-in {
+  from {
+    opacity: 0;
+    translate: 0 -3px;
+  }
+  to {
+    opacity: 1;
+    translate: 0 0;
+  }
+}
+@keyframes rumahl-dialog-in {
+  from {
+    opacity: 0;
+    translate: 0 8px;
+    scale: 0.97;
+  }
+  to {
+    opacity: 1;
+    translate: 0 0;
+    scale: 1;
+  }
+}
+@media (prefers-reduced-motion: no-preference) {
+  .shell:not([data-animations="off"])
+    :is(
+      .rumahl-input,
+      .rumahl-textarea,
+      .rumahl-input-group,
+      .rumahl-select__trigger,
+      .rumahl-checkbox,
+      .rumahl-radio,
+      .rumahl-toggle-group > button,
+      .rumahl-button-group > button
+    ) {
+    transition:
+      background-color 180ms ease,
+      border-color 180ms ease,
+      box-shadow 180ms ease,
+      color 180ms ease,
+      scale 120ms ease;
+  }
+  .shell:not([data-animations="off"])
+    :is(.rumahl-input, .rumahl-textarea, .rumahl-select__trigger):focus-visible,
+  .shell:not([data-animations="off"]) .rumahl-input-group:focus-within {
+    box-shadow:
+      var(--control-inset),
+      0 0 0 4px
+        color-mix(
+          in srgb,
+          var(--control-status-color, var(--rumahl-ui-color-accent)) 12%,
+          transparent
+        );
+  }
+  .shell:not([data-animations="off"])
+    :is(.rumahl-toggle-group, .rumahl-button-group)
+    > button:active:not(:disabled) {
+    scale: 0.96;
+  }
+  .shell:not([data-animations="off"]) .rumahl-input-feedback__message {
+    animation: rumahl-control-feedback-in 180ms ease both;
+  }
+  .shell:not([data-animations="off"]) .rumahl-modal[open] {
+    animation: rumahl-dialog-in 200ms cubic-bezier(0.2, 0.7, 0.2, 1) both;
+  }
+  .shell:not([data-animations="off"]) input[role="switch"]::before {
+    transition: transform 180ms cubic-bezier(0.2, 0.7, 0.2, 1);
+  }
+}
+/* These unlayered overrides also cover earlier control transitions. */
+.shell[data-animations="off"]
+  :is(
+    input,
+    textarea,
+    select,
+    button,
+    .rumahl-input-group,
+    .rumahl-input-feedback__message,
+    .rumahl-modal
+  ),
+.shell[data-animations="off"] input::before {
+  animation: none !important;
+  transition: none !important;
+}
+@media (prefers-reduced-motion: reduce) {
+  .shell
+    :is(
+      input,
+      textarea,
+      select,
+      button,
+      .rumahl-input-group,
+      .rumahl-input-feedback__message,
+      .rumahl-modal
+    ),
+  .shell input::before {
+    animation: none !important;
+    transition: none !important;
+  }
+}
+/* Do not reintroduce an inner focus glow through the animated focus rule. */
+.shell:not([data-animations="off"])
+  .rumahl-input-group
+  > input.rumahl-input:focus-visible {
+  outline: none;
+  box-shadow: none;
+}

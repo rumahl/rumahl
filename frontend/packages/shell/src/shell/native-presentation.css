@@ -2,16 +2,29 @@
 .shell {
   position: relative;
   color: var(--rumahl-ui-color-text-primary, #18201c);
-  background-color: var(--rumahl-ui-color-canvas-background, var(--rumahl-color-canvas-background, #102b27));
-  background-image: var(--rumahl-ui-texture-wallpaper, url("../assets/monstera.jpg"));
+  background-color: var(
+    --rumahl-ui-color-canvas-background,
+    var(--rumahl-color-canvas-background, #102b27)
+  );
+  background-image: var(
+    --rumahl-ui-texture-wallpaper,
+    url("../assets/monstera.jpg")
+  );
   background-position: center;
   background-size: cover;
   background-repeat: no-repeat;
-  font-family: var(--rumahl-ui-typography-family, system-ui, "Segoe UI", Roboto, "Noto Sans", sans-serif);
+  font-family: var(
+    --rumahl-ui-typography-family,
+    system-ui,
+    "Segoe UI",
+    Roboto,
+    "Noto Sans",
+    sans-serif
+  );
   font-size: calc(100% * var(--rumahl-ui-typography-scale, 1));
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  letter-spacing: -.006em;
+  letter-spacing: -0.006em;
   /* Viewport-relative units so the desktop/launcher scale to the visible area. */
   --rumahl-ui-unit: clamp(42px, 4.6vmin, 58px);
   --rumahl-ui-unit-lg: clamp(52px, 6.4vmin, 76px);
@@ -21,7 +34,8 @@
 .shell .workspace-surfaces {
   margin: 8px 12px 86px;
 }
-.shell .desktop-workspace, .shell .launcher-workspace {
+.shell .desktop-workspace,
+.shell .launcher-workspace {
   background: transparent;
   border-radius: 0;
 }
@@ -29,7 +43,18 @@
   display: none;
 }
 .shell .menubar {
-  background: color-mix(in srgb, var(--rumahl-ui-color-surface-strong, var(--rumahl-ui-color-panel-background, var(--rumahl-color-panel-background))) calc(var(--rumahl-ui-material-opacity, 0.84) * 100%), transparent);
+  background: color-mix(
+    in srgb,
+    var(
+        --rumahl-ui-color-surface-strong,
+        var(
+          --rumahl-ui-color-panel-background,
+          var(--rumahl-color-panel-background)
+        )
+      )
+      calc(var(--rumahl-ui-material-opacity, 0.84) * 100%),
+    transparent
+  );
   backdrop-filter: blur(28px);
   min-height: 28px;
 }
@@ -53,15 +78,20 @@
   width: min(var(--rumahl-ui-shape-icon-size, 52px), var(--rumahl-ui-unit));
   height: min(var(--rumahl-ui-shape-icon-size, 52px), var(--rumahl-ui-unit));
   border-radius: 13px;
-  box-shadow: 0 3px 10px #0003, inset 0 1px 1px #ffffff60;
+  box-shadow:
+    0 3px 10px #0003,
+    inset 0 1px 1px #ffffff60;
 }
 .desktop-icon__label {
   color: var(--rumahl-ui-color-on-wallpaper, #ffffff);
-  text-shadow: 0 1px 4px #000, 0 0 12px #0009;
+  text-shadow:
+    0 1px 4px #000,
+    0 0 12px #0009;
   font-size: 12px;
   line-height: 1.4;
 }
-.desktop-icon:hover, .desktop-icon.is-selected {
+.desktop-icon:hover,
+.desktop-icon.is-selected {
   background: #ffffff20;
   border-color: #ffffff45;
 }
@@ -77,7 +107,7 @@
   border-radius: 12px;
 }
 .desktop-widgets {
-  opacity: .95;
+  opacity: 0.95;
 }
 .shell .os-dock {
   padding: 8px 10px;
@@ -85,10 +115,21 @@
   bottom: var(--rumahl-ui-layout-dock-offset, 12px);
   align-items: flex-end;
   border-radius: var(--rumahl-ui-shape-radius-dock, 22px);
-  background: color-mix(in srgb, var(--rumahl-ui-color-panel-background, var(--rumahl-color-panel-background)) calc(var(--rumahl-ui-material-opacity, 0.84) * 100%), transparent);
+  background: color-mix(
+    in srgb,
+    var(
+        --rumahl-ui-color-panel-background,
+        var(--rumahl-color-panel-background)
+      )
+      calc(var(--rumahl-ui-material-opacity, 0.84) * 100%),
+    transparent
+  );
   border: 1px solid var(--rumahl-ui-color-outline, #ffffff70);
-  box-shadow: 0 10px 34px var(--rumahl-ui-color-shadow, #0004), inset 0 1px #ffffff80;
-  backdrop-filter: blur(var(--rumahl-ui-material-blur, 34px)) saturate(var(--rumahl-ui-material-saturation, 1.6));
+  box-shadow:
+    0 10px 34px var(--rumahl-ui-color-shadow, #0004),
+    inset 0 1px #ffffff80;
+  backdrop-filter: blur(var(--rumahl-ui-material-blur, 34px))
+    saturate(var(--rumahl-ui-material-saturation, 1.6));
 }
 .os-dock .dock-item {
   position: relative;
@@ -100,18 +141,35 @@
   border: 0;
   border-radius: var(--rumahl-ui-shape-radius-icon, 15px);
   color: inherit;
-  background: color-mix(in srgb, var(--rumahl-ui-color-panel-background, var(--rumahl-color-panel-background)) 90%, transparent);
-  box-shadow: 0 1px 3px #0001, inset 0 1px #ffffff60;
+  background: color-mix(
+    in srgb,
+    var(
+        --rumahl-ui-color-panel-background,
+        var(--rumahl-color-panel-background)
+      )
+      90%,
+    transparent
+  );
+  box-shadow:
+    0 1px 3px #0001,
+    inset 0 1px #ffffff60;
   text-decoration: none;
   transform-origin: bottom center;
-  transition: transform var(--rumahl-ui-motion-duration, 150ms) var(--rumahl-ui-motion-easing-spring, cubic-bezier(.2, .9, .3, 1.25)), background var(--rumahl-ui-motion-duration-fast, 120ms);
+  transition:
+    transform var(--rumahl-ui-motion-duration, 150ms)
+      var(--rumahl-ui-motion-easing-spring, cubic-bezier(0.2, 0.9, 0.3, 1.25)),
+    background var(--rumahl-ui-motion-duration-fast, 120ms);
 }
 .os-dock .dock-item svg {
   width: 24px;
   height: 24px;
 }
 .os-dock .dock-start {
-  background: linear-gradient(160deg, var(--rumahl-ui-color-accent-strong, #4f8f78), var(--rumahl-ui-color-accent, #28694c));
+  background: linear-gradient(
+    160deg,
+    var(--rumahl-ui-color-accent-strong, #4f8f78),
+    var(--rumahl-ui-color-accent, #28694c)
+  );
   color: #fff;
 }
 .os-dock .dock-start svg {
@@ -141,7 +199,9 @@
   white-space: nowrap;
   opacity: 0;
   pointer-events: none;
-  transition: opacity 120ms, transform 120ms;
+  transition:
+    opacity 120ms,
+    transform 120ms;
 }
 .os-dock .dock-item:hover::after {
   opacity: 1;
@@ -167,10 +227,17 @@
   height: 46px;
 }
 .dock-windows .dock-item.is-running {
-  background: color-mix(in srgb, var(--rumahl-ui-color-accent, var(--rumahl-color-accent-primary)) 12%, var(--rumahl-ui-color-panel-background, var(--rumahl-color-panel-background)));
+  background: color-mix(
+    in srgb,
+    var(--rumahl-ui-color-accent, var(--rumahl-color-accent-primary)) 12%,
+    var(
+      --rumahl-ui-color-panel-background,
+      var(--rumahl-color-panel-background)
+    )
+  );
 }
 .dock-windows .dock-item.is-minimized {
-  opacity: .62;
+  opacity: 0.62;
 }
 .dock-windows svg {
   width: 24px;
@@ -194,7 +261,9 @@
 .os-dock--launcher {
   background: #ffffff1f;
   border-color: #ffffff45;
-  box-shadow: 0 8px 30px #0002, inset 0 1px #ffffff40;
+  box-shadow:
+    0 8px 30px #0002,
+    inset 0 1px #ffffff40;
 }
 .os-dock--launcher .dock-item {
   background: #ffffff24;
@@ -204,19 +273,40 @@
   display: none;
 }
 .shell .shell-window {
-  background: var(--rumahl-ui-color-surface-strong, var(--rumahl-ui-color-panel-background, var(--rumahl-color-panel-background)));
+  background: var(
+    --rumahl-ui-color-surface-strong,
+    var(
+      --rumahl-ui-color-panel-background,
+      var(--rumahl-color-panel-background)
+    )
+  );
   border-radius: var(--rumahl-ui-shape-radius-window, 12px);
   border-color: #ffffff60;
   box-shadow: 0 14px 45px #0004;
 }
 .shell .shell-window.is-focused {
-  border-color: color-mix(in srgb, var(--rumahl-ui-color-accent, var(--rumahl-color-accent-primary)) 24%, #ffffff80);
+  border-color: color-mix(
+    in srgb,
+    var(--rumahl-ui-color-accent, var(--rumahl-color-accent-primary)) 24%,
+    #ffffff80
+  );
   box-shadow: 0 22px 65px #0005;
 }
 .shell .shell-window__titlebar {
   min-height: 42px;
   padding: 6px 9px 6px 16px;
-  background: color-mix(in srgb, var(--rumahl-ui-color-panel-background, var(--rumahl-color-panel-background)) 95%, var(--rumahl-ui-color-canvas-background, var(--rumahl-color-canvas-background)));
+  background: color-mix(
+    in srgb,
+    var(
+        --rumahl-ui-color-panel-background,
+        var(--rumahl-color-panel-background)
+      )
+      95%,
+    var(
+      --rumahl-ui-color-canvas-background,
+      var(--rumahl-color-canvas-background)
+    )
+  );
 }
 .shell .shell-window__titlebar p {
   display: none;
@@ -227,7 +317,18 @@
   margin: 0;
 }
 .shell .start-menu {
-  background: color-mix(in srgb, var(--rumahl-ui-color-surface-strong, var(--rumahl-ui-color-panel-background, var(--rumahl-color-panel-background))) calc(var(--rumahl-ui-material-opacity, 0.94) * 100%), transparent);
+  background: color-mix(
+    in srgb,
+    var(
+        --rumahl-ui-color-surface-strong,
+        var(
+          --rumahl-ui-color-panel-background,
+          var(--rumahl-color-panel-background)
+        )
+      )
+      calc(var(--rumahl-ui-material-opacity, 0.94) * 100%),
+    transparent
+  );
   backdrop-filter: blur(35px);
   border-color: #ffffff60;
   border-radius: 20px;
@@ -255,7 +356,9 @@
   width: 100%;
   text-align: center;
 }
-.launcher-heading > .launcher-wordmark, .launcher-heading > p:not(.launcher-clock), .launcher-heading > h1 {
+.launcher-heading > .launcher-wordmark,
+.launcher-heading > p:not(.launcher-clock),
+.launcher-heading > h1 {
   position: absolute;
   width: 1px;
   height: 1px;
@@ -276,7 +379,7 @@
 .launcher-clock strong {
   font-size: clamp(56px, 7vw, 86px);
   font-weight: 250;
-  letter-spacing: -.045em;
+  letter-spacing: -0.045em;
   line-height: 1.1;
 }
 .launcher-clock span {
@@ -329,14 +432,23 @@
 }
 .launcher-section > h2 {
   font-size: 12px;
-  letter-spacing: .04em;
+  letter-spacing: 0.04em;
   font-weight: 500;
   color: var(--rumahl-ui-color-on-wallpaper, #edf6ee);
   margin: 8px 8px 12px;
   text-shadow: 0 1px 4px #000;
 }
 .launcher-home .app-grid {
-  grid-template-columns: repeat(auto-fill, minmax(min(var(--rumahl-ui-shape-icon-size-large, 64px), var(--rumahl-ui-unit-lg)), 1fr));
+  grid-template-columns: repeat(
+    auto-fill,
+    minmax(
+      min(
+        var(--rumahl-ui-shape-icon-size-large, 64px),
+        var(--rumahl-ui-unit-lg)
+      ),
+      1fr
+    )
+  );
   gap: 18px 14px;
 }
 .launcher-home .app-tile {
@@ -352,18 +464,29 @@
   border-color: #ffffff30;
 }
 .launcher-home .app-tile__icon {
-  width: min(var(--rumahl-ui-shape-icon-size-large, 64px), var(--rumahl-ui-unit-lg));
-  height: min(var(--rumahl-ui-shape-icon-size-large, 64px), var(--rumahl-ui-unit-lg));
+  width: min(
+    var(--rumahl-ui-shape-icon-size-large, 64px),
+    var(--rumahl-ui-unit-lg)
+  );
+  height: min(
+    var(--rumahl-ui-shape-icon-size-large, 64px),
+    var(--rumahl-ui-unit-lg)
+  );
   border-radius: 17px;
-  box-shadow: 0 4px 12px #0003, inset 0 1px 1px #ffffff65;
+  box-shadow:
+    0 4px 12px #0003,
+    inset 0 1px 1px #ffffff65;
 }
-.app-tile[data-app-id="files"] .app-tile__icon, .desktop-icon[data-app-id="files"] .desktop-icon__art {
+.app-tile[data-app-id="files"] .app-tile__icon,
+.desktop-icon[data-app-id="files"] .desktop-icon__art {
   background: linear-gradient(150deg, #57b7f8, #2375d2);
 }
-.app-tile[data-app-id="app-manager"] .app-tile__icon, .desktop-icon[data-app-id="app-manager"] .desktop-icon__art {
+.app-tile[data-app-id="app-manager"] .app-tile__icon,
+.desktop-icon[data-app-id="app-manager"] .desktop-icon__art {
   background: linear-gradient(150deg, #6caa80, #29705b);
 }
-.app-tile[data-app-id="settings"] .app-tile__icon, .desktop-icon[data-app-id="settings"] .desktop-icon__art {
+.app-tile[data-app-id="settings"] .app-tile__icon,
+.desktop-icon[data-app-id="settings"] .desktop-icon__art {
   background: linear-gradient(150deg, #9ba7b5, #536072);
 }
 .launcher-home .folder-preview {
@@ -402,7 +525,9 @@
 .launcher-home .launcher-pages button[aria-current] {
   background: white;
 }
-.launcher-deck-hero, .launcher-card, .launcher-row {
+.launcher-deck-hero,
+.launcher-card,
+.launcher-row {
   color: var(--rumahl-ui-color-text-primary, var(--rumahl-color-text-primary));
 }
 .shell[data-shell-mode="launcher"] .shell-window {
@@ -424,7 +549,10 @@
     padding: 7px;
     bottom: 10px;
   }
-  .shell[data-shell-mode="launcher"] .menubar__menus > .menubar__menu:not(:first-child), .shell[data-shell-mode="launcher"] .menubar__protection {
+  .shell[data-shell-mode="launcher"]
+    .menubar__menus
+    > .menubar__menu:not(:first-child),
+  .shell[data-shell-mode="launcher"] .menubar__protection {
     display: none;
   }
   .shell[data-shell-mode="launcher"] .dock-windows {
@@ -435,7 +563,8 @@
   .os-dock .dock-item {
     transition: none;
   }
-  .os-dock--desktop .dock-item.is-hovered, .os-dock--desktop .dock-item.is-neighbor {
+  .os-dock--desktop .dock-item.is-hovered,
+  .os-dock--desktop .dock-item.is-neighbor {
     transform: none;
   }
 }
@@ -471,22 +600,27 @@
 }
 /* Springboard feedback and paging. */
 .launcher-home .app-tile {
-  transition: transform 150ms cubic-bezier(.2, .9, .3, 1.25);
+  transition: transform 150ms cubic-bezier(0.2, 0.9, 0.3, 1.25);
 }
 .launcher-home .app-tile:active {
-  transform: scale(.9);
+  transform: scale(0.9);
 }
-.launcher-home .app-tile__icon, .launcher-home .folder-preview {
-  transition: transform var(--rumahl-ui-motion-duration, 150ms) var(--rumahl-ui-motion-easing-spring, cubic-bezier(.2, .9, .3, 1.25));
+.launcher-home .app-tile__icon,
+.launcher-home .folder-preview {
+  transition: transform var(--rumahl-ui-motion-duration, 150ms)
+    var(--rumahl-ui-motion-easing-spring, cubic-bezier(0.2, 0.9, 0.3, 1.25));
 }
-.launcher-home .app-tile:hover .app-tile__icon, .launcher-home .app-tile:hover .folder-preview {
+.launcher-home .app-tile:hover .app-tile__icon,
+.launcher-home .app-tile:hover .folder-preview {
   transform: scale(1.07);
 }
 .launcher-home .launcher-pages {
   padding: 14px 0 2px;
 }
 .launcher-home .launcher-pages button {
-  transition: width 160ms, background 160ms;
+  transition:
+    width 160ms,
+    background 160ms;
 }
 /* Android app drawer. */
 .launcher-view--drawer {
@@ -527,7 +661,7 @@
   color: #d6ede1;
   font-size: 12px;
   font-weight: 700;
-  letter-spacing: .08em;
+  letter-spacing: 0.08em;
   text-shadow: 0 1px 3px #000;
 }
 .drawer-list .launcher-row {
@@ -596,7 +730,8 @@
   width: auto;
   height: 20px;
 }
-.taskbar__apps, .taskbar__windows {
+.taskbar__apps,
+.taskbar__windows {
   display: flex;
   align-items: center;
   gap: 5px;
@@ -626,7 +761,8 @@
   overflow: hidden;
   text-overflow: ellipsis;
 }
-.taskbar__button:hover, .taskbar__button[aria-pressed="true"] {
+.taskbar__button:hover,
+.taskbar__button[aria-pressed="true"] {
   background: #ffffff3d;
 }
 .taskbar__button svg {
@@ -635,7 +771,7 @@
   stroke: currentColor;
 }
 .taskbar__window.is-minimized {
-  opacity: .6;
+  opacity: 0.6;
 }
 .taskbar__tray {
   display: flex;

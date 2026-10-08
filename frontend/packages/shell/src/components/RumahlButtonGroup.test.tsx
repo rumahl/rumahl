@@ -2,10 +2,24 @@ import { fireEvent, render, screen } from "@testing-library/react";
 import { expect, it, vi } from "vitest";
 import { RumahlButtonGroup } from "./RumahlButtonGroup";
 
-const options = [{ value: "a", label: "Alpha" }, { value: "b", label: "Beta", disabled: true }, { value: "c", label: "Gamma" }];
+const options = [
+  { value: "a", label: "Alpha" },
+  { value: "b", label: "Beta", disabled: true },
+  { value: "c", label: "Gamma" },
+];
 it("moves keyboard focus past disabled options and selects without submitting", () => {
-  const change = vi.fn(), submit = vi.fn();
-  render(<form onSubmit={submit}><RumahlButtonGroup label="Mode" options={options} value="a" onChange={change} /></form>);
+  const change = vi.fn(),
+    submit = vi.fn();
+  render(
+    <form onSubmit={submit}>
+      <RumahlButtonGroup
+        label="Mode"
+        options={options}
+        value="a"
+        onChange={change}
+      />
+    </form>,
+  );
   const alpha = screen.getByRole("button", { name: "Alpha" });
   expect(alpha).toHaveAttribute("aria-pressed", "true");
   alpha.focus();
@@ -20,11 +34,35 @@ it("moves keyboard focus past disabled options and selects without submitting", 
 });
 it("toggles multiple values independently", () => {
   const change = vi.fn();
-  render(<RumahlButtonGroup label="Format" multiple options={options} value={["a"]} onChange={change} />);
+  render(
+    <RumahlButtonGroup
+      label="Format"
+      multiple
+      options={options}
+      value={["a"]}
+      onChange={change}
+    />,
+  );
   fireEvent.click(screen.getByRole("button", { name: "Gamma" }));
   expect(change).toHaveBeenLastCalledWith(["a", "c"]);
   fireEvent.click(screen.getByRole("button", { name: "Alpha" }));
   expect(change).toHaveBeenLastCalledWith([]);
   fireEvent.click(screen.getByRole("button", { name: "Beta" }));
   expect(change).toHaveBeenCalledTimes(2);
+});
+it("runs connected actions without reporting a selected state", () => {
+  const action = vi.fn();
+  render(
+    <RumahlButtonGroup
+      mode="actions"
+      label="Navigation"
+      options={options}
+      onChange={action}
+    />,
+  );
+  fireEvent.click(screen.getByRole("button", { name: "Gamma" }));
+  expect(action).toHaveBeenCalledWith("c");
+  expect(screen.getByRole("button", { name: "Gamma" })).not.toHaveAttribute(
+    "aria-pressed",
+  );
 });
