@@ -3,6 +3,7 @@ import { AnimatePresence, motion } from "motion/react";
 import { useLocation } from "react-router";
 import { useTheme } from "@rumahl/ui";
 import { ProtectedWindow } from "../components/ProtectedWindow";
+import { findFirstPartyApp } from "../apps/registry";
 import { describeRoute, ShellRoutes } from "../routing/routes";
 import { RouteBoundary } from "../routing/RouteBoundary";
 import { useShell } from "./ShellContext";
@@ -11,6 +12,15 @@ import { constrainRect, placedRect, type WindowPlacement, type WorkArea } from "
 
 /** Height of the flush top bar maximized/snapped windows sit below. */
 const TOPBAR_HEIGHT = 38;
+
+/**
+ * True for an installed (sandboxed iframe) app window. First-party React apps,
+ * streams and pages are not flush.
+ */
+export function isInstalledAppWindow(id: string): boolean {
+  const appId = id.startsWith("app:") ? id.slice("app:".length) : undefined;
+  return appId !== undefined && findFirstPartyApp(appId) === undefined;
+}
 
 export function DesktopWindows() {
   const { state } = useShell();
@@ -55,6 +65,7 @@ function HostedWindow({ item, area, zIndex }: { item: ShellWindow; area: WorkAre
   const location = useLocation();
   const active = describeRoute(location.pathname + location.search + location.hash).id;
   const isLauncher = mode === "launcher";
+  const flush = isInstalledAppWindow(item.id);
   const hidden = item.minimized || (isLauncher && active !== item.id);
   const stored = item.rect ?? { x: 36, y: 24, width: 760, height: 540 };
   const placement = item.placement ?? "floating";
@@ -163,7 +174,7 @@ function HostedWindow({ item, area, zIndex }: { item: ShellWindow; area: WorkAre
     transition={isLauncher ? { type: "spring", stiffness: 320, damping: 30 } : { duration: 0.22, ease: [0.2, 0.7, 0.2, 1] }}
     onPointerMove={move} onPointerUp={end} onPointerCancel={end} onLostPointerCapture={end}>
     {snap ? <div aria-hidden="true" className={`snap-preview snap-preview--${snap}`} /> : null}
-    <ProtectedWindow frameless={isLauncher} id={item.id} focused={state.focusedWindowId === item.id}
+    <ProtectedWindow frameless={isLauncher} flush={flush} id={item.id} focused={state.focusedWindowId === item.id}
       style={area ? { left: rect.x, top: rect.y, width: rect.width, height: rect.height } : undefined}
       onClose={() => { dispatch({ type: "close-window", id: item.id }); if (active === item.id) open("/"); }}
       onFocus={focus} onMinimize={() => { dispatch({ type: "toggle-minimize", id: item.id }); if (active === item.id) open("/"); }}

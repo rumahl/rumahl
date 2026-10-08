@@ -1,6 +1,6 @@
 import { DESIGN_URI, shellLocation } from "./internal";
 import { DesignLab } from "../pages/DesignLab";
-import type { ReactNode } from "react";
+import { createContext, useContext, type ReactNode } from "react";
 import { matchRoutes, useRoutes, useLocation, type RouteObject } from "react-router";
 import { findFirstPartyApp } from "../apps/registry";
 import { SectionPlaceholder } from "../components/SectionPlaceholder";
@@ -51,7 +51,19 @@ export function describeRoute(location: string) {
 }
 export function ShellRoutes({ location }: { location?: string }) {
   const current = useLocation();
-  const internal = shellLocation(location ?? current.pathname + current.search + current.hash) === DESIGN_URI;
+  const target = location ?? current.pathname + current.search + current.hash;
+  const internal = shellLocation(target) === DESIGN_URI;
   const element = useRoutes(shellRoutes, internal ? "/" : location);
-  return internal ? <DesignLab /> : element;
+  return <WindowLocationContext value={target}>{internal ? <DesignLab /> : element}</WindowLocationContext>;
+}
+
+/**
+ * The location of the window the calling component is rendered in. A window's
+ * app iframe must key its fragment off its own location, never the shared
+ * browser URL, so focusing or switching windows never reloads it.
+ */
+const WindowLocationContext = createContext<string | null>(null);
+
+export function useWindowLocation(): string | null {
+  return useContext(WindowLocationContext);
 }

@@ -781,19 +781,87 @@ button.contribution-card:hover {
 }
 
 /* Presentation modes share navigation and route content. */
-.window-position { position: absolute; inset: 0; pointer-events: none; }
-.window-position:has(.is-focused) { z-index: 2; }
-.launcher-workspace { overflow: auto; flex: 1; min-height: 0; padding-block: 24px; }
-.launcher-workspace .stream-frame { height: 70vh; }
-.app-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 16px; }
-.app-grid a { padding: 24px; color: inherit; background: var(--rumahl-ui-color-panel-background, var(--rumahl-color-panel-background)); border: 1px solid var(--line); border-radius: var(--rumahl-radius-window); }
-.route-message { padding: 24px; }
+.window-position { 
+  position: absolute; 
+  inset: 0; 
+  pointer-events: none; 
+}
+.window-position:has(.is-focused) { 
+  z-index: 2; 
+}
+.launcher-workspace { 
+  overflow: auto; 
+  flex: 1; 
+  min-height: 0; 
+  padding-block: 24px; 
+}
+.launcher-workspace .stream-frame { 
+  height: 70vh; 
+}
+.app-grid { 
+  display: grid; 
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); 
+  gap: 16px; 
+}
+.app-grid a { 
+  padding: 24px; 
+  color: inherit; 
+  background: var(--rumahl-ui-color-panel-background, var(--rumahl-color-panel-background)); 
+  border: 1px solid var(--line); 
+  border-radius: var(--rumahl-radius-window); 
+}
+.route-message { 
+  padding: 24px; 
+}
 
-.navigation__items a { text-decoration: none; }
-a:focus-visible, select:focus-visible { outline: 3px solid var(--rumahl-color-accent-primary); outline-offset: 2px; }
-.settings-tabs { display: flex; gap: 16px; }
+.navigation__items a { 
+  text-decoration: none; 
+}
+a:focus-visible, select:focus-visible { 
+  outline: 3px solid var(--rumahl-color-accent-primary); 
+  outline-offset: 2px; 
+}
+.settings-tabs { 
+  display: flex; 
+  gap: 16px; 
+}
 
-.installed-app-frame { display: block; width: 100%; height: 65vh; border: 0; background: white; }
+/* A hosted iframe app fills the window content with no padding; first-party
+   React apps and stream windows keep the window's content padding. */
+.shell-window--flush, .shell-window--flush.is-focused { 
+  opacity: 1; 
+  transform: none; 
+}
+.shell-window--flush { 
+  padding: 0 !important; 
+}
+.shell-window--flush .shell-window__content { 
+  position: relative; 
+  padding: 0 !important; 
+  overflow: hidden; 
+  border-radius: inherit; 
+}
+.shell-window--flush .installed-app-frame { 
+  position: absolute; 
+  inset: 0; 
+  width: 100%; 
+  height: 100%; 
+  border: 0; 
+  background: white; 
+}
+
+/* The file browser fills its window but keeps the window padding. */
+.files-app { 
+  display: flex; height: 100%; min-height: 0; }
+.files-app__sidebar { flex: 0 0 220px; display: flex; flex-direction: column; gap: 4px; padding: 16px 12px; overflow: auto; border-inline-end: 1px solid var(--line); }
+.files-app__heading { margin: 0 6px 6px; font-size: .72rem; text-transform: uppercase; letter-spacing: .12em; color: var(--rumahl-ui-color-text-muted, var(--rumahl-color-text-muted)); }
+.files-app__sidebar button { padding: 9px 10px; text-align: start; color: inherit; background: transparent; border: 0; border-radius: 8px; cursor: pointer; }
+.files-app__sidebar button:hover { background: color-mix(in srgb, currentColor 8%, transparent); }
+.files-app__sidebar button.is-active { background: color-mix(in srgb, var(--rumahl-color-accent-primary) 20%, transparent); }
+.files-app__main { flex: 1 1 auto; min-width: 0; min-height: 0; overflow: auto; }
+.files-browser__header h1 { margin: 0 0 4px; }
+.files-browser__header p { margin: 0 0 12px; color: var(--rumahl-ui-color-text-muted, var(--rumahl-color-text-muted)); }
+.files-browser__breadcrumb { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 12px; }
 .app-grid small { display: block; color: var(--rumahl-ui-color-text-muted, var(--rumahl-color-text-muted)); }
 
 }
@@ -813,3 +881,33 @@ a:focus-visible, select:focus-visible { outline: 3px solid var(--rumahl-color-ac
 .app-data-list { margin: 8px 0; padding: 0; list-style: none; display: grid; gap: 4px; }
 .app-data-list button { width: 100%; padding: 8px 12px; text-align: start; color: inherit; background: var(--rumahl-ui-color-panel-background, var(--rumahl-color-panel-background)); border: 1px solid var(--line); border-radius: 8px; cursor: pointer; }
 .app-data-preview { max-height: 24rem; overflow: auto; padding: 12px; background: var(--rumahl-ui-color-panel-background, var(--rumahl-color-panel-background)); border: 1px solid var(--line); border-radius: 8px; white-space: pre-wrap; word-break: break-word; }
+
+.visually-hidden { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; border: 0; }
+.installed-app-loading { width: 100%; height: 100%; background: var(--rumahl-ui-color-panel-background, var(--rumahl-color-panel-background)); }
+
+.files-toolbar { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin-bottom: 12px; }
+.files-toolbar button { padding: 6px 9px; border: 1px solid var(--line); border-radius: 8px; background: transparent; color: inherit; cursor: pointer; }
+.files-toolbar button[aria-pressed="true"], .files-toolbar button.is-active { background: color-mix(in srgb, var(--rumahl-color-accent-primary) 20%, transparent); }
+.files-toolbar button:disabled { opacity: .4; cursor: default; }
+.files-breadcrumb { display: flex; align-items: center; gap: 4px; flex: 1 1 auto; min-width: 0; flex-wrap: wrap; }
+.files-breadcrumb button { border: 0; background: transparent; padding: 4px 6px; }
+.files-search { flex: 0 0 auto; }
+.files-search input, .files-draft input { padding: 6px 9px; border: 1px solid var(--line); border-radius: 8px; background: var(--rumahl-ui-color-panel-background, var(--rumahl-color-panel-background)); color: inherit; }
+.files-upload { position: relative; overflow: hidden; display: inline-flex; padding: 6px 9px; border: 1px solid var(--line); border-radius: 8px; cursor: pointer; }
+.files-upload input { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
+.files-readonly { color: var(--rumahl-ui-color-text-muted, var(--rumahl-color-text-muted)); font-size: .85rem; }
+.files-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 12px; margin: 0; padding: 0; list-style: none; }
+.files-tile { display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 14px 8px; border: 1px solid transparent; border-radius: 10px; text-align: center; cursor: default; }
+.files-tile:hover { background: color-mix(in srgb, currentColor 7%, transparent); }
+.files-tile.is-selected { background: color-mix(in srgb, var(--rumahl-color-accent-primary) 20%, transparent); border-color: color-mix(in srgb, var(--rumahl-color-accent-primary) 45%, transparent); }
+.files-tile__icon { font-size: 40px; line-height: 1; }
+.files-tile__name { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.files-row { display: grid; grid-template-columns: 24px 1fr auto; align-items: center; gap: 10px; padding: 8px 10px; border-radius: 8px; cursor: default; }
+.files-row:hover { background: color-mix(in srgb, currentColor 7%, transparent); }
+.files-row.is-selected { background: color-mix(in srgb, var(--rumahl-color-accent-primary) 20%, transparent); }
+.files-row__meta { color: var(--rumahl-ui-color-text-muted, var(--rumahl-color-text-muted)); font-size: .85rem; }
+.files-menu { position: fixed; z-index: 200; display: flex; flex-direction: column; min-width: 180px; padding: 4px; background: var(--rumahl-ui-color-panel-background, var(--rumahl-color-panel-background)); border: 1px solid var(--line); border-radius: 10px; box-shadow: 0 18px 50px #0006; }
+.files-menu button { text-align: start; padding: 8px 10px; border: 0; border-radius: 7px; background: transparent; color: inherit; cursor: pointer; }
+.files-menu button:hover { background: color-mix(in srgb, currentColor 10%, transparent); }
+.files-draft { display: flex; gap: 8px; margin-bottom: 12px; }
+.files-empty { color: var(--rumahl-ui-color-text-muted, var(--rumahl-color-text-muted)); }

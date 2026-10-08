@@ -1,16 +1,19 @@
 import { useEffect, useRef, useState } from "react";
-import { useLocation, useParams } from "react-router";
+import { useParams } from "react-router";
 import { useShell } from "../shell/ShellContext";
 import { useI18n } from "../i18n";
+import { useWindowLocation } from "../routing/routes";
 import { useAppCatalog } from "./AppCatalog";
 import { launchApp, type InstalledApp } from "./client";
+import { setLaunching } from "./launching";
 import { UnavailablePage } from "../pages/UnavailablePage";
 
 export function InstalledAppHost() {
   const { appId = "" } = useParams();
   const { apps, status } = useAppCatalog();
   const { t } = useI18n();
-  if (status === "loading") return <p role="status">{t("apps.loading")}</p>;
+  // No visible "Loading apps…" text: the launching app bounces in the dock.
+  if (status === "loading") return <div className="installed-app-loading"><span className="visually-hidden">{t("apps.loading")}</span></div>;
   const app = apps.find((item) => item.id === appId);
   if (!app?.launchable) return <UnavailablePage app />;
   return <AppFrame key={`${app.installationId}:${app.version}`} app={app} />;
@@ -19,7 +22,7 @@ function AppFrame({ app }: { app: InstalledApp }) {
   const { live } = useShell();
   const { t } = useI18n();
   const params = useParams();
-  const location = useLocation();
+  const windowLocation = useWindowLocation();
   const [frame, setFrame] = useState<string | null>(null);
   const [failed, setFailed] = useState(false);
   const cancel = useRef<() => void>(() => {});
@@ -45,10 +48,15 @@ function AppFrame({ app }: { app: InstalledApp }) {
     void renew();
     return () => { controller.abort(); clearTimeout(timer); };
   }, [live, app.id, app.installationId, app.version, retry]);
+  // Bounce the app's dock icon while the iframe is not ready yet.
+  useEffect(() => () => setLaunching(app.id, false), [app.id]);
+  useEffect(() => { setLaunching(app.id, !frame && !failed); }, [app.id, frame, failed]);
   if (failed) return <div role="status"><p>{t("apps.launchFailed")}</p><button type="button" onClick={() => setRetry((value) => value + 1)}>{t("apps.retry")}</button></div>;
-  if (!frame) return <p role="status">{t("apps.loading")}</p>;
+  if (!frame) return <div className="installed-app-loading"><span className="visually-hidden">{t("apps.loading")}</span></div>;
   const url = new URL(frame);
-  const query = new URLSearchParams(location.search);
+  // Key the fragment off this window's location, not the shared browser URL, so
+  // focusing or switching windows never changes the iframe source.
+  const query = new URLSearchParams(windowLocation ? (windowLocation.split("?")[1]?.split("#")[0] ?? "") : "");
   query.delete("mode");
   // App navigation is a fragment on the authorized entrypoint, never an asset path.
   url.hash = `/${params["*"] ?? ""}${query.size ? `?${query}` : ""}`;
