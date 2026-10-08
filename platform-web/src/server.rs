@@ -1,4 +1,4 @@
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 use std::os::unix::fs::{MetadataExt, PermissionsExt};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -7,7 +7,7 @@ use std::time::Duration;
 use axum::Router;
 use axum::body::Body;
 use axum::extract::ws::{Message, WebSocket, WebSocketUpgrade};
-use axum::extract::{OriginalUri, Path as UrlPath, State};
+use axum::extract::{OriginalUri, Path as UrlPath, Query, State};
 use axum::http::header::{
     CACHE_CONTROL, CONTENT_SECURITY_POLICY, CONTENT_TYPE, COOKIE, ORIGIN, SET_COOKIE,
 };
@@ -114,6 +114,7 @@ pub fn router(state: GatewayState) -> Router {
             "/api/v1/shell/apps/{id}/launch",
             post(app_launch).layer(axum::extract::DefaultBodyLimit::max(1024)),
         )
+        .route("/api/v1/shell/apps/{id}/settings", get(app_settings))
         .route("/api/v1/shell/events", get(events))
         .route("/api/v1/shell/widgets/{id}/frame", get(widget_frame))
         .route("/api/v1/shell/streams", get(stream_list))
@@ -258,6 +259,68 @@ async fn app_launch(
     {
         Ok(Ok(launch)) => {
             let mut response = axum::Json(serde_json::json!({"launchVersion": 1, "id": launch.app.id, "installationId": launch.app.installation_id.to_string(), "lease": launch.lease, "frameUrl": launch.frame_url, "renewAfterSeconds": 30})).into_response();
+            secure_headers(&mut response);
+            response
+        }
+        Ok(Err(error)) => crate::app_error(error),
+        Err(_) => error(StatusCode::SERVICE_UNAVAILABLE),
+    }
+}
+
+async fn app_settings(
+    State(state): State<Arc<GatewayState>>,
+    UrlPath(id): UrlPath<String>,
+    Query(query): Query<BTreeMap<String, String>>,
+    headers: HeaderMap,
+) -> Response {
+    let identity = match credential(&headers) {
+        Ok(token) => match authenticate(&state, &token).await {
+            Ok(identity) => identity,
+            Err(error) => return backend_error(error),
+        },
+        Err(_) => return error(StatusCode::UNAUTHORIZED),
+    };
+    if query.len() != 1 {
+        return error(StatusCode::BAD_REQUEST);
+    }
+    let Some(installation) = query.get("installationId") else {
+        return error(StatusCode::BAD_REQUEST);
+    };
+    let installation = installation.clone();
+    let Some(apps) = state.apps.clone() else {
+        return error(StatusCode::SERVICE_UNAVAILABLE);
+    };
+    match tokio::task::spawn_blocking(move || apps.settings(identity, &id, &installation)).await {
+        Ok(Ok(settings)) => {
+            let manifest: Vec<_> = settings
+                .manifest
+                .into_iter()
+                .map(|setting| {
+                    let options: Vec<_> = setting
+                        .options
+                        .into_iter()
+                        .map(|option| {
+                            serde_json::json!({"value": option.value, "label": option.label})
+                        })
+                        .collect();
+                    serde_json::json!({
+                        "key": setting.key,
+                        "title": setting.title,
+                        "description": setting.description,
+                        "type": setting.kind,
+                        "required": setting.required,
+                        "options": options,
+                    })
+                })
+                .collect();
+            let mut response = axum::Json(serde_json::json!({
+                "settingsVersion": 1,
+                "id": settings.app.id,
+                "installationId": settings.app.installation_id.to_string(),
+                "manifest": manifest,
+                "extended": serde_json::Value::Null,
+            }))
+            .into_response();
             secure_headers(&mut response);
             response
         }

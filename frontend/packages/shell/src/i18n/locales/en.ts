@@ -390,7 +390,19 @@ export const english = {
   "osMode.error.forbidden": "The password was not accepted.",
   "osMode.error.unavailable": "The mode could not be changed.",
   "settings.osMode": "OS mode",
-  "settings.osModeHelp": "Guided, advanced or developer access."
+  "settings.osModeHelp": "Guided, advanced or developer access.",
+  "appSettings.open": "App settings",
+  "appSettings.loading": "Loading settings…",
+  "appSettings.unavailable": "The app settings are currently unavailable.",
+  "appSettings.manifestTitle": "App settings",
+  "appSettings.manifestEmpty": "This app declares no settings.",
+  "appSettings.required": "Required",
+  "appSettings.extendedTitle": "Advanced configuration",
+  "appSettings.extendedEmpty": "No additional configuration was found.",
+  "appSettings.type.text": "Text",
+  "appSettings.type.number": "Number",
+  "appSettings.type.boolean": "On/off",
+  "appSettings.type.select": "Choice"
 } as const;
 
 export type MessageKey = keyof typeof english;

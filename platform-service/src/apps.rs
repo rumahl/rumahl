@@ -2,7 +2,10 @@
 //! Published web roots are immutable, installation-specific directories.
 use rumahl_core::*;
 use rumahl_persistence_sqlite::{SqliteAccountStateRepository, SqliteSnapshotRepository};
-use rumahl_platform_web::{AppAccessError, AppAsset, AppProvider, CatalogApp, ShellIdentity};
+use rumahl_platform_web::{
+    AppAccessError, AppAsset, AppProvider, AppSettingInfo, AppSettingOptionInfo, CatalogApp,
+    ShellIdentity,
+};
 use rustix::fs::{FileType, Mode, OFlags, fstat, open, openat};
 use std::fs::File;
 use std::io::Read;
@@ -228,5 +231,34 @@ impl AppProvider for PersistentApps {
             return Err(AppAccessError::Denied);
         }
         self.read_asset(installation, path, true)
+    }
+    fn settings(
+        &self,
+        identity: ShellIdentity,
+        installation: InstallationId,
+    ) -> Result<Vec<AppSettingInfo>, AppAccessError> {
+        let app = self.app(identity, installation)?;
+        Ok(app
+            .manifest()
+            .settings()
+            .iter()
+            .map(|setting| AppSettingInfo {
+                key: setting.key().as_str().to_owned(),
+                title: setting.title().to_owned(),
+                description: setting.description().map(str::to_owned),
+                kind: setting.kind().as_str().to_owned(),
+                required: setting.is_required(),
+                options: match setting.kind() {
+                    AppSettingKind::Select { options } => options
+                        .iter()
+                        .map(|option| AppSettingOptionInfo {
+                            value: option.value().to_owned(),
+                            label: option.label().to_owned(),
+                        })
+                        .collect(),
+                    _ => Vec::new(),
+                },
+            })
+            .collect())
     }
 }

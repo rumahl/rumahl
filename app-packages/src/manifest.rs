@@ -3,8 +3,9 @@ use std::error::Error;
 use std::fmt;
 
 use rumahl_core::{
-    AppId, AppManifest, AppVersion, PackagePath, PublisherId, RuntimeDescriptor, RuntimeEndpointId,
-    RuntimeEntrypoint, RuntimeEntrypointId, RuntimeKind,
+    AppId, AppManifest, AppSettingDeclaration, AppSettingKey, AppSettingKind, AppSettingOption,
+    AppVersion, PackagePath, PublisherId, RuntimeDescriptor, RuntimeEndpointId, RuntimeEntrypoint,
+    RuntimeEntrypointId, RuntimeKind,
 };
 use serde::Deserialize;
 
@@ -44,6 +45,7 @@ pub struct PackageAppManifest {
     version: AppVersion,
     display_name: String,
     runtime: RuntimeDescriptor,
+    settings: Vec<AppSettingDeclaration>,
 }
 
 /// One payload file authenticated by the signed manifest.
@@ -79,6 +81,7 @@ pub enum PackageManifestError {
     FileTooLarge,
     PackageTooLarge,
     InvalidAppManifest,
+    InvalidSetting,
 }
 
 #[derive(Deserialize)]
@@ -98,6 +101,30 @@ struct RawApp {
     version: String,
     display_name: String,
     runtime: RawRuntime,
+    #[serde(default)]
+    settings: Vec<RawSetting>,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+struct RawSetting {
+    key: String,
+    title: String,
+    #[serde(default)]
+    description: Option<String>,
+    #[serde(rename = "type")]
+    kind: String,
+    #[serde(default)]
+    options: Vec<RawSettingOption>,
+    #[serde(default)]
+    required: bool,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+struct RawSettingOption {
+    value: String,
+    label: String,
 }
 
 #[derive(Deserialize)]
@@ -157,14 +184,7 @@ impl PackageManifest {
 
     /// Rebuilds the trusted core manifest used by the platform registration.
     pub fn to_app_manifest(&self) -> Result<AppManifest, PackageManifestError> {
-        AppManifest::new(
-            self.app.app_id.clone(),
-            self.publisher_id.clone(),
-            self.app.version,
-            self.app.display_name.clone(),
-            self.app.runtime.clone(),
-        )
-        .map_err(|_| PackageManifestError::InvalidAppManifest)
+        self.app.to_app_manifest(&self.publisher_id)
     }
 
     fn from_raw(raw: RawManifest) -> Result<Self, PackageManifestError> {
@@ -243,6 +263,10 @@ impl PackageAppManifest {
         &self.runtime
     }
 
+    pub fn settings(&self) -> &[AppSettingDeclaration] {
+        &self.settings
+    }
+
     fn from_raw(raw: RawApp) -> Result<Self, PackageManifestError> {
         let app_id = AppId::parse(raw.app_id).map_err(|_| PackageManifestError::InvalidAppId)?;
         let version =
@@ -258,11 +282,22 @@ impl PackageAppManifest {
 
         let runtime = parse_runtime(raw.runtime)?;
 
+        let mut settings = Vec::with_capacity(raw.settings.len());
+        let mut setting_keys = HashSet::new();
+        for setting in raw.settings {
+            let setting = parse_setting(setting)?;
+            if !setting_keys.insert(setting.key().clone()) {
+                return Err(PackageManifestError::InvalidSetting);
+            }
+            settings.push(setting);
+        }
+
         Ok(Self {
             app_id,
             version,
             display_name,
             runtime,
+            settings,
         })
     }
 
@@ -270,14 +305,20 @@ impl PackageAppManifest {
         &self,
         publisher_id: &PublisherId,
     ) -> Result<AppManifest, PackageManifestError> {
-        AppManifest::new(
+        let mut manifest = AppManifest::new(
             self.app_id.clone(),
             publisher_id.clone(),
             self.version,
             self.display_name.clone(),
             self.runtime.clone(),
         )
-        .map_err(|_| PackageManifestError::InvalidAppManifest)
+        .map_err(|_| PackageManifestError::InvalidAppManifest)?;
+        for setting in &self.settings {
+            manifest
+                .add_setting(setting.clone())
+                .map_err(|_| PackageManifestError::InvalidSetting)?;
+        }
+        Ok(manifest)
     }
 }
 
@@ -297,6 +338,49 @@ impl PackageFile {
     pub fn sha256_hex(&self) -> String {
         to_hex(&self.sha256)
     }
+}
+
+fn parse_setting(raw: RawSetting) -> Result<AppSettingDeclaration, PackageManifestError> {
+    let key = AppSettingKey::parse(&raw.key).map_err(|_| PackageManifestError::InvalidSetting)?;
+
+    let kind = match raw.kind.as_str() {
+        "text" | "number" | "boolean" => {
+            if !raw.options.is_empty() {
+                return Err(PackageManifestError::InvalidSetting);
+            }
+            match raw.kind.as_str() {
+                "text" => AppSettingKind::Text,
+                "number" => AppSettingKind::Number,
+                _ => AppSettingKind::Boolean,
+            }
+        }
+        "select" => {
+            if raw.options.is_empty() {
+                return Err(PackageManifestError::InvalidSetting);
+            }
+            let mut options = Vec::with_capacity(raw.options.len());
+            for option in raw.options {
+                options.push(
+                    AppSettingOption::new(option.value, option.label)
+                        .map_err(|_| PackageManifestError::InvalidSetting)?,
+                );
+            }
+            AppSettingKind::Select { options }
+        }
+        _ => return Err(PackageManifestError::InvalidSetting),
+    };
+
+    let mut declaration = AppSettingDeclaration::new(key, raw.title, kind)
+        .map_err(|_| PackageManifestError::InvalidSetting)?;
+    if let Some(description) = raw.description {
+        declaration = declaration
+            .with_description(description)
+            .map_err(|_| PackageManifestError::InvalidSetting)?;
+    }
+    if raw.required {
+        declaration = declaration.required();
+    }
+    Ok(declaration)
 }
 
 fn parse_runtime(raw: RawRuntime) -> Result<RuntimeDescriptor, PackageManifestError> {
@@ -427,6 +511,9 @@ impl fmt::Display for PackageManifestError {
             Self::InvalidAppManifest => {
                 write!(f, "package manifest cannot be converted to an app manifest")
             }
+            Self::InvalidSetting => {
+                write!(f, "package manifest declares an invalid app setting")
+            }
         }
     }
 }
@@ -456,7 +543,65 @@ impl Error for PackageManifestError {
             | Self::TooManyFiles
             | Self::FileTooLarge
             | Self::PackageTooLarge
-            | Self::InvalidAppManifest => None,
+            | Self::InvalidAppManifest
+            | Self::InvalidSetting => None,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn manifest_with_settings(settings: &str) -> String {
+        format!(
+            r#"{{"formatVersion":1,"publisherId":"com.rumahl","app":{{"appId":"com.rumahl.notes","version":"1.0.0","displayName":"Notes","runtime":{{"kind":"web","entrypoints":[{{"id":"main","kind":"web-asset","path":"index.html"}}]}},"settings":{settings}}},"files":[]}}"#
+        )
+    }
+
+    #[test]
+    fn parses_typed_settings_into_the_app_manifest() {
+        let bytes = manifest_with_settings(
+            r#"[{"key":"server.url","title":"Server URL","description":"Backend endpoint","type":"text","required":true},{"key":"mode","title":"Mode","type":"select","options":[{"value":"fast","label":"Fast"},{"value":"safe","label":"Safe"}]},{"key":"retries","title":"Retries","type":"number"},{"key":"enabled","title":"Enabled","type":"boolean"}]"#,
+        );
+        let manifest = PackageManifest::from_bytes(bytes.as_bytes()).unwrap();
+        assert_eq!(manifest.app().settings().len(), 4);
+
+        let app = manifest.to_app_manifest().unwrap();
+        let settings = app.settings();
+        assert_eq!(settings[0].key().as_str(), "server.url");
+        assert_eq!(settings[0].description(), Some("Backend endpoint"));
+        assert!(settings[0].is_required());
+        assert_eq!(settings[0].kind().as_str(), "text");
+        assert_eq!(settings[1].kind().as_str(), "select");
+        assert_eq!(settings[2].kind().as_str(), "number");
+        assert_eq!(settings[3].kind().as_str(), "boolean");
+    }
+
+    #[test]
+    fn rejects_unknown_setting_fields_and_bad_types() {
+        let unknown =
+            manifest_with_settings(r#"[{"key":"a","title":"A","type":"text","unexpected":true}]"#);
+        assert!(PackageManifest::from_bytes(unknown.as_bytes()).is_err());
+
+        let bad_type = manifest_with_settings(r#"[{"key":"a","title":"A","type":"date"}]"#);
+        assert!(PackageManifest::from_bytes(bad_type.as_bytes()).is_err());
+
+        let select_without_options =
+            manifest_with_settings(r#"[{"key":"a","title":"A","type":"select"}]"#);
+        assert!(PackageManifest::from_bytes(select_without_options.as_bytes()).is_err());
+
+        let text_with_options = manifest_with_settings(
+            r#"[{"key":"a","title":"A","type":"text","options":[{"value":"x","label":"X"}]}]"#,
+        );
+        assert!(PackageManifest::from_bytes(text_with_options.as_bytes()).is_err());
+    }
+
+    #[test]
+    fn settings_stay_optional_for_existing_packages() {
+        let bytes = r#"{"formatVersion":1,"publisherId":"com.rumahl","app":{"appId":"com.rumahl.notes","version":"1.0.0","displayName":"Notes","runtime":{"kind":"web","entrypoints":[{"id":"main","kind":"web-asset","path":"index.html"}]}},"files":[]}"#;
+        let manifest = PackageManifest::from_bytes(bytes.as_bytes()).unwrap();
+        assert!(manifest.app().settings().is_empty());
+        assert!(manifest.to_app_manifest().unwrap().settings().is_empty());
     }
 }

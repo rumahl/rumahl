@@ -797,3 +797,15 @@ a:focus-visible, select:focus-visible { outline: 3px solid var(--rumahl-color-ac
 .app-grid small { display: block; color: var(--rumahl-ui-color-text-muted, var(--rumahl-color-text-muted)); }
 
 }
+
+.app-tile-item { position: relative; display: flex; }
+.app-tile-item > .app-tile { flex: 1 1 auto; }
+.app-tile__settings { position: absolute; inset-block-start: 8px; inset-inline-end: 8px; display: inline-flex; padding: 6px; color: inherit; background: var(--rumahl-ui-color-panel-background, var(--rumahl-color-panel-background)); border: 1px solid var(--line); border-radius: 999px; }
+.app-tile__settings svg { width: 16px; height: 16px; }
+.app-settings { padding: 24px; max-width: 48rem; }
+.app-settings dl { display: grid; gap: 16px; margin: 0; }
+.app-setting { padding: 16px; border: 1px solid var(--line); border-radius: var(--rumahl-radius-window); }
+.app-setting dt { display: flex; gap: 8px; align-items: center; font-weight: 600; }
+.app-setting dd { margin: 4px 0 0; }
+.app-setting__required { padding: 0 8px; font-size: .75rem; color: var(--rumahl-ui-color-text-muted, var(--rumahl-color-text-muted)); border: 1px solid var(--line); border-radius: 999px; }
+.app-setting__type { color: var(--rumahl-ui-color-text-muted, var(--rumahl-color-text-muted)); }

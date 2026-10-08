@@ -29,14 +29,15 @@ pub use app_operations::{
 
 pub use apps::{
     AppLifecycle, AppLifecycleError, AppManifest, AppManifestError, AppManifestValidationError,
-    AppManifestValidator, AppUninstallResult, AppVersion, AppVersionError,
+    AppManifestValidator, AppSettingDeclaration, AppSettingError, AppSettingKey, AppSettingKind,
+    AppSettingOption, AppUninstallResult, AppVersion, AppVersionError,
     CommandContributionDeclaration, CommandContributionDeclarationError, ContributionDeclaration,
     InstalledApp, InstalledAppError, InstalledAppRegistry, InstalledAppRegistryError,
-    OidcCallbackPath, OidcCallbackPathError, OidcClientDeclaration, OidcClientDeclarationError,
-    OidcClientType, OidcScope, PlatformDeregistrationReport, PlatformRegistrar,
-    PlatformRegistrarError, PlatformRegistration, PlatformRegistrationError, PreferredStreamSize,
-    STREAMING_ENGINE_CAPABILITY, SearchContributionDeclaration, StreamPresentation,
-    StreamPresentationError,
+    MAX_APP_SETTINGS, OidcCallbackPath, OidcCallbackPathError, OidcClientDeclaration,
+    OidcClientDeclarationError, OidcClientType, OidcScope, PlatformDeregistrationReport,
+    PlatformRegistrar, PlatformRegistrarError, PlatformRegistration, PlatformRegistrationError,
+    PreferredStreamSize, STREAMING_ENGINE_CAPABILITY, SearchContributionDeclaration,
+    StreamPresentation, StreamPresentationError,
 };
 
 pub use context::{CorrelationId, CorrelationIdError, OperationContext};

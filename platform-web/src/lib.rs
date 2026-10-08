@@ -25,7 +25,10 @@ mod browser_auth;
 pub use browser_auth::{BrowserSessions, SESSION_SECONDS};
 
 mod apps;
-pub use apps::{AppAccess, AppAccessError, AppAsset, AppProvider, CatalogApp, app_error};
+pub use apps::{
+    AppAccess, AppAccessError, AppAsset, AppProvider, AppSettingInfo, AppSettingOptionInfo,
+    AppSettingsInfo, CatalogApp, app_error,
+};
 
 mod preferences;
 

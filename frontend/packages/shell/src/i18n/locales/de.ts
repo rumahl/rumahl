@@ -385,5 +385,17 @@ export const german = {
   "osMode.error.forbidden": "Das Passwort wurde nicht akzeptiert.",
   "osMode.error.unavailable": "Der Modus konnte nicht geändert werden.",
   "settings.osMode": "OS-Modus",
-  "settings.osModeHelp": "Geführter, erweiterter oder Entwickler-Zugriff."
+  "settings.osModeHelp": "Geführter, erweiterter oder Entwickler-Zugriff.",
+  "appSettings.open": "App-Einstellungen",
+  "appSettings.loading": "Einstellungen werden geladen…",
+  "appSettings.unavailable": "Die App-Einstellungen sind momentan nicht verfügbar.",
+  "appSettings.manifestTitle": "App-Einstellungen",
+  "appSettings.manifestEmpty": "Diese App deklariert keine Einstellungen.",
+  "appSettings.required": "Erforderlich",
+  "appSettings.extendedTitle": "Erweiterte Konfiguration",
+  "appSettings.extendedEmpty": "Es wurden keine zusätzlichen Einstellungen gefunden.",
+  "appSettings.type.text": "Text",
+  "appSettings.type.number": "Zahl",
+  "appSettings.type.boolean": "An/Aus",
+  "appSettings.type.select": "Auswahl"
 } as const satisfies Messages;

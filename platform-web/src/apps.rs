@@ -21,6 +21,28 @@ pub struct CatalogApp {
     pub version: String,
     pub launchable: bool,
 }
+/// One rendered setting declared by an app manifest, typed for the shell.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AppSettingInfo {
+    pub key: String,
+    pub title: String,
+    pub description: Option<String>,
+    /// `text`, `number`, `boolean` or `select`.
+    pub kind: String,
+    pub required: bool,
+    pub options: Vec<AppSettingOptionInfo>,
+}
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AppSettingOptionInfo {
+    pub value: String,
+    pub label: String,
+}
+/// The manifest-declared settings for one installed app.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AppSettingsInfo {
+    pub app: CatalogApp,
+    pub manifest: Vec<AppSettingInfo>,
+}
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AppAccessError {
     Denied,
@@ -44,6 +66,12 @@ pub trait AppProvider: Send + Sync + 'static {
         installation: InstallationId,
         path: &str,
     ) -> Result<AppAsset, AppAccessError>;
+    /// Manifest-declared settings for an installed app, in declaration order.
+    fn settings(
+        &self,
+        identity: ShellIdentity,
+        installation: InstallationId,
+    ) -> Result<Vec<AppSettingInfo>, AppAccessError>;
 }
 #[derive(Clone)]
 struct Lease {
@@ -118,6 +146,21 @@ impl AppAccess {
             return Err(AppAccessError::Unavailable);
         }
         Ok(apps)
+    }
+    pub fn settings(
+        &self,
+        identity: ShellIdentity,
+        id: &str,
+        installation: &str,
+    ) -> Result<AppSettingsInfo, AppAccessError> {
+        AppId::parse(id).map_err(|_| AppAccessError::Denied)?;
+        let app = self
+            .catalog(identity)?
+            .into_iter()
+            .find(|app| app.id == id && app.installation_id.to_string() == installation)
+            .ok_or(AppAccessError::Denied)?;
+        let manifest = self.provider.settings(identity, app.installation_id)?;
+        Ok(AppSettingsInfo { app, manifest })
     }
     pub fn launch(
         &self,
@@ -296,6 +339,23 @@ mod tests {
                 content_type: "text/html; charset=utf-8",
             })
         }
+        fn settings(
+            &self,
+            identity: ShellIdentity,
+            installation: InstallationId,
+        ) -> Result<Vec<AppSettingInfo>, AppAccessError> {
+            if identity != self.owner || installation != self.installation {
+                return Err(AppAccessError::Denied);
+            }
+            Ok(vec![AppSettingInfo {
+                key: "server.url".into(),
+                title: "Server URL".into(),
+                description: Some("Backend endpoint".into()),
+                kind: "text".into(),
+                required: true,
+                options: Vec::new(),
+            }])
+        }
     }
     #[test]
     fn leases_bind_host_installation_session_and_expire() {
@@ -397,6 +457,51 @@ mod tests {
                     "com.rumahl.test",
                     &installation.to_string(),
                     Some(&launch.lease)
+                )
+                .is_err()
+        );
+    }
+
+    #[test]
+    fn settings_are_scoped_to_the_installed_app() {
+        let owner = ShellIdentity {
+            user_id: UserId::new(),
+            session_id: SessionId::new(),
+        };
+        let installation = InstallationId::new();
+        let access = AppAccess::new(
+            Arc::new(Provider {
+                owner,
+                installation,
+            }),
+            &Url::parse("https://localhost:8443").unwrap(),
+            "apps.localhost",
+        )
+        .unwrap();
+
+        let settings = access
+            .settings(owner, "com.rumahl.test", &installation.to_string())
+            .unwrap();
+        assert_eq!(settings.manifest.len(), 1);
+        assert_eq!(settings.manifest[0].key, "server.url");
+        assert_eq!(settings.manifest[0].kind, "text");
+        assert!(settings.manifest[0].required);
+
+        // Unknown installation or unauthenticated identity is denied.
+        assert!(
+            access
+                .settings(owner, "com.rumahl.test", &InstallationId::new().to_string())
+                .is_err()
+        );
+        assert!(
+            access
+                .settings(
+                    ShellIdentity {
+                        session_id: SessionId::new(),
+                        ..owner
+                    },
+                    "com.rumahl.test",
+                    &installation.to_string()
                 )
                 .is_err()
         );
