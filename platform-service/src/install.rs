@@ -14,13 +14,16 @@ use std::path::{Path, PathBuf};
 
 use rumahl_app_operations::{AppOperationRunner, AppRuntimeServices};
 use rumahl_core::{
-    AppRuntimeInstallationState, AppRuntimeProvider, InMemoryGrantStore, InstalledApp,
-    PlatformRecovery, PlatformSnapshotRepository, PlatformState, RuntimeEntrypointId, RuntimeKind,
+    AccountStateRepository, AppRuntimeInstallationState, AppRuntimeProvider, GrantAuthority,
+    GrantIssuerPolicy, Identity, InMemoryGrantStore, InstalledApp, PermissionId, PermissionScope,
+    PlatformRecovery, PlatformSnapshot, PlatformSnapshotRepository, PlatformState,
+    RuntimeEntrypointId, RuntimeKind, UserIdentity, UserRole,
 };
 use rumahl_oidc_provider::InstalledAppOriginResolver;
 use rumahl_persistence_sqlite::{
-    SecretEncryptionKeyId, SqliteAppDatabaseProvider, SqliteAppOperationRepository,
-    SqliteOidcClientRepository, SqliteSecretStore, SqliteSnapshotRepository,
+    SecretEncryptionKeyId, SqliteAccountStateRepository, SqliteAppDatabaseProvider,
+    SqliteAppOperationRepository, SqliteOidcClientRepository, SqliteSecretStore,
+    SqliteSnapshotRepository,
 };
 use rumahl_platform_buildroot::{
     PackageImportError, PackageImporter, PackageImporterConfig, PackageImporterConfigError,
@@ -273,6 +276,54 @@ fn install_with(
             let directory = apps_root.join(&app_id);
             std::fs::create_dir_all(&directory)?;
             std::fs::set_permissions(&directory, std::fs::Permissions::from_mode(0o700))?;
+        }
+    }
+
+    // Launch access is a grant, not an install side effect: give every existing
+    // account an explicit launch grant so the app appears in the catalog.
+    if let Some(snapshot) = SqliteSnapshotRepository::open(&platform)
+        .map_err(InstallError::provider)?
+        .load()
+        .map_err(InstallError::provider)?
+    {
+        let accounts = SqliteAccountStateRepository::open(state_dir.join("accounts.sqlite"))
+            .map_err(InstallError::provider)?
+            .load()
+            .map_err(InstallError::provider)?;
+        let mut recovered = PlatformState::new();
+        let mut grants = InMemoryGrantStore::new();
+        PlatformRecovery::new()
+            .recover(&snapshot, &mut recovered, &mut grants)
+            .map_err(|error| InstallError::Recovery(Box::new(error)))?;
+        let permission = PermissionId::parse(crate::apps::APP_LAUNCH_PERMISSION)
+            .map_err(InstallError::provider)?;
+        let resource = crate::apps::app_launch_resource(*installed.installation_id());
+        let mut policy = GrantIssuerPolicy::new();
+        for account in accounts.accounts().accounts() {
+            policy.set_user_role(*account.user_id(), UserRole::Owner);
+        }
+        let mut granted = false;
+        for account in accounts.accounts().accounts() {
+            let issuer: Identity = UserIdentity::new(*account.user_id()).into();
+            let subject: Identity = UserIdentity::new(*account.user_id()).into();
+            let grant = GrantAuthority::new()
+                .issue(
+                    &policy,
+                    issuer,
+                    subject,
+                    permission.clone(),
+                    PermissionScope::Explicit,
+                    vec![resource.clone()],
+                )
+                .map_err(InstallError::provider)?;
+            grants.insert(grant);
+            granted = true;
+        }
+        if granted {
+            SqliteSnapshotRepository::open(&platform)
+                .map_err(InstallError::provider)?
+                .store(&PlatformSnapshot::capture(&recovered, &grants))
+                .map_err(InstallError::provider)?;
         }
     }
 
@@ -617,6 +668,98 @@ mod tests {
         assert_eq!(
             fs::read(installation.join("frontend/index.html")).unwrap(),
             b"<html>notes</html>"
+        );
+    }
+
+    #[test]
+    fn installation_grants_launch_to_existing_accounts() {
+        let state = tempfile::tempdir().unwrap();
+        let package = tempfile::tempdir().unwrap();
+
+        let generated = GeneratedKey::generate("publisher-1").unwrap();
+        let trust_store_path = state.path().join("trust-store.json");
+        fs::write(
+            &trust_store_path,
+            serde_json::to_vec(&trust_store_json(
+                "publisher-1",
+                "com.rumahl",
+                &generated.public_key(),
+            ))
+            .unwrap(),
+        )
+        .unwrap();
+        fs::create_dir_all(package.path().join("frontend")).unwrap();
+        fs::write(
+            package.path().join("frontend/index.html"),
+            b"<html>notes</html>",
+        )
+        .unwrap();
+        let template = json!({
+            "formatVersion": 1,
+            "publisherId": "com.rumahl",
+            "app": {
+                "appId": "com.rumahl.notes",
+                "version": "1.0.0",
+                "displayName": "Notes",
+                "runtime": {
+                    "kind": "web",
+                    "entrypoints": [
+                        { "id": "main", "kind": "web-asset", "path": "frontend/index.html" },
+                    ],
+                },
+            },
+        });
+        let manifest =
+            PackageManifest::from_bytes(&serde_json::to_vec(&template).unwrap()).unwrap();
+        generated
+            .key_store()
+            .signer()
+            .unwrap()
+            .sign(package.path(), &manifest)
+            .unwrap();
+
+        crate::provision(
+            &state.path().join("accounts.sqlite"),
+            "developer",
+            "Developer",
+            "correct horse battery staple".to_owned(),
+            crate::LocalPasswordBlocklist::default(),
+        )
+        .unwrap();
+
+        let config = InstallConfig {
+            runtime_uid: 0,
+            control_socket: state.path().join("control.sock"),
+            secret_socket: state.path().join("secret.sock"),
+            image_socket: state.path().join("image.sock"),
+            trust_store: trust_store_path,
+            tpm_executable: PathBuf::from("/usr/bin/tpm2_unseal"),
+            secret_key_id: SecretEncryptionKeyId::parse("root-1").unwrap(),
+            secret_key_object: state.path().join("root-1.ctx"),
+            secret_key_policy_session: None,
+            app_host_suffix: "apps.rumahl.test".to_owned(),
+        };
+        install_with(&config, state.path(), package.path()).unwrap();
+
+        let snapshot = SqliteSnapshotRepository::open(state.path().join("platform.sqlite"))
+            .unwrap()
+            .load()
+            .unwrap()
+            .unwrap();
+        let accounts = SqliteAccountStateRepository::open(state.path().join("accounts.sqlite"))
+            .unwrap()
+            .load()
+            .unwrap();
+        let user = *accounts.accounts().accounts()[0].user_id();
+        let identity = rumahl_platform_web::ShellIdentity {
+            user_id: user,
+            session_id: rumahl_core::SessionId::new(),
+        };
+        let authorized = crate::apps::authorized_apps(&snapshot, identity).unwrap();
+        assert_eq!(authorized.len(), 1);
+        assert_eq!(
+            authorized[0].identity().app_id().as_str(),
+            "com.rumahl.notes"
         );
     }
 

@@ -8,7 +8,7 @@ use std::path::{Path, PathBuf};
 use base64::Engine;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use ed25519_dalek::{Signer, SigningKey};
-use rumahl_core::{InstallationId, RuntimeEntrypointTarget, RuntimeKind};
+use rumahl_core::{AppSettingKind, InstallationId, RuntimeEntrypointTarget, RuntimeKind};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
@@ -295,6 +295,32 @@ fn manifest_value(manifest: &PackageManifest, files: &[Value]) -> Value {
                 "kind": runtime_kind_str(runtime.kind()),
                 "entrypoints": entrypoints,
             },
+            "settings": manifest
+                .app()
+                .settings()
+                .iter()
+                .map(|setting| {
+                    let mut value = json!({
+                        "key": setting.key().as_str(),
+                        "title": setting.title(),
+                        "type": setting.kind().as_str(),
+                        "required": setting.is_required(),
+                    });
+                    if let Some(description) = setting.description() {
+                        value["description"] = json!(description);
+                    }
+                    if let AppSettingKind::Select { options } = setting.kind() {
+                        value["options"] = json!(options
+                            .iter()
+                            .map(|option| json!({
+                                "value": option.value(),
+                                "label": option.label(),
+                            }))
+                            .collect::<Vec<_>>());
+                    }
+                    value
+                })
+                .collect::<Vec<_>>(),
         },
         "files": files,
     })
@@ -442,6 +468,32 @@ mod tests {
 
         assert_eq!(verified.files().len(), 1);
         assert_eq!(verified.signing_key_id(), "key-1");
+    }
+
+    #[test]
+    fn signs_package_settings_into_the_manifest() {
+        let directory = tempfile::tempdir().unwrap();
+        fs::create_dir_all(directory.path().join("frontend")).unwrap();
+        fs::write(
+            directory.path().join("frontend/index.html"),
+            b"<html>notes</html>",
+        )
+        .unwrap();
+        let manifest = PackageManifest::from_bytes(
+            br#"{"formatVersion":1,"publisherId":"com.rumahl","app":{"appId":"com.rumahl.notes","version":"1.0.0","displayName":"Notes","runtime":{"kind":"web","entrypoints":[{"id":"main","kind":"web-asset","path":"frontend/index.html"}]},"settings":[{"key":"mode","title":"Mode","description":"Pick one","type":"select","options":[{"value":"a","label":"A"}],"required":true}]},"files":[]}"#,
+        )
+        .unwrap();
+
+        key().sign(directory.path(), &manifest).unwrap();
+
+        let written = fs::read(directory.path().join(MANIFEST_FILE)).unwrap();
+        let reloaded = PackageManifest::from_bytes(&written).unwrap();
+        let settings = reloaded.app().settings();
+        assert_eq!(settings.len(), 1);
+        assert_eq!(settings[0].key().as_str(), "mode");
+        assert_eq!(settings[0].kind().as_str(), "select");
+        assert_eq!(settings[0].description(), Some("Pick one"));
+        assert!(settings[0].is_required());
     }
 
     #[test]

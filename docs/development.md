@@ -185,6 +185,17 @@ it. Trust the displayed certificate again; custom `--cert` certificates must
 cover both names. The browser must resolve installation subdomains beneath
 `apps.localhost` to loopback. Shell and apps use the same developer HTTPS port.
 
+Install a real, signed app into the running developer state with:
+
+```sh
+pnpm --dir frontend dev:app
+```
+
+It builds and signs the built-in development app, installs it into
+`.rumahl-dev/data` and grants launch access to the existing accounts, so it
+appears in `/apps`. This runs the same signed-package path as production,
+unlike the integration fixture below (which is not an installer).
+
 The integration fixture is only for disposable developer state; it refuses to
 seed a platform that already has installations. It is not an installer:
 
