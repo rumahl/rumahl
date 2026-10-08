@@ -26,11 +26,11 @@ export class GlassEngine extends EventTarget {
     const l=this.ladder;return l[Math.min(this.backendIndex,l.length-1)];}
   mount(element,material={}){
     if(this.surfaces.has(element))return this.surfaces.get(element).handle;
-    element.classList.add('rumahl-glass-host');const record={element,material:normalizeMaterial(material),impl:null,kind:''};
+    const ownsHostClass=!element.classList.contains('rumahl-glass-host');element.classList.add('rumahl-glass-host');const record={element,ownsHostClass,material:normalizeMaterial(material),impl:null,kind:''};
     const handle={update:(patch)=>{record.material=normalizeMaterial({...record.material,...patch});this.updateRecord(record)},destroy:()=>{this.removeRecord(record)}};
     record.handle=handle;this.surfaces.set(element,record);this.updateRecord(record);return handle;
   }
-  removeRecord(record){record.impl?.destroy();this.surfaces.delete(record.element);record.element.classList.remove('rumahl-glass-host')}
+  removeRecord(record){record.impl?.destroy();this.surfaces.delete(record.element);if(record.ownsHostClass)record.element.classList.remove('rumahl-glass-host')}
   updateRecord(record){const kind=this.renderer,profile=PROFILES[this.profile];
     if(record.kind!==kind){record.impl?.destroy();record.impl=null;record.kind=kind;try{
       record.impl=kind==='svg'?new SvgBackdrop(record.element,record.material,profile):kind==='webgl'?new WebGLWallpaper(record.element,record.material,profile,this.source):new CssFrosted(record.element,record.material);

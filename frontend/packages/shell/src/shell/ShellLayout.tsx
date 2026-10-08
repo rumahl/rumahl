@@ -168,8 +168,9 @@ export function ShellLayout({ snapshot, live }: { snapshot: ShellSnapshotV1; liv
   const debug = useDebug();
   const mobileChecked = useRef(false);
   const stressWindows = useRef(0);
-  const effectiveGlass = glassEnabled && !glassOff && !glassReduced;
-  const material = transparencyOff || glassOff ? "solid" : "translucent";
+  const effectiveGlass = glassEnabled && (!glassOff || appearance.glassEnabled === true) && !glassReduced;
+  // A slow renderer may fall back to CSS, but must not override transparency.
+  const material = transparencyOff ? "solid" : "translucent";
   // An animated (promoted) wallpaper is excluded from the SVG backdrop, so SVG
   // switches the wallpaper to a still layer.
   // Resolve the SVG backdrop after mount so the server and the first client
@@ -214,7 +215,7 @@ export function ShellLayout({ snapshot, live }: { snapshot: ShellSnapshotV1; liv
     // Automatic, escalating response to *sustained* slowness (ignores momentary
     // load spikes; needs 3 consecutive slow windows). First drop glass only;
     // if it stays slow, drop transparency entirely.
-    if (performanceMode || inactive || glassOff) return;
+    if (performanceMode || inactive || glassOff || appearance.glassEnabled === true) return;
     if (transparencyOff && !glassEnabled) return;
     if (metrics.dropped <= 0.3) { stressWindows.current = 0; return; }
     stressWindows.current += 1;
@@ -227,7 +228,7 @@ export function ShellLayout({ snapshot, live }: { snapshot: ShellSnapshotV1; liv
       setTransparencyOff();
       showToast({ message: t("perf.transparencyOff"), variant: "info", duration: 6000 });
     }
-  }), [performanceMode, inactive, glassOff, transparencyOff, glassEnabled, glassReduced, setGlassReduced, setTransparencyOff, t]);
+  }), [performanceMode, inactive, glassOff, appearance.glassEnabled, transparencyOff, glassEnabled, glassReduced, setGlassReduced, setTransparencyOff, t]);
   // Debug mode + console API (`window.__rumahlDebug`), enable-able only from devtools.
   useEffect(() => {
     if (typeof window === "undefined") return;

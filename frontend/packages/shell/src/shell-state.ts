@@ -44,7 +44,7 @@ export function shellReducer(state: ShellState, action: ShellAction): ShellState
         ? state.windows.map((window) =>
             window.id === action.window.id ? { ...window, ...action.window, minimized: false } : window
           )
-        : [...state.windows, { ...action.window, rect: { x: 36 + state.windows.length % 6 * 28, y: 24 + state.windows.length % 6 * 28, width: 760, height: 540 }, placement: "floating" as const, minimized: false }];
+        : [...state.windows, { placement: "floating" as const, ...action.window, minimized: false }];
       return { ...state, windows: [...windows.filter((item) => item.id !== action.window.id), windows.find((item) => item.id === action.window.id)!], focusedWindowId: action.window.id };
     }
     case "close-window": {

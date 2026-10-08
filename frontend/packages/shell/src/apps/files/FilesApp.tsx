@@ -126,6 +126,7 @@ export function FilesApp() {
   };
 
   function handleKeys(event: React.KeyboardEvent) {
+    if ((event.target as HTMLElement).closest("input, textarea, select")) return;
     const single = selected.size === 1 ? visible.find((item) => selected.has(item.key)) : undefined;
     if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "a") { event.preventDefault(); selectAll(); return; }
     if (event.key === "Escape") { if (menu) setMenu(null); else clear(); return; }
@@ -175,9 +176,9 @@ export function FilesApp() {
         <input ref={uploadInput} type="file" hidden onChange={(event) => { const file = event.target.files?.[0]; event.target.value = ""; if (file) explorer.upload(file); }} />
         {marquee.rect ? <span className="files-marquee" aria-hidden="true" style={{ left: marquee.rect.x, top: marquee.rect.y, width: marquee.rect.width, height: marquee.rect.height }} /> : null}
         {draft !== null ? <form className="files-draft" onSubmit={(event) => { event.preventDefault(); submitDraft(draft); }}>
-          <input autoFocus required maxLength={255} value={draft.name} onChange={(event) => setDraft({ ...draft, name: event.target.value })} placeholder={t(draft.kind === "folder" ? "files.newFolder" : "files.newFile")} />
-          <button type="submit">{t("files.save")}</button>
-          <button type="button" onClick={() => setDraft(null)}>{t("workspace.cancel")}</button>
+          <input className="rumahl-input" autoFocus required maxLength={255} value={draft.name} onChange={(event) => setDraft({ ...draft, name: event.target.value })} placeholder={t(draft.kind === "folder" ? "files.newFolder" : "files.newFile")} />
+          <button className="btn btn--primary" type="submit">{t("files.save")}</button>
+          <button className="btn" type="button" onClick={() => setDraft(null)}>{t("workspace.cancel")}</button>
         </form> : null}
         {mounted && !live ? <p role="status">{t("files.demo")}</p> : null}
         {explorer.loading

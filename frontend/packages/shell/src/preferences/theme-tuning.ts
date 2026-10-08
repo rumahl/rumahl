@@ -8,6 +8,16 @@ import { emptyAppearance, useWorkspace, type AppearanceMode, type AppearanceSett
 export type AppearanceTuning = AppearanceSettings;
 export { parseAppearance } from "./Workspace";
 
+/** Explicit activation must also work when the selected theme defaults to solid. */
+export function enableGlass(tuning: AppearanceSettings): AppearanceSettings {
+  return { ...tuning, glassEnabled: true, glassReduced: false, tokens: {
+    ...tuning.tokens,
+    "material.opacity": Number(tuning.tokens["material.opacity"]) < 1 ? tuning.tokens["material.opacity"]! : "0.72",
+    "material.morphism": Number(tuning.tokens["material.morphism"]) > 0 ? tuning.tokens["material.morphism"]! : "1",
+    "material.blur": tuning.tokens["material.blur"] && Number.parseFloat(tuning.tokens["material.blur"]) > 0 ? tuning.tokens["material.blur"] : "12px",
+  } };
+}
+
 /**
  * Appearance customization, stored in the device-scoped workspace so it is
  * resolved server-side and rendered on the first paint (no post-mount flash).
@@ -35,14 +45,16 @@ export function useThemeTuning() {
   const setTransparency = useCallback((enabled: boolean) => {
     const tokens = { ...tuning.tokens };
     for (const key of ["material.opacity", "material.blur", "material.saturation", "material.morphism"]) delete tokens[key];
-    if (!enabled) Object.assign(tokens, { "material.opacity": "1", "material.blur": "0px", "material.saturation": "1", "material.morphism": "0" });
+    Object.assign(tokens, enabled
+      ? { "material.opacity": "0.72", "material.blur": "12px", "material.saturation": "1.3", "material.morphism": "1" }
+      : { "material.opacity": "1", "material.blur": "0px", "material.saturation": "1", "material.morphism": "0" });
     persist({ ...tuning, tokens });
   }, [tuning, persist]);
   const setAutoColor = useCallback((autoColor: boolean) => persist({ ...tuning, autoColor }), [tuning, persist]);
   const setWallpaperTint = useCallback((wallpaperTint: boolean) => persist({ ...tuning, wallpaperTint }), [tuning, persist]);
   const setWallpaperMotion = useCallback((wallpaperMotion: boolean) => persist({ ...tuning, wallpaperMotion }), [tuning, persist]);
   const setGlassEngine = useCallback((glassEngine: "css" | "canvas") => persist({ ...tuning, glassEngine }), [tuning, persist]);
-  const setGlassEnabled = useCallback((glassEnabled: boolean) => persist({ ...tuning, glassEnabled }), [tuning, persist]);
+  const setGlassEnabled = useCallback((glassEnabled: boolean) => persist(glassEnabled ? enableGlass(tuning) : { ...tuning, glassEnabled }), [tuning, persist]);
   const setGlassBackend = useCallback((glassBackend: "auto" | "svg" | "webgl" | "css") => persist({ ...tuning, glassBackend }), [tuning, persist]);
   const setGlassQuality = useCallback((glassQuality: "auto" | "high" | "balanced" | "low") => persist({ ...tuning, glassQuality }), [tuning, persist]);
   const setGlassReduced = useCallback((glassReduced: boolean) => persist({ ...tuning, glassReduced }), [tuning, persist]);

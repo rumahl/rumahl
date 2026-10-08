@@ -50,14 +50,15 @@ function wallpaperSource(): HTMLImageElement | HTMLVideoElement | null {
 }
 
 let engine: GlassEngineInstance | null = null;
-const config: { backend: GlassBackend; quality: GlassQuality } = { backend: "auto", quality: "auto" };
+const config: { enabled: boolean; backend: GlassBackend; quality: GlassQuality } = { enabled: true, backend: "auto", quality: "auto" };
 
 /** Applies the chosen backend/quality (and master enable) to the shared engine. */
 export function configureGlass(next: { enabled?: boolean; backend?: GlassBackend; quality?: GlassQuality }): void {
+  if (next.enabled !== undefined) config.enabled = next.enabled;
   if (next.backend) config.backend = next.backend;
   if (next.quality) config.quality = next.quality;
   if (!engine) return;
-  engine.setBackend(next.enabled === false ? "css" : config.backend);
+  engine.setBackend(config.enabled ? config.backend : "css");
   engine.setQuality(config.quality);
 }
 
@@ -80,7 +81,7 @@ export function setGlassAdjust(next: Partial<GlassMaterial>): void {
 
 function getEngine(): GlassEngineInstance {
   if (!engine) {
-    engine = new Engine({ source: wallpaperSource, quality: config.quality, backend: config.backend });
+    engine = new Engine({ source: wallpaperSource, quality: config.quality, backend: config.enabled ? config.backend : "css" });
     const report = () => { if (typeof document !== "undefined") document.documentElement.dataset.glassRenderer = engine!.renderer; };
     engine.addEventListener("qualitychange", report);
     engine.addEventListener("metrics", (event) => {

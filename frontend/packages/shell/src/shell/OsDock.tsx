@@ -45,7 +45,7 @@ export function OsDock() {
     return "";
   };
   return <>
-    <nav ref={dockRef} className={`dock os-dock os-dock--${mode}`} aria-label={t("nav.main")} onPointerLeave={() => setHover(null)}>
+    <nav ref={dockRef} className={`dock os-dock rumahl-glass-host os-dock--${mode}`} aria-label={t("nav.main")} onPointerLeave={() => setHover(null)}>
       <button className={`dock-item dock-icon dock-start${magnify("start")}`} type="button" aria-label={mode === "desktop" ? t("launcher.open") : t("launcher.home")} aria-expanded={launcher}
         onPointerEnter={() => setHover("start")}
         onClick={() => mode === "desktop" ? setLauncher((value) => !value) : open("/")}><RumahlMark /></button>

@@ -1,3 +1,4 @@
+import {mountSurface} from './surface.js';
 import {normalizeMaterial,sourceReady,sourceDimensions,sourceToScreenRect} from './core.js';
 // Wallpaper-only path: genuinely refracts image/video texels. It cannot see
 // arbitrary DOM content, which is why SVG live backdrop remains a distinct mode.
@@ -10,12 +11,12 @@ function shader(gl,type,source){const s=gl.createShader(type);gl.shaderSource(s,
 export class WebGLWallpaper {
   constructor(host,material,profile,getSource){
     this.host=host;this.getSource=getSource;this.material=normalizeMaterial(material);this.profile=profile;
-    this.canvas=document.createElement('canvas');this.canvas.className='rumahl-glass-surface rumahl-glass-webgl';
+    this.canvas=document.createElement('canvas');this.canvas.className='rumahl-glass-webgl';
     // The GPU drawing buffer MUST NOT participate in CSS layout. Intrinsic
     // canvas width/height change every time the renderer chooses resolution;
     // strict containment prevents those dimensions feeding back into flex sizing.
     Object.assign(this.canvas.style,{position:'absolute',inset:'0',width:'100%',height:'100%',maxWidth:'100%',maxHeight:'100%',minWidth:'0',minHeight:'0',contain:'strict',pointerEvents:'none',opacity:'0'});
-    host.prepend(this.canvas);
+    this.frame=mountSurface(host,this.canvas);
     const gl=this.canvas.getContext('webgl',{alpha:false,antialias:false,preserveDrawingBuffer:false});if(!gl)throw Error('WebGL unavailable');this.gl=gl;
     this.lost=false;this.dead=false;this.last='';this.uploaded=null;this.lastVideoTime=-1;this.lastDraw=0;
     this.onLost=e=>{e.preventDefault();this.lost=true;this.canvas.style.opacity='0'};
@@ -59,5 +60,5 @@ export class WebGLWallpaper {
     for(const [key,val] of Object.entries({radius:Math.min(m.radius,w/2,h/2),bevel:m.bevel,bend:m.refraction*p.refraction,chroma:m.chroma,brightness:m.brightness,saturation:m.saturation,blur:m.blur*p.blur}))gl.uniform1f(this.uniform[key],val);
     gl.drawArrays(gl.TRIANGLES,0,3);this.canvas.style.opacity='1';this.last=state;this.lastVideoTime=isVideo?source.currentTime:-1;this.lastDraw=now;
   }
-  destroy(){this.dead=true;cancelAnimationFrame(this.frameId);this.observer.disconnect();this.canvas.removeEventListener('webglcontextlost',this.onLost);this.canvas.removeEventListener('webglcontextrestored',this.onRestore);const gl=this.gl;if(!gl.isContextLost()){gl.deleteTexture(this.texture);gl.deleteBuffer(this.buffer);gl.deleteProgram(this.program);gl.deleteShader(this.vert);gl.deleteShader(this.frag)}this.canvas.remove()}
+  destroy(){this.dead=true;cancelAnimationFrame(this.frameId);this.observer.disconnect();this.canvas.removeEventListener('webglcontextlost',this.onLost);this.canvas.removeEventListener('webglcontextrestored',this.onRestore);const gl=this.gl;if(!gl.isContextLost()){gl.deleteTexture(this.texture);gl.deleteBuffer(this.buffer);gl.deleteProgram(this.program);gl.deleteShader(this.vert);gl.deleteShader(this.frag)}this.frame.remove()}
 }

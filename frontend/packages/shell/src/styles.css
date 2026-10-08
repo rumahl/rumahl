@@ -11,6 +11,7 @@
 @import "./components/scrollbars.css";
 @import "./shell/command-palette.css";
 @import "./shell/dock-indicators.css";
+@import "./shell/glass-surfaces.css";
 
 @layer foundation {
 :root {

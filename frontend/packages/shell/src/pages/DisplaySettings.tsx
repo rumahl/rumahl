@@ -1,3 +1,4 @@
+import { RumahlButtonGroup } from "../components/RumahlButtonGroup";
 import { useState } from "react";
 import { useTheme } from "@rumahl/ui";
 import { themes } from "@rumahl/ui/themes";
@@ -86,11 +87,10 @@ export function DisplaySettings() {
       </div>
       <div className="setting">
         <div className="copy"><strong>{t("mode.label")}</strong><p>{t("settings.displayHelp")}</p></div>
-        <div className="visual"><div className="segmented" role="group" aria-label={t("mode.label")}>
-          <button className="segment" type="button" aria-pressed={selected === "desktop"} onClick={() => settings.save(scope, "desktop")}>{t("mode.desktop")}</button>
-          <button className="segment" type="button" aria-pressed={selected === "launcher"} onClick={() => settings.save(scope, "launcher")}>{t("mode.launcher")}</button>
-          {scope === "device" ? <button className="segment" type="button" aria-pressed={selected === null} onClick={() => settings.save("device", null)}>{t("preferences.inherit")}</button> : null}
-        </div></div>
+        <div className="visual"><RumahlButtonGroup<"desktop" | "launcher" | "inherit"> label={t("mode.label")} value={selected ?? "inherit"}
+          onChange={value => settings.save(scope, value === "inherit" ? null : value)}
+          options={[{ value: "desktop", label: t("mode.desktop") }, { value: "launcher", label: t("mode.launcher") },
+            ...(scope === "device" ? [{ value: "inherit" as const, label: t("preferences.inherit") }] : [])]} /></div>
       </div>
       <div className="setting">
         <div className="copy"><strong>{t("theme.title")}</strong><p>{t("theme.help")}</p></div>
@@ -133,14 +133,14 @@ export function DisplaySettings() {
     </div>
 
     <h3 className="section-title">{t("theme.glass.title")}</h3>
-    <div className="settings-group" aria-disabled={reduced || transparencyOff}>
+    <div className="settings-group" aria-disabled={performanceMode}>
       {reduced ? <div className="setting glass-banner" role="status">
         <div className="copy"><strong>{t("theme.glass.reducedBanner")}</strong></div>
         <div className="visual"><Button variant="primary" size="sm" onClick={() => setGlassReduced(false)}>{t("theme.glass.undo")}</Button></div>
       </div> : null}
       <div className="setting">
         <div className="copy"><strong>{t("theme.glass.enabled")}</strong><p>{t("theme.glass.enabledHelp")}</p></div>
-        <div className="visual"><input type="checkbox" role="switch" aria-label={t("theme.glass.enabled")} disabled={reduced || transparencyOff} checked={tuning.glassEnabled !== false && !transparencyOff} onChange={event => setGlassEnabled(event.target.checked)} /></div>
+        <div className="visual"><input type="checkbox" role="switch" aria-label={t("theme.glass.enabled")} disabled={performanceMode} checked={tuning.glassEnabled !== false && !transparencyOff && !reduced} onChange={event => setGlassEnabled(event.target.checked)} /></div>
       </div>
       <div className="setting">
         <div className="copy"><strong>{t("theme.glass.backend")}</strong><p>{t("theme.glass.backendHelp")}</p></div>

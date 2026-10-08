@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type PointerEvent } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent, type PointerEvent } from "react";
 import { AnimatePresence, motion } from "motion/react";
 import { useLocation } from "react-router";
 import { useTheme } from "@rumahl/ui";
@@ -8,7 +8,9 @@ import { describeRoute, ShellRoutes } from "../routing/routes";
 import { RouteBoundary } from "../routing/RouteBoundary";
 import { useShell } from "./ShellContext";
 import type { ShellWindow } from "../shell-state";
-import { constrainRect, placedRect, type WindowPlacement, type WorkArea } from "./desktop/geometry";
+import { centeredRect, constrainRect, placedRect, type WindowPlacement, type WorkArea } from "./desktop/geometry";
+
+import { readWindowRect, writeWindowRect } from "./window-positions";
 
 /** Height of the flush top bar maximized/snapped windows sit below. */
 const TOPBAR_HEIGHT = 38;
@@ -67,7 +69,21 @@ function HostedWindow({ item, area, zIndex }: { item: ShellWindow; area: WorkAre
   const isLauncher = mode === "launcher";
   const flush = isInstalledAppWindow(item.id);
   const hidden = item.minimized || (isLauncher && active !== item.id);
-  const stored = item.rect ?? { x: 36, y: 24, width: 760, height: 540 };
+  const stored = item.rect ?? centeredRect(area ?? { width: 760, height: 540 });
+  const positionReady = useRef(false);
+  useLayoutEffect(() => {
+    if (!area) return;
+    if (!positionReady.current) {
+      positionReady.current = true;
+      // The latest position takes precedence over the initial workspace preset.
+      const initial = readWindowRect(item.id) ?? item.rect ?? centeredRect(area);
+      if (initial !== item.rect) {
+        dispatch({ type: "set-window-rect", id: item.id, rect: initial });
+        return;
+      }
+    }
+    if (item.rect) writeWindowRect(item.id, item.rect);
+  }, [area, item.id, item.rect, dispatch]);
   const placement = item.placement ?? "floating";
   const rect = area ? placedRect(stored, isLauncher ? "maximized" : placement, area, TOPBAR_HEIGHT) : stored;
   const gesture = useRef<null | { pointer: number; x: number; y: number; rect: typeof rect; resize: boolean; pending: null | { stored: typeof stored; ratio: number; offsetY: number }; element: HTMLElement | null; live: typeof rect; snap: WindowPlacement | null; moved: boolean }>(null);
@@ -144,10 +160,16 @@ function HostedWindow({ item, area, zIndex }: { item: ShellWindow; area: WorkAre
         element.style.width = `${final.width}px`;
         element.style.height = `${final.height}px`;
       }
+      writeWindowRect(item.id, final);
+      dispatch({ type: "set-window-rect", id: item.id, rect: final });
       if (!start.resize && start.snap) dispatch({ type: "set-window-placement", id: item.id, placement: start.snap });
-      else dispatch({ type: "set-window-rect", id: item.id, rect: final });
     }
-    document.querySelector(".window-position.is-dragging")?.classList.remove("is-dragging");
+    // Flush the committed geometry while transitions are still disabled.
+    // Otherwise the browser animates from the last transform back to zero.
+    if (start?.element) {
+      void start.element.offsetWidth;
+      start.element.closest(".window-position")?.classList.remove("is-dragging");
+    }
     gesture.current = null; setMoving(false); setSnap(null);
   }
   function keyboard(event: KeyboardEvent, resize: boolean) {
@@ -167,7 +189,7 @@ function HostedWindow({ item, area, zIndex }: { item: ShellWindow; area: WorkAre
   const enter = isLauncher ? { opacity: 0, y: 140 } : { opacity: 0 };
   return <motion.div
     aria-hidden={hidden ? true : undefined}
-    className={`window-position${moving ? " is-moving" : ""}${hidden ? " is-hidden" : ""}`}
+    className={`window-position${moving ? " is-moving is-dragging" : ""}${hidden ? " is-hidden" : ""}`}
     style={{ zIndex }}
     {...(animate ? { initial: enter, exit: enter } : { initial: false })}
     animate={{ opacity: 1, y: 0 }}

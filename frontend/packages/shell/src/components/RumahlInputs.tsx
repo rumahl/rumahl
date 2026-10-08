@@ -18,3 +18,12 @@ export function RumahlCheckbox({ label, className = "", ...props }: ChoiceProps)
 export function RumahlRadio({ label, className = "", ...props }: ChoiceProps) {
   return <label className="rumahl-choice"><input {...props} type="radio" className={`rumahl-radio ${className}`} /><span>{label}</span></label>;
 }
+
+/** Input with an inset prefix and an optional trailing action or unit. */
+export function RumahlInputGroup({ prefix, suffix, className = "", ...props }: Omit<InputProps, "prefix"> & { prefix?: ReactNode; suffix?: ReactNode }) {
+  return <span className="rumahl-input-group">
+    {prefix ? <span className="rumahl-input-group__affix">{prefix}</span> : null}
+    <RumahlInput {...props} className={className} />
+    {suffix ? <span className="rumahl-input-group__affix">{suffix}</span> : null}
+  </span>;
+}

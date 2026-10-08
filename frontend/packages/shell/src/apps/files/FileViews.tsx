@@ -21,7 +21,7 @@ export interface ViewProps {
 }
 
 function RenameInput({ item, onCommit, onCancel }: { item: Item; onCommit: (item: Item, name: string) => void; onCancel: () => void }) {
-  return <input className="files-rename" autoFocus defaultValue={item.name}
+  return <input className="rumahl-input files-rename" autoFocus defaultValue={item.name}
     onClick={(event) => event.stopPropagation()}
     onBlur={(event) => onCommit(item, event.target.value)}
     onKeyDown={(event) => { if (event.key === "Enter") (event.target as HTMLInputElement).blur(); if (event.key === "Escape") onCancel(); }} />;
