@@ -9,6 +9,7 @@ use std::env;
 use std::error::Error;
 use std::fmt;
 use std::io;
+use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 
 use rumahl_app_operations::{AppOperationRunner, AppRuntimeServices};
@@ -254,6 +255,26 @@ fn install_with(
     let installed = importer
         .install(&runner, package_dir, &mut state, &mut grants)
         .map_err(InstallError::Import)?;
+
+    // Give the app its own directory under the apps volume, owner-only.
+    if let Some(apps_root) = crate::apps_data_root() {
+        let snapshot = SqliteSnapshotRepository::open(&platform).map_err(InstallError::provider)?;
+        let app_id = snapshot
+            .load()
+            .map_err(InstallError::provider)?
+            .and_then(|snapshot| {
+                snapshot
+                    .installed_apps()
+                    .iter()
+                    .find(|app| app.installation_id() == installed.installation_id())
+                    .map(|app| app.identity().app_id().as_str().to_owned())
+            });
+        if let Some(app_id) = app_id {
+            let directory = apps_root.join(&app_id);
+            std::fs::create_dir_all(&directory)?;
+            std::fs::set_permissions(&directory, std::fs::Permissions::from_mode(0o700))?;
+        }
+    }
 
     println!(
         "Installed {} ({:?}).",

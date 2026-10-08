@@ -809,3 +809,7 @@ a:focus-visible, select:focus-visible { outline: 3px solid var(--rumahl-color-ac
 .app-setting dd { margin: 4px 0 0; }
 .app-setting__required { padding: 0 8px; font-size: .75rem; color: var(--rumahl-ui-color-text-muted, var(--rumahl-color-text-muted)); border: 1px solid var(--line); border-radius: 999px; }
 .app-setting__type { color: var(--rumahl-ui-color-text-muted, var(--rumahl-color-text-muted)); }
+.app-settings__path { margin: 8px 0; font-family: ui-monospace, monospace; }
+.app-data-list { margin: 8px 0; padding: 0; list-style: none; display: grid; gap: 4px; }
+.app-data-list button { width: 100%; padding: 8px 12px; text-align: start; color: inherit; background: var(--rumahl-ui-color-panel-background, var(--rumahl-color-panel-background)); border: 1px solid var(--line); border-radius: 8px; cursor: pointer; }
+.app-data-preview { max-height: 24rem; overflow: auto; padding: 12px; background: var(--rumahl-ui-color-panel-background, var(--rumahl-color-panel-background)); border: 1px solid var(--line); border-radius: 8px; white-space: pre-wrap; word-break: break-word; }

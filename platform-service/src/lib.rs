@@ -98,6 +98,21 @@ pub fn backup_state(state_dir: &Path, destination: &Path) -> Result<(), ServiceE
     Ok(())
 }
 
+/// Resolves the apps data volume root.
+///
+/// `RUMAHL_APPS_ROOT` overrides it (development and tests); otherwise the
+/// product path `/apps` is used when it exists. `None` disables app-data
+/// browsing rather than silently writing somewhere else.
+pub fn apps_data_root() -> Option<std::path::PathBuf> {
+    match std::env::var_os("RUMAHL_APPS_ROOT") {
+        Some(value) => Some(std::path::PathBuf::from(value)),
+        None => {
+            let default = std::path::PathBuf::from("/apps");
+            default.is_dir().then_some(default)
+        }
+    }
+}
+
 pub struct LocalBrowserSessions {
     accounts: SqliteAccountStateRepository,
     passwords:

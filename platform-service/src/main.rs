@@ -158,9 +158,14 @@ async fn run() -> Result<(), ServiceError> {
     let app_suffix = env::var("RUMAHL_APP_HOST_SUFFIX")
         .unwrap_or_else(|_| format!("apps.{}", config.public_origin.host_str().unwrap()));
     let app_root = state_dir.join("app-assets");
+    let apps_provider = apps::PersistentApps::open(&accounts, &platform, app_root)?;
+    let apps_provider = match apps_data_root() {
+        Some(data_root) => apps_provider.with_data_root(data_root)?,
+        None => apps_provider,
+    };
     let apps = Arc::new(
         rumahl_platform_web::AppAccess::new(
-            Arc::new(apps::PersistentApps::open(&accounts, &platform, app_root)?),
+            Arc::new(apps_provider),
             &config.public_origin,
             &app_suffix,
         )

@@ -402,7 +402,12 @@ export const english = {
   "appSettings.type.text": "Text",
   "appSettings.type.number": "Number",
   "appSettings.type.boolean": "On/off",
-  "appSettings.type.select": "Choice"
+  "appSettings.type.select": "Choice",
+  "appSettings.dataTitle": "App data",
+  "appSettings.dataUp": "Up",
+  "appSettings.dataEmpty": "This folder is empty.",
+  "appSettings.dataUnavailable": "The app data is currently unavailable.",
+  "appSettings.dataBinary": "Binary file ({size} bytes)"
 } as const;
 
 export type MessageKey = keyof typeof english;

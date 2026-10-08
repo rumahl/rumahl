@@ -397,5 +397,10 @@ export const german = {
   "appSettings.type.text": "Text",
   "appSettings.type.number": "Zahl",
   "appSettings.type.boolean": "An/Aus",
-  "appSettings.type.select": "Auswahl"
+  "appSettings.type.select": "Auswahl",
+  "appSettings.dataTitle": "App-Daten",
+  "appSettings.dataUp": "Nach oben",
+  "appSettings.dataEmpty": "Dieser Ordner ist leer.",
+  "appSettings.dataUnavailable": "Die App-Daten sind momentan nicht verfügbar.",
+  "appSettings.dataBinary": "Binärdatei ({size} Bytes)"
 } as const satisfies Messages;

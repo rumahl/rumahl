@@ -43,6 +43,22 @@ pub struct AppSettingsInfo {
     pub app: CatalogApp,
     pub manifest: Vec<AppSettingInfo>,
 }
+/// One entry of an app's private data directory.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AppDataEntry {
+    pub name: String,
+    pub directory: bool,
+    pub size: u64,
+}
+/// A read-only view of an app's private data directory.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum AppData {
+    Directory(Vec<AppDataEntry>),
+    File {
+        bytes: Vec<u8>,
+        content_type: &'static str,
+    },
+}
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AppAccessError {
     Denied,
@@ -72,6 +88,13 @@ pub trait AppProvider: Send + Sync + 'static {
         identity: ShellIdentity,
         installation: InstallationId,
     ) -> Result<Vec<AppSettingInfo>, AppAccessError>;
+    /// Read-only listing or contents of an app's private data directory.
+    fn data(
+        &self,
+        identity: ShellIdentity,
+        installation: InstallationId,
+        path: &str,
+    ) -> Result<AppData, AppAccessError>;
 }
 #[derive(Clone)]
 struct Lease {
@@ -161,6 +184,21 @@ impl AppAccess {
             .ok_or(AppAccessError::Denied)?;
         let manifest = self.provider.settings(identity, app.installation_id)?;
         Ok(AppSettingsInfo { app, manifest })
+    }
+    pub fn data(
+        &self,
+        identity: ShellIdentity,
+        id: &str,
+        installation: &str,
+        path: &str,
+    ) -> Result<AppData, AppAccessError> {
+        AppId::parse(id).map_err(|_| AppAccessError::Denied)?;
+        let app = self
+            .catalog(identity)?
+            .into_iter()
+            .find(|app| app.id == id && app.installation_id.to_string() == installation)
+            .ok_or(AppAccessError::Denied)?;
+        self.provider.data(identity, app.installation_id, path)
     }
     pub fn launch(
         &self,
@@ -355,6 +393,21 @@ mod tests {
                 required: true,
                 options: Vec::new(),
             }])
+        }
+        fn data(
+            &self,
+            identity: ShellIdentity,
+            installation: InstallationId,
+            _: &str,
+        ) -> Result<AppData, AppAccessError> {
+            if identity != self.owner || installation != self.installation {
+                return Err(AppAccessError::Denied);
+            }
+            Ok(AppData::Directory(vec![AppDataEntry {
+                name: "notes.db".into(),
+                directory: false,
+                size: 12,
+            }]))
         }
     }
     #[test]

@@ -3,10 +3,10 @@
 use rumahl_core::*;
 use rumahl_persistence_sqlite::{SqliteAccountStateRepository, SqliteSnapshotRepository};
 use rumahl_platform_web::{
-    AppAccessError, AppAsset, AppProvider, AppSettingInfo, AppSettingOptionInfo, CatalogApp,
-    ShellIdentity,
+    AppAccessError, AppAsset, AppData, AppDataEntry, AppProvider, AppSettingInfo,
+    AppSettingOptionInfo, CatalogApp, ShellIdentity,
 };
-use rustix::fs::{FileType, Mode, OFlags, fstat, open, openat};
+use rustix::fs::{Dir, FileType, Mode, OFlags, fstat, open, openat};
 use std::fs::File;
 use std::io::Read;
 use std::path::{Path, PathBuf};
@@ -60,6 +60,8 @@ pub struct PersistentApps {
     accounts: SqliteAccountStateRepository,
     platform: SqliteSnapshotRepository,
     root: PathBuf,
+    /// Apps data volume root, one directory per app id. `None` disables app-data browsing.
+    data_root: Option<PathBuf>,
 }
 impl PersistentApps {
     pub fn open(
@@ -74,7 +76,17 @@ impl PersistentApps {
             accounts: SqliteAccountStateRepository::open(accounts)?,
             platform: SqliteSnapshotRepository::open(platform)?,
             root,
+            data_root: None,
         })
+    }
+
+    /// Enables read-only browsing of each app's private data directory.
+    pub fn with_data_root(mut self, data_root: PathBuf) -> Result<Self, crate::ServiceError> {
+        if !data_root.is_absolute() {
+            return Err(std::io::Error::other("app data root must be absolute").into());
+        }
+        self.data_root = Some(data_root);
+        Ok(self)
     }
     fn apps(&self, identity: ShellIdentity) -> Result<Vec<InstalledAppSnapshot>, AppAccessError> {
         let accounts = self
@@ -188,7 +200,138 @@ impl PersistentApps {
         }
         Err(AppAccessError::Denied)
     }
+
+    fn content_type(path: &str) -> Option<&'static str> {
+        match Path::new(path)
+            .extension()
+            .and_then(|extension| extension.to_str())
+        {
+            Some("html") => Some("text/html; charset=utf-8"),
+            Some("js" | "mjs") => Some("text/javascript; charset=utf-8"),
+            Some("css") => Some("text/css; charset=utf-8"),
+            Some("json" | "jsonl") => Some("application/json"),
+            Some(
+                "txt" | "log" | "md" | "env" | "toml" | "yaml" | "yml" | "ini" | "cfg" | "conf",
+            ) => Some("text/plain; charset=utf-8"),
+            Some("csv") => Some("text/csv; charset=utf-8"),
+            Some("xml") => Some("application/xml"),
+            Some("png") => Some("image/png"),
+            Some("jpg" | "jpeg") => Some("image/jpeg"),
+            Some("svg") => Some("image/svg+xml"),
+            Some("webp") => Some("image/webp"),
+            Some("gif") => Some("image/gif"),
+            Some("pdf") => Some("application/pdf"),
+            Some("sqlite" | "sqlite3" | "db") => Some("application/vnd.sqlite3"),
+            _ => None,
+        }
+    }
+
+    fn list_app_directory(fd: &rustix::fd::OwnedFd) -> Result<AppData, AppAccessError> {
+        let directory = Dir::read_from(fd).map_err(|_| AppAccessError::Denied)?;
+        let mut entries = Vec::new();
+        for entry in directory {
+            let entry = entry.map_err(|_| AppAccessError::Unavailable)?;
+            let name = entry.file_name().to_string_lossy().into_owned();
+            if name == "." || name == ".." {
+                continue;
+            }
+            if entries.len() >= 1024 {
+                break;
+            }
+            let is_directory = entry.file_type() == FileType::Directory;
+            let size = if is_directory {
+                0
+            } else {
+                match openat(
+                    fd,
+                    name.as_str(),
+                    OFlags::RDONLY | OFlags::CLOEXEC | OFlags::NOFOLLOW | OFlags::NONBLOCK,
+                    Mode::empty(),
+                ) {
+                    Ok(child) => match fstat(&child) {
+                        Ok(stat)
+                            if FileType::from_raw_mode(stat.st_mode) == FileType::RegularFile =>
+                        {
+                            u64::try_from(stat.st_size.max(0)).unwrap_or(0)
+                        }
+                        _ => continue,
+                    },
+                    Err(_) => continue,
+                }
+            };
+            entries.push(AppDataEntry {
+                name,
+                directory: is_directory,
+                size,
+            });
+        }
+        entries.sort_by(|a, b| {
+            b.directory
+                .cmp(&a.directory)
+                .then_with(|| a.name.cmp(&b.name))
+        });
+        Ok(AppData::Directory(entries))
+    }
+
+    fn read_app_data(&self, app_id: &str, path: &str) -> Result<AppData, AppAccessError> {
+        let Some(root) = self.data_root.as_ref() else {
+            return Err(AppAccessError::Unavailable);
+        };
+        read_app_data_at(root, app_id, path)
+    }
 }
+
+fn read_app_data_at(root: &Path, app_id: &str, path: &str) -> Result<AppData, AppAccessError> {
+    let flags = OFlags::RDONLY | OFlags::CLOEXEC | OFlags::NOFOLLOW | OFlags::DIRECTORY;
+    let root_fd = open(root, flags, Mode::empty()).map_err(|_| AppAccessError::Denied)?;
+    let mut directory =
+        openat(&root_fd, app_id, flags, Mode::empty()).map_err(|_| AppAccessError::Denied)?;
+    let mut components = path.split('/').filter(|component| !component.is_empty());
+    let mut component = components.next();
+    while let Some(part) = component {
+        if part == "." || part == ".." || part.contains('\\') || part.contains('\0') {
+            return Err(AppAccessError::Denied);
+        }
+        let following = components.next();
+        if let Some(next) = following {
+            directory = openat(&directory, part, flags, Mode::empty())
+                .map_err(|_| AppAccessError::Denied)?;
+            component = Some(next);
+            continue;
+        }
+        if let Ok(final_directory) = openat(&directory, part, flags, Mode::empty()) {
+            return PersistentApps::list_app_directory(&final_directory);
+        }
+        let fd = openat(
+            &directory,
+            part,
+            OFlags::RDONLY | OFlags::CLOEXEC | OFlags::NOFOLLOW | OFlags::NONBLOCK,
+            Mode::empty(),
+        )
+        .map_err(|_| AppAccessError::Denied)?;
+        let stat = fstat(&fd).map_err(|_| AppAccessError::Denied)?;
+        if FileType::from_raw_mode(stat.st_mode) != FileType::RegularFile
+            || stat.st_size > 2 * 1024 * 1024
+        {
+            return Err(AppAccessError::Denied);
+        }
+        let mut bytes = Vec::new();
+        File::from(fd)
+            .take(2 * 1024 * 1024 + 1)
+            .read_to_end(&mut bytes)
+            .map_err(|_| AppAccessError::Unavailable)?;
+        if bytes.len() > 2 * 1024 * 1024 {
+            return Err(AppAccessError::Denied);
+        }
+        let content_type = PersistentApps::content_type(part).unwrap_or("application/octet-stream");
+        return Ok(AppData::File {
+            bytes,
+            content_type,
+        });
+    }
+    PersistentApps::list_app_directory(&directory)
+}
+
 impl AppProvider for PersistentApps {
     fn catalog(&self, identity: ShellIdentity) -> Result<Vec<CatalogApp>, AppAccessError> {
         Ok(self
@@ -260,5 +403,70 @@ impl AppProvider for PersistentApps {
                 },
             })
             .collect())
+    }
+    fn data(
+        &self,
+        identity: ShellIdentity,
+        installation: InstallationId,
+        path: &str,
+    ) -> Result<AppData, AppAccessError> {
+        let app = self.app(identity, installation)?;
+        self.read_app_data(app.identity().app_id().as_str(), path)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::os::unix::fs::symlink;
+
+    fn setup() -> tempfile::TempDir {
+        let temp = tempfile::tempdir().unwrap();
+        let app = temp.path().join("com.rumahl.notes");
+        std::fs::create_dir_all(app.join("docs")).unwrap();
+        std::fs::write(app.join("notes.txt"), b"hello").unwrap();
+        std::fs::write(app.join("docs/readme.md"), b"# readme").unwrap();
+        temp
+    }
+
+    #[test]
+    fn lists_and_reads_only_inside_the_app_directory() {
+        let temp = setup();
+        let AppData::Directory(entries) =
+            read_app_data_at(temp.path(), "com.rumahl.notes", "").unwrap()
+        else {
+            panic!("expected a directory");
+        };
+        assert!(
+            entries
+                .iter()
+                .any(|entry| entry.name == "notes.txt" && !entry.directory && entry.size == 5)
+        );
+        assert!(
+            entries
+                .iter()
+                .any(|entry| entry.name == "docs" && entry.directory)
+        );
+
+        let AppData::File { bytes, .. } =
+            read_app_data_at(temp.path(), "com.rumahl.notes", "docs/readme.md").unwrap()
+        else {
+            panic!("expected a file");
+        };
+        assert_eq!(bytes, b"# readme");
+    }
+
+    #[test]
+    fn rejects_traversal_symlinks_and_other_apps() {
+        let temp = setup();
+        std::fs::write(temp.path().join("secret.txt"), b"secret").unwrap();
+        let app = temp.path().join("com.rumahl.notes");
+        symlink(temp.path().join("secret.txt"), app.join("escape")).unwrap();
+        let _ = symlink("/etc", app.join("etc"));
+
+        assert!(read_app_data_at(temp.path(), "com.rumahl.notes", "../secret.txt").is_err());
+        assert!(read_app_data_at(temp.path(), "com.rumahl.notes", "escape").is_err());
+        assert!(read_app_data_at(temp.path(), "com.rumahl.notes", "etc/passwd").is_err());
+        assert!(read_app_data_at(temp.path(), "com.rumahl.other", "").is_err());
     }
 }

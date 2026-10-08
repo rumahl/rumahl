@@ -23,6 +23,14 @@ export interface AppSettings {
   manifest: readonly AppSetting[];
   extended: null;
 }
+export interface AppDataEntry {
+  name: string;
+  directory: boolean;
+  size: number;
+}
+export type AppData =
+  | { kind: "directory"; path: string; entries: readonly AppDataEntry[] }
+  | { kind: "file"; path: string; size: number; contentType: string; text: string | null };
 export interface InstalledApp {
   id: string;
   installationId: string;
@@ -122,4 +130,39 @@ export async function fetchAppSettings(request: ShellRequest, app: InstalledApp,
     `/api/v1/shell/apps/${encodeURIComponent(app.id)}/settings?installationId=${encodeURIComponent(app.installationId)}`,
     { cache: "no-store", credentials: "same-origin", headers: { Accept: "application/json" }, signal }
   ), 256 * 1024));
+}
+export function parseAppData(value: unknown): AppData {
+  const object = record(value);
+  if (object.dataVersion !== 1 || typeof object.path !== "string" || object.path.length > 2048 ||
+      object.path.includes("\0") ||
+      object.path.split("/").some((segment) => segment === "." || segment === ".." || segment.includes("\\")))
+    throw new Error("invalid app data");
+  if (object.kind === "directory") {
+    if (!Array.isArray(object.entries) || object.entries.length > 1024) throw new Error("invalid app data");
+    const entries = object.entries.map((value: unknown) => {
+      const entry = record(value);
+      if (typeof entry.name !== "string" || !entry.name || entry.name.length > 255 ||
+          entry.name === "." || entry.name === ".." || entry.name.includes("/") || entry.name.includes("\0") ||
+          typeof entry.directory !== "boolean" ||
+          typeof entry.size !== "number" || !Number.isInteger(entry.size) || entry.size < 0 || entry.size > 64 * 1024 * 1024)
+        throw new Error("invalid app data entry");
+      return { name: entry.name, directory: entry.directory, size: entry.size };
+    });
+    return { kind: "directory", path: object.path, entries };
+  }
+  if (object.kind === "file") {
+    if (typeof object.contentType !== "string" || object.contentType.length > 128 ||
+        typeof object.size !== "number" || !Number.isInteger(object.size) || object.size < 0 || object.size > 2 * 1024 * 1024 ||
+        !(object.text === null || typeof object.text === "string"))
+      throw new Error("invalid app data file");
+    return { kind: "file", path: object.path, size: object.size, contentType: object.contentType, text: object.text };
+  }
+  throw new Error("invalid app data kind");
+}
+export async function fetchAppData(request: ShellRequest, app: InstalledApp, path: string, device: string, signal: AbortSignal): Promise<AppData> {
+  const query = new URLSearchParams({ installationId: app.installationId, device, path });
+  return parseAppData(await payload(await request(
+    `/api/v1/shell/apps/${encodeURIComponent(app.id)}/data?${query.toString()}`,
+    { cache: "no-store", credentials: "same-origin", headers: { Accept: "application/json" }, signal }
+  ), 512 * 1024));
 }

@@ -37,6 +37,18 @@ configuration so an image can relocate `/rumahl`, `/apps` and `/home`.
 
 - The image (`platform-buildroot/image/board/qemu/post-build.sh`) removes `/root`
   and creates `/rumahl` and `/rumahl/root` with mode `0700`.
-- Wiring `/home` and `/apps` to the data disk, provisioning the per-account
-  subdirectories, and exposing the layout to the shell, terminal and apps
-  through the platform API are follow-up work.
+- The platform service gives every installed app its own directory under the
+  apps root (`RUMAHL_APPS_ROOT`, default `/apps`; dev/test override) and creates
+  it owner-only (`0700`) on install. `GET /api/v1/shell/apps/{id}/data` exposes a
+  read-only listing and file view of that directory.
+- Wiring `/home` to the data disk and provisioning the per-account
+  subdirectories remain follow-up work.
+
+## App data access
+
+An app's data directory is addressed as `<appsRoot>/<appId>`. Reading it is
+owner-scoped and requires advanced mode or above (`can_browse_system_files`);
+the path walk rejects `..`, absolute paths, symlinks and escapes with `openat`
+plus `O_NOFOLLOW`, and caps listings and file previews. Apps receive their own
+directory on install; how a running app writes there (container volume or
+runtime sandbox) is a separate milestone.

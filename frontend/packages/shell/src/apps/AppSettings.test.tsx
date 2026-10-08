@@ -23,6 +23,11 @@ vi.mock("./client", () => ({
     manifest: state.manifest,
     extended: null,
   })),
+  fetchAppData: vi.fn(async () => ({
+    kind: "directory",
+    path: "",
+    entries: [{ name: "notes.db", directory: false, size: 12 }],
+  })),
 }));
 vi.mock("../shell/ShellContext", () => ({ useShell: () => ({ live: { request: () => {} } }) }));
 vi.mock("../preferences/OsMode", () => ({
@@ -56,8 +61,9 @@ test("renders the typed manifest settings with title, description and type in ev
   expect(screen.queryByText("appSettings.extendedTitle")).toBeNull();
 });
 
-test("shows the extended configuration section once in advanced mode", async () => {
+test("shows the extended configuration and app data sections once in advanced mode", async () => {
   state.advanced = true;
   renderPage();
   expect(await screen.findByText("appSettings.extendedTitle")).toBeInTheDocument();
+  expect(await screen.findByText("notes.db · 12")).toBeInTheDocument();
 });

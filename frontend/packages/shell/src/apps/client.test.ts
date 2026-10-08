@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { parseAppSettings, parseCatalog, parseLaunch } from "./client";
+import { parseAppData, parseAppSettings, parseCatalog, parseLaunch } from "./client";
 const app = { id: "com.rumahl.notes", installationId: "01990000-0000-7000-8000-000000000001", title: "Notes", version: "1.0.0", launchable: true };
 const lease = "a".repeat(64);
 const launch = { launchVersion: 1, id: app.id, installationId: app.installationId, lease, frameUrl: `https://${app.installationId}.apps.localhost:8443/launch/${lease}/web/index.html`, renewAfterSeconds: 30 };
@@ -48,5 +48,23 @@ describe("installed app contracts", () => {
       { ...settings, manifest: [{ ...settings.manifest[0], options: [{ value: "a", label: "A" }] }] },
     ];
     for (const value of cases) expect(() => parseAppSettings(value)).toThrow();
+  });
+  it("validates app data listings and file previews", () => {
+    const directory = { dataVersion: 1, kind: "directory", path: "docs", entries: [{ name: "readme.md", directory: false, size: 8 }, { name: "sub", directory: true, size: 0 }] };
+    expect(parseAppData(directory)).toEqual({ kind: "directory", path: "docs", entries: directory.entries });
+    const file = { dataVersion: 1, kind: "file", path: "readme.md", size: 8, contentType: "text/plain; charset=utf-8", text: "# readme" };
+    expect(parseAppData(file)).toEqual({ kind: "file", path: "readme.md", size: 8, contentType: "text/plain; charset=utf-8", text: "# readme" });
+    expect(parseAppData({ ...file, text: null }).kind).toBe("file");
+
+    const cases = [
+      { ...directory, dataVersion: 2 },
+      { ...directory, kind: "socket" },
+      { ...directory, path: "../etc" },
+      { ...directory, entries: [{ name: "../escape", directory: false, size: 1 }] },
+      { ...directory, entries: [{ name: "x", directory: false, size: -1 }] },
+      { ...file, size: 99 * 1024 * 1024 },
+      { ...file, text: 42 },
+    ];
+    for (const value of cases) expect(() => parseAppData(value)).toThrow();
   });
 });

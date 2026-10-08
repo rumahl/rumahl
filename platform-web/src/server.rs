@@ -115,6 +115,7 @@ pub fn router(state: GatewayState) -> Router {
             post(app_launch).layer(axum::extract::DefaultBodyLimit::max(1024)),
         )
         .route("/api/v1/shell/apps/{id}/settings", get(app_settings))
+        .route("/api/v1/shell/apps/{id}/data", get(app_data))
         .route("/api/v1/shell/events", get(events))
         .route("/api/v1/shell/widgets/{id}/frame", get(widget_frame))
         .route("/api/v1/shell/streams", get(stream_list))
@@ -321,6 +322,93 @@ async fn app_settings(
                 "extended": serde_json::Value::Null,
             }))
             .into_response();
+            secure_headers(&mut response);
+            response
+        }
+        Ok(Err(error)) => crate::app_error(error),
+        Err(_) => error(StatusCode::SERVICE_UNAVAILABLE),
+    }
+}
+
+/// Read-only access to an app's private data directory. Only the app owner may
+/// read it, and only in advanced mode or above.
+async fn app_data(
+    State(state): State<Arc<GatewayState>>,
+    UrlPath(id): UrlPath<String>,
+    Query(query): Query<BTreeMap<String, String>>,
+    headers: HeaderMap,
+) -> Response {
+    let identity = match credential(&headers) {
+        Ok(token) => match authenticate(&state, &token).await {
+            Ok(identity) => identity,
+            Err(error) => return backend_error(error),
+        },
+        Err(_) => return error(StatusCode::UNAUTHORIZED),
+    };
+    if query.len() < 2 || query.len() > 3 {
+        return error(StatusCode::BAD_REQUEST);
+    }
+    let Some(installation) = query.get("installationId").cloned() else {
+        return error(StatusCode::BAD_REQUEST);
+    };
+    let Some(device) = query
+        .get("device")
+        .and_then(|value| BrowserProfileId::parse(value))
+    else {
+        return error(StatusCode::BAD_REQUEST);
+    };
+    let path = query.get("path").cloned().unwrap_or_default();
+
+    let Some(mode_repository) = state.os_mode.clone() else {
+        return error(StatusCode::SERVICE_UNAVAILABLE);
+    };
+    let user = identity.user_id;
+    let mode = match tokio::task::spawn_blocking(move || mode_repository.load(user, device)).await {
+        Ok(Ok(settings)) => settings.effective_mode(),
+        Ok(Err(_)) => return error(StatusCode::SERVICE_UNAVAILABLE),
+        Err(_) => return error(StatusCode::SERVICE_UNAVAILABLE),
+    };
+    if !mode.policy().can_browse_system_files() {
+        return error(StatusCode::FORBIDDEN);
+    }
+
+    let Some(apps) = state.apps.clone() else {
+        return error(StatusCode::SERVICE_UNAVAILABLE);
+    };
+    let requested = path.clone();
+    match tokio::task::spawn_blocking(move || apps.data(identity, &id, &installation, &requested))
+        .await
+    {
+        Ok(Ok(data)) => {
+            let value = match data {
+                crate::AppData::Directory(entries) => serde_json::json!({
+                    "dataVersion": 1,
+                    "kind": "directory",
+                    "path": path,
+                    "entries": entries.into_iter().map(|entry| serde_json::json!({
+                        "name": entry.name, "directory": entry.directory, "size": entry.size,
+                    })).collect::<Vec<_>>(),
+                }),
+                crate::AppData::File {
+                    bytes,
+                    content_type,
+                } => {
+                    let text = if bytes.len() <= 256 * 1024 {
+                        std::str::from_utf8(&bytes).ok().map(str::to_owned)
+                    } else {
+                        None
+                    };
+                    serde_json::json!({
+                        "dataVersion": 1,
+                        "kind": "file",
+                        "path": path,
+                        "size": bytes.len(),
+                        "contentType": content_type,
+                        "text": text,
+                    })
+                }
+            };
+            let mut response = axum::Json(value).into_response();
             secure_headers(&mut response);
             response
         }
