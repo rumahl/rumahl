@@ -1,11 +1,8 @@
 import { SearchIcon } from "../../icons";
 import { useI18n } from "../../i18n";
-import { Breadcrumb } from "./Breadcrumb";
 import { ArrowLeftIcon, ArrowRightIcon, ArrowUpIcon, GridViewIcon, ListViewIcon, MoveIcon, PlusIcon, UploadIcon } from "./icons";
-import type { Nav } from "./types";
 
 export interface ToolbarProps {
-  nav: Nav;
   isStore: boolean;
   canBack: boolean;
   canForward: boolean;
@@ -17,7 +14,6 @@ export interface ToolbarProps {
   onBack: () => void;
   onForward: () => void;
   onUp: () => void;
-  onNavigate: (next: Nav) => void;
   onView: (view: "grid" | "list") => void;
   onSearch: (value: string) => void;
   onNewFolder: () => void;
@@ -34,15 +30,6 @@ export function Toolbar(props: ToolbarProps) {
       <button className="files-icon-btn" type="button" disabled={!props.canForward} onClick={props.onForward} aria-label={t("files.forward")} title={t("files.forward")}><ArrowRightIcon /></button>
       <button className="files-icon-btn" type="button" disabled={!props.canUp} onClick={props.onUp} aria-label={t("files.up")} title={t("files.up")}><ArrowUpIcon /></button>
     </div>
-    <Breadcrumb nav={props.nav} onNavigate={props.onNavigate} />
-    <label className="files-search">
-      <SearchIcon className="files-search__icon" />
-      <input value={props.search} onChange={(event) => props.onSearch(event.target.value)} placeholder={t("files.search")} maxLength={255} />
-    </label>
-    <div className="files-toolbar__group">
-      <button className={icon(props.view === "grid")} type="button" aria-pressed={props.view === "grid"} onClick={() => props.onView("grid")} aria-label={t("files.grid")} title={t("files.grid")}><GridViewIcon /></button>
-      <button className={icon(props.view === "list")} type="button" aria-pressed={props.view === "list"} onClick={() => props.onView("list")} aria-label={t("files.list")} title={t("files.list")}><ListViewIcon /></button>
-    </div>
     {props.isStore
       ? <div className="files-toolbar__group">
           <button className="files-icon-btn" type="button" disabled={props.busy} onClick={props.onNewFolder} aria-label={t("files.newFolder")} title={t("files.newFolder")}><PlusIcon /></button>
@@ -53,5 +40,14 @@ export function Toolbar(props: ToolbarProps) {
           {props.canPaste ? <button className="files-icon-btn" type="button" disabled={props.busy} onClick={props.onPaste} aria-label={t("files.moveHere")} title={t("files.moveHere")}><MoveIcon /></button> : null}
         </div>
       : <span className="files-readonly">{t("files.readOnly")}</span>}
+    <span className="files-toolbar__spacer" />
+    <label className="files-search">
+      <SearchIcon className="files-search__icon" />
+      <input value={props.search} onChange={(event) => props.onSearch(event.target.value)} placeholder={t("files.search")} maxLength={255} />
+    </label>
+    <div className="files-toolbar__group">
+      <button className={icon(props.view === "grid")} type="button" aria-pressed={props.view === "grid"} onClick={() => props.onView("grid")} aria-label={t("files.grid")} title={t("files.grid")}><GridViewIcon /></button>
+      <button className={icon(props.view === "list")} type="button" aria-pressed={props.view === "list"} onClick={() => props.onView("list")} aria-label={t("files.list")} title={t("files.list")}><ListViewIcon /></button>
+    </div>
   </div>;
 }

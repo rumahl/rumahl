@@ -3,6 +3,7 @@ import { useI18n } from "../../i18n";
 import { useOsModePolicy } from "../../preferences/OsMode";
 import { browserProfile } from "../../preferences/storage";
 import { useShell } from "../../shell/ShellContext";
+import { Breadcrumb } from "./Breadcrumb";
 import { ContextMenu, type MenuItem } from "./ContextMenu";
 import { FileGrid, FileList, type ViewProps } from "./FileViews";
 import { Sidebar } from "./Sidebar";
@@ -75,25 +76,32 @@ export function FilesApp() {
     <Sidebar nav={explorer.nav} advanced={advancedSettings} onNavigate={explorer.navigate} />
     <div className="files-app__main">
       <Toolbar
-        nav={explorer.nav} isStore={explorer.isStore} busy={explorer.busy}
+        isStore={explorer.isStore} busy={explorer.busy}
         canBack={explorer.canBack} canForward={explorer.canForward} canUp={explorer.canUp}
         canPaste={!!clipboard} view={view} search={search}
-        onBack={explorer.back} onForward={explorer.forward} onUp={explorer.up} onNavigate={explorer.navigate}
+        onBack={explorer.back} onForward={explorer.forward} onUp={explorer.up}
         onView={setView} onSearch={setSearch}
         onNewFolder={() => setDraftFolder("")} onUpload={explorer.upload}
         onPaste={() => { if (clipboard) { void explorer.move(clipboard.id, clipboard.name); setClipboard(null); } }}
       />
-      {draftFolder !== null ? <form className="files-draft" onSubmit={(event) => { event.preventDefault(); submitFolder(draftFolder); }}>
-        <input autoFocus required maxLength={255} value={draftFolder} onChange={(event) => setDraftFolder(event.target.value)} placeholder={t("files.newFolder")} />
-        <button type="submit">{t("files.save")}</button>
-        <button type="button" onClick={() => setDraftFolder(null)}>{t("workspace.cancel")}</button>
-      </form> : null}
-      {live ? null : <p role="status">{t("files.demo")}</p>}
-      {explorer.error ? <p role="alert">{t(`files.${explorer.error}`)}</p> : null}
-      {explorer.loading
-        ? <div className="files-skeleton" aria-hidden="true">{Array.from({ length: 8 }).map((_, index) => <div key={index} className="files-skeleton__cell" />)}</div>
-        : visible.length === 0 ? <p className="files-empty">{t("files.empty")}</p>
-        : view === "grid" ? <FileGrid {...viewProps} /> : <FileList {...viewProps} />}
+      <div className="files-address"><Breadcrumb nav={explorer.nav} onNavigate={explorer.navigate} /></div>
+      <div className="files-surface">
+        {draftFolder !== null ? <form className="files-draft" onSubmit={(event) => { event.preventDefault(); submitFolder(draftFolder); }}>
+          <input autoFocus required maxLength={255} value={draftFolder} onChange={(event) => setDraftFolder(event.target.value)} placeholder={t("files.newFolder")} />
+          <button type="submit">{t("files.save")}</button>
+          <button type="button" onClick={() => setDraftFolder(null)}>{t("workspace.cancel")}</button>
+        </form> : null}
+        {live ? null : <p role="status">{t("files.demo")}</p>}
+        {explorer.error ? <p role="alert">{t(`files.${explorer.error}`)}</p> : null}
+        {explorer.loading
+          ? <div className="files-skeleton" aria-hidden="true">{Array.from({ length: 8 }).map((_, index) => <div key={index} className="files-skeleton__cell" />)}</div>
+          : visible.length === 0 ? <p className="files-empty">{t("files.empty")}</p>
+          : view === "grid" ? <FileGrid {...viewProps} /> : <FileList {...viewProps} />}
+      </div>
+      <div className="files-status">
+        <span>{t("files.items", { count: visible.length })}</span>
+        {selected.size ? <span>{t("files.selectedCount", { count: selected.size })}</span> : null}
+      </div>
     </div>
     {menu ? <ContextMenu x={menu.x} y={menu.y} items={menuItems(menu.item)} onClose={() => setMenu(null)} /> : null}
   </section>;

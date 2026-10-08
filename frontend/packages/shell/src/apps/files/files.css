@@ -1,12 +1,12 @@
-/* File explorer. Matches the Settings app's proportions (sidebar width, padding,
-   type scale) and uses the shell/theme tokens so it adapts to the active theme.
-   Unlayered so it wins over the base presentation rules. */
+/* File explorer. Structure follows Finder / Windows Explorer and the prototype:
+   a command toolbar, an address (breadcrumb) bar, the file surface and a status
+   bar. Uses the shell/theme tokens; the sidebar keeps its themed background. */
 
 .shell-window__content:has(> .files-app) { display: flex; overflow: hidden; padding: 0; container-type: inline-size; container-name: files; }
 
 .files-app {
   display: grid;
-  grid-template-columns: 184px minmax(0, 1fr);
+  grid-template-columns: 196px minmax(0, 1fr);
   width: 100%;
   height: 100%;
   min-height: 0;
@@ -16,56 +16,61 @@
 .files-app__sidebar {
   min-height: 0;
   overflow-y: auto;
-  padding: 24px 12px;
+  padding: 14px 10px;
   background: var(--material-sidebar, var(--surface-fill));
   border-right: 1px solid var(--material-line, var(--surface-edge));
 }
 .files-app__heading {
-  margin: 0 8px 10px;
-  font-size: 11px;
-  line-height: 1;
+  margin: 10px 10px 6px;
+  font-size: .68rem;
+  font-weight: 700;
+  letter-spacing: .09em;
+  text-transform: uppercase;
   color: var(--rumahl-ui-color-text-muted, var(--rumahl-color-text-muted));
 }
-.files-app__sidebar nav { display: grid; gap: 4px; }
+.files-app__sidebar nav { display: grid; gap: 2px; }
 .files-nav {
   display: flex;
   align-items: center;
-  gap: 9px;
-  padding: 10px;
-  color: var(--rumahl-ui-color-text-primary);
+  gap: 10px;
+  padding: 0 10px;
+  min-height: 34px;
+  color: var(--rumahl-ui-color-text-secondary, var(--rumahl-ui-color-text-primary));
   font: inherit;
   font-size: 13px;
-  line-height: 1.4;
   text-align: start;
   background: transparent;
   border: 0;
-  border-radius: 9px;
+  border-radius: 7px;
   cursor: pointer;
 }
-.files-nav:hover { background: var(--material-line, #0000000a); }
+.files-nav:hover { background: color-mix(in srgb, currentColor 8%, transparent); }
 .files-nav.is-active {
-  color: var(--rumahl-ui-color-on-accent);
-  background: var(--rumahl-ui-color-accent);
+  color: var(--rumahl-ui-color-text-primary);
+  background: color-mix(in srgb, currentColor 9%, transparent);
+  box-shadow: inset 2px 0 var(--rumahl-ui-color-accent);
 }
 .files-nav__icon { width: 17px; height: 17px; flex-shrink: 0; }
 
-/* Main pane */
-.files-app__main {
-  min-width: 0;
-  min-height: 0;
-  overflow-y: auto;
-  padding: 28px 30px 36px;
-  scrollbar-gutter: stable;
-}
+/* Main column: toolbar, address bar, surface, status bar. */
+.files-app__main { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
 
-.files-toolbar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 22px; }
+.files-toolbar {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--material-line, var(--surface-edge));
+}
+.files-toolbar__spacer { flex: 1 1 auto; }
 .files-toolbar__group {
   display: inline-flex;
   align-items: center;
   gap: 2px;
   padding: 2px;
   border: 1px solid var(--material-line, var(--line));
-  border-radius: 10px;
+  border-radius: 9px;
 }
 .files-icon-btn {
   position: relative;
@@ -73,50 +78,36 @@
   align-items: center;
   justify-content: center;
   width: 32px;
-  height: 30px;
+  height: 28px;
   padding: 0;
   color: inherit;
-  background: transparent;
-  border: 0;
-  border-radius: 8px;
-  cursor: pointer;
-}
-.files-icon-btn:hover:not(:disabled) { background: var(--material-line, #0000000a); }
-.files-icon-btn.is-active, .files-icon-btn[aria-pressed="true"] {
-  color: var(--rumahl-ui-color-on-accent);
-  background: var(--rumahl-ui-color-accent);
-}
-.files-icon-btn:disabled { opacity: .35; cursor: default; }
-.files-icon-btn svg { width: 17px; height: 17px; }
-
-.files-crumbs { display: flex; align-items: center; gap: 2px; flex: 1 1 160px; min-width: 0; flex-wrap: wrap; }
-.files-crumbs__item { display: inline-flex; align-items: center; }
-.files-crumbs__sep { width: 14px; height: 14px; opacity: .4; }
-.files-crumbs button {
-  padding: 5px 8px;
-  color: inherit;
-  font: inherit;
-  font-size: 13px;
   background: transparent;
   border: 0;
   border-radius: 7px;
   cursor: pointer;
 }
-.files-crumbs button:hover { background: var(--material-line, #0000000a); }
+.files-icon-btn:hover:not(:disabled) { background: color-mix(in srgb, currentColor 10%, transparent); }
+.files-icon-btn.is-active, .files-icon-btn[aria-pressed="true"] {
+  color: var(--rumahl-ui-color-on-accent);
+  background: var(--rumahl-ui-color-accent);
+}
+.files-icon-btn:disabled { opacity: .35; cursor: default; }
+.files-icon-btn svg { width: 16px; height: 16px; }
 
 .files-search {
   display: inline-flex;
   align-items: center;
   gap: 7px;
-  flex: 0 0 auto;
+  flex: 0 1 auto;
   padding: 0 10px;
   border: 1px solid var(--material-line, var(--line));
   border-radius: 9px;
+  background: var(--material-soft, var(--surface-base));
 }
 .files-search__icon { width: 15px; height: 15px; opacity: .6; }
 .files-search input, .files-draft input {
-  padding: 8px 0;
-  min-width: 13rem;
+  padding: 7px 0;
+  min-width: 11rem;
   color: var(--rumahl-ui-color-text-primary);
   font: inherit;
   font-size: 13px;
@@ -124,62 +115,115 @@
   border: 0;
   outline: none;
 }
-.files-draft input { padding: 8px 11px; min-width: 13rem; border: 1px solid var(--material-line, var(--line)); border-radius: 9px; background: var(--material-soft, var(--surface-base)); }
+.files-draft input { padding: 7px 10px; border: 1px solid var(--material-line, var(--line)); border-radius: 9px; background: var(--material-soft, var(--surface-base)); }
 .files-upload input { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
 .files-readonly { color: var(--rumahl-ui-color-text-muted, var(--rumahl-color-text-muted)); font-size: 12px; }
 
-/* Grid */
-.files-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(116px, 1fr)); gap: 12px; margin: 0; padding: 0; list-style: none; }
+/* Address / breadcrumb bar */
+.files-address {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  min-height: 40px;
+  padding: 0 14px;
+  overflow-x: auto;
+  border-bottom: 1px solid var(--material-line, var(--surface-edge));
+  background: color-mix(in srgb, var(--rumahl-ui-color-text-primary) 1%, transparent);
+}
+.files-crumbs { display: flex; align-items: center; gap: 2px; min-width: 0; }
+.files-crumbs__item { display: inline-flex; align-items: center; }
+.files-crumbs__sep { width: 14px; height: 14px; opacity: .4; }
+.files-crumbs button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 8px;
+  color: inherit;
+  font: inherit;
+  font-size: 12.5px;
+  white-space: nowrap;
+  background: transparent;
+  border: 0;
+  border-radius: 7px;
+  cursor: pointer;
+}
+.files-crumbs button:hover { color: var(--rumahl-ui-color-text-primary); background: color-mix(in srgb, currentColor 12%, transparent); }
+
+/* File surface */
+.files-surface { flex: 1 1 auto; min-height: 0; overflow: auto; }
+.files-draft { display: flex; align-items: center; gap: 8px; padding: 12px 14px; border-bottom: 1px solid var(--material-line, var(--line)); }
+.files-empty { padding: 40px 16px; font-size: 13px; color: var(--rumahl-ui-color-text-muted, var(--rumahl-color-text-muted)); }
+
+/* Grid (Finder-like tiles) */
+.files-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(112px, 1fr)); gap: 8px; margin: 0; padding: 14px; list-style: none; }
 .files-tile {
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: 8px;
-  padding: 16px 8px 12px;
+  padding: 14px 8px;
   border: 1px solid transparent;
-  border-radius: 12px;
+  border-radius: 10px;
   text-align: center;
   cursor: default;
 }
-.files-tile:hover { background: var(--material-line, #0000000a); }
+.files-tile:hover { background: color-mix(in srgb, currentColor 6%, transparent); }
 .files-tile.is-selected {
-  background: color-mix(in srgb, var(--rumahl-ui-color-accent) 16%, transparent);
-  border-color: color-mix(in srgb, var(--rumahl-ui-color-accent) 50%, transparent);
+  background: color-mix(in srgb, var(--rumahl-ui-color-accent) 14%, transparent);
+  border-color: color-mix(in srgb, var(--rumahl-ui-color-accent) 45%, transparent);
 }
 .files-tile__icon { display: inline-flex; }
 .files-tile__name { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12.5px; }
-.files-icon-folder { color: var(--rumahl-ui-color-accent); width: 42px; height: 42px; }
-.files-icon-file { color: var(--rumahl-ui-color-text-muted, var(--rumahl-color-text-muted)); width: 42px; height: 42px; }
-.files-row .files-icon-folder, .files-row .files-icon-file { width: 18px; height: 18px; }
+.files-icon-folder { color: var(--rumahl-ui-color-accent); width: 40px; height: 40px; }
+.files-icon-file { color: var(--rumahl-ui-color-text-muted, var(--rumahl-color-text-muted)); width: 40px; height: 40px; }
 
-/* List */
+/* List (Explorer-like table) */
 .files-list { display: flex; flex-direction: column; }
-.files-list__head, .files-row { display: grid; grid-template-columns: minmax(0, 1fr) 110px 150px; align-items: center; gap: 12px; }
+.files-list__head, .files-row { display: grid; grid-template-columns: minmax(12rem, 1fr) 8rem 9rem; align-items: center; gap: 12px; }
 .files-list__head {
-  padding: 8px 0;
-  font-size: 11px;
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  min-height: 32px;
+  padding: 0 14px;
+  font-size: .68rem;
   font-weight: 600;
+  letter-spacing: .07em;
+  text-transform: uppercase;
   color: var(--rumahl-ui-color-text-muted, var(--rumahl-color-text-muted));
-  border-bottom: 1px solid var(--material-line, var(--line));
+  background: color-mix(in srgb, var(--rumahl-ui-color-text-primary) 4%, var(--rumahl-ui-color-panel-background, var(--rumahl-color-panel-background)));
+  border-bottom: 1px solid var(--material-line, var(--surface-edge));
 }
-.files-row { padding: 11px 0; border-bottom: 1px solid var(--material-line, var(--line)); cursor: default; }
-.files-row:hover { background: color-mix(in srgb, currentColor 5%, transparent); }
-.files-row.is-selected { background: color-mix(in srgb, var(--rumahl-ui-color-accent) 14%, transparent); }
+.files-row { min-height: 40px; padding: 0 14px; border-bottom: 1px solid color-mix(in srgb, var(--rumahl-ui-color-text-primary) 5%, transparent); cursor: default; }
+.files-row:hover { background: color-mix(in srgb, currentColor 4%, transparent); }
+.files-row.is-selected { background: color-mix(in srgb, var(--rumahl-ui-color-accent) 13%, transparent); }
 .files-row__name { display: flex; align-items: center; gap: 11px; min-width: 0; font-size: 13px; }
 .files-row__name > span:last-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .files-row__meta { color: var(--rumahl-ui-color-text-muted, var(--rumahl-color-text-muted)); font-size: 12px; }
+.files-row .files-icon-folder, .files-row .files-icon-file { width: 18px; height: 18px; }
 
-/* Rename + menu + states */
+/* Status bar */
+.files-status {
+  flex: 0 0 auto;
+  display: flex;
+  gap: 18px;
+  padding: 7px 16px;
+  font-size: 12px;
+  color: var(--rumahl-ui-color-text-muted, var(--rumahl-color-text-muted));
+  border-top: 1px solid var(--material-line, var(--surface-edge));
+}
+
+/* Rename + context menu + skeleton */
 .files-rename {
   width: 100%;
-  max-width: 14rem;
-  padding: 5px 8px;
+  max-width: 15rem;
+  padding: 4px 7px;
   color: var(--rumahl-ui-color-text-primary);
   font: inherit;
   font-size: 13px;
   background: var(--material-soft, var(--surface-base));
   border: 1px solid var(--rumahl-ui-color-accent);
-  border-radius: 8px;
+  border-radius: 7px;
   outline: none;
 }
 .files-menu {
@@ -195,18 +239,17 @@
   box-shadow: 0 22px 60px #0008;
 }
 .files-menu button { display: flex; align-items: center; gap: 10px; padding: 8px 10px; color: inherit; font: inherit; font-size: 13px; text-align: start; background: transparent; border: 0; border-radius: 8px; cursor: pointer; }
-.files-menu button:hover { background: var(--material-line, #0000000a); }
+.files-menu button:hover { background: color-mix(in srgb, currentColor 10%, transparent); }
 .files-menu button.is-danger { color: #e5484d; }
 .files-menu button svg { width: 17px; height: 17px; }
-.files-draft { display: flex; align-items: center; gap: 8px; margin-bottom: 20px; }
-.files-empty { padding: 36px 0; font-size: 13px; color: var(--rumahl-ui-color-text-muted, var(--rumahl-color-text-muted)); }
-.files-skeleton { display: grid; grid-template-columns: repeat(auto-fill, minmax(116px, 1fr)); gap: 12px; }
-.files-skeleton__cell { height: 92px; border-radius: 12px; background: var(--material-line, #0000000a); animation: files-pulse 1.2s ease-in-out infinite; }
+.files-skeleton { display: grid; grid-template-columns: repeat(auto-fill, minmax(112px, 1fr)); gap: 8px; padding: 14px; }
+.files-skeleton__cell { height: 90px; border-radius: 10px; background: color-mix(in srgb, var(--rumahl-ui-color-text-primary) 6%, transparent); animation: files-pulse 1.2s ease-in-out infinite; }
 @keyframes files-pulse { 0%, 100% { opacity: .5; } 50% { opacity: 1; } }
 @media (prefers-reduced-motion: reduce) { .files-skeleton__cell { animation: none; } }
 
-@container files (max-width: 580px) {
-  .files-app { grid-template-columns: 140px minmax(0, 1fr); }
-  .files-app__sidebar { padding: 18px 8px; }
-  .files-app__main { padding: 20px 16px; }
+@container files (max-width: 640px) {
+  .files-app { grid-template-columns: 150px minmax(0, 1fr); }
+  .files-app__sidebar { padding: 12px 8px; }
+  .files-list__head, .files-row { grid-template-columns: minmax(8rem, 1fr) 5rem; }
+  .files-list__head > :nth-child(2), .files-row > :nth-child(2) { display: none; }
 }

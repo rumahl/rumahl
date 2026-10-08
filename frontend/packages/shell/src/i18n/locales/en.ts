@@ -74,6 +74,8 @@ export const english = {
   "files.name": "Name",
   "files.size": "Size",
   "files.modified": "Modified",
+  "files.items": "{count} items",
+  "files.selectedCount": "{count} selected",
 
   "preferences.scope": "Save for",
   "preferences.user": "My account · all devices",

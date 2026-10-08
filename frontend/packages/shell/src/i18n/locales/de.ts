@@ -69,6 +69,8 @@ export const german = {
   "files.name": "Name",
   "files.size": "Größe",
   "files.modified": "Geändert",
+  "files.items": "{count} Elemente",
+  "files.selectedCount": "{count} ausgewählt",
 
   "preferences.scope": "Speichern für",
   "preferences.user": "Mein Konto · alle Geräte",
