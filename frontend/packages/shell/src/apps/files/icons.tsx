@@ -28,6 +28,9 @@ export function UploadIcon({ className }: { className?: string | undefined }) {
 export function PlusIcon({ className }: { className?: string | undefined }) {
   return <Icon className={className}><path d="M12 5v14M5 12h14" /></Icon>;
 }
+export function FilePlusIcon({ className }: { className?: string | undefined }) {
+  return <Icon className={className}><path d="M6 3h8l4 4v14H6z" /><path d="M14 3v4h4" /><path d="M12 11v6M9 14h6" /></Icon>;
+}
 export function GridViewIcon({ className }: { className?: string | undefined }) {
   return <Icon className={className}><rect x="4" y="4" width="7" height="7" rx="1" /><rect x="13" y="4" width="7" height="7" rx="1" /><rect x="4" y="13" width="7" height="7" rx="1" /><rect x="13" y="13" width="7" height="7" rx="1" /></Icon>;
 }
@@ -48,4 +51,8 @@ export function OpenIcon({ className }: { className?: string | undefined }) {
 }
 export function DownloadIcon({ className }: { className?: string | undefined }) {
   return <Icon className={className}><path d="M12 4v12" /><path d="m7 11 5 5 5-5" /><path d="M5 20h14" /></Icon>;
+}
+
+export function AlertIcon({ className }: { className?: string | undefined }) {
+  return <Icon className={className}><path d="M12 4 3 20h18z" /><path d="M12 10v4" /><path d="M12 17h.01" /></Icon>;
 }

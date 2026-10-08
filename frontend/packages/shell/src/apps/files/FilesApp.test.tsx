@@ -3,7 +3,7 @@ import { beforeEach, expect, test, vi } from "vitest";
 
 const state = vi.hoisted(() => ({
   advanced: false,
-  live: { request: vi.fn(async () => ({ ok: true, json: async () => [] })) },
+  live: { request: vi.fn(async (url: string) => { void url; return { ok: true, json: async () => [] }; }) },
   fetchHostList: vi.fn(async () => []),
 }));
 
@@ -35,4 +35,20 @@ test("browses host roots in advanced mode", async () => {
   fireEvent.click(within(sidebar).getByRole("button", { name: "files.applications" }));
   await waitFor(() => expect(state.fetchHostList).toHaveBeenCalled());
   expect(await screen.findByText("files.empty")).toBeInTheDocument();
+});
+
+test("opens a context menu on empty space and creates an empty file", async () => {
+  render(<FilesApp />);
+  await screen.findByText("files.empty");
+  const surface = document.querySelector(".files-surface") as HTMLElement;
+  fireEvent.contextMenu(surface, { clientX: 12, clientY: 12 });
+  fireEvent.click(await screen.findByRole("menuitem", { name: "files.newFile" }));
+  const input = (await screen.findByPlaceholderText("files.newFile")) as HTMLInputElement;
+  fireEvent.change(input, { target: { value: "notes.txt" } });
+  fireEvent.submit(input.closest("form")!);
+  await waitFor(() => {
+    const call = state.live.request.mock.calls.find(([url]) => String(url).includes("directory=false"));
+    expect(call).toBeTruthy();
+    expect(String(call?.[0])).toContain("name=notes.txt");
+  });
 });

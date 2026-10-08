@@ -40,6 +40,11 @@ export function useSelection(entries: readonly Item[]) {
 
   const selectAll = useCallback(() => setSelected(new Set(entries.map((entry) => entry.key))), [entries]);
 
+  const setSelection = useCallback((keys: Iterable<string>) => {
+    const allowed = new Set(entries.map((entry) => entry.key));
+    setSelected(new Set([...keys].filter((key) => allowed.has(key))));
+  }, [entries]);
+
   const prune = useCallback((keys: readonly string[]) => {
     setSelected((previous) => {
       const allowed = new Set(keys);
@@ -48,5 +53,5 @@ export function useSelection(entries: readonly Item[]) {
     });
   }, []);
 
-  return { selected, select, clear, selectAll, prune };
+  return { selected, select, clear, selectAll, prune, setSelection };
 }

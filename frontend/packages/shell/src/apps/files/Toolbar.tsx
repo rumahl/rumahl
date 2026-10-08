@@ -1,6 +1,6 @@
 import { SearchIcon } from "../../icons";
 import { useI18n } from "../../i18n";
-import { ArrowLeftIcon, ArrowRightIcon, ArrowUpIcon, GridViewIcon, ListViewIcon, MoveIcon, PlusIcon, UploadIcon } from "./icons";
+import { ArrowLeftIcon, ArrowRightIcon, ArrowUpIcon, FilePlusIcon, GridViewIcon, ListViewIcon, MoveIcon, PlusIcon, UploadIcon } from "./icons";
 
 export interface ToolbarProps {
   isStore: boolean;
@@ -17,6 +17,7 @@ export interface ToolbarProps {
   onView: (view: "grid" | "list") => void;
   onSearch: (value: string) => void;
   onNewFolder: () => void;
+  onNewFile: () => void;
   onUpload: (file: File) => void;
   onPaste: () => void;
 }
@@ -33,6 +34,7 @@ export function Toolbar(props: ToolbarProps) {
     {props.isStore
       ? <div className="files-toolbar__group">
           <button className="files-icon-btn" type="button" disabled={props.busy} onClick={props.onNewFolder} aria-label={t("files.newFolder")} title={t("files.newFolder")}><PlusIcon /></button>
+          <button className="files-icon-btn" type="button" disabled={props.busy} onClick={props.onNewFile} aria-label={t("files.newFile")} title={t("files.newFile")}><FilePlusIcon /></button>
           <label className="files-icon-btn files-upload" title={t("files.upload")}>
             <UploadIcon />
             <input type="file" onChange={(event) => { const file = event.target.files?.[0]; event.target.value = ""; if (file) props.onUpload(file); }} />
