@@ -85,6 +85,35 @@ disposable integration helper; it is not packaged into OS images. Container web
 proxies, OIDC app login, networked app backends and an action/message bridge need
 separate authorization contracts; this host does not silently grant them access.
 
+## App <-> OS bridge, runtime control and channels
+
+Installed apps are opaque-origin iframes and reach the shell only through
+`window.postMessage`. The versioned `rumahl.bridge.v1` protocol (contract in
+`@rumahl/contracts/bridge`) binds the channel to the frame's `contentWindow`
+(`event.origin` is always `"null"` for a sandboxed app) and exposes capability
+gated methods (`os.info`, `os.theme.get`, `os.notification`,
+`os.window.{close,minimize,focus}`). The app's declared manifest permissions are
+projected into the catalog and a method is refused unless its capability is
+declared; the app side uses `@rumahl/bridge-client`.
+
+Runtime control reaches the supervisor: `RuntimeController` and
+`ProviderRuntimeAdapter` route `status`/`start`/`stop` over the
+`AppRuntimeProvider` boundary, exposed as
+`GET/POST /api/v1/shell/apps/{id}/runtime`. The catalog carries each app's
+`lifecycle` (`always-on` | `on-demand`); on-demand container apps are prepared
+but not activated at install.
+
+Always-on services receive OS events without an open window over the persistent
+`rumahl.channel.v1` channel: the app connects to a loopback endpoint, a
+`hello`/token handshake authenticates the installation, and a live
+`RuntimeChannel` is registered until it disconnects. The bridge and the channel
+share the same method/event surface.
+
+Connectors let an app ship a bundle for an external service (for example
+Nextcloud or Plex): the manifest declares a connector target plus a
+container-artifact entrypoint, and the OS installs the bundle and registers the
+app as an OIDC relying party for it.
+
 ## Deployment and checks
 
 Development uses `*.apps.localhost`, the developer HTTPS port, and a certificate

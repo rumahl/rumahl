@@ -235,6 +235,8 @@ export const english = {
   "theme.glass.chromaHelp": "Chromatic aberration at the glass edge.",
   "theme.glass.tint": "Tint",
   "theme.glass.tintHelp": "Milky overlay layered over the refracted backdrop.",
+  "theme.glass.saturation": "Saturation",
+  "theme.glass.saturationHelp": "Colour intensity of the glass; 100% is neutral.",
   "theme.glass.testImage": "Test image",
   "theme.glass.testImageHelp": "Use your own picture as wallpaper to try the glass effect.",
   "theme.glass.testVideo": "Test video",

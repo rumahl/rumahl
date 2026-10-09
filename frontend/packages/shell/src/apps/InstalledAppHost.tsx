@@ -11,7 +11,9 @@ import { BRIDGE_CAPABILITY_LIST } from "@rumahl/contracts/bridge";
 import { launchApp, type InstalledApp } from "./client";
 import { setLaunching } from "./launching";
 import { showToast } from "../shell/toasts";
+import { Button } from "../components/Button";
 import { UnavailablePage } from "../pages/UnavailablePage";
+import "../routing/route-failure.css";
 
 export function InstalledAppHost() {
   const { appId = "" } = useParams();
@@ -68,6 +70,18 @@ function AppFrame({ app }: { app: InstalledApp }) {
     const timer = setTimeout(() => { if (!loaded.current) { setFrame(null); setFailed(true); } }, 15_000);
     return () => clearTimeout(timer);
   }, [frame]);
+  // Reachability preflight: a network-level failure (the app's server is down)
+  // rejects a no-cors fetch, so the shell shows its own unavailable state
+  // instead of the browser's error page inside the iframe. HTTP error pages
+  // still load as content; only connection/DNS failures are caught here.
+  useEffect(() => {
+    if (!frame) return;
+    const controller = new AbortController();
+    fetch(frame, { mode: "no-cors", cache: "no-store", signal: controller.signal }).catch(() => {
+      if (!controller.signal.aborted) { cancel.current(); setFrame(null); setFailed(true); }
+    });
+    return () => controller.abort();
+  }, [frame]);
   const readTheme = useCallback((): BridgeTheme => {
     const scene = document.querySelector<HTMLElement>(".scene");
     const scheme = scene?.dataset.scheme ?? (document.body.classList.contains("light") ? "light" : "dark");
@@ -111,7 +125,19 @@ function AppFrame({ app }: { app: InstalledApp }) {
     observer.observe(scene, { attributes: true, attributeFilter: ["data-scheme", "data-theme"] });
     return () => observer.disconnect();
   }, [readTheme]);
-  if (failed) return <div role="status"><p>{t("apps.launchFailed")}</p><button type="button" onClick={() => setRetry((value) => value + 1)}>{t("apps.retry")}</button></div>;
+  if (failed) return <section className="route-failure" aria-label={app.title}>
+    <div className="route-failure__content">
+      <div className="route-failure__icon" aria-hidden="true">
+        <svg viewBox="0 0 48 48" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+          <rect x="7" y="9" width="34" height="30" rx="7" /><path d="M7 18h34M13 13.5h.01M17 13.5h.01M24 24v6M24 34h.01" />
+        </svg>
+      </div>
+      <div role="alert"><h2>{app.title}</h2><p>{t("apps.launchFailed")}</p></div>
+      <div className="route-failure__actions">
+        <Button onClick={() => setRetry((value) => value + 1)}>{t("apps.retry")}</Button>
+      </div>
+    </div>
+  </section>;
   if (!frame) return <div className="installed-app-loading"><span className="visually-hidden">{t("apps.loading")}</span></div>;
   const url = new URL(frame);
   // Key the fragment off this window's location, not the shared browser URL, so

@@ -230,6 +230,8 @@ export const german = {
   "theme.glass.chromaHelp": "Farbige Lichtbrechung am Glasrand.",
   "theme.glass.tint": "Tönung",
   "theme.glass.tintHelp": "Milchige Schicht über dem gebrochenen Backdrop.",
+  "theme.glass.saturation": "Sättigung",
+  "theme.glass.saturationHelp": "Farbintensität des Glases; 100 % ist neutral.",
   "theme.glass.testImage": "Test-Bild",
   "theme.glass.testImageHelp": "Eigenes Bild als Wallpaper nutzen, um den Glas-Effekt zu testen.",
   "theme.glass.testVideo": "Test-Video",
