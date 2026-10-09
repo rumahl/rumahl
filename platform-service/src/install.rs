@@ -15,8 +15,8 @@ use std::path::{Path, PathBuf};
 use rumahl_app_operations::{AppOperationRunner, AppRuntimeServices};
 use rumahl_core::{
     AccountStateRepository, AppRuntimeInstallationState, AppRuntimeProvider, GrantAuthority,
-    GrantIssuerPolicy, Identity, InMemoryGrantStore, InstalledApp, PermissionId, PermissionScope,
-    PlatformRecovery, PlatformSnapshot, PlatformSnapshotRepository, PlatformState,
+    GrantIssuerPolicy, Identity, InMemoryGrantStore, InstalledApp, InstallationId, PermissionId,
+    PermissionScope, PlatformRecovery, PlatformSnapshot, PlatformSnapshotRepository, PlatformState,
     RuntimeEntrypointId, RuntimeKind, UserIdentity, UserRole,
 };
 use rumahl_oidc_provider::InstalledAppOriginResolver;
@@ -222,14 +222,32 @@ pub fn runtime_adapters_from_env(
 
 /// Verifies and installs a package, recovering interrupted container installs.
 pub fn install_package(state_dir: &Path, package_dir: &Path) -> Result<(), InstallError> {
+    install_with(&InstallConfig::from_env()?, state_dir, package_dir).map(|_| ())
+}
+
+/// Installs a package from a staged directory and returns its public metadata.
+/// Uses the environment-configured supervisor/trust/TPM settings.
+pub fn install_package_dir(
+    state_dir: &Path,
+    package_dir: &Path,
+) -> Result<InstalledPackageInfo, InstallError> {
     install_with(&InstallConfig::from_env()?, state_dir, package_dir)
+}
+
+/// Public metadata of an installed package, read from the trusted snapshot.
+#[derive(Debug, Clone)]
+pub struct InstalledPackageInfo {
+    pub app_id: String,
+    pub installation_id: InstallationId,
+    pub title: String,
+    pub version: String,
 }
 
 fn install_with(
     config: &InstallConfig,
     state_dir: &Path,
     package_dir: &Path,
-) -> Result<(), InstallError> {
+) -> Result<InstalledPackageInfo, InstallError> {
     let platform = state_dir.join("platform.sqlite");
 
     let origin = InstallationHostOriginResolver::new(config.app_host_suffix.clone())
@@ -287,24 +305,14 @@ fn install_with(
         .install(&runner, package_dir, &mut state, &mut grants)
         .map_err(InstallError::Import)?;
 
+    // Public metadata of the freshly installed app, read from the trusted snapshot.
+    let info = installed_info(&platform, installed.installation_id())?;
+
     // Give the app its own directory under the apps volume, owner-only.
     if let Some(apps_root) = crate::apps_data_root() {
-        let snapshot = SqliteSnapshotRepository::open(&platform).map_err(InstallError::provider)?;
-        let app_id = snapshot
-            .load()
-            .map_err(InstallError::provider)?
-            .and_then(|snapshot| {
-                snapshot
-                    .installed_apps()
-                    .iter()
-                    .find(|app| app.installation_id() == installed.installation_id())
-                    .map(|app| app.identity().app_id().as_str().to_owned())
-            });
-        if let Some(app_id) = app_id {
-            let directory = apps_root.join(&app_id);
-            std::fs::create_dir_all(&directory)?;
-            std::fs::set_permissions(&directory, std::fs::Permissions::from_mode(0o700))?;
-        }
+        let directory = apps_root.join(&info.app_id);
+        std::fs::create_dir_all(&directory)?;
+        std::fs::set_permissions(&directory, std::fs::Permissions::from_mode(0o700))?;
     }
 
     // Launch access is a grant, not an install side effect: give every existing
@@ -360,7 +368,35 @@ fn install_with(
         installed.installation_id(),
         installed.published()
     );
-    Ok(())
+    Ok(info)
+}
+
+/// Reads the public metadata of an installed app from the trusted snapshot.
+fn installed_info(
+    platform: &Path,
+    installation: &InstallationId,
+) -> Result<InstalledPackageInfo, InstallError> {
+    let snapshot = SqliteSnapshotRepository::open(platform)
+        .map_err(InstallError::provider)?
+        .load()
+        .map_err(InstallError::provider)?;
+    let app = snapshot
+        .as_ref()
+        .and_then(|snapshot| {
+            snapshot
+                .installed_apps()
+                .iter()
+                .find(|app| app.installation_id() == installation)
+        })
+        .ok_or_else(|| {
+            InstallError::provider(std::io::Error::other("installed app missing from snapshot"))
+        })?;
+    Ok(InstalledPackageInfo {
+        app_id: app.identity().app_id().as_str().to_owned(),
+        installation_id: *installation,
+        title: app.manifest().display_name().to_owned(),
+        version: app.manifest().version().to_string(),
+    })
 }
 
 fn secret_key_provider(config: &InstallConfig) -> Result<Tpm2UnsealKeyProvider, InstallError> {

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { parseAppData, parseAppSettings, parseCatalog, parseLaunch } from "./client";
+import { parseAppData, parseAppSettings, parseCatalog, parseImport, parseLaunch } from "./client";
 const app = { id: "com.rumahl.notes", installationId: "01990000-0000-7000-8000-000000000001", title: "Notes", version: "1.0.0", launchable: true };
 const lease = "a".repeat(64);
 const launch = { launchVersion: 1, id: app.id, installationId: app.installationId, lease, frameUrl: `https://${app.installationId}.apps.localhost:8443/launch/${lease}/web/index.html`, renewAfterSeconds: 30 };
@@ -63,8 +63,12 @@ describe("installed app contracts", () => {
     ];
     for (const value of cases) expect(() => parseAppSettings(value)).toThrow();
   });
-  it("validates app data listings and file previews", () => {
-    const directory = { dataVersion: 1, kind: "directory", path: "docs", entries: [{ name: "readme.md", directory: false, size: 8 }, { name: "sub", directory: true, size: 0 }] };
+  it("parses a successful import and rejects malformed responses", () => {
+    const imported = { importVersion: 1, id: app.id, installationId: app.installationId, title: "Notes", version: "1.0.0" };
+    expect(parseImport(imported)).toMatchObject({ id: app.id, installationId: app.installationId });
+    for (const value of [{ ...imported, importVersion: 2 }, { ...imported, id: "not an id" }, { ...imported, installationId: "legacy" }, { ...imported, title: "" }, { ...imported, version: "x".repeat(200) }]) expect(() => parseImport(value)).toThrow();
+  });
+  it("validates app data listings and file previews", () => {    const directory = { dataVersion: 1, kind: "directory", path: "docs", entries: [{ name: "readme.md", directory: false, size: 8 }, { name: "sub", directory: true, size: 0 }] };
     expect(parseAppData(directory)).toEqual({ kind: "directory", path: "docs", entries: directory.entries });
     const file = { dataVersion: 1, kind: "file", path: "readme.md", size: 8, contentType: "text/plain; charset=utf-8", text: "# readme" };
     expect(parseAppData(file)).toEqual({ kind: "file", path: "readme.md", size: 8, contentType: "text/plain; charset=utf-8", text: "# readme" });

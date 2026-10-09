@@ -110,6 +110,37 @@ export async function launchApp(request: ShellRequest, app: InstalledApp, shellO
     body: JSON.stringify({ installationId: app.installationId, ...(lease ? { lease } : {}) })
   }), 4096), app, shellOrigin);
 }
+/** One file of a signed directory package, base64 encoded, path relative to the package root. */
+export interface PackageFile { path: string; content: string }
+export interface ImportedApp { id: string; installationId: string; title: string; version: string }
+export function parseImport(value: unknown): ImportedApp {
+  const object = record(value);
+  if (object.importVersion !== 1 || typeof object.id !== "string" || !APP_ID.test(object.id) ||
+      typeof object.installationId !== "string" || !INSTALLATION.test(object.installationId) ||
+      typeof object.title !== "string" || !object.title.trim() || object.title.length > 256 ||
+      typeof object.version !== "string" || object.version.length > 128) throw new Error("invalid app import");
+  return { id: object.id, installationId: object.installationId, title: object.title, version: object.version };
+}
+export async function importPackage(request: ShellRequest, files: readonly PackageFile[], device: string, signal: AbortSignal): Promise<ImportedApp> {
+  return parseImport(await payload(await request("/api/v1/shell/apps/import", {
+    method: "POST", cache: "no-store", credentials: "same-origin", signal,
+    headers: { Accept: "application/json", "Content-Type": "application/json" },
+    body: JSON.stringify({ importVersion: 1, device, files })
+  }), 4096));
+}
+/** Reads selected package files into base64 payloads, stripping the chosen folder prefix. */
+export async function readPackageFiles(selected: readonly File[]): Promise<PackageFile[]> {
+  const files: PackageFile[] = [];
+  for (const file of selected) {
+    const relative = (file.webkitRelativePath || file.name).split("/").slice(1).join("/") || file.name;
+    if (!relative || relative.split("/").some((segment) => segment === ".." || segment === "")) continue;
+    const bytes = new Uint8Array(await file.arrayBuffer());
+    let binary = "";
+    for (const byte of bytes) binary += String.fromCharCode(byte);
+    files.push({ path: relative, content: btoa(binary) });
+  }
+  return files;
+}
 export function parseAppSettings(value: unknown): AppSettings {
   const object = record(value);
   if (object.settingsVersion !== 1 || typeof object.id !== "string" || !APP_ID.test(object.id) ||

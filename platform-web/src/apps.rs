@@ -92,6 +92,20 @@ pub enum RuntimeAction {
     Start,
     Stop,
 }
+/// One file of a signed directory package, already base64-decoded.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PackageUploadFile {
+    pub path: String,
+    pub bytes: Vec<u8>,
+}
+/// The public result of importing a package.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ImportedApp {
+    pub id: String,
+    pub installation_id: InstallationId,
+    pub title: String,
+    pub version: String,
+}
 pub struct AppAsset {
     pub bytes: Vec<u8>,
     pub content_type: &'static str,
@@ -145,6 +159,15 @@ pub trait AppProvider: Send + Sync + 'static {
         _identity: ShellIdentity,
         _installation: InstallationId,
     ) -> Result<RuntimeState, AppAccessError> {
+        Err(AppAccessError::Unavailable)
+    }
+    /// Verifies and installs a signed package uploaded from the shell. Fails
+    /// closed when no importer is wired.
+    fn import_package(
+        &self,
+        _identity: ShellIdentity,
+        _files: Vec<PackageUploadFile>,
+    ) -> Result<ImportedApp, AppAccessError> {
         Err(AppAccessError::Unavailable)
     }
 }
@@ -270,6 +293,13 @@ impl AppAccess {
             RuntimeAction::Start => self.provider.start_runtime(identity, app.installation_id),
             RuntimeAction::Stop => self.provider.stop_runtime(identity, app.installation_id),
         }
+    }
+    pub fn import_package(
+        &self,
+        identity: ShellIdentity,
+        files: Vec<PackageUploadFile>,
+    ) -> Result<ImportedApp, AppAccessError> {
+        self.provider.import_package(identity, files)
     }
     pub fn launch(
         &self,
@@ -437,6 +467,18 @@ mod tests {
         ) -> Result<RuntimeState, AppAccessError> {
             Ok(RuntimeState::Running)
         }
+        fn import_package(
+            &self,
+            _: ShellIdentity,
+            _: Vec<PackageUploadFile>,
+        ) -> Result<ImportedApp, AppAccessError> {
+            Ok(ImportedApp {
+                id: "com.rumahl.test".into(),
+                installation_id: self.installation,
+                title: "Test".into(),
+                version: "1.0.0".into(),
+            })
+        }
         fn entrypoint(
             &self,
             _: ShellIdentity,
@@ -491,6 +533,35 @@ mod tests {
             }]))
         }
     }
+    #[test]
+    fn import_delegates_to_the_provider() {
+        let owner = ShellIdentity {
+            user_id: UserId::new(),
+            session_id: SessionId::new(),
+        };
+        let installation = InstallationId::new();
+        let access = AppAccess::new(
+            Arc::new(Provider {
+                owner,
+                installation,
+            }),
+            &Url::parse("https://localhost:8443").unwrap(),
+            "apps.localhost",
+        )
+        .unwrap();
+        let imported = access
+            .import_package(
+                owner,
+                vec![PackageUploadFile {
+                    path: "package.json".into(),
+                    bytes: b"{}".to_vec(),
+                }],
+            )
+            .unwrap();
+        assert_eq!(imported.installation_id, installation);
+        assert_eq!(imported.id, "com.rumahl.test");
+    }
+
     #[test]
     fn runtime_control_reports_state_and_denies_other_installations() {
         let owner = ShellIdentity {

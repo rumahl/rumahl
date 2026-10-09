@@ -4,6 +4,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Duration;
 
+use base64::Engine as _;
 use axum::Router;
 use axum::body::Body;
 use axum::extract::ws::{Message, WebSocket, WebSocketUpgrade};
@@ -121,6 +122,10 @@ pub fn router(state: GatewayState) -> Router {
         .route(
             "/api/v1/shell/apps/{id}/runtime",
             get(app_runtime_status).post(app_runtime_action),
+        )
+        .route(
+            "/api/v1/shell/apps/import",
+            post(app_import).layer(axum::extract::DefaultBodyLimit::max(32 * 1024 * 1024)),
         )
         .route("/api/v1/shell/events", get(events))
         .route("/api/v1/shell/widgets/{id}/frame", get(widget_frame))
@@ -532,6 +537,115 @@ async fn app_runtime_action(
                 "id": id,
                 "installationId": installation,
                 "state": runtime.as_str(),
+            }))
+            .into_response();
+            secure_headers(&mut response);
+            response
+        }
+        Ok(Err(error)) => crate::app_error(error),
+        Err(_) => error(StatusCode::SERVICE_UNAVAILABLE),
+    }
+}
+
+async fn app_import(
+    State(state): State<Arc<GatewayState>>,
+    headers: HeaderMap,
+    body: axum::body::Bytes,
+) -> Response {
+    if !valid_origin(&headers, &state.config.public_origin) {
+        return error(StatusCode::FORBIDDEN);
+    }
+    if headers.get("content-type").and_then(|v| v.to_str().ok()) != Some("application/json") {
+        return error(StatusCode::UNSUPPORTED_MEDIA_TYPE);
+    }
+    let identity = match credential(&headers) {
+        Ok(token) => match authenticate(&state, &token).await {
+            Ok(identity) => identity,
+            Err(error) => return backend_error(error),
+        },
+        Err(_) => return error(StatusCode::UNAUTHORIZED),
+    };
+    let Ok(value) = serde_json::from_slice::<serde_json::Value>(&body) else {
+        return error(StatusCode::BAD_REQUEST);
+    };
+    let Some(object) = value.as_object() else {
+        return error(StatusCode::BAD_REQUEST);
+    };
+    if object
+        .keys()
+        .any(|key| key != "importVersion" && key != "files" && key != "device")
+    {
+        return error(StatusCode::BAD_REQUEST);
+    }
+    if value.get("importVersion").and_then(|v| v.as_i64()) != Some(1) {
+        return error(StatusCode::BAD_REQUEST);
+    }
+    let Some(device) = value
+        .get("device")
+        .and_then(|v| v.as_str())
+        .and_then(BrowserProfileId::parse)
+    else {
+        return error(StatusCode::BAD_REQUEST);
+    };
+    // Installing app packages requires an OS mode that permits it.
+    let Some(mode_repository) = state.os_mode.clone() else {
+        return error(StatusCode::SERVICE_UNAVAILABLE);
+    };
+    let user = identity.user_id;
+    let mode = match tokio::task::spawn_blocking(move || mode_repository.load(user, device)).await {
+        Ok(Ok(settings)) => settings.effective_mode(),
+        Ok(Err(_)) | Err(_) => return error(StatusCode::SERVICE_UNAVAILABLE),
+    };
+    if !mode.policy().can_install_apps() {
+        return error(StatusCode::FORBIDDEN);
+    }
+    let Some(files) = value.get("files").and_then(|v| v.as_array()) else {
+        return error(StatusCode::BAD_REQUEST);
+    };
+    if files.is_empty() || files.len() > 2048 {
+        return error(StatusCode::BAD_REQUEST);
+    }
+    let mut upload = Vec::with_capacity(files.len());
+    for file in files {
+        let Some(entry) = file.as_object() else {
+            return error(StatusCode::BAD_REQUEST);
+        };
+        if entry.keys().any(|key| key != "path" && key != "content") {
+            return error(StatusCode::BAD_REQUEST);
+        }
+        let Some(path) = entry.get("path").and_then(|v| v.as_str()) else {
+            return error(StatusCode::BAD_REQUEST);
+        };
+        if path.is_empty()
+            || path.len() > 1024
+            || path
+                .split('/')
+                .any(|segment| segment.is_empty() || segment == "." || segment == "..")
+        {
+            return error(StatusCode::BAD_REQUEST);
+        }
+        let Some(content) = entry.get("content").and_then(|v| v.as_str()) else {
+            return error(StatusCode::BAD_REQUEST);
+        };
+        let Ok(bytes) = base64::engine::general_purpose::STANDARD.decode(content) else {
+            return error(StatusCode::BAD_REQUEST);
+        };
+        upload.push(crate::PackageUploadFile {
+            path: path.to_owned(),
+            bytes,
+        });
+    }
+    let Some(apps) = state.apps.clone() else {
+        return error(StatusCode::SERVICE_UNAVAILABLE);
+    };
+    match tokio::task::spawn_blocking(move || apps.import_package(identity, upload)).await {
+        Ok(Ok(app)) => {
+            let mut response = axum::Json(serde_json::json!({
+                "importVersion": 1,
+                "id": app.id,
+                "installationId": app.installation_id.to_string(),
+                "title": app.title,
+                "version": app.version,
             }))
             .into_response();
             secure_headers(&mut response);

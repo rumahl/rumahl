@@ -4,11 +4,12 @@ use rumahl_core::*;
 use rumahl_persistence_sqlite::{SqliteAccountStateRepository, SqliteSnapshotRepository};
 use rumahl_platform_web::{
     AppAccessError, AppAsset, AppData, AppDataEntry, AppProvider, AppSettingInfo,
-    AppSettingOptionInfo, CatalogApp, RuntimeState, ShellIdentity,
+    AppSettingOptionInfo, CatalogApp, ImportedApp, PackageUploadFile, RuntimeState, ShellIdentity,
 };
 use rustix::fs::{Dir, FileType, Mode, OFlags, fstat, open, openat};
 use std::fs::File;
 use std::io::Read;
+use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
@@ -492,6 +493,48 @@ impl AppProvider for PersistentApps {
     ) -> Result<RuntimeState, AppAccessError> {
         runtime_state(self.runtime_control(identity, installation)?.stop(&installation))
     }
+    fn import_package(
+        &self,
+        _identity: ShellIdentity,
+        files: Vec<PackageUploadFile>,
+    ) -> Result<ImportedApp, AppAccessError> {
+        let state_dir = self.root.parent().ok_or(AppAccessError::Unavailable)?;
+        let staging = state_dir.join("import-staging").join(format!(
+            "{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|elapsed| elapsed.as_nanos())
+                .unwrap_or(0)
+        ));
+        let result = write_staging(&staging, &files).and_then(|()| {
+            crate::install::install_package_dir(state_dir, &staging)
+                .map_err(|_| AppAccessError::Unavailable)
+        });
+        let _ = std::fs::remove_dir_all(&staging);
+        let info = result?;
+        Ok(ImportedApp {
+            id: info.app_id,
+            installation_id: info.installation_id,
+            title: info.title,
+            version: info.version,
+        })
+    }
+}
+
+/// Writes uploaded package files into a fresh owner-only staging directory.
+fn write_staging(dir: &Path, files: &[PackageUploadFile]) -> Result<(), AppAccessError> {
+    std::fs::create_dir_all(dir).map_err(|_| AppAccessError::Unavailable)?;
+    std::fs::set_permissions(dir, std::fs::Permissions::from_mode(0o700))
+        .map_err(|_| AppAccessError::Unavailable)?;
+    for file in files {
+        let target = dir.join(&file.path);
+        if let Some(parent) = target.parent() {
+            std::fs::create_dir_all(parent).map_err(|_| AppAccessError::Unavailable)?;
+        }
+        std::fs::write(&target, &file.bytes).map_err(|_| AppAccessError::Unavailable)?;
+    }
+    Ok(())
 }
 
 fn runtime_state(result: Result<RuntimeStatus, RuntimeRoutingError>) -> Result<RuntimeState, AppAccessError> {

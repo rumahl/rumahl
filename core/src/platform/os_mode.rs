@@ -81,6 +81,11 @@ impl OsModePolicy {
         matches!(self.mode, OsMode::Advanced | OsMode::Developer)
     }
 
+    /// Installing app packages is available from [`OsMode::Advanced`] upwards.
+    pub fn can_install_apps(&self) -> bool {
+        matches!(self.mode, OsMode::Advanced | OsMode::Developer)
+    }
+
     /// The terminal is only available in [`OsMode::Developer`].
     pub fn can_open_terminal(&self) -> bool {
         self.mode == OsMode::Developer
@@ -213,6 +218,7 @@ mod tests {
         assert!(policy.is_guided());
         assert!(!policy.can_change_advanced_settings());
         assert!(!policy.can_browse_system_files());
+        assert!(!policy.can_install_apps());
         assert!(!policy.can_open_terminal());
         assert!(!policy.can_use_ssh());
         assert!(!policy.can_use_web_console());
@@ -223,6 +229,7 @@ mod tests {
         let policy = OsMode::Advanced.policy();
         assert!(policy.can_change_advanced_settings());
         assert!(policy.can_browse_system_files());
+        assert!(policy.can_install_apps());
         assert!(!policy.can_open_terminal());
         assert!(!policy.can_use_ssh());
         assert!(!policy.can_use_web_console());
