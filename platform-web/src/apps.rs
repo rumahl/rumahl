@@ -25,6 +25,8 @@ pub struct CatalogApp {
     pub capabilities: Vec<String>,
     /// Runtime lifecycle: `"always-on"` (service) or `"on-demand"`.
     pub lifecycle: String,
+    /// External services this app ships a connector bundle for.
+    pub connectors: Vec<String>,
 }
 /// One rendered setting declared by an app manifest, typed for the shell.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -422,6 +424,7 @@ mod tests {
                     launchable: true,
                     capabilities: vec!["com.rumahl.os.window".into()],
                     lifecycle: "on-demand".into(),
+                    connectors: vec![],
                 }]
             } else {
                 vec![]

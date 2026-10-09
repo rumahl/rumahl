@@ -41,6 +41,8 @@ export interface InstalledApp {
   capabilities?: readonly string[];
   /** Runtime lifecycle declared by the app: `always-on` (service) or `on-demand`. */
   lifecycle?: "always-on" | "on-demand";
+  /** External services the app ships a connector bundle for. */
+  connectors?: readonly string[];
 }
 function record(value: unknown): Record<string, unknown> {
   if (typeof value !== "object" || !value || Array.isArray(value)) throw new Error("invalid app response");
@@ -73,8 +75,14 @@ export function parseCatalog(value: unknown): readonly InstalledApp[] {
       if (app.lifecycle !== "always-on" && app.lifecycle !== "on-demand") throw new Error("invalid app lifecycle");
       lifecycle = app.lifecycle;
     }
+    let connectors: readonly string[] | undefined;
+    if (app.connectors !== undefined) {
+      if (!Array.isArray(app.connectors) || app.connectors.length > 64 ||
+          app.connectors.some((entry) => typeof entry !== "string" || entry.length === 0 || entry.length > 64)) throw new Error("invalid app connectors");
+      connectors = app.connectors as string[];
+    }
     ids.add(app.id);
-    return { id: app.id, installationId: app.installationId, title: app.title, version: app.version, launchable: app.launchable, ...(capabilities ? { capabilities } : {}), ...(lifecycle ? { lifecycle } : {}) };
+    return { id: app.id, installationId: app.installationId, title: app.title, version: app.version, launchable: app.launchable, ...(capabilities ? { capabilities } : {}), ...(lifecycle ? { lifecycle } : {}), ...(connectors ? { connectors } : {}) };
   });
 }
 export async function fetchCatalog(request: ShellRequest, signal: AbortSignal): Promise<readonly InstalledApp[]> {

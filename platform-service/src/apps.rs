@@ -397,6 +397,12 @@ impl AppProvider for PersistentApps {
                 }),
                 capabilities: app_capabilities(app),
                 lifecycle: app.manifest().lifecycle().as_str().into(),
+                connectors: app
+                    .manifest()
+                    .connectors()
+                    .iter()
+                    .map(|connector| connector.target().as_str().to_owned())
+                    .collect(),
             })
             .collect())
     }

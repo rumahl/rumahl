@@ -7,7 +7,10 @@ use crate::{
 };
 
 use super::settings::{self, AppSettingDeclaration};
-use super::{AppVersion, ContributionDeclaration, OidcClientDeclaration, StreamPresentation};
+use super::{
+    AppVersion, ConnectorDeclaration, ContributionDeclaration, OidcClientDeclaration,
+    StreamPresentation,
+};
 
 /// When an app's runtime runs. Orthogonal to `RuntimeKind`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -50,6 +53,7 @@ pub struct AppManifest {
     event_subscriptions: Vec<EventName>,
     databases: Vec<AppDatabaseDeclaration>,
     settings: Vec<AppSettingDeclaration>,
+    connectors: Vec<ConnectorDeclaration>,
     oidc_client: Option<OidcClientDeclaration>,
     stream_presentation: Option<StreamPresentation>,
 }
@@ -66,6 +70,7 @@ pub enum AppManifestError {
     TooManyDatabaseDeclarations,
     DuplicateSetting,
     TooManySettings,
+    DuplicateConnector,
     DuplicateOidcClientDeclaration,
     DuplicateStreamPresentation,
 }
@@ -105,6 +110,7 @@ impl AppManifest {
             event_subscriptions: Vec::new(),
             databases: Vec::new(),
             settings: Vec::new(),
+            connectors: Vec::new(),
             oidc_client: None,
             stream_presentation: None,
         })
@@ -266,6 +272,25 @@ impl AppManifest {
         &self.settings
     }
 
+    pub fn add_connector(
+        &mut self,
+        connector: ConnectorDeclaration,
+    ) -> Result<(), AppManifestError> {
+        if self
+            .connectors
+            .iter()
+            .any(|existing| existing.target() == connector.target())
+        {
+            return Err(AppManifestError::DuplicateConnector);
+        }
+        self.connectors.push(connector);
+        Ok(())
+    }
+
+    pub fn connectors(&self) -> &[ConnectorDeclaration] {
+        &self.connectors
+    }
+
     pub fn declare_oidc_client(
         &mut self,
         declaration: OidcClientDeclaration,
@@ -362,6 +387,12 @@ impl fmt::Display for AppManifestError {
                 "app manifest cannot declare more than {} settings",
                 settings::MAX_APP_SETTINGS
             ),
+            Self::DuplicateConnector => {
+                write!(
+                    f,
+                    "app manifest cannot declare two connectors for the same target"
+                )
+            }
             Self::DuplicateOidcClientDeclaration => {
                 write!(f, "app manifest cannot declare more than one OIDC client")
             }

@@ -3,7 +3,7 @@ use std::fmt;
 
 use rumahl_core::{
     AppDatabaseDeclaration, AppDatabaseId, AppId, AppIdentity, AppManifest, AppSettingDeclaration,
-    AppSettingKey, AppSettingKind, AppSettingOption, AppVersion, CapabilityId, CommandAction,
+    AppSettingKey, AppSettingKind, AppSettingOption,     AppVersion, CapabilityId, CommandAction, ConnectorDeclaration, ConnectorTarget,
     CommandContributionDeclaration, ContributionDeclaration, ContributionId, EventName, GrantId,
     Identity, InstallationId, InstalledAppSnapshot, OidcCallbackPath, OidcClientDeclaration,
     OidcClientType, OidcScope, PackagePath, PermissionGrantSnapshot, PermissionId,
@@ -145,6 +145,8 @@ struct WireManifest {
     databases: Vec<WireAppDatabase>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     settings: Vec<WireSetting>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    connectors: Vec<WireConnector>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     oidc_client: Option<WireOidcClient>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -192,6 +194,11 @@ impl WireManifest {
                 .settings()
                 .iter()
                 .map(WireSetting::capture)
+                .collect(),
+            connectors: manifest
+                .connectors()
+                .iter()
+                .map(WireConnector::capture)
                 .collect(),
             oidc_client: manifest.oidc_client().map(WireOidcClient::capture),
             stream_presentation: manifest
@@ -264,6 +271,12 @@ impl WireManifest {
             manifest
                 .add_setting(setting.into_domain()?)
                 .map_err(|error| WireSnapshotError::invalid("manifest setting", error))?;
+        }
+
+        for connector in self.connectors {
+            manifest
+                .add_connector(connector.into_domain()?)
+                .map_err(|error| WireSnapshotError::invalid("manifest connector", error))?;
         }
 
         if let Some(oidc_client) = self.oidc_client {
@@ -432,6 +445,30 @@ impl WireStreamPresentation {
             self.preferred_frame_rate,
         )
         .map_err(|error| WireSnapshotError::invalid("stream presentation", error))
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct WireConnector {
+    target: String,
+    entrypoint: String,
+}
+
+impl WireConnector {
+    fn capture(connector: &ConnectorDeclaration) -> Self {
+        Self {
+            target: connector.target().as_str().to_owned(),
+            entrypoint: connector.entrypoint().as_str().to_owned(),
+        }
+    }
+
+    fn into_domain(self) -> Result<ConnectorDeclaration, WireSnapshotError> {
+        let target = ConnectorTarget::parse(self.target)
+            .map_err(|error| WireSnapshotError::invalid("connector target", error))?;
+        let entrypoint = RuntimeEntrypointId::parse(self.entrypoint)
+            .map_err(|error| WireSnapshotError::invalid("connector entrypoint", error))?;
+        Ok(ConnectorDeclaration::new(target, entrypoint))
     }
 }
 

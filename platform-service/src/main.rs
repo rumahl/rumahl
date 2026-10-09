@@ -164,8 +164,10 @@ async fn run() -> Result<(), ServiceError> {
         None => apps_provider,
     };
     // Runtime status/start/stop through the supervisor when it is configured;
-    // otherwise the runtime API stays fail-closed (503).
-    let apps_provider = match install::runtime_adapters_from_env() {
+    // otherwise the runtime API stays fail-closed (503). The same channel
+    // registry receives live app channels for background event delivery.
+    let runtime_channels = Arc::new(rumahl_core::RuntimeChannelRegistry::new());
+    let apps_provider = match install::runtime_adapters_from_env(&runtime_channels) {
         Some(adapters) => apps_provider.with_runtime_adapters(adapters),
         None => apps_provider,
     };

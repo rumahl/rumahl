@@ -1,4 +1,5 @@
 mod contribution;
+mod connector;
 mod installed;
 mod installed_registry;
 mod lifecycle;
@@ -17,6 +18,8 @@ pub use contribution::{
 };
 
 pub use manifest::{AppManifest, AppManifestError, RuntimeLifecycle};
+
+pub use connector::{ConnectorDeclaration, ConnectorTarget, ConnectorTargetError};
 
 pub use settings::{
     AppSettingDeclaration, AppSettingError, AppSettingKey, AppSettingKind, AppSettingOption,

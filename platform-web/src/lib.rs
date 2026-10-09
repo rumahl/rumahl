@@ -30,6 +30,12 @@ pub use apps::{
     AppSettingOptionInfo, AppSettingsInfo, CatalogApp, RuntimeAction, RuntimeState, app_error,
 };
 
+mod app_channel;
+pub use app_channel::{
+    CHANNEL_PROTOCOL, ChannelAuthenticator, ChannelFrame, ChannelTokenStore,
+    SocketRuntimeChannel, read_hello, run_connection, serve_channel_listener,
+};
+
 mod preferences;
 
 mod host_files;

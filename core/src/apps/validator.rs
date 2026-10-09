@@ -19,6 +19,8 @@ pub enum AppManifestValidationError {
     },
     NativeRuntimeUnsupported,
     AlwaysOnRequiresContainerRuntime(RuntimeKind),
+    ConnectorEntrypointMissing(RuntimeEntrypointId),
+    ConnectorEntrypointIncompatible(RuntimeEntrypointId),
     StreamRequiresContainerRuntime(RuntimeKind),
     StreamEntrypointMissing(RuntimeEntrypointId),
     StreamEntrypointIncompatible(RuntimeEntrypointId),
@@ -46,6 +48,7 @@ impl AppManifestValidator {
     pub fn validate(&self, manifest: &AppManifest) -> Result<(), AppManifestValidationError> {
         self.validate_runtime(manifest)?;
         self.validate_lifecycle(manifest)?;
+        self.validate_connectors(manifest)?;
         self.validate_stream_presentation(manifest)?;
         self.validate_oidc(manifest)?;
 
@@ -68,6 +71,29 @@ impl AppManifestValidator {
             return Err(AppManifestValidationError::AlwaysOnRequiresContainerRuntime(
                 manifest.runtime().kind(),
             ));
+        }
+        Ok(())
+    }
+
+    fn validate_connectors(
+        &self,
+        manifest: &AppManifest,
+    ) -> Result<(), AppManifestValidationError> {
+        // A connector bundle is a container artifact of the same app.
+        for connector in manifest.connectors() {
+            let entrypoint = manifest
+                .runtime()
+                .entrypoint(connector.entrypoint())
+                .ok_or_else(|| {
+                    AppManifestValidationError::ConnectorEntrypointMissing(
+                        connector.entrypoint().clone(),
+                    )
+                })?;
+            if entrypoint.kind() != RuntimeEntrypointKind::ContainerArtifact {
+                return Err(AppManifestValidationError::ConnectorEntrypointIncompatible(
+                    connector.entrypoint().clone(),
+                ));
+            }
         }
         Ok(())
     }
@@ -217,6 +243,15 @@ impl fmt::Display for AppManifestValidationError {
                 "an always-on lifecycle requires a container runtime, found '{runtime:?}'"
             ),
 
+            Self::ConnectorEntrypointMissing(entrypoint) => write!(
+                f,
+                "connector references missing runtime entrypoint '{entrypoint}'"
+            ),
+            Self::ConnectorEntrypointIncompatible(entrypoint) => write!(
+                f,
+                "connector entrypoint '{entrypoint}' is not a container artifact"
+            ),
+
             Self::StreamRequiresContainerRuntime(runtime) => write!(
                 f,
                 "stream presentation requires a container runtime, found '{runtime:?}'"
@@ -270,9 +305,10 @@ mod tests {
 
     use crate::{
         AppId, AppVersion, CapabilityId, CommandAction, CommandContributionDeclaration,
-        ContributionId, OidcCallbackPath, OidcClientDeclaration, OidcScope, PackagePath,
-        PublisherId, RuntimeDescriptor, RuntimeEndpointId, RuntimeEntrypoint, RuntimeEntrypointId,
-        SearchContributionDeclaration, StreamPresentation,
+        ConnectorDeclaration, ConnectorTarget, ContributionId, OidcCallbackPath,
+        OidcClientDeclaration, OidcScope, PackagePath, PublisherId, RuntimeDescriptor,
+        RuntimeEndpointId, RuntimeEntrypoint, RuntimeEntrypointId, SearchContributionDeclaration,
+        StreamPresentation,
     };
 
     fn manifest() -> AppManifest {
@@ -313,6 +349,37 @@ mod tests {
             AppManifestValidator::new().validate(&manifest),
             Err(AppManifestValidationError::AlwaysOnRequiresContainerRuntime(
                 RuntimeKind::Web
+            ))
+        );
+    }
+
+    #[test]
+    fn connector_requires_a_container_artifact_entrypoint() {
+        let mut incompatible = manifest();
+        incompatible
+            .add_connector(ConnectorDeclaration::new(
+                ConnectorTarget::parse("nextcloud").unwrap(),
+                RuntimeEntrypointId::parse("main").unwrap(),
+            ))
+            .unwrap();
+        assert_eq!(
+            AppManifestValidator::new().validate(&incompatible),
+            Err(AppManifestValidationError::ConnectorEntrypointIncompatible(
+                RuntimeEntrypointId::parse("main").unwrap()
+            ))
+        );
+
+        let mut missing = manifest();
+        missing
+            .add_connector(ConnectorDeclaration::new(
+                ConnectorTarget::parse("plex").unwrap(),
+                RuntimeEntrypointId::parse("bundle").unwrap(),
+            ))
+            .unwrap();
+        assert_eq!(
+            AppManifestValidator::new().validate(&missing),
+            Err(AppManifestValidationError::ConnectorEntrypointMissing(
+                RuntimeEntrypointId::parse("bundle").unwrap()
             ))
         );
     }

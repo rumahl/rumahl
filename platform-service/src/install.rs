@@ -195,7 +195,9 @@ impl InstallConfig {
 /// Builds the runtime adapter registry for the serve path when the supervisor
 /// environment is configured. Returns `None` (fail closed) otherwise, so the
 /// runtime control API answers 503 instead of assuming a runtime exists.
-pub fn runtime_adapters_from_env() -> Option<std::sync::Arc<rumahl_core::RuntimeAdapterRegistry>> {
+pub fn runtime_adapters_from_env(
+    channels: &std::sync::Arc<rumahl_core::RuntimeChannelRegistry>,
+) -> Option<std::sync::Arc<rumahl_core::RuntimeAdapterRegistry>> {
     let config = InstallConfig::from_env().ok()?;
     let provider = std::sync::Arc::new(PlatformRuntimeProvider::new(
         UnixAppRuntimeProvider::new(
@@ -204,16 +206,16 @@ pub fn runtime_adapters_from_env() -> Option<std::sync::Arc<rumahl_core::Runtime
     ));
     let mut registry = rumahl_core::RuntimeAdapterRegistry::new();
     registry
-        .register(Box::new(rumahl_core::ProviderRuntimeAdapter::new(
-            rumahl_core::RuntimeKind::Web,
-            provider.clone(),
-        )))
+        .register(Box::new(
+            rumahl_core::ProviderRuntimeAdapter::new(rumahl_core::RuntimeKind::Web, provider.clone())
+                .with_channels(std::sync::Arc::clone(channels)),
+        ))
         .ok()?;
     registry
-        .register(Box::new(rumahl_core::ProviderRuntimeAdapter::new(
-            rumahl_core::RuntimeKind::Container,
-            provider,
-        )))
+        .register(Box::new(
+            rumahl_core::ProviderRuntimeAdapter::new(rumahl_core::RuntimeKind::Container, provider)
+                .with_channels(std::sync::Arc::clone(channels)),
+        ))
         .ok()?;
     Some(std::sync::Arc::new(registry))
 }
