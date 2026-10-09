@@ -17,7 +17,7 @@ use rumahl_core::{
     AccountStateRepository, AppRuntimeInstallationState, AppRuntimeProvider, GrantAuthority,
     GrantIssuerPolicy, Identity, InMemoryGrantStore, InstalledApp, InstallationId, PermissionId,
     PermissionScope, PlatformRecovery, PlatformSnapshot, PlatformSnapshotRepository, PlatformState,
-    RuntimeEntrypointId, RuntimeKind, UserIdentity, UserRole,
+    ResourceRef, RuntimeEntrypointId, RuntimeKind, UserIdentity, UserRole,
 };
 use rumahl_oidc_provider::InstalledAppOriginResolver;
 use rumahl_persistence_sqlite::{
@@ -315,8 +315,10 @@ fn install_with(
         std::fs::set_permissions(&directory, std::fs::Permissions::from_mode(0o700))?;
     }
 
-    // Launch access is a grant, not an install side effect: give every existing
-    // account an explicit launch grant so the app appears in the catalog.
+    // Access is granted, not an install side effect: every existing account gets
+    // an explicit launch grant (so the app appears in the catalog) and an
+    // unconditional grant per provided capability (so the capability can be
+    // invoked; the providing app still enforces its own resource rules).
     if let Some(snapshot) = SqliteSnapshotRepository::open(&platform)
         .map_err(InstallError::provider)?
         .load()
@@ -331,9 +333,26 @@ fn install_with(
         PlatformRecovery::new()
             .recover(&snapshot, &mut recovered, &mut grants)
             .map_err(|error| InstallError::Recovery(Box::new(error)))?;
-        let permission = PermissionId::parse(crate::apps::APP_LAUNCH_PERMISSION)
+
+        let launch_permission = PermissionId::parse(crate::apps::APP_LAUNCH_PERMISSION)
             .map_err(InstallError::provider)?;
-        let resource = crate::apps::app_launch_resource(*installed.installation_id());
+        let launch_resource = crate::apps::app_launch_resource(*installed.installation_id());
+        let mut targets: Vec<(PermissionId, PermissionScope, Vec<ResourceRef>)> =
+            vec![(launch_permission, PermissionScope::Explicit, vec![launch_resource])];
+
+        if let Some(app) = recovered
+            .installed_apps()
+            .apps()
+            .iter()
+            .find(|app| app.installation_id() == installed.installation_id())
+        {
+            for capability in app.manifest().provided_capabilities() {
+                if let Ok(permission) = PermissionId::parse(capability.as_str()) {
+                    targets.push((permission, PermissionScope::System, Vec::new()));
+                }
+            }
+        }
+
         let mut policy = GrantIssuerPolicy::new();
         for account in accounts.accounts().accounts() {
             policy.set_user_role(*account.user_id(), UserRole::Owner);
@@ -342,18 +361,20 @@ fn install_with(
         for account in accounts.accounts().accounts() {
             let issuer: Identity = UserIdentity::new(*account.user_id()).into();
             let subject: Identity = UserIdentity::new(*account.user_id()).into();
-            let grant = GrantAuthority::new()
-                .issue(
-                    &policy,
-                    issuer,
-                    subject,
-                    permission.clone(),
-                    PermissionScope::Explicit,
-                    vec![resource.clone()],
-                )
-                .map_err(InstallError::provider)?;
-            grants.insert(grant);
-            granted = true;
+            for (permission, scope, resources) in &targets {
+                let grant = GrantAuthority::new()
+                    .issue(
+                        &policy,
+                        issuer.clone(),
+                        subject.clone(),
+                        permission.clone(),
+                        *scope,
+                        resources.clone(),
+                    )
+                    .map_err(InstallError::provider)?;
+                grants.insert(grant);
+                granted = true;
+            }
         }
         if granted {
             SqliteSnapshotRepository::open(&platform)
@@ -736,7 +757,7 @@ mod tests {
     }
 
     #[test]
-    fn installation_grants_launch_to_existing_accounts() {
+    fn installation_grants_launch_and_capabilities_to_existing_accounts() {
         let state = tempfile::tempdir().unwrap();
         let package = tempfile::tempdir().unwrap();
 
@@ -771,6 +792,7 @@ mod tests {
                         { "id": "main", "kind": "web-asset", "path": "frontend/index.html" },
                     ],
                 },
+                "providedCapabilities": ["rumahl.files.preview"],
             },
         });
         let manifest =
@@ -825,6 +847,12 @@ mod tests {
             authorized[0].identity().app_id().as_str(),
             "com.rumahl.notes"
         );
+
+        // The provided capability is granted unconditionally to the account.
+        let capability = PermissionId::parse("rumahl.files.preview").unwrap();
+        assert!(snapshot.grants().iter().any(|grant| {
+            grant.permission() == &capability && grant.scope() == PermissionScope::System
+        }));
     }
 
     /// Fake supervisor runtime target: preparation fails until the image

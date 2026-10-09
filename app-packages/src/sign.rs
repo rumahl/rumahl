@@ -8,7 +8,9 @@ use std::path::{Path, PathBuf};
 use base64::Engine;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use ed25519_dalek::{Signer, SigningKey};
-use rumahl_core::{AppSettingKind, InstallationId, RuntimeEntrypointTarget, RuntimeKind};
+use rumahl_core::{
+    AppSettingKind, InstallationId, PermissionScope, RuntimeEntrypointTarget, RuntimeKind,
+};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
@@ -321,6 +323,38 @@ fn manifest_value(manifest: &PackageManifest, files: &[Value]) -> Value {
                     value
                 })
                 .collect::<Vec<_>>(),
+            "lifecycle": manifest.app().lifecycle().as_str(),
+            "permissions": manifest
+                .app()
+                .permissions()
+                .iter()
+                .map(|permission| {
+                    let mut value = json!({
+                        "id": permission.permission().as_str(),
+                        "scope": scope_str(permission.requested_scope()),
+                        "required": permission.required(),
+                    });
+                    if let Some(reason) = permission.reason() {
+                        value["reason"] = json!(reason);
+                    }
+                    value
+                })
+                .collect::<Vec<_>>(),
+            "providedCapabilities": manifest
+                .app()
+                .provided_capabilities()
+                .iter()
+                .map(|capability| json!(capability.as_str()))
+                .collect::<Vec<_>>(),
+            "connectors": manifest
+                .app()
+                .connectors()
+                .iter()
+                .map(|connector| json!({
+                    "target": connector.target().as_str(),
+                    "entrypoint": connector.entrypoint().as_str(),
+                }))
+                .collect::<Vec<_>>(),
         },
         "files": files,
     })
@@ -331,6 +365,17 @@ fn runtime_kind_str(kind: RuntimeKind) -> &'static str {
         RuntimeKind::Web => "web",
         RuntimeKind::Container => "container",
         RuntimeKind::Native => "native",
+    }
+}
+
+fn scope_str(scope: PermissionScope) -> &'static str {
+    match scope {
+        PermissionScope::AppPrivate => "app-private",
+        PermissionScope::UserOwn => "user-own",
+        PermissionScope::UserSelected => "user-selected",
+        PermissionScope::Explicit => "explicit",
+        PermissionScope::FamilyShared => "family-shared",
+        PermissionScope::System => "system",
     }
 }
 

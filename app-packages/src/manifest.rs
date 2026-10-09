@@ -4,7 +4,7 @@ use std::fmt;
 
 use rumahl_core::{
     AppId, AppManifest, AppSettingDeclaration, AppSettingKey, AppSettingKind, AppSettingOption,
-    AppVersion, ConnectorDeclaration, ConnectorTarget, PackagePath, PermissionId,
+    AppVersion, CapabilityId, ConnectorDeclaration, ConnectorTarget, PackagePath, PermissionId,
     PermissionRequest, PermissionScope, PublisherId, RuntimeDescriptor, RuntimeEndpointId,
     RuntimeEntrypoint, RuntimeEntrypointId, RuntimeKind, RuntimeLifecycle,
 };
@@ -48,6 +48,7 @@ pub struct PackageAppManifest {
     runtime: RuntimeDescriptor,
     lifecycle: RuntimeLifecycle,
     permissions: Vec<PermissionRequest>,
+    provided_capabilities: Vec<CapabilityId>,
     connectors: Vec<ConnectorDeclaration>,
     settings: Vec<AppSettingDeclaration>,
 }
@@ -88,6 +89,7 @@ pub enum PackageManifestError {
     InvalidSetting,
     InvalidLifecycle,
     InvalidPermission,
+    InvalidCapability,
     InvalidConnector,
 }
 
@@ -112,6 +114,8 @@ struct RawApp {
     lifecycle: Option<String>,
     #[serde(default)]
     permissions: Vec<RawPermission>,
+    #[serde(default)]
+    provided_capabilities: Vec<String>,
     #[serde(default)]
     connectors: Vec<RawConnector>,
     #[serde(default)]
@@ -303,6 +307,10 @@ impl PackageAppManifest {
         &self.permissions
     }
 
+    pub fn provided_capabilities(&self) -> &[CapabilityId] {
+        &self.provided_capabilities
+    }
+
     pub fn connectors(&self) -> &[ConnectorDeclaration] {
         &self.connectors
     }
@@ -343,6 +351,17 @@ impl PackageAppManifest {
             permissions.push(permission);
         }
 
+        let mut provided_capabilities = Vec::with_capacity(raw.provided_capabilities.len());
+        let mut capability_ids = HashSet::new();
+        for capability in raw.provided_capabilities {
+            let capability =
+                CapabilityId::parse(capability).map_err(|_| PackageManifestError::InvalidCapability)?;
+            if !capability_ids.insert(capability.clone()) {
+                return Err(PackageManifestError::InvalidCapability);
+            }
+            provided_capabilities.push(capability);
+        }
+
         let mut connectors = Vec::with_capacity(raw.connectors.len());
         for connector in raw.connectors {
             let target = ConnectorTarget::parse(connector.target)
@@ -369,6 +388,7 @@ impl PackageAppManifest {
             runtime,
             lifecycle,
             permissions,
+            provided_capabilities,
             connectors,
             settings,
         })
@@ -391,6 +411,11 @@ impl PackageAppManifest {
             manifest
                 .add_permission_request(permission.clone())
                 .map_err(|_| PackageManifestError::InvalidPermission)?;
+        }
+        for capability in &self.provided_capabilities {
+            manifest
+                .add_provided_capability(capability.clone())
+                .map_err(|_| PackageManifestError::InvalidCapability)?;
         }
         for connector in &self.connectors {
             manifest
@@ -634,6 +659,12 @@ impl fmt::Display for PackageManifestError {
             Self::InvalidPermission => {
                 write!(f, "package manifest declares an invalid permission")
             }
+            Self::InvalidCapability => {
+                write!(
+                    f,
+                    "package manifest declares an invalid provided capability"
+                )
+            }
             Self::InvalidConnector => {
                 write!(f, "package manifest declares an invalid connector")
             }
@@ -670,6 +701,7 @@ impl Error for PackageManifestError {
             | Self::InvalidSetting
             | Self::InvalidLifecycle
             | Self::InvalidPermission
+            | Self::InvalidCapability
             | Self::InvalidConnector => None,
         }
     }
@@ -775,5 +807,25 @@ mod tests {
 
         let bad_target = r#"{"formatVersion":1,"publisherId":"com.rumahl","app":{"appId":"com.rumahl.bridge","version":"1.0.0","displayName":"Bridge","runtime":{"kind":"container","entrypoints":[{"id":"main","kind":"container-artifact","path":"image.tar"}]},"connectors":[{"target":"Nextcloud","entrypoint":"main"}]},"files":[]}"#;
         assert!(PackageManifest::from_bytes(bad_target.as_bytes()).is_err());
+    }
+
+    #[test]
+    fn parses_provided_capabilities_into_the_app_manifest() {
+        let bytes = r#"{"formatVersion":1,"publisherId":"com.rumahl","app":{"appId":"com.rumahl.files","version":"1.0.0","displayName":"Files","runtime":{"kind":"web","entrypoints":[{"id":"main","kind":"web-asset","path":"index.html"}]},"providedCapabilities":["rumahl.files.preview","com.rumahl.files.search"]},"files":[]}"#;
+        let app = PackageManifest::from_bytes(bytes.as_bytes())
+            .unwrap()
+            .to_app_manifest()
+            .unwrap();
+        assert_eq!(app.provided_capabilities().len(), 2);
+        assert_eq!(
+            app.provided_capabilities()[0].as_str(),
+            "rumahl.files.preview"
+        );
+
+        let duplicate = r#"{"formatVersion":1,"publisherId":"com.rumahl","app":{"appId":"com.rumahl.files","version":"1.0.0","displayName":"Files","runtime":{"kind":"web","entrypoints":[{"id":"main","kind":"web-asset","path":"index.html"}]},"providedCapabilities":["rumahl.files.preview","rumahl.files.preview"]},"files":[]}"#;
+        assert!(PackageManifest::from_bytes(duplicate.as_bytes()).is_err());
+
+        let bad = r#"{"formatVersion":1,"publisherId":"com.rumahl","app":{"appId":"com.rumahl.files","version":"1.0.0","displayName":"Files","runtime":{"kind":"web","entrypoints":[{"id":"main","kind":"web-asset","path":"index.html"}]},"providedCapabilities":["nope"]},"files":[]}"#;
+        assert!(PackageManifest::from_bytes(bad.as_bytes()).is_err());
     }
 }
