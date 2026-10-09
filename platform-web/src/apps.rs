@@ -110,6 +110,27 @@ pub struct AppAsset {
     pub bytes: Vec<u8>,
     pub content_type: &'static str,
 }
+/// A resource reference supplied with a capability invocation.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CapabilityResource {
+    pub namespace: String,
+    pub kind: String,
+    pub key: String,
+}
+/// The public result of a capability invocation.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CapabilityOutcome {
+    Invoked,
+    Denied,
+}
+impl CapabilityOutcome {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Invoked => "invoked",
+            Self::Denied => "denied",
+        }
+    }
+}
 /// Every method must re-read installation, grants and live account/session state.
 pub trait AppProvider: Send + Sync + 'static {
     fn catalog(&self, identity: ShellIdentity) -> Result<Vec<CatalogApp>, AppAccessError>;
@@ -168,6 +189,16 @@ pub trait AppProvider: Send + Sync + 'static {
         _identity: ShellIdentity,
         _files: Vec<PackageUploadFile>,
     ) -> Result<ImportedApp, AppAccessError> {
+        Err(AppAccessError::Unavailable)
+    }
+    /// Authorizes and delivers a capability invocation to the providing app.
+    /// Fails closed when no dispatcher is wired.
+    fn invoke_capability(
+        &self,
+        _identity: ShellIdentity,
+        _capability: String,
+        _resource: Option<CapabilityResource>,
+    ) -> Result<CapabilityOutcome, AppAccessError> {
         Err(AppAccessError::Unavailable)
     }
 }
@@ -300,6 +331,14 @@ impl AppAccess {
         files: Vec<PackageUploadFile>,
     ) -> Result<ImportedApp, AppAccessError> {
         self.provider.import_package(identity, files)
+    }
+    pub fn invoke_capability(
+        &self,
+        identity: ShellIdentity,
+        capability: String,
+        resource: Option<CapabilityResource>,
+    ) -> Result<CapabilityOutcome, AppAccessError> {
+        self.provider.invoke_capability(identity, capability, resource)
     }
     pub fn launch(
         &self,
@@ -532,6 +571,20 @@ mod tests {
                 size: 12,
             }]))
         }
+        fn invoke_capability(
+            &self,
+            identity: ShellIdentity,
+            capability: String,
+            _: Option<CapabilityResource>,
+        ) -> Result<CapabilityOutcome, AppAccessError> {
+            if identity != self.owner {
+                return Err(AppAccessError::Denied);
+            }
+            Ok(match capability.as_str() {
+                "com.rumahl.test.run" => CapabilityOutcome::Invoked,
+                _ => CapabilityOutcome::Denied,
+            })
+        }
     }
     #[test]
     fn import_delegates_to_the_provider() {
@@ -560,6 +613,36 @@ mod tests {
             .unwrap();
         assert_eq!(imported.installation_id, installation);
         assert_eq!(imported.id, "com.rumahl.test");
+    }
+
+    #[test]
+    fn invoke_capability_delegates_to_the_provider() {
+        let owner = ShellIdentity {
+            user_id: UserId::new(),
+            session_id: SessionId::new(),
+        };
+        let installation = InstallationId::new();
+        let access = AppAccess::new(
+            Arc::new(Provider {
+                owner,
+                installation,
+            }),
+            &Url::parse("https://localhost:8443").unwrap(),
+            "apps.localhost",
+        )
+        .unwrap();
+        assert_eq!(
+            access
+                .invoke_capability(owner, "com.rumahl.test.run".into(), None)
+                .unwrap(),
+            CapabilityOutcome::Invoked
+        );
+        assert_eq!(
+            access
+                .invoke_capability(owner, "com.rumahl.unknown".into(), None)
+                .unwrap(),
+            CapabilityOutcome::Denied
+        );
     }
 
     #[test]

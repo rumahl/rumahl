@@ -4,7 +4,8 @@ use rumahl_core::*;
 use rumahl_persistence_sqlite::{SqliteAccountStateRepository, SqliteSnapshotRepository};
 use rumahl_platform_web::{
     AppAccessError, AppAsset, AppData, AppDataEntry, AppProvider, AppSettingInfo,
-    AppSettingOptionInfo, CatalogApp, ImportedApp, PackageUploadFile, RuntimeState, ShellIdentity,
+    AppSettingOptionInfo, CapabilityOutcome, CapabilityResource, CatalogApp, ImportedApp,
+    PackageUploadFile, RuntimeState, ShellIdentity,
 };
 use rustix::fs::{Dir, FileType, Mode, OFlags, fstat, open, openat};
 use std::fs::File;
@@ -140,22 +141,7 @@ impl PersistentApps {
     }
 
     fn apps(&self, identity: ShellIdentity) -> Result<Vec<InstalledAppSnapshot>, AppAccessError> {
-        let accounts = self
-            .accounts
-            .load()
-            .map_err(|_| AppAccessError::Unavailable)?;
-        let now = UnixTimestamp::now().map_err(|_| AppAccessError::Unavailable)?;
-        if !accounts
-            .accounts()
-            .get(&identity.user_id)
-            .is_some_and(|a| a.can_authenticate())
-            || !accounts
-                .sessions()
-                .get(&identity.session_id)
-                .is_some_and(|s| s.user_id() == &identity.user_id && s.is_active_at(now))
-        {
-            return Err(AppAccessError::Denied);
-        }
+        self.authenticate(identity)?;
         match self
             .platform
             .load()
@@ -163,6 +149,27 @@ impl PersistentApps {
         {
             None => Ok(vec![]),
             Some(snapshot) => authorized_apps(&snapshot, identity),
+        }
+    }
+    /// Confirms the account can authenticate and the session is live.
+    fn authenticate(&self, identity: ShellIdentity) -> Result<(), AppAccessError> {
+        let accounts = self
+            .accounts
+            .load()
+            .map_err(|_| AppAccessError::Unavailable)?;
+        let now = UnixTimestamp::now().map_err(|_| AppAccessError::Unavailable)?;
+        if accounts
+            .accounts()
+            .get(&identity.user_id)
+            .is_some_and(|a| a.can_authenticate())
+            && accounts
+                .sessions()
+                .get(&identity.session_id)
+                .is_some_and(|s| s.user_id() == &identity.user_id && s.is_active_at(now))
+        {
+            Ok(())
+        } else {
+            Err(AppAccessError::Denied)
         }
     }
     fn app(
@@ -519,6 +526,60 @@ impl AppProvider for PersistentApps {
             title: info.title,
             version: info.version,
         })
+    }
+    fn invoke_capability(
+        &self,
+        identity: ShellIdentity,
+        capability: String,
+        resource: Option<CapabilityResource>,
+    ) -> Result<CapabilityOutcome, AppAccessError> {
+        self.authenticate(identity)?;
+        let adapters = self.runtime.clone().ok_or(AppAccessError::Unavailable)?;
+        let snapshot = self
+            .platform
+            .load()
+            .map_err(|_| AppAccessError::Unavailable)?
+            .ok_or(AppAccessError::Unavailable)?;
+        let mut state = PlatformState::new();
+        let mut grants = InMemoryGrantStore::new();
+        PlatformRecovery::new()
+            .recover(&snapshot, &mut state, &mut grants)
+            .map_err(|_| AppAccessError::Unavailable)?;
+        let (capabilities, access) =
+            build_capability_registries(&state).map_err(|_| AppAccessError::Unavailable)?;
+        let capability = CapabilityId::parse(capability).map_err(|_| AppAccessError::Denied)?;
+        let Some(provider) = capabilities
+            .providers_for(&capability)
+            .into_iter()
+            .next()
+            .cloned()
+        else {
+            return Err(AppAccessError::Denied);
+        };
+        let resource = match resource {
+            None => None,
+            Some(resource) => Some(ResourceRef::new(
+                ResourceNamespace::parse(resource.namespace).map_err(|_| AppAccessError::Denied)?,
+                ResourceKind::parse(resource.kind).map_err(|_| AppAccessError::Denied)?,
+                ResourceKey::parse(resource.key).map_err(|_| AppAccessError::Denied)?,
+            )),
+        };
+        let context =
+            OperationContext::for_user(UserIdentity::new(identity.user_id), identity.session_id);
+        let invocation = CapabilityInvocation::new(context, provider);
+        match CapabilityInvoker::new().invoke(
+            &invocation,
+            resource,
+            &state,
+            &capabilities,
+            &access,
+            grants.grants(),
+            &adapters,
+        ) {
+            Ok(CapabilityInvocationOutcome::Invoked) => Ok(CapabilityOutcome::Invoked),
+            Ok(CapabilityInvocationOutcome::NotAuthorized(_)) => Ok(CapabilityOutcome::Denied),
+            Err(_) => Err(AppAccessError::Denied),
+        }
     }
 }
 

@@ -95,7 +95,7 @@ pub use capabilities::{
     CapabilityDispatcher, CapabilityExecution, CapabilityId, CapabilityIdError,
     CapabilityInvocation, CapabilityInvocationError, CapabilityInvocationOutcome, CapabilityInvoker,
     CapabilityProvider, CapabilityProviderError, CapabilityRegistry,
-    CapabilityRegistryError,
+    CapabilityRegistryError, CapabilityRegistryBuildError, build_capability_registries,
 };
 
 pub use contributions::{

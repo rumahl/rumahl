@@ -127,6 +127,10 @@ pub fn router(state: GatewayState) -> Router {
             "/api/v1/shell/apps/import",
             post(app_import).layer(axum::extract::DefaultBodyLimit::max(32 * 1024 * 1024)),
         )
+        .route(
+            "/api/v1/shell/capabilities/invoke",
+            post(capabilities_invoke).layer(axum::extract::DefaultBodyLimit::max(4096)),
+        )
         .route("/api/v1/shell/events", get(events))
         .route("/api/v1/shell/widgets/{id}/frame", get(widget_frame))
         .route("/api/v1/shell/streams", get(stream_list))
@@ -537,6 +541,93 @@ async fn app_runtime_action(
                 "id": id,
                 "installationId": installation,
                 "state": runtime.as_str(),
+            }))
+            .into_response();
+            secure_headers(&mut response);
+            response
+        }
+        Ok(Err(error)) => crate::app_error(error),
+        Err(_) => error(StatusCode::SERVICE_UNAVAILABLE),
+    }
+}
+
+async fn capabilities_invoke(
+    State(state): State<Arc<GatewayState>>,
+    headers: HeaderMap,
+    body: axum::body::Bytes,
+) -> Response {
+    if !valid_origin(&headers, &state.config.public_origin) {
+        return error(StatusCode::FORBIDDEN);
+    }
+    if body.len() > 4096 {
+        return error(StatusCode::PAYLOAD_TOO_LARGE);
+    }
+    if headers.get("content-type").and_then(|v| v.to_str().ok()) != Some("application/json") {
+        return error(StatusCode::UNSUPPORTED_MEDIA_TYPE);
+    }
+    let identity = match credential(&headers) {
+        Ok(token) => match authenticate(&state, &token).await {
+            Ok(identity) => identity,
+            Err(error) => return backend_error(error),
+        },
+        Err(_) => return error(StatusCode::UNAUTHORIZED),
+    };
+    let Ok(value) = serde_json::from_slice::<serde_json::Value>(&body) else {
+        return error(StatusCode::BAD_REQUEST);
+    };
+    let Some(object) = value.as_object() else {
+        return error(StatusCode::BAD_REQUEST);
+    };
+    if object
+        .keys()
+        .any(|key| key != "capability" && key != "resource")
+    {
+        return error(StatusCode::BAD_REQUEST);
+    }
+    let Some(capability) = value
+        .get("capability")
+        .and_then(|v| v.as_str())
+        .filter(|value| value.len() <= 200)
+        .map(str::to_owned)
+    else {
+        return error(StatusCode::BAD_REQUEST);
+    };
+    let resource = match value.get("resource") {
+        None | Some(serde_json::Value::Null) => None,
+        Some(serde_json::Value::Object(resource)) => {
+            if resource
+                .keys()
+                .any(|key| key != "namespace" && key != "kind" && key != "key")
+            {
+                return error(StatusCode::BAD_REQUEST);
+            }
+            let (Some(namespace), Some(kind), Some(key)) = (
+                resource.get("namespace").and_then(|v| v.as_str()),
+                resource.get("kind").and_then(|v| v.as_str()),
+                resource.get("key").and_then(|v| v.as_str()),
+            ) else {
+                return error(StatusCode::BAD_REQUEST);
+            };
+            Some(crate::CapabilityResource {
+                namespace: namespace.to_owned(),
+                kind: kind.to_owned(),
+                key: key.to_owned(),
+            })
+        }
+        _ => return error(StatusCode::BAD_REQUEST),
+    };
+    let Some(apps) = state.apps.clone() else {
+        return error(StatusCode::SERVICE_UNAVAILABLE);
+    };
+    match tokio::task::spawn_blocking(move || {
+        apps.invoke_capability(identity, capability, resource)
+    })
+    .await
+    {
+        Ok(Ok(outcome)) => {
+            let mut response = axum::Json(serde_json::json!({
+                "capabilityVersion": 1,
+                "outcome": outcome.as_str(),
             }))
             .into_response();
             secure_headers(&mut response);

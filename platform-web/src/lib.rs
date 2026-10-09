@@ -22,13 +22,13 @@ pub use streams::{
 };
 
 mod browser_auth;
-pub use browser_auth::{BrowserSessions, SESSION_SECONDS};
+pub use browser_auth::{BrowserSessions, LoginAccount, SESSION_SECONDS};
 
 mod apps;
 pub use apps::{
     AppAccess, AppAccessError, AppAsset, AppData, AppDataEntry, AppProvider, AppSettingInfo,
-    AppSettingOptionInfo, AppSettingsInfo, CatalogApp, ImportedApp, PackageUploadFile,
-    RuntimeAction, RuntimeState, app_error,
+    AppSettingOptionInfo, AppSettingsInfo, CatalogApp, CapabilityOutcome, CapabilityResource,
+    ImportedApp, PackageUploadFile, RuntimeAction, RuntimeState, app_error,
 };
 
 mod app_channel;

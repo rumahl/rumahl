@@ -213,7 +213,10 @@ mod tests {
             resource: Some("rumahl.files/file/document-1".into()),
         };
         registry.deliver(&installation, &event).unwrap();
-        assert_eq!(channel.events.lock().unwrap().as_slice(), [event.clone()]);
+        assert_eq!(
+            channel.events.lock().unwrap().as_slice(),
+            std::slice::from_ref(&event)
+        );
         assert!(registry.unregister(&installation));
         assert_eq!(
             registry.deliver(&installation, &event),
