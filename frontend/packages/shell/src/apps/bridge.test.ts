@@ -1,6 +1,6 @@
 import { describe, expect, test, vi } from "vitest";
 import { BRIDGE_CAPABILITY_LIST, parseBridgeMessage, RUMAHL_BRIDGE } from "@rumahl/contracts/bridge";
-import { handleBridgeRequest, type AppBridgeHandlers } from "./bridge";
+import { handleBridgeRequest, handleBridgeRequestAsync, type AppBridgeHandlers } from "./bridge";
 
 function handlers(overrides: Partial<AppBridgeHandlers> = {}): AppBridgeHandlers {
   return {
@@ -8,6 +8,7 @@ function handlers(overrides: Partial<AppBridgeHandlers> = {}): AppBridgeHandlers
     capabilities: BRIDGE_CAPABILITY_LIST,
     theme: () => ({ scheme: "light", accent: "#28694c", reducedMotion: false }),
     notify: vi.fn(), windowControl: vi.fn(),
+    invokeCapability: vi.fn(async (capability: string) => ({ capability, outcome: "invoked" as const })),
     ...overrides
   };
 }
@@ -61,5 +62,23 @@ describe("bridge request handling", () => {
     expect(handleBridgeRequest(request("7", "os.notification", { message: "hi" }), handlers({ capabilities: [] }))).toMatchObject({ ok: false, error: { code: "denied" } });
     expect(handleBridgeRequest(request("8", "os.window.close"), handlers({ capabilities: [] }))).toMatchObject({ ok: false, error: { code: "denied" } });
     expect(handleBridgeRequest(request("9", "os.info"), handlers({ capabilities: ["com.rumahl.os.info"] })).ok).toBe(true);
+  });
+  test("invokes a capability on the user's behalf", async () => {
+    const invokeCapability = vi.fn(async (capability: string, resource?: { namespace: string; kind: string; key: string }) => ({ capability, outcome: "invoked" as const, resource }));
+    const response = await handleBridgeRequestAsync(
+      request("10", "os.capabilities.invoke", { capability: "rumahl.files.preview", resource: { namespace: "rumahl.files", kind: "file", key: "a" } }),
+      handlers({ invokeCapability })
+    );
+    expect(response).toMatchObject({ ok: true, result: { capability: "rumahl.files.preview", outcome: "invoked" } });
+    expect(invokeCapability).toHaveBeenCalledWith("rumahl.files.preview", { namespace: "rumahl.files", kind: "file", key: "a" });
+  });
+  test("capability invocation fails closed", async () => {
+    expect(await handleBridgeRequestAsync(request("11", "os.capabilities.invoke", { capability: "rumahl.files.preview" }), handlers({ capabilities: [] })))
+      .toMatchObject({ ok: false, error: { code: "denied" } });
+    expect(await handleBridgeRequestAsync(request("12", "os.capabilities.invoke", {}), handlers()))
+      .toMatchObject({ ok: false, error: { code: "invalid-params" } });
+    const invokeCapability = vi.fn(async () => { throw new Error("boom"); });
+    expect(await handleBridgeRequestAsync(request("13", "os.capabilities.invoke", { capability: "rumahl.files.preview" }), handlers({ invokeCapability })))
+      .toMatchObject({ ok: false, error: { code: "failed" } });
   });
 });

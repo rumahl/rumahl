@@ -1,4 +1,5 @@
 import type { ShellRequest } from "../snapshot-client";
+import type { BridgeCapabilityOutcome, BridgeCapabilityResource } from "@rumahl/contracts/bridge";
 import { APP_ID } from "../routing/paths";
 const INSTALLATION = /^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 const LEASE = /^[0-9a-f]{64}$/;
@@ -135,6 +136,23 @@ export async function controlAppRuntime(request: ShellRequest, app: InstalledApp
     headers: { Accept: "application/json", "Content-Type": "application/json" },
     body: JSON.stringify({ installationId: app.installationId, action })
   }), 4096);
+}
+export interface CapabilityInvocation {
+  capability: string;
+  outcome: BridgeCapabilityOutcome;
+}
+export function parseCapabilityInvocation(value: unknown, capability: string): CapabilityInvocation {
+  const object = record(value);
+  if (object.capabilityVersion !== 1 || (object.outcome !== "invoked" && object.outcome !== "denied"))
+    throw new Error("invalid capability invocation");
+  return { capability, outcome: object.outcome };
+}
+export async function invokeCapability(request: ShellRequest, capability: string, resource: BridgeCapabilityResource | undefined, signal: AbortSignal): Promise<CapabilityInvocation> {
+  return parseCapabilityInvocation(await payload(await request("/api/v1/shell/capabilities/invoke", {
+    method: "POST", cache: "no-store", credentials: "same-origin", signal,
+    headers: { Accept: "application/json", "Content-Type": "application/json" },
+    body: JSON.stringify({ capability, ...(resource ? { resource } : {}) })
+  }), 4096), capability);
 }
 /** Reads selected package files into base64 payloads, stripping the chosen folder prefix. */
 export async function readPackageFiles(selected: readonly File[]): Promise<PackageFile[]> {

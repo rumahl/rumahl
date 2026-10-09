@@ -22,12 +22,20 @@ import {
   RUMAHL_BRIDGE,
   parseBridgeMessage,
   type BridgeAppInfo,
+  type BridgeCapabilityResource,
+  type BridgeCapabilityResult,
   type BridgeNotification,
   type BridgeRequest,
   type BridgeTheme
 } from "@rumahl/contracts/bridge";
 
-export type { BridgeAppInfo, BridgeNotification, BridgeTheme } from "@rumahl/contracts/bridge";
+export type {
+  BridgeAppInfo,
+  BridgeCapabilityResource,
+  BridgeCapabilityResult,
+  BridgeNotification,
+  BridgeTheme
+} from "@rumahl/contracts/bridge";
 
 export class RumahlBridgeError extends Error {
   constructor(readonly code: string, message: string) {
@@ -50,6 +58,8 @@ export interface RumahlBridge {
   info(): Promise<BridgeAppInfo>;
   theme(): Promise<BridgeTheme>;
   notify(input: BridgeNotification): Promise<void>;
+  /** Invokes a capability provided by another installed app, on the user's behalf. */
+  invokeCapability(capability: string, resource?: BridgeCapabilityResource): Promise<BridgeCapabilityResult>;
   readonly window: {
     close(): Promise<void>;
     minimize(): Promise<void>;
@@ -164,6 +174,8 @@ export function connectRumahlBridge(options: ConnectOptions = {}): RumahlBridge 
     info: () => request<BridgeAppInfo>("os.info"),
     theme: () => request<BridgeTheme>("os.theme.get"),
     notify: async (input) => { await request("os.notification", input); },
+    invokeCapability: (capability, resource) =>
+      request<BridgeCapabilityResult>("os.capabilities.invoke", resource ? { capability, resource } : { capability }),
     window: {
       close: async () => { await request("os.window.close"); },
       minimize: async () => { await request("os.window.minimize"); },

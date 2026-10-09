@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { ShellRequest } from "../snapshot-client";
-import { controlAppRuntime, parseAppData, parseAppSettings, parseCatalog, parseImport, parseLaunch } from "./client";
+import { controlAppRuntime, invokeCapability, parseAppData, parseAppSettings, parseCapabilityInvocation, parseCatalog, parseImport, parseLaunch } from "./client";
 const app = { id: "com.rumahl.notes", installationId: "01990000-0000-7000-8000-000000000001", title: "Notes", version: "1.0.0", launchable: true };
 const lease = "a".repeat(64);
 const launch = { launchVersion: 1, id: app.id, installationId: app.installationId, lease, frameUrl: `https://${app.installationId}.apps.localhost:8443/launch/${lease}/web/index.html`, renewAfterSeconds: 30 };
@@ -79,6 +79,19 @@ describe("installed app contracts", () => {
     ]);
     expect(calls[0]?.body).toMatchObject({ installationId: app.installationId, action: "start" });
     expect(calls[1]?.body).toMatchObject({ installationId: app.installationId, action: "stop" });
+  });
+  it("posts a capability invocation and parses the outcome", async () => {
+    const calls: { url: string; body: unknown }[] = [];
+    const request = (async (url: string, init?: RequestInit) => {
+      calls.push({ url, body: init?.body ? JSON.parse(String(init.body)) : null });
+      return new Response(JSON.stringify({ capabilityVersion: 1, outcome: "denied" }), { status: 200, headers: { "content-type": "application/json" } });
+    }) as unknown as ShellRequest;
+    const signal = new AbortController().signal;
+    const result = await invokeCapability(request, "rumahl.files.preview", { namespace: "rumahl.files", kind: "file", key: "a" }, signal);
+    expect(result).toEqual({ capability: "rumahl.files.preview", outcome: "denied" });
+    expect(calls[0]?.url).toBe("/api/v1/shell/capabilities/invoke");
+    expect(calls[0]?.body).toMatchObject({ capability: "rumahl.files.preview", resource: { namespace: "rumahl.files", kind: "file", key: "a" } });
+    expect(() => parseCapabilityInvocation({ capabilityVersion: 1, outcome: "maybe" }, "x")).toThrow();
   });
   it("parses a successful import and rejects malformed responses", () => {
     const imported = { importVersion: 1, id: app.id, installationId: app.installationId, title: "Notes", version: "1.0.0" };

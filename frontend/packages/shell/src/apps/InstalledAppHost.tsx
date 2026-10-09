@@ -8,7 +8,7 @@ import { useWindowLocation } from "../routing/routes";
 import { useAppCatalog } from "./AppCatalog";
 import { attachAppBridge, postAppBridgeEvent, type AppBridgeHandlers } from "./bridge";
 import { BRIDGE_CAPABILITY_LIST } from "@rumahl/contracts/bridge";
-import { controlAppRuntime, launchApp, type InstalledApp } from "./client";
+import { controlAppRuntime, invokeCapability as requestCapabilityInvocation, launchApp, type InstalledApp } from "./client";
 import { setLaunching } from "./launching";
 import { showToast } from "../shell/toasts";
 import { Button } from "../components/Button";
@@ -109,6 +109,11 @@ function AppFrame({ app }: { app: InstalledApp }) {
       if (action === "focus") dispatch({ type: "focus-window", id });
       else dispatch({ type: action === "minimize" ? "toggle-minimize" : "close-window", id });
       if (action !== "focus" && mode === "launcher") open("/");
+    },
+    invokeCapability: async (capability, resource) => {
+      if (!live) throw new Error("app unavailable");
+      const result = await requestCapabilityInvocation(live.request, capability, resource, new AbortController().signal);
+      return { capability: result.capability, outcome: result.outcome };
     }
   };
   useEffect(() => {

@@ -45,6 +45,16 @@ describe("connectRumahlBridge", () => {
     await expect(promise).rejects.toBeInstanceOf(RumahlBridgeError);
   });
 
+  test("invokes a capability and carries the resource", async () => {
+    const { target, posted } = fakeParent();
+    const bridge = active = connectRumahlBridge({ target, timeoutMs: 100 });
+    const promise = bridge.invokeCapability("rumahl.files.preview", { namespace: "rumahl.files", kind: "file", key: "a" });
+    const request = posted.find((message) => message.method === "os.capabilities.invoke")!;
+    expect(request.params).toMatchObject({ capability: "rumahl.files.preview", resource: { namespace: "rumahl.files", kind: "file", key: "a" } });
+    deliver(target, response(request.id as string, { capability: "rumahl.files.preview", outcome: "invoked" }));
+    await expect(promise).resolves.toEqual({ capability: "rumahl.files.preview", outcome: "invoked" });
+  });
+
   test("times out unanswered requests", async () => {
     const { target } = fakeParent();
     const bridge = active = connectRumahlBridge({ target, timeoutMs: 20 });

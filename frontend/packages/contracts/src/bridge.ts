@@ -31,7 +31,8 @@ export type BridgeMethod =
   | "os.notification"
   | "os.window.close"
   | "os.window.minimize"
-  | "os.window.focus";
+  | "os.window.focus"
+  | "os.capabilities.invoke";
 
 export const BRIDGE_METHODS: readonly BridgeMethod[] = [
   "os.info",
@@ -39,7 +40,8 @@ export const BRIDGE_METHODS: readonly BridgeMethod[] = [
   "os.notification",
   "os.window.close",
   "os.window.minimize",
-  "os.window.focus"
+  "os.window.focus",
+  "os.capabilities.invoke"
 ];
 
 /**
@@ -51,7 +53,8 @@ export const BRIDGE_CAPABILITIES = {
   info: "com.rumahl.os.info",
   theme: "com.rumahl.os.theme",
   notification: "com.rumahl.os.notification",
-  window: "com.rumahl.os.window"
+  window: "com.rumahl.os.window",
+  capabilities: "com.rumahl.os.capabilities"
 } as const;
 
 /** The full baseline capability set (used when a catalog omits capabilities). */
@@ -63,6 +66,7 @@ export function capabilityForMethod(method: string): string | null {
   if (method === "os.theme.get") return BRIDGE_CAPABILITIES.theme;
   if (method === "os.notification") return BRIDGE_CAPABILITIES.notification;
   if (method.startsWith("os.window.")) return BRIDGE_CAPABILITIES.window;
+  if (method === "os.capabilities.invoke") return BRIDGE_CAPABILITIES.capabilities;
   return null;
 }
 
@@ -85,6 +89,27 @@ export interface BridgeNotification {
   title?: string;
   message: string;
   variant?: BridgeToastVariant;
+}
+
+/** A resource a capability is invoked against. */
+export interface BridgeCapabilityResource {
+  namespace: string;
+  kind: string;
+  key: string;
+}
+
+/** Params for `os.capabilities.invoke`. */
+export interface BridgeCapabilityInvocation {
+  capability: string;
+  resource?: BridgeCapabilityResource;
+}
+
+/** The outcome of a capability invocation. */
+export type BridgeCapabilityOutcome = "invoked" | "denied";
+
+export interface BridgeCapabilityResult {
+  capability: string;
+  outcome: BridgeCapabilityOutcome;
 }
 
 export interface BridgeHello {

@@ -4,6 +4,8 @@ import {
   RUMAHL_BRIDGE_VERSION,
   capabilityForMethod,
   parseBridgeMessage,
+  type BridgeCapabilityResource,
+  type BridgeCapabilityResult,
   type BridgeEvent,
   type BridgeMessage,
   type BridgeNotification,
@@ -25,6 +27,8 @@ export interface AppBridgeHandlers {
   theme(): BridgeTheme;
   notify(notification: BridgeNotification): void;
   windowControl(action: BridgeWindowAction): void;
+  /** Invokes a capability provided by another installed app, on behalf of the user. */
+  invokeCapability(capability: string, resource?: BridgeCapabilityResource): Promise<BridgeCapabilityResult>;
 }
 
 /**
@@ -89,6 +93,54 @@ function normalizeNotification(value: unknown): BridgeNotification | null {
 }
 
 /**
+ * Handles a request, awaiting capability invocations. Synchronous methods
+ * resolve immediately; `os.capabilities.invoke` calls the OS on the user's
+ * behalf and may take a round-trip.
+ */
+export async function handleBridgeRequestAsync(message: BridgeRequest, handlers: AppBridgeHandlers): Promise<BridgeResponse> {
+  if (message.method !== "os.capabilities.invoke") return handleBridgeRequest(message, handlers);
+  const respond = (ok: boolean, extra: Partial<BridgeResponse>): BridgeResponse => ({
+    bridge: RUMAHL_BRIDGE,
+    kind: "response",
+    id: message.id,
+    ok,
+    ...extra
+  });
+  const capability = capabilityForMethod(message.method);
+  if (capability === null) return respond(false, { error: { code: "unknown-method", message: `unknown method: ${message.method}` } });
+  if (!handlers.capabilities.includes(capability)) return respond(false, { error: { code: "denied", message: `missing capability: ${capability}` } });
+  const invocation = normalizeCapabilityInvocation(message.params);
+  if (!invocation) return respond(false, { error: { code: "invalid-params", message: "a capability id is required" } });
+  try {
+    return respond(true, { result: await handlers.invokeCapability(invocation.capability, invocation.resource) });
+  } catch (error) {
+    return respond(false, { error: { code: "failed", message: error instanceof Error ? error.message : String(error) } });
+  }
+}
+
+function normalizeCapabilityInvocation(value: unknown): { capability: string; resource?: BridgeCapabilityResource } | null {
+  if (typeof value !== "object" || value === null) return null;
+  const record = value as Record<string, unknown>;
+  if (typeof record.capability !== "string" || record.capability.length === 0 || record.capability.length > 200) return null;
+  const invocation: { capability: string; resource?: BridgeCapabilityResource } = { capability: record.capability };
+  if (record.resource !== undefined && record.resource !== null) {
+    const resource = normalizeCapabilityResource(record.resource);
+    if (!resource) return null;
+    invocation.resource = resource;
+  }
+  return invocation;
+}
+
+function normalizeCapabilityResource(value: unknown): BridgeCapabilityResource | null {
+  if (typeof value !== "object" || value === null) return null;
+  const record = value as Record<string, unknown>;
+  if (typeof record.namespace !== "string" || record.namespace.length === 0 || record.namespace.length > 128) return null;
+  if (typeof record.kind !== "string" || record.kind.length === 0 || record.kind.length > 128) return null;
+  if (typeof record.key !== "string" || record.key.length === 0 || record.key.length > 256) return null;
+  return { namespace: record.namespace, kind: record.kind, key: record.key };
+}
+
+/**
  * Binds the bridge to one app iframe. The channel is bound to the concrete
  * `iframe.contentWindow` because the sandboxed app has an opaque origin and
  * `event.origin` is always `"null"`. Returns a disposer.
@@ -110,7 +162,7 @@ export function attachAppBridge(iframe: HTMLIFrameElement, handlers: AppBridgeHa
       return;
     }
     if (message.kind !== "request") return;
-    post(handleBridgeRequest(message, handlers));
+    void Promise.resolve(handleBridgeRequestAsync(message, handlers)).then((response) => post(response)).catch(() => undefined);
   };
   window.addEventListener("message", onMessage);
   return () => window.removeEventListener("message", onMessage);
