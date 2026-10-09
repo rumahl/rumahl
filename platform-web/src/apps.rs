@@ -131,12 +131,21 @@ impl CapabilityOutcome {
         }
     }
 }
+/// A web provider that must be reached through the shell hosting its iframe
+/// (it has no live backend channel).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct BrowserDelivery {
+    pub app_id: String,
+    pub installation_id: String,
+}
 /// The outcome of a capability invocation plus the provider's result payload
-/// (raw JSON text) when the provider returned one.
+/// (raw JSON text) when the provider returned one, or a browser delivery
+/// instruction when the provider is a running web app.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CapabilityResult {
     pub outcome: CapabilityOutcome,
     pub result: Option<String>,
+    pub browser: Option<BrowserDelivery>,
 }
 /// Every method must re-read installation, grants and live account/session state.
 pub trait AppProvider: Send + Sync + 'static {
@@ -591,10 +600,20 @@ mod tests {
                 "com.rumahl.test.run" => CapabilityResult {
                     outcome: CapabilityOutcome::Invoked,
                     result: Some("{\"ran\":true}".into()),
+                    browser: None,
+                },
+                "com.rumahl.test.browser" => CapabilityResult {
+                    outcome: CapabilityOutcome::Invoked,
+                    result: None,
+                    browser: Some(BrowserDelivery {
+                        app_id: "com.rumahl.test".into(),
+                        installation_id: self.installation.to_string(),
+                    }),
                 },
                 _ => CapabilityResult {
                     outcome: CapabilityOutcome::Denied,
                     result: None,
+                    browser: None,
                 },
             })
         }
@@ -650,7 +669,8 @@ mod tests {
                 .unwrap(),
             CapabilityResult {
                 outcome: CapabilityOutcome::Invoked,
-                result: Some("{\"ran\":true}".into())
+                result: Some("{\"ran\":true}".into()),
+                browser: None
             }
         );
         assert_eq!(
@@ -659,8 +679,19 @@ mod tests {
                 .unwrap(),
             CapabilityResult {
                 outcome: CapabilityOutcome::Denied,
-                result: None
+                result: None,
+                browser: None
             }
+        );
+        assert_eq!(
+            access
+                .invoke_capability(owner, "com.rumahl.test.browser".into(), None)
+                .unwrap()
+                .browser,
+            Some(BrowserDelivery {
+                app_id: "com.rumahl.test".into(),
+                installation_id: installation.to_string()
+            })
         );
     }
 

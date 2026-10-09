@@ -92,6 +92,10 @@ describe("installed app contracts", () => {
     expect(calls[0]?.url).toBe("/api/v1/shell/capabilities/invoke");
     expect(calls[0]?.body).toMatchObject({ capability: "rumahl.files.preview", resource: { namespace: "rumahl.files", kind: "file", key: "a" } });
     expect(() => parseCapabilityInvocation({ capabilityVersion: 1, outcome: "maybe" }, "x")).toThrow();
+    expect(parseCapabilityInvocation({ capabilityVersion: 1, outcome: "invoked", browser: { appId: app.id, installationId: app.installationId } }, "cap"))
+      .toEqual({ capability: "cap", outcome: "invoked", browser: { appId: app.id, installationId: app.installationId } });
+    expect(() => parseCapabilityInvocation({ capabilityVersion: 1, outcome: "invoked", browser: { appId: "../escape", installationId: app.installationId } }, "cap")).toThrow();
+    expect(() => parseCapabilityInvocation({ capabilityVersion: 1, outcome: "invoked", browser: { appId: app.id } }, "cap")).toThrow();
   });
   it("parses a successful import and rejects malformed responses", () => {
     const imported = { importVersion: 1, id: app.id, installationId: app.installationId, title: "Notes", version: "1.0.0" };

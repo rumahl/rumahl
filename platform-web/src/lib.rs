@@ -27,8 +27,9 @@ pub use browser_auth::{BrowserSessions, LoginAccount, SESSION_SECONDS};
 mod apps;
 pub use apps::{
     AppAccess, AppAccessError, AppAsset, AppData, AppDataEntry, AppProvider, AppSettingInfo,
-    AppSettingOptionInfo, AppSettingsInfo, CapabilityOutcome, CapabilityResource, CapabilityResult,
-    CatalogApp, ImportedApp, PackageUploadFile, RuntimeAction, RuntimeState, app_error,
+    AppSettingOptionInfo, AppSettingsInfo, BrowserDelivery, CapabilityOutcome, CapabilityResource,
+    CapabilityResult, CatalogApp, ImportedApp, PackageUploadFile, RuntimeAction, RuntimeState,
+    app_error,
 };
 
 mod app_channel;

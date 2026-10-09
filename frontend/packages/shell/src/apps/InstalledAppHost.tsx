@@ -7,6 +7,8 @@ import { useI18n } from "../i18n";
 import { useWindowLocation } from "../routing/routes";
 import { useAppCatalog } from "./AppCatalog";
 import { attachAppBridge, postAppBridgeEvent, type AppBridgeHandlers } from "./bridge";
+import { attachProviderChannel } from "./provider-channel";
+import { invokeProvider, registerProviderChannel } from "./providers";
 import { BRIDGE_CAPABILITY_LIST } from "@rumahl/contracts/bridge";
 import { controlAppRuntime, invokeCapability as requestCapabilityInvocation, launchApp, type InstalledApp } from "./client";
 import { setLaunching } from "./launching";
@@ -113,6 +115,11 @@ function AppFrame({ app }: { app: InstalledApp }) {
     invokeCapability: async (capability, resource) => {
       if (!live) throw new Error("app unavailable");
       const result = await requestCapabilityInvocation(live.request, capability, resource, new AbortController().signal);
+      // A web provider has no live channel: deliver the invocation to its iframe.
+      if (result.browser) {
+        const value = await invokeProvider(result.browser.appId, capability, resource);
+        return { capability, outcome: "invoked", ...(value === undefined ? {} : { result: value }) };
+      }
       return { capability: result.capability, outcome: result.outcome, ...(result.result === undefined ? {} : { result: result.result }) };
     }
   };
@@ -120,8 +127,12 @@ function AppFrame({ app }: { app: InstalledApp }) {
     const iframe = frameRef.current;
     const handlers = bridge.current;
     if (!iframe || !handlers) return;
-    return attachAppBridge(iframe, handlers);
-  }, [frame]);
+    const detachBridge = attachAppBridge(iframe, handlers);
+    // Open app windows also act as capability providers for other apps.
+    const provider = attachProviderChannel(iframe);
+    const unregister = registerProviderChannel(app.id, provider);
+    return () => { detachBridge(); unregister(); provider.dispose(); };
+  }, [frame, app.id]);
   // Push `os.theme.changed` whenever the shell switches appearance.
   useEffect(() => {
     const scene = document.querySelector(".scene");

@@ -98,7 +98,12 @@ unless its capability is declared; the app side uses `@rumahl/bridge-client`.
 `os.capabilities.invoke` calls another installed app's capability on the user's
 behalf through the authenticated `POST /api/v1/shell/capabilities/invoke` route;
 the capability registries are derived from the installed apps and every existing
-account is granted each provided capability at install.
+account is granted each provided capability at install. A capability provided by
+a running **web** app has no live channel, so the route authorizes the call and
+returns a browser-delivery instruction (provider app id); the shell then delivers
+the invocation to that app's iframe (`provider.invoke` request) and returns the
+app's result. The provider app registers handlers with
+`rumahl.provide(capability, handler)`.
 
 Runtime control reaches the supervisor: `RuntimeController` and
 `ProviderRuntimeAdapter` route `status`/`start`/`stop` over the

@@ -137,17 +137,36 @@ export async function controlAppRuntime(request: ShellRequest, app: InstalledApp
     body: JSON.stringify({ installationId: app.installationId, action })
   }), 4096);
 }
+export interface CapabilityBrowserDelivery {
+  appId: string;
+  installationId: string;
+}
 export interface CapabilityInvocation {
   capability: string;
   outcome: BridgeCapabilityOutcome;
   result?: unknown;
+  /** Set when a web provider must be reached through the shell (its iframe). */
+  browser?: CapabilityBrowserDelivery;
 }
 export function parseCapabilityInvocation(value: unknown, capability: string): CapabilityInvocation {
   const object = record(value);
   if (object.capabilityVersion !== 1 || (object.outcome !== "invoked" && object.outcome !== "denied"))
     throw new Error("invalid capability invocation");
   const result = object.result;
-  return { capability, outcome: object.outcome, ...(result === undefined || result === null ? {} : { result }) };
+  let browser: CapabilityBrowserDelivery | undefined;
+  if (object.browser !== undefined && object.browser !== null) {
+    const delivery = record(object.browser);
+    if (typeof delivery.appId !== "string" || !APP_ID.test(delivery.appId) ||
+        typeof delivery.installationId !== "string" || !INSTALLATION.test(delivery.installationId))
+      throw new Error("invalid capability delivery");
+    browser = { appId: delivery.appId, installationId: delivery.installationId };
+  }
+  return {
+    capability,
+    outcome: object.outcome,
+    ...(result === undefined || result === null ? {} : { result }),
+    ...(browser ? { browser } : {})
+  };
 }
 export async function invokeCapability(request: ShellRequest, capability: string, resource: BridgeCapabilityResource | undefined, signal: AbortSignal): Promise<CapabilityInvocation> {
   return parseCapabilityInvocation(await payload(await request("/api/v1/shell/capabilities/invoke", {

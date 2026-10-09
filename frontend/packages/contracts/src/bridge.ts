@@ -104,6 +104,19 @@ export interface BridgeCapabilityInvocation {
   resource?: BridgeCapabilityResource;
 }
 
+/**
+ * Method the shell sends to an app that *provides* a capability. The reverse
+ * of `os.capabilities.invoke`: the shell delivers the invocation to the
+ * provider frame and the app answers with a `response`.
+ */
+export const BRIDGE_PROVIDER_METHOD = "provider.invoke" as const;
+
+/** Params carried with a `provider.invoke` request. */
+export interface BridgeProviderInvocation {
+  capability: string;
+  resource?: BridgeCapabilityResource;
+}
+
 /** The outcome of a capability invocation. */
 export type BridgeCapabilityOutcome = "invoked" | "denied";
 

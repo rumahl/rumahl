@@ -629,10 +629,17 @@ async fn capabilities_invoke(
                 .result
                 .as_deref()
                 .and_then(|text| serde_json::from_str::<serde_json::Value>(text).ok());
+            let browser = result.browser.as_ref().map(|delivery| {
+                serde_json::json!({
+                    "appId": delivery.app_id,
+                    "installationId": delivery.installation_id,
+                })
+            });
             let mut response = axum::Json(serde_json::json!({
                 "capabilityVersion": 1,
                 "outcome": result.outcome.as_str(),
                 "result": value,
+                "browser": browser,
             }))
             .into_response();
             secure_headers(&mut response);

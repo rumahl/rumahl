@@ -4,8 +4,8 @@ use rumahl_core::*;
 use rumahl_persistence_sqlite::{SqliteAccountStateRepository, SqliteSnapshotRepository};
 use rumahl_platform_web::{
     AppAccessError, AppAsset, AppData, AppDataEntry, AppProvider, AppSettingInfo,
-    AppSettingOptionInfo, CapabilityOutcome, CapabilityResource, CapabilityResult, CatalogApp,
-    ImportedApp, PackageUploadFile, RuntimeState, ShellIdentity,
+    AppSettingOptionInfo, BrowserDelivery, CapabilityOutcome, CapabilityResource, CapabilityResult,
+    CatalogApp, ImportedApp, PackageUploadFile, RuntimeState, ShellIdentity,
 };
 use rustix::fs::{Dir, FileType, Mode, OFlags, fstat, open, openat};
 use std::fs::File;
@@ -564,9 +564,43 @@ impl AppProvider for PersistentApps {
                 ResourceKey::parse(resource.key).map_err(|_| AppAccessError::Denied)?,
             )),
         };
+        let provider_identity = provider.identity().clone();
+        let Identity::App(provider_app) = &provider_identity else {
+            return Err(AppAccessError::Denied);
+        };
+        let provider_installation = *provider_app.installation_id();
+        let web_provider = state
+            .installed_apps()
+            .get_by_installation_id(&provider_installation)
+            .is_some_and(|app| app.manifest().runtime().kind() == RuntimeKind::Web);
+
         let context =
             OperationContext::for_user(UserIdentity::new(identity.user_id), identity.session_id);
         let invocation = CapabilityInvocation::new(context, provider);
+
+        // A web provider runs only in the shell's iframe and has no live channel,
+        // so the shell delivers the invocation to the frame.
+        if web_provider {
+            let decision = CapabilityInvoker::new()
+                .authorize(&invocation, resource, &capabilities, &access, grants.grants())
+                .map_err(|_| AppAccessError::Denied)?;
+            return Ok(match decision {
+                AuthorizationDecision::Allow => CapabilityResult {
+                    outcome: CapabilityOutcome::Invoked,
+                    result: None,
+                    browser: Some(BrowserDelivery {
+                        app_id: provider_app.app_id().as_str().to_owned(),
+                        installation_id: provider_installation.to_string(),
+                    }),
+                },
+                _ => CapabilityResult {
+                    outcome: CapabilityOutcome::Denied,
+                    result: None,
+                    browser: None,
+                },
+            });
+        }
+
         match CapabilityInvoker::new().invoke(
             &invocation,
             resource,
@@ -579,10 +613,12 @@ impl AppProvider for PersistentApps {
             Ok(CapabilityInvocationOutcome::Invoked(result)) => Ok(CapabilityResult {
                 outcome: CapabilityOutcome::Invoked,
                 result: (!result.is_empty()).then(|| result.into_payload()),
+                browser: None,
             }),
             Ok(CapabilityInvocationOutcome::NotAuthorized(_)) => Ok(CapabilityResult {
                 outcome: CapabilityOutcome::Denied,
                 result: None,
+                browser: None,
             }),
             Err(_) => Err(AppAccessError::Denied),
         }

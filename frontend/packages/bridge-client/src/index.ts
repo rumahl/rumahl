@@ -19,13 +19,16 @@
  * rumahl OS: `available` is `false` and every call rejects.
  */
 import {
+  BRIDGE_PROVIDER_METHOD,
   RUMAHL_BRIDGE,
   parseBridgeMessage,
   type BridgeAppInfo,
   type BridgeCapabilityResource,
   type BridgeCapabilityResult,
   type BridgeNotification,
+  type BridgeProviderInvocation,
   type BridgeRequest,
+  type BridgeResponse,
   type BridgeTheme
 } from "@rumahl/contracts/bridge";
 
@@ -34,6 +37,7 @@ export type {
   BridgeCapabilityResource,
   BridgeCapabilityResult,
   BridgeNotification,
+  BridgeProviderInvocation,
   BridgeTheme
 } from "@rumahl/contracts/bridge";
 
@@ -45,6 +49,9 @@ export class RumahlBridgeError extends Error {
 }
 
 export type BridgeEventHandler = (payload: unknown) => void;
+
+/** Handles a capability invocation delivered to this app as a provider. */
+export type BridgeProviderHandler = (invocation: BridgeProviderInvocation) => unknown | Promise<unknown>;
 
 export interface RumahlBridge {
   /** True when the app is embedded in the shell (a parent frame exists). */
@@ -60,6 +67,8 @@ export interface RumahlBridge {
   notify(input: BridgeNotification): Promise<void>;
   /** Invokes a capability provided by another installed app, on the user's behalf. */
   invokeCapability(capability: string, resource?: BridgeCapabilityResource): Promise<BridgeCapabilityResult>;
+  /** Registers a handler for a capability this app provides. Returns an unregister. */
+  provide(capability: string, handler: BridgeProviderHandler): () => void;
   readonly window: {
     close(): Promise<void>;
     minimize(): Promise<void>;
@@ -83,6 +92,20 @@ export interface ConnectOptions {
 const DEFAULT_TIMEOUT_MS = 5000;
 const DEFAULT_RETRY_MS = 600;
 
+function normalizeProviderInvocation(value: unknown): BridgeProviderInvocation | null {
+  if (typeof value !== "object" || value === null) return null;
+  const record = value as Record<string, unknown>;
+  if (typeof record.capability !== "string" || record.capability.length === 0 || record.capability.length > 200) return null;
+  const invocation: BridgeProviderInvocation = { capability: record.capability };
+  if (record.resource !== undefined && record.resource !== null) {
+    if (typeof record.resource !== "object") return null;
+    const resource = record.resource as Record<string, unknown>;
+    if (typeof resource.namespace !== "string" || typeof resource.kind !== "string" || typeof resource.key !== "string") return null;
+    invocation.resource = { namespace: resource.namespace, kind: resource.kind, key: resource.key };
+  }
+  return invocation;
+}
+
 export function connectRumahlBridge(options: ConnectOptions = {}): RumahlBridge {
   const self = typeof window !== "undefined" ? window : undefined;
   const target = options.target ?? self?.parent;
@@ -94,6 +117,7 @@ export function connectRumahlBridge(options: ConnectOptions = {}): RumahlBridge 
   let welcome: { appId: string; methods: readonly string[] } | null = null;
   const pending = new Map<string, { resolve: (value: unknown) => void; reject: (error: Error) => void; timer: ReturnType<typeof setTimeout> }>();
   const listeners = new Map<string, Set<BridgeEventHandler>>();
+  const providers = new Map<string, BridgeProviderHandler>();
 
   let settleReady: (value: { appId: string; methods: readonly string[] }) => void = () => undefined;
   let failReady: (error: Error) => void = () => undefined;
@@ -111,6 +135,32 @@ export function connectRumahlBridge(options: ConnectOptions = {}): RumahlBridge 
   };
   const hello = (): void => post({ bridge: RUMAHL_BRIDGE, kind: "hello" });
 
+  const respond = (id: string, ok: boolean, extra: Partial<BridgeResponse>): void => {
+    const message: BridgeResponse = { bridge: RUMAHL_BRIDGE, kind: "response", id, ok, ...extra };
+    post(message);
+  };
+  async function handleProviderRequest(message: BridgeRequest): Promise<void> {
+    if (message.method !== BRIDGE_PROVIDER_METHOD) {
+      respond(message.id, false, { error: { code: "unknown-method", message: `unknown method: ${message.method}` } });
+      return;
+    }
+    const invocation = normalizeProviderInvocation(message.params);
+    if (!invocation) {
+      respond(message.id, false, { error: { code: "invalid-params", message: "a capability id is required" } });
+      return;
+    }
+    const handler = providers.get(invocation.capability);
+    if (!handler) {
+      respond(message.id, false, { error: { code: "no-provider", message: `not provided: ${invocation.capability}` } });
+      return;
+    }
+    try {
+      respond(message.id, true, { result: await handler(invocation) });
+    } catch (error) {
+      respond(message.id, false, { error: { code: "failed", message: error instanceof Error ? error.message : String(error) } });
+    }
+  }
+
   const onMessage = (event: MessageEvent): void => {
     // The shell's origin is opaque, so bind on the exact parent window instead.
     if (event.source !== target) return;
@@ -120,6 +170,10 @@ export function connectRumahlBridge(options: ConnectOptions = {}): RumahlBridge 
       welcome = { appId: message.appId, methods: message.methods };
       stopHandshake();
       settleReady(welcome);
+      return;
+    }
+    if (message.kind === "request") {
+      void handleProviderRequest(message);
       return;
     }
     if (message.kind === "response") {
@@ -176,6 +230,10 @@ export function connectRumahlBridge(options: ConnectOptions = {}): RumahlBridge 
     notify: async (input) => { await request("os.notification", input); },
     invokeCapability: (capability, resource) =>
       request<BridgeCapabilityResult>("os.capabilities.invoke", resource ? { capability, resource } : { capability }),
+    provide: (capability, handler) => {
+      providers.set(capability, handler);
+      return () => { if (providers.get(capability) === handler) providers.delete(capability); };
+    },
     window: {
       close: async () => { await request("os.window.close"); },
       minimize: async () => { await request("os.window.minimize"); },

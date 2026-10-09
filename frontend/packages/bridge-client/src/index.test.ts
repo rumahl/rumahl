@@ -55,6 +55,19 @@ describe("connectRumahlBridge", () => {
     await expect(promise).resolves.toEqual({ capability: "rumahl.files.preview", outcome: "invoked" });
   });
 
+  test("answers capability invocations when it provides them", async () => {
+    const { target, posted } = fakeParent();
+    const bridge = active = connectRumahlBridge({ target, timeoutMs: 100 });
+    bridge.provide("com.example.notes.search", async (invocation) => ({ echo: invocation.capability, resource: invocation.resource }));
+    deliver(target, { bridge: RUMAHL_BRIDGE, kind: "request", id: "r1", method: "provider.invoke", params: { capability: "com.example.notes.search", resource: { namespace: "rumahl.files", kind: "file", key: "a" } } });
+    await vi.waitFor(() => expect(posted.some((message) => message.kind === "response" && message.id === "r1")).toBe(true));
+    expect(posted.find((message) => message.kind === "response" && message.id === "r1")).toMatchObject({ ok: true, result: { echo: "com.example.notes.search" } });
+
+    deliver(target, { bridge: RUMAHL_BRIDGE, kind: "request", id: "r2", method: "provider.invoke", params: { capability: "com.example.unknown" } });
+    await vi.waitFor(() => expect(posted.some((message) => message.kind === "response" && message.id === "r2")).toBe(true));
+    expect(posted.find((message) => message.kind === "response" && message.id === "r2")).toMatchObject({ ok: false, error: { code: "no-provider" } });
+  });
+
   test("times out unanswered requests", async () => {
     const { target } = fakeParent();
     const bridge = active = connectRumahlBridge({ target, timeoutMs: 20 });

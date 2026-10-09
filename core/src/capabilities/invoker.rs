@@ -39,6 +39,28 @@ impl CapabilityInvoker {
         Self::default()
     }
 
+    /// Authorizes an invocation without delivering it (used when the provider
+    /// is reached out of band, for example a web app via the shell).
+    pub fn authorize(
+        &self,
+        invocation: &CapabilityInvocation,
+        resource: Option<ResourceRef>,
+        capabilities: &CapabilityRegistry,
+        access: &CapabilityAccessRegistry,
+        grants: &[PermissionGrant],
+    ) -> Result<AuthorizationDecision, CapabilityInvocationError> {
+        self.dispatcher
+            .authorize(
+                invocation,
+                resource,
+                capabilities,
+                access,
+                &AuthorizationEngine::new(),
+                grants,
+            )
+            .map_err(CapabilityInvocationError::Dispatch)
+    }
+
     #[allow(clippy::too_many_arguments)]
     pub fn invoke(
         &self,
