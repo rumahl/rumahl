@@ -140,12 +140,14 @@ export async function controlAppRuntime(request: ShellRequest, app: InstalledApp
 export interface CapabilityInvocation {
   capability: string;
   outcome: BridgeCapabilityOutcome;
+  result?: unknown;
 }
 export function parseCapabilityInvocation(value: unknown, capability: string): CapabilityInvocation {
   const object = record(value);
   if (object.capabilityVersion !== 1 || (object.outcome !== "invoked" && object.outcome !== "denied"))
     throw new Error("invalid capability invocation");
-  return { capability, outcome: object.outcome };
+  const result = object.result;
+  return { capability, outcome: object.outcome, ...(result === undefined || result === null ? {} : { result }) };
 }
 export async function invokeCapability(request: ShellRequest, capability: string, resource: BridgeCapabilityResource | undefined, signal: AbortSignal): Promise<CapabilityInvocation> {
   return parseCapabilityInvocation(await payload(await request("/api/v1/shell/capabilities/invoke", {

@@ -84,11 +84,11 @@ describe("installed app contracts", () => {
     const calls: { url: string; body: unknown }[] = [];
     const request = (async (url: string, init?: RequestInit) => {
       calls.push({ url, body: init?.body ? JSON.parse(String(init.body)) : null });
-      return new Response(JSON.stringify({ capabilityVersion: 1, outcome: "denied" }), { status: 200, headers: { "content-type": "application/json" } });
+      return new Response(JSON.stringify({ capabilityVersion: 1, outcome: "invoked", result: { answer: 42 } }), { status: 200, headers: { "content-type": "application/json" } });
     }) as unknown as ShellRequest;
     const signal = new AbortController().signal;
     const result = await invokeCapability(request, "rumahl.files.preview", { namespace: "rumahl.files", kind: "file", key: "a" }, signal);
-    expect(result).toEqual({ capability: "rumahl.files.preview", outcome: "denied" });
+    expect(result).toEqual({ capability: "rumahl.files.preview", outcome: "invoked", result: { answer: 42 } });
     expect(calls[0]?.url).toBe("/api/v1/shell/capabilities/invoke");
     expect(calls[0]?.body).toMatchObject({ capability: "rumahl.files.preview", resource: { namespace: "rumahl.files", kind: "file", key: "a" } });
     expect(() => parseCapabilityInvocation({ capabilityVersion: 1, outcome: "maybe" }, "x")).toThrow();

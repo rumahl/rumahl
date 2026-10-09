@@ -4,8 +4,8 @@ use rumahl_core::*;
 use rumahl_persistence_sqlite::{SqliteAccountStateRepository, SqliteSnapshotRepository};
 use rumahl_platform_web::{
     AppAccessError, AppAsset, AppData, AppDataEntry, AppProvider, AppSettingInfo,
-    AppSettingOptionInfo, CapabilityOutcome, CapabilityResource, CatalogApp, ImportedApp,
-    PackageUploadFile, RuntimeState, ShellIdentity,
+    AppSettingOptionInfo, CapabilityOutcome, CapabilityResource, CapabilityResult, CatalogApp,
+    ImportedApp, PackageUploadFile, RuntimeState, ShellIdentity,
 };
 use rustix::fs::{Dir, FileType, Mode, OFlags, fstat, open, openat};
 use std::fs::File;
@@ -532,7 +532,7 @@ impl AppProvider for PersistentApps {
         identity: ShellIdentity,
         capability: String,
         resource: Option<CapabilityResource>,
-    ) -> Result<CapabilityOutcome, AppAccessError> {
+    ) -> Result<CapabilityResult, AppAccessError> {
         self.authenticate(identity)?;
         let adapters = self.runtime.clone().ok_or(AppAccessError::Unavailable)?;
         let snapshot = self
@@ -576,8 +576,14 @@ impl AppProvider for PersistentApps {
             grants.grants(),
             &adapters,
         ) {
-            Ok(CapabilityInvocationOutcome::Invoked) => Ok(CapabilityOutcome::Invoked),
-            Ok(CapabilityInvocationOutcome::NotAuthorized(_)) => Ok(CapabilityOutcome::Denied),
+            Ok(CapabilityInvocationOutcome::Invoked(result)) => Ok(CapabilityResult {
+                outcome: CapabilityOutcome::Invoked,
+                result: (!result.is_empty()).then(|| result.into_payload()),
+            }),
+            Ok(CapabilityInvocationOutcome::NotAuthorized(_)) => Ok(CapabilityResult {
+                outcome: CapabilityOutcome::Denied,
+                result: None,
+            }),
             Err(_) => Err(AppAccessError::Denied),
         }
     }

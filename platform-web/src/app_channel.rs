@@ -8,16 +8,22 @@
 use std::collections::HashMap;
 use std::io::{BufRead, BufReader, Write};
 use std::os::unix::net::UnixListener;
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::mpsc;
 use std::sync::{Arc, Mutex};
+use std::time::Duration;
 
 use rand::RngCore;
 use rumahl_core::{
-    InstallationId, RuntimeCapabilityExecution, RuntimeChannel, RuntimeChannelError,
-    RuntimeChannelRegistry, RuntimeEvent,
+    InstallationId, RuntimeCapabilityExecution, RuntimeCapabilityResult, RuntimeChannel,
+    RuntimeChannelError, RuntimeChannelRegistry, RuntimeEvent,
 };
 use serde::{Deserialize, Serialize};
 
 pub const CHANNEL_PROTOCOL: &str = "rumahl.channel.v1";
+
+/// How long a capability invocation waits for the provider's result.
+const EXECUTE_TIMEOUT: Duration = Duration::from_secs(5);
 
 /// One JSON-line frame on the persistent channel.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -40,9 +46,18 @@ pub enum ChannelFrame {
     /// A capability invocation the OS routes to the app that provides it.
     #[serde(rename_all = "camelCase")]
     Capability {
+        id: String,
         capability: String,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         resource: Option<String>,
+    },
+    /// The provider's result for a capability invocation.
+    #[serde(rename_all = "camelCase")]
+    CapabilityResult {
+        id: String,
+        ok: bool,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        result: Option<String>,
     },
 }
 
@@ -101,46 +116,122 @@ impl ChannelAuthenticator for ChannelTokenStore {
     }
 }
 
-/// Writes OS events to one app connection as JSON lines.
-pub struct SocketRuntimeChannel<W: Write + Send> {
+/// Shared state for one app connection: the writer plus in-flight capability
+/// requests awaiting their result frame.
+pub struct Connection<W: Write + Send> {
     writer: Mutex<W>,
+    pending: Mutex<HashMap<String, mpsc::Sender<Result<String, ()>>>>,
+    sequence: AtomicU64,
+}
+
+impl<W: Write + Send> Connection<W> {
+    pub fn new(writer: W) -> Self {
+        Self {
+            writer: Mutex::new(writer),
+            pending: Mutex::new(HashMap::new()),
+            sequence: AtomicU64::new(0),
+        }
+    }
+
+    fn write_frame(&self, frame: &ChannelFrame) -> Result<(), RuntimeChannelError> {
+        let line = frame.encode().map_err(|_| RuntimeChannelError::Rejected)?;
+        let mut writer = self
+            .writer
+            .lock()
+            .map_err(|_| RuntimeChannelError::Unavailable)?;
+        writeln!(writer, "{line}").map_err(|_| RuntimeChannelError::Unavailable)?;
+        writer.flush().map_err(|_| RuntimeChannelError::Unavailable)
+    }
+
+    /// Resolves a pending capability request from a result frame.
+    pub fn resolve(&self, frame: ChannelFrame) {
+        let ChannelFrame::CapabilityResult { id, ok, result } = frame else {
+            return;
+        };
+        let waiter = self
+            .pending
+            .lock()
+            .ok()
+            .and_then(|mut pending| pending.remove(&id));
+        if let Some(waiter) = waiter {
+            let _ = waiter.send(if ok { Ok(result.unwrap_or_default()) } else { Err(()) });
+        }
+    }
+
+    /// Fails every in-flight request when the connection drops, so callers do
+    /// not wait for the full timeout.
+    pub fn disconnect(&self) {
+        if let Ok(mut pending) = self.pending.lock() {
+            for (_, waiter) in pending.drain() {
+                let _ = waiter.send(Err(()));
+            }
+        }
+    }
+
+    fn request(
+        &self,
+        execution: &RuntimeCapabilityExecution,
+    ) -> Result<RuntimeCapabilityResult, RuntimeChannelError> {
+        let id = format!("{:016x}", self.sequence.fetch_add(1, Ordering::Relaxed));
+        let (sender, receiver) = mpsc::channel();
+        self.pending
+            .lock()
+            .map_err(|_| RuntimeChannelError::Unavailable)?
+            .insert(id.clone(), sender);
+        let frame = ChannelFrame::Capability {
+            id: id.clone(),
+            capability: execution.capability.clone(),
+            resource: execution.resource.clone(),
+        };
+        if let Err(error) = self.write_frame(&frame) {
+            if let Ok(mut pending) = self.pending.lock() {
+                pending.remove(&id);
+            }
+            return Err(error);
+        }
+        match receiver.recv_timeout(EXECUTE_TIMEOUT) {
+            Ok(Ok(payload)) => Ok(RuntimeCapabilityResult::new(payload)),
+            Ok(Err(())) => Err(RuntimeChannelError::Rejected),
+            Err(_) => {
+                if let Ok(mut pending) = self.pending.lock() {
+                    pending.remove(&id);
+                }
+                Err(RuntimeChannelError::Unavailable)
+            }
+        }
+    }
+}
+
+/// A `RuntimeChannel` over one app connection.
+pub struct SocketRuntimeChannel<W: Write + Send> {
+    connection: Arc<Connection<W>>,
 }
 
 impl<W: Write + Send> SocketRuntimeChannel<W> {
     pub fn new(writer: W) -> Self {
         Self {
-            writer: Mutex::new(writer),
+            connection: Arc::new(Connection::new(writer)),
         }
+    }
+
+    pub fn from_connection(connection: Arc<Connection<W>>) -> Self {
+        Self { connection }
     }
 }
 
 impl<W: Write + Send> RuntimeChannel for SocketRuntimeChannel<W> {
     fn deliver(&self, event: &RuntimeEvent) -> Result<(), RuntimeChannelError> {
-        let frame = ChannelFrame::Event {
+        self.connection.write_frame(&ChannelFrame::Event {
             topic: event.topic.clone(),
             resource: event.resource.clone(),
-        };
-        let line = frame.encode().map_err(|_| RuntimeChannelError::Rejected)?;
-        let mut writer = self
-            .writer
-            .lock()
-            .map_err(|_| RuntimeChannelError::Unavailable)?;
-        writeln!(writer, "{line}").map_err(|_| RuntimeChannelError::Unavailable)?;
-        writer.flush().map_err(|_| RuntimeChannelError::Unavailable)
+        })
     }
 
-    fn execute(&self, execution: &RuntimeCapabilityExecution) -> Result<(), RuntimeChannelError> {
-        let frame = ChannelFrame::Capability {
-            capability: execution.capability.clone(),
-            resource: execution.resource.clone(),
-        };
-        let line = frame.encode().map_err(|_| RuntimeChannelError::Rejected)?;
-        let mut writer = self
-            .writer
-            .lock()
-            .map_err(|_| RuntimeChannelError::Unavailable)?;
-        writeln!(writer, "{line}").map_err(|_| RuntimeChannelError::Unavailable)?;
-        writer.flush().map_err(|_| RuntimeChannelError::Unavailable)
+    fn execute(
+        &self,
+        execution: &RuntimeCapabilityExecution,
+    ) -> Result<RuntimeCapabilityResult, RuntimeChannelError> {
+        self.connection.request(execution)
     }
 }
 
@@ -185,11 +276,12 @@ where
     let Some(installation) = read_hello(&mut reader, authenticator.as_ref()) else {
         return Ok(());
     };
-    let channel = Arc::new(SocketRuntimeChannel::new(writer));
+    let connection = Arc::new(Connection::new(writer));
+    let channel = Arc::new(SocketRuntimeChannel::from_connection(Arc::clone(&connection)));
     if !registry.register(installation, channel) {
         return Ok(());
     }
-    // Drain frames until the app disconnects (0 bytes) or the socket errors.
+    // Dispatch result frames until the app disconnects (0 bytes) or errors.
     let mut line = String::new();
     loop {
         line.clear();
@@ -197,7 +289,11 @@ where
             Ok(0) | Err(_) => break,
             Ok(_) => {}
         }
+        if let Some(frame) = ChannelFrame::decode(line.trim()) {
+            connection.resolve(frame);
+        }
     }
+    connection.disconnect();
     registry.unregister(&installation);
     Ok(())
 }
@@ -292,20 +388,61 @@ mod tests {
     }
 
     #[test]
-    fn channel_writes_capability_frames() {
-        let sink = SharedWriter::default();
-        let channel = SocketRuntimeChannel::new(sink.clone());
-        channel
+    fn executes_a_capability_and_awaits_the_result() {
+        use std::io::BufReader;
+        use std::os::unix::net::UnixStream;
+        use std::thread;
+
+        let (server, client) = UnixStream::pair().unwrap();
+        let connection = Arc::new(Connection::new(server.try_clone().unwrap()));
+        let channel = SocketRuntimeChannel::from_connection(Arc::clone(&connection));
+
+        // OS side: read the provider's result frame and resolve the request.
+        let server_reader = server.try_clone().unwrap();
+        let resolver = {
+            let connection = Arc::clone(&connection);
+            thread::spawn(move || {
+                let mut lines = BufReader::new(server_reader);
+                let mut line = String::new();
+                lines.read_line(&mut line).unwrap();
+                if let Some(frame) = ChannelFrame::decode(line.trim()) {
+                    connection.resolve(frame);
+                }
+            })
+        };
+
+        // App side: read the capability frame and answer with a result.
+        let app = thread::spawn(move || {
+            let mut stream = client;
+            let mut line = String::new();
+            {
+                let mut lines = BufReader::new(stream.try_clone().unwrap());
+                lines.read_line(&mut line).unwrap();
+            }
+            let ChannelFrame::Capability { id, capability, .. } =
+                ChannelFrame::decode(line.trim()).unwrap()
+            else {
+                panic!("expected a capability frame");
+            };
+            assert_eq!(capability, "rumahl.search.query");
+            let result = ChannelFrame::CapabilityResult {
+                id,
+                ok: true,
+                result: Some("{\"answer\":42}".into()),
+            };
+            writeln!(stream, "{}", result.encode().unwrap()).unwrap();
+            stream.flush().unwrap();
+        });
+
+        let outcome = channel
             .execute(&RuntimeCapabilityExecution {
                 capability: "rumahl.search.query".into(),
                 resource: None,
             })
             .unwrap();
-        let written = String::from_utf8(sink.0.lock().unwrap().clone()).unwrap();
-        assert_eq!(
-            written,
-            "{\"kind\":\"capability\",\"capability\":\"rumahl.search.query\"}\n"
-        );
+        assert_eq!(outcome.payload(), "{\"answer\":42}");
+        app.join().unwrap();
+        resolver.join().unwrap();
     }
 
     #[test]

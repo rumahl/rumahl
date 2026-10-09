@@ -7,9 +7,9 @@ use rumahl_core::{
     CapabilityId, CapabilityInvocation, EventDelivery, EventEnvelope, EventName, GrantAuthority,
     GrantIssuerPolicy, Identity, InstalledApp, OperationContext, PackagePath, PermissionId,
     PermissionScope, PlatformState, PublisherId, ResourceKey, ResourceKind, ResourceNamespace,
-    ResourceRef, RuntimeAdapter, RuntimeAdapterError, RuntimeAdapterRegistry, RuntimeDescriptor,
-    RuntimeEndpointId, RuntimeEntrypoint, RuntimeEntrypointId, RuntimeKind, RuntimeRouter,
-    RuntimeStatus, UserId, UserIdentity, UserRole,
+    ResourceRef, RuntimeAdapter, RuntimeAdapterError, RuntimeAdapterRegistry,
+    RuntimeCapabilityResult, RuntimeDescriptor, RuntimeEndpointId, RuntimeEntrypoint,
+    RuntimeEntrypointId, RuntimeKind, RuntimeRouter, RuntimeStatus, UserId, UserIdentity, UserRole,
 };
 
 struct RecordingAdapter {
@@ -82,7 +82,7 @@ impl RuntimeAdapter for RecordingAdapter {
         &self,
         app: &InstalledApp,
         execution: &CapabilityExecution,
-    ) -> Result<(), RuntimeAdapterError> {
+    ) -> Result<RuntimeCapabilityResult, RuntimeAdapterError> {
         let identity: Identity = app.identity().clone().into();
 
         assert_eq!(&identity, execution.provider().identity());
@@ -102,7 +102,7 @@ impl RuntimeAdapter for RecordingAdapter {
 
         self.executions.fetch_add(1, Ordering::Relaxed);
 
-        Ok(())
+        Ok(RuntimeCapabilityResult::new("{\"routed\":true}".to_owned()))
     }
 
     fn deliver_event(
@@ -327,9 +327,10 @@ fn authorized_capability_and_event_delivery_reach_declared_runtimes() {
         panic!("expected authorized runtime execution");
     };
 
-    router
+    let result = router
         .route_execution(&execution, &state, &adapters)
         .unwrap();
+    assert_eq!(result.payload(), "{\"routed\":true}");
 
     assert_eq!(container_executions.load(Ordering::Relaxed), 1);
     assert_eq!(web_deliveries.load(Ordering::Relaxed), 0);

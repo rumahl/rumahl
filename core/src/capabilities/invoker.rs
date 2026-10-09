@@ -10,7 +10,7 @@ use std::fmt;
 use crate::{
     AuthorizationDecision, AuthorizationEngine, CapabilityAccessRegistry, CapabilityInvocation,
     CapabilityRegistry, PermissionGrant, PlatformState, ResourceRef, RuntimeAdapterRegistry,
-    RuntimeRouter, RuntimeRoutingError,
+    RuntimeCapabilityResult, RuntimeRouter, RuntimeRoutingError,
 };
 
 use super::{CapabilityDispatchError, CapabilityDispatchOutcome, CapabilityDispatcher};
@@ -23,8 +23,8 @@ pub struct CapabilityInvoker {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum CapabilityInvocationOutcome {
-    /// Authorized and handed to the provider app's runtime.
-    Invoked,
+    /// Authorized and handed to the provider app's runtime, which returned a result.
+    Invoked(RuntimeCapabilityResult),
     NotAuthorized(AuthorizationDecision),
 }
 
@@ -67,10 +67,11 @@ impl CapabilityInvoker {
                 Ok(CapabilityInvocationOutcome::NotAuthorized(decision))
             }
             CapabilityDispatchOutcome::Ready(execution) => {
-                self.router
+                let result = self
+                    .router
                     .route_execution(&execution, state, adapters)
                     .map_err(CapabilityInvocationError::Routing)?;
-                Ok(CapabilityInvocationOutcome::Invoked)
+                Ok(CapabilityInvocationOutcome::Invoked(result))
             }
         }
     }
@@ -143,9 +144,9 @@ mod tests {
             &self,
             _: &InstalledApp,
             _: &CapabilityExecution,
-        ) -> Result<(), RuntimeAdapterError> {
+        ) -> Result<RuntimeCapabilityResult, RuntimeAdapterError> {
             self.executions.fetch_add(1, Ordering::Relaxed);
-            Ok(())
+            Ok(RuntimeCapabilityResult::new("{\"preview\":\"ok\"}".to_owned()))
         }
         fn deliver_event(
             &self,
@@ -245,7 +246,12 @@ mod tests {
                 &adapters,
             )
             .unwrap();
-        assert_eq!(outcome, CapabilityInvocationOutcome::Invoked);
+        assert_eq!(
+            outcome,
+            CapabilityInvocationOutcome::Invoked(RuntimeCapabilityResult::new(
+                "{\"preview\":\"ok\"}".to_owned()
+            ))
+        );
         assert_eq!(executions.load(Ordering::Relaxed), 1);
     }
 }

@@ -110,6 +110,8 @@ export type BridgeCapabilityOutcome = "invoked" | "denied";
 export interface BridgeCapabilityResult {
   capability: string;
   outcome: BridgeCapabilityOutcome;
+  /** The provider's result value, when it returned one. */
+  result?: unknown;
 }
 
 export interface BridgeHello {

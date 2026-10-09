@@ -130,8 +130,8 @@ mod tests {
             &self,
             _app: &InstalledApp,
             _execution: &CapabilityExecution,
-        ) -> Result<(), RuntimeAdapterError> {
-            Ok(())
+        ) -> Result<crate::RuntimeCapabilityResult, RuntimeAdapterError> {
+            Ok(crate::RuntimeCapabilityResult::empty())
         }
 
         fn deliver_event(

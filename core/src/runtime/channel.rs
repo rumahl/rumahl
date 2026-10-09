@@ -26,6 +26,38 @@ pub struct RuntimeCapabilityExecution {
     pub resource: Option<String>,
 }
 
+/// The provider's result for a capability invocation. The payload is opaque at
+/// this layer; the transport defines its encoding (typically JSON text). An
+/// empty payload means the provider returned no value.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RuntimeCapabilityResult {
+    payload: String,
+}
+
+impl RuntimeCapabilityResult {
+    pub fn new(payload: String) -> Self {
+        Self { payload }
+    }
+
+    pub fn empty() -> Self {
+        Self {
+            payload: String::new(),
+        }
+    }
+
+    pub fn payload(&self) -> &str {
+        &self.payload
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.payload.is_empty()
+    }
+
+    pub fn into_payload(self) -> String {
+        self.payload
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RuntimeChannelError {
     /// No live channel is registered for this installation.
@@ -38,8 +70,12 @@ pub enum RuntimeChannelError {
 pub trait RuntimeChannel: Send + Sync {
     fn deliver(&self, event: &RuntimeEvent) -> Result<(), RuntimeChannelError>;
 
-    /// Executes a capability the app provides. Defaults to unsupported.
-    fn execute(&self, _execution: &RuntimeCapabilityExecution) -> Result<(), RuntimeChannelError> {
+    /// Executes a capability the app provides and returns its result. Defaults
+    /// to unsupported.
+    fn execute(
+        &self,
+        _execution: &RuntimeCapabilityExecution,
+    ) -> Result<RuntimeCapabilityResult, RuntimeChannelError> {
         Err(RuntimeChannelError::Unavailable)
     }
 }
@@ -119,7 +155,7 @@ impl RuntimeChannelRegistry {
         &self,
         installation: &InstallationId,
         execution: &RuntimeCapabilityExecution,
-    ) -> Result<(), RuntimeChannelError> {
+    ) -> Result<RuntimeCapabilityResult, RuntimeChannelError> {
         let channel = self
             .channels
             .lock()
@@ -134,7 +170,7 @@ impl RuntimeChannelRegistry {
     pub fn execute_capability(
         &self,
         execution: &CapabilityExecution,
-    ) -> Result<(), RuntimeChannelError> {
+    ) -> Result<RuntimeCapabilityResult, RuntimeChannelError> {
         let Identity::App(identity) = execution.provider().identity() else {
             return Err(RuntimeChannelError::Rejected);
         };
@@ -180,12 +216,15 @@ mod tests {
             Ok(())
         }
 
-        fn execute(&self, execution: &RuntimeCapabilityExecution) -> Result<(), RuntimeChannelError> {
+        fn execute(&self, execution: &RuntimeCapabilityExecution) -> Result<RuntimeCapabilityResult, RuntimeChannelError> {
             if self.reject {
                 return Err(RuntimeChannelError::Rejected);
             }
             self.executions.lock().unwrap().push(execution.capability.clone());
-            Ok(())
+            Ok(RuntimeCapabilityResult::new(format!(
+                "{{\"capability\":\"{}\"}}",
+                execution.capability
+            )))
         }
     }
 
@@ -277,6 +316,10 @@ mod tests {
         assert_eq!(
             channel.executions.lock().unwrap().as_slice(),
             ["rumahl.search.query"]
+        );
+        assert_eq!(
+            registry.execute_capability(&execution).unwrap().payload(),
+            "{\"capability\":\"rumahl.search.query\"}"
         );
     }
 

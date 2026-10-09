@@ -72,8 +72,8 @@ pub use runtime::{
     RuntimeDescriptorError, RuntimeEndpointId, RuntimeEndpointIdError, RuntimeEntrypoint,
     RuntimeEntrypointId, RuntimeEntrypointIdError, RuntimeEntrypointKind, RuntimeEntrypointTarget,
     RuntimeKind, RuntimeRouter, RuntimeRoutingError, RuntimeStatus, ProviderRuntimeAdapter,
-    RuntimeCapabilityExecution, RuntimeChannel, RuntimeChannelError, RuntimeChannelRegistry,
-    RuntimeEvent,
+    RuntimeCapabilityExecution, RuntimeCapabilityResult, RuntimeChannel, RuntimeChannelError,
+    RuntimeChannelRegistry, RuntimeEvent,
 };
 
 pub use permissions::{

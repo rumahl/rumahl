@@ -84,7 +84,7 @@ where
         &self,
         _app: &InstalledApp,
         execution: &crate::CapabilityExecution,
-    ) -> Result<(), RuntimeAdapterError> {
+    ) -> Result<super::RuntimeCapabilityResult, RuntimeAdapterError> {
         // Route the invocation to the provider app's live channel so it can run
         // the capability (for example a browser-backed app providing a service).
         let channels = self
@@ -121,7 +121,8 @@ mod tests {
 
     use crate::{
         AppId, AppManifest, AppManifestValidator, AppVersion, InstallationId, PackagePath,
-        PublisherId, RuntimeDescriptor, RuntimeEntrypoint, RuntimeEntrypointId,
+        PublisherId, RuntimeCapabilityResult, RuntimeDescriptor, RuntimeEntrypoint,
+        RuntimeEntrypointId,
     };
 
     struct FakeProvider {
@@ -225,9 +226,11 @@ mod tests {
             fn execute(
                 &self,
                 execution: &RuntimeCapabilityExecution,
-            ) -> Result<(), RuntimeChannelError> {
+            ) -> Result<RuntimeCapabilityResult, RuntimeChannelError> {
                 self.0.lock().unwrap().push(execution.capability.clone());
-                Ok(())
+                Ok(RuntimeCapabilityResult::new(
+                    "{\"ok\":true}".to_owned(),
+                ))
             }
         }
 

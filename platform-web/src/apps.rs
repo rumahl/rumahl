@@ -131,6 +131,13 @@ impl CapabilityOutcome {
         }
     }
 }
+/// The outcome of a capability invocation plus the provider's result payload
+/// (raw JSON text) when the provider returned one.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CapabilityResult {
+    pub outcome: CapabilityOutcome,
+    pub result: Option<String>,
+}
 /// Every method must re-read installation, grants and live account/session state.
 pub trait AppProvider: Send + Sync + 'static {
     fn catalog(&self, identity: ShellIdentity) -> Result<Vec<CatalogApp>, AppAccessError>;
@@ -198,7 +205,7 @@ pub trait AppProvider: Send + Sync + 'static {
         _identity: ShellIdentity,
         _capability: String,
         _resource: Option<CapabilityResource>,
-    ) -> Result<CapabilityOutcome, AppAccessError> {
+    ) -> Result<CapabilityResult, AppAccessError> {
         Err(AppAccessError::Unavailable)
     }
 }
@@ -337,7 +344,7 @@ impl AppAccess {
         identity: ShellIdentity,
         capability: String,
         resource: Option<CapabilityResource>,
-    ) -> Result<CapabilityOutcome, AppAccessError> {
+    ) -> Result<CapabilityResult, AppAccessError> {
         self.provider.invoke_capability(identity, capability, resource)
     }
     pub fn launch(
@@ -576,13 +583,19 @@ mod tests {
             identity: ShellIdentity,
             capability: String,
             _: Option<CapabilityResource>,
-        ) -> Result<CapabilityOutcome, AppAccessError> {
+        ) -> Result<CapabilityResult, AppAccessError> {
             if identity != self.owner {
                 return Err(AppAccessError::Denied);
             }
             Ok(match capability.as_str() {
-                "com.rumahl.test.run" => CapabilityOutcome::Invoked,
-                _ => CapabilityOutcome::Denied,
+                "com.rumahl.test.run" => CapabilityResult {
+                    outcome: CapabilityOutcome::Invoked,
+                    result: Some("{\"ran\":true}".into()),
+                },
+                _ => CapabilityResult {
+                    outcome: CapabilityOutcome::Denied,
+                    result: None,
+                },
             })
         }
     }
@@ -635,13 +648,19 @@ mod tests {
             access
                 .invoke_capability(owner, "com.rumahl.test.run".into(), None)
                 .unwrap(),
-            CapabilityOutcome::Invoked
+            CapabilityResult {
+                outcome: CapabilityOutcome::Invoked,
+                result: Some("{\"ran\":true}".into())
+            }
         );
         assert_eq!(
             access
                 .invoke_capability(owner, "com.rumahl.unknown".into(), None)
                 .unwrap(),
-            CapabilityOutcome::Denied
+            CapabilityResult {
+                outcome: CapabilityOutcome::Denied,
+                result: None
+            }
         );
     }
 

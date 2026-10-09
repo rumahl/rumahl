@@ -113,7 +113,7 @@ function AppFrame({ app }: { app: InstalledApp }) {
     invokeCapability: async (capability, resource) => {
       if (!live) throw new Error("app unavailable");
       const result = await requestCapabilityInvocation(live.request, capability, resource, new AbortController().signal);
-      return { capability: result.capability, outcome: result.outcome };
+      return { capability: result.capability, outcome: result.outcome, ...(result.result === undefined ? {} : { result: result.result }) };
     }
   };
   useEffect(() => {

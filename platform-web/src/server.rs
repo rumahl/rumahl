@@ -624,10 +624,15 @@ async fn capabilities_invoke(
     })
     .await
     {
-        Ok(Ok(outcome)) => {
+        Ok(Ok(result)) => {
+            let value = result
+                .result
+                .as_deref()
+                .and_then(|text| serde_json::from_str::<serde_json::Value>(text).ok());
             let mut response = axum::Json(serde_json::json!({
                 "capabilityVersion": 1,
-                "outcome": outcome.as_str(),
+                "outcome": result.outcome.as_str(),
+                "result": value,
             }))
             .into_response();
             secure_headers(&mut response);

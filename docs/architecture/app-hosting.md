@@ -92,9 +92,13 @@ Installed apps are opaque-origin iframes and reach the shell only through
 `@rumahl/contracts/bridge`) binds the channel to the frame's `contentWindow`
 (`event.origin` is always `"null"` for a sandboxed app) and exposes capability
 gated methods (`os.info`, `os.theme.get`, `os.notification`,
-`os.window.{close,minimize,focus}`). The app's declared manifest permissions are
-projected into the catalog and a method is refused unless its capability is
-declared; the app side uses `@rumahl/bridge-client`.
+`os.window.{close,minimize,focus}`, `os.capabilities.invoke`). The app's declared
+manifest permissions are projected into the catalog and a method is refused
+unless its capability is declared; the app side uses `@rumahl/bridge-client`.
+`os.capabilities.invoke` calls another installed app's capability on the user's
+behalf through the authenticated `POST /api/v1/shell/capabilities/invoke` route;
+the capability registries are derived from the installed apps and every existing
+account is granted each provided capability at install.
 
 Runtime control reaches the supervisor: `RuntimeController` and
 `ProviderRuntimeAdapter` route `status`/`start`/`stop` over the
@@ -106,8 +110,10 @@ but not activated at install.
 Always-on services receive OS events without an open window over the persistent
 `rumahl.channel.v1` channel: the app connects to a loopback endpoint, a
 `hello`/token handshake authenticates the installation, and a live
-`RuntimeChannel` is registered until it disconnects. The bridge and the channel
-share the same method/event surface.
+`RuntimeChannel` is registered until it disconnects. Capability invocations are
+delivered as `capability` frames carrying an `id`; the provider answers with a
+`capabilityResult` frame for that `id`, whose payload the OS returns to the
+caller. The bridge and the channel share the same method/event surface.
 
 Connectors let an app ship a bundle for an external service (for example
 Nextcloud or Plex): the manifest declares a connector target plus a
