@@ -83,11 +83,17 @@ where
     fn execute_capability(
         &self,
         _app: &InstalledApp,
-        _execution: &crate::CapabilityExecution,
+        execution: &crate::CapabilityExecution,
     ) -> Result<(), RuntimeAdapterError> {
-        // Capability routing to an app runtime is not part of the supervisor
-        // installation boundary yet.
-        Err(RuntimeAdapterError::Unavailable)
+        // Route the invocation to the provider app's live channel so it can run
+        // the capability (for example a browser-backed app providing a service).
+        let channels = self
+            .channels
+            .as_ref()
+            .ok_or(RuntimeAdapterError::Unavailable)?;
+        channels
+            .execute_capability(execution)
+            .map_err(|_| RuntimeAdapterError::Unavailable)
     }
 
     fn deliver_event(
@@ -197,6 +203,58 @@ mod tests {
         assert_eq!(adapter.status(&context, &app).unwrap(), RuntimeStatus::Running);
         assert_eq!(adapter.stop(&context, &app).unwrap(), RuntimeStatus::Stopped);
         assert_eq!(adapter.status(&context, &app).unwrap(), RuntimeStatus::Stopped);
+    }
+
+    #[test]
+    fn routes_capability_execution_over_a_registered_channel() {
+        use std::sync::Arc;
+
+        use crate::{
+            CapabilityExecution, CapabilityId, CapabilityProvider, RuntimeCapabilityExecution,
+            RuntimeChannel, RuntimeChannelError, RuntimeEvent,
+        };
+
+        #[derive(Default)]
+        struct Sink(std::sync::Mutex<Vec<String>>);
+
+        impl RuntimeChannel for Sink {
+            fn deliver(&self, _: &RuntimeEvent) -> Result<(), RuntimeChannelError> {
+                Ok(())
+            }
+
+            fn execute(
+                &self,
+                execution: &RuntimeCapabilityExecution,
+            ) -> Result<(), RuntimeChannelError> {
+                self.0.lock().unwrap().push(execution.capability.clone());
+                Ok(())
+            }
+        }
+
+        let app = app();
+        let channels = Arc::new(RuntimeChannelRegistry::new());
+        let sink = Arc::new(Sink::default());
+        channels.register(*app.installation_id(), sink.clone());
+        let adapter = ProviderRuntimeAdapter::new(
+            RuntimeKind::Container,
+            FakeProvider {
+                active: Mutex::new(true),
+            },
+        )
+        .with_channels(channels);
+
+        let provider = CapabilityProvider::new(
+            app.identity().clone().into(),
+            CapabilityId::parse("rumahl.search.query").unwrap(),
+        )
+        .unwrap();
+        let execution = CapabilityExecution::new(
+            OperationContext::for_background_app(app.identity().clone()),
+            provider,
+            None,
+        );
+        adapter.execute_capability(&app, &execution).unwrap();
+        assert_eq!(sink.0.lock().unwrap().as_slice(), ["rumahl.search.query"]);
     }
 
     #[test]

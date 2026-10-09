@@ -8,7 +8,7 @@ import { useWindowLocation } from "../routing/routes";
 import { useAppCatalog } from "./AppCatalog";
 import { attachAppBridge, postAppBridgeEvent, type AppBridgeHandlers } from "./bridge";
 import { BRIDGE_CAPABILITY_LIST } from "@rumahl/contracts/bridge";
-import { launchApp, type InstalledApp } from "./client";
+import { controlAppRuntime, launchApp, type InstalledApp } from "./client";
 import { setLaunching } from "./launching";
 import { showToast } from "../shell/toasts";
 import { Button } from "../components/Button";
@@ -125,6 +125,17 @@ function AppFrame({ app }: { app: InstalledApp }) {
     observer.observe(scene, { attributes: true, attributeFilter: ["data-scheme", "data-theme"] });
     return () => observer.disconnect();
   }, [readTheme]);
+  // On-demand apps start when their window opens and stop when it closes;
+  // always-on services keep running in the background.
+  useEffect(() => {
+    if (!live || app.lifecycle === "always-on") return;
+    const controller = new AbortController();
+    void controlAppRuntime(live.request, app, "start", controller.signal).catch(() => undefined);
+    return () => {
+      controller.abort();
+      void controlAppRuntime(live.request, app, "stop", new AbortController().signal).catch(() => undefined);
+    };
+  }, [live, app.id, app.installationId, app.lifecycle]);
   if (failed) return <section className="route-failure" aria-label={app.title}>
     <div className="route-failure__content">
       <div className="route-failure__icon" aria-hidden="true">

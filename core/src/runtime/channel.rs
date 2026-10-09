@@ -8,13 +8,21 @@
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
-use crate::{EventDelivery, Identity, InstallationId};
+use crate::{CapabilityExecution, EventDelivery, Identity, InstallationId, ResourceRef};
 
 /// A message the OS pushes to a running app instance.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RuntimeEvent {
     pub topic: String,
     /// The addressed resource (`namespace/kind/key`) when the event carries one.
+    pub resource: Option<String>,
+}
+
+/// A capability invocation routed to the app that provides the capability.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RuntimeCapabilityExecution {
+    pub capability: String,
+    /// The addressed resource (`namespace/kind/key`) when the invocation carries one.
     pub resource: Option<String>,
 }
 
@@ -29,6 +37,11 @@ pub enum RuntimeChannelError {
 /// A live, authenticated channel to a running app instance.
 pub trait RuntimeChannel: Send + Sync {
     fn deliver(&self, event: &RuntimeEvent) -> Result<(), RuntimeChannelError>;
+
+    /// Executes a capability the app provides. Defaults to unsupported.
+    fn execute(&self, _execution: &RuntimeCapabilityExecution) -> Result<(), RuntimeChannelError> {
+        Err(RuntimeChannelError::Unavailable)
+    }
 }
 
 /// Installation-scoped registry of live app channels.
@@ -97,17 +110,49 @@ impl RuntimeChannelRegistry {
         };
         let event = RuntimeEvent {
             topic: delivery.event().name().as_str().to_owned(),
-            resource: delivery.event().resource().map(|resource| {
-                format!(
-                    "{}/{}/{}",
-                    resource.namespace().as_str(),
-                    resource.kind().as_str(),
-                    resource.key().as_str()
-                )
-            }),
+            resource: delivery.event().resource().map(resource_key),
         };
         self.deliver(identity.installation_id(), &event)
     }
+
+    pub fn execute(
+        &self,
+        installation: &InstallationId,
+        execution: &RuntimeCapabilityExecution,
+    ) -> Result<(), RuntimeChannelError> {
+        let channel = self
+            .channels
+            .lock()
+            .map_err(|_| RuntimeChannelError::Unavailable)?
+            .get(installation)
+            .cloned()
+            .ok_or(RuntimeChannelError::Unavailable)?;
+        channel.execute(execution)
+    }
+
+    /// Routes a capability execution to the provider app's live channel.
+    pub fn execute_capability(
+        &self,
+        execution: &CapabilityExecution,
+    ) -> Result<(), RuntimeChannelError> {
+        let Identity::App(identity) = execution.provider().identity() else {
+            return Err(RuntimeChannelError::Rejected);
+        };
+        let routed = RuntimeCapabilityExecution {
+            capability: execution.capability().as_str().to_owned(),
+            resource: execution.resource().map(resource_key),
+        };
+        self.execute(identity.installation_id(), &routed)
+    }
+}
+
+fn resource_key(resource: &ResourceRef) -> String {
+    format!(
+        "{}/{}/{}",
+        resource.namespace().as_str(),
+        resource.kind().as_str(),
+        resource.key().as_str()
+    )
 }
 
 #[cfg(test)]
@@ -122,6 +167,7 @@ mod tests {
     #[derive(Default)]
     struct RecordingChannel {
         events: Mutex<Vec<RuntimeEvent>>,
+        executions: Mutex<Vec<String>>,
         reject: bool,
     }
 
@@ -131,6 +177,14 @@ mod tests {
                 return Err(RuntimeChannelError::Rejected);
             }
             self.events.lock().unwrap().push(event.clone());
+            Ok(())
+        }
+
+        fn execute(&self, execution: &RuntimeCapabilityExecution) -> Result<(), RuntimeChannelError> {
+            if self.reject {
+                return Err(RuntimeChannelError::Rejected);
+            }
+            self.executions.lock().unwrap().push(execution.capability.clone());
             Ok(())
         }
     }
@@ -194,6 +248,32 @@ mod tests {
         assert_eq!(
             delivered[0].resource.as_deref(),
             Some("rumahl.files/file/document-1")
+        );
+    }
+
+    #[test]
+    fn routes_a_capability_execution_to_the_provider_channel() {
+        use crate::{CapabilityExecution, CapabilityId, CapabilityProvider};
+
+        let registry = RuntimeChannelRegistry::new();
+        let identity = app_identity();
+        let channel = Arc::new(RecordingChannel::default());
+        registry.register(*identity.installation_id(), channel.clone());
+
+        let provider = CapabilityProvider::new(
+            identity.clone().into(),
+            CapabilityId::parse("rumahl.search.query").unwrap(),
+        )
+        .unwrap();
+        let execution = CapabilityExecution::new(
+            OperationContext::for_background_app(identity),
+            provider,
+            None,
+        );
+        registry.execute_capability(&execution).unwrap();
+        assert_eq!(
+            channel.executions.lock().unwrap().as_slice(),
+            ["rumahl.search.query"]
         );
     }
 

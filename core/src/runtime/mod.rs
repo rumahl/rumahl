@@ -15,7 +15,10 @@ mod status;
 
 pub use adapter::{RuntimeAdapter, RuntimeAdapterError};
 pub use adapter_registry::{RuntimeAdapterRegistry, RuntimeAdapterRegistryError};
-pub use channel::{RuntimeChannel, RuntimeChannelError, RuntimeChannelRegistry, RuntimeEvent};
+pub use channel::{
+    RuntimeCapabilityExecution, RuntimeChannel, RuntimeChannelError, RuntimeChannelRegistry,
+    RuntimeEvent,
+};
 pub use controller::RuntimeController;
 pub use descriptor::{RuntimeDescriptor, RuntimeDescriptorError};
 pub use endpoint_id::{RuntimeEndpointId, RuntimeEndpointIdError};

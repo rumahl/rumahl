@@ -128,6 +128,14 @@ export async function importPackage(request: ShellRequest, files: readonly Packa
     body: JSON.stringify({ importVersion: 1, device, files })
   }), 4096));
 }
+export type AppRuntimeAction = "start" | "stop";
+export async function controlAppRuntime(request: ShellRequest, app: InstalledApp, action: AppRuntimeAction, signal: AbortSignal): Promise<void> {
+  await payload(await request(`/api/v1/shell/apps/${encodeURIComponent(app.id)}/runtime`, {
+    method: "POST", cache: "no-store", credentials: "same-origin", signal,
+    headers: { Accept: "application/json", "Content-Type": "application/json" },
+    body: JSON.stringify({ installationId: app.installationId, action })
+  }), 4096);
+}
 /** Reads selected package files into base64 payloads, stripping the chosen folder prefix. */
 export async function readPackageFiles(selected: readonly File[]): Promise<PackageFile[]> {
   const files: PackageFile[] = [];

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { parseAppData, parseAppSettings, parseCatalog, parseImport, parseLaunch } from "./client";
+import type { ShellRequest } from "../snapshot-client";
+import { controlAppRuntime, parseAppData, parseAppSettings, parseCatalog, parseImport, parseLaunch } from "./client";
 const app = { id: "com.rumahl.notes", installationId: "01990000-0000-7000-8000-000000000001", title: "Notes", version: "1.0.0", launchable: true };
 const lease = "a".repeat(64);
 const launch = { launchVersion: 1, id: app.id, installationId: app.installationId, lease, frameUrl: `https://${app.installationId}.apps.localhost:8443/launch/${lease}/web/index.html`, renewAfterSeconds: 30 };
@@ -62,6 +63,22 @@ describe("installed app contracts", () => {
       { ...settings, manifest: [{ ...settings.manifest[0], options: [{ value: "a", label: "A" }] }] },
     ];
     for (const value of cases) expect(() => parseAppSettings(value)).toThrow();
+  });
+  it("posts on-demand runtime start and stop", async () => {
+    const calls: { url: string; body: unknown }[] = [];
+    const request = (async (url: string, init?: RequestInit) => {
+      calls.push({ url, body: init?.body ? JSON.parse(String(init.body)) : null });
+      return new Response(JSON.stringify({ runtimeVersion: 1, id: app.id, installationId: app.installationId, state: "running" }), { status: 200, headers: { "content-type": "application/json" } });
+    }) as unknown as ShellRequest;
+    const signal = new AbortController().signal;
+    await controlAppRuntime(request, app, "start", signal);
+    await controlAppRuntime(request, app, "stop", signal);
+    expect(calls.map((call) => call.url)).toEqual([
+      `/api/v1/shell/apps/${app.id}/runtime`,
+      `/api/v1/shell/apps/${app.id}/runtime`,
+    ]);
+    expect(calls[0]?.body).toMatchObject({ installationId: app.installationId, action: "start" });
+    expect(calls[1]?.body).toMatchObject({ installationId: app.installationId, action: "stop" });
   });
   it("parses a successful import and rejects malformed responses", () => {
     const imported = { importVersion: 1, id: app.id, installationId: app.installationId, title: "Notes", version: "1.0.0" };

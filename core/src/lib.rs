@@ -72,7 +72,8 @@ pub use runtime::{
     RuntimeDescriptorError, RuntimeEndpointId, RuntimeEndpointIdError, RuntimeEntrypoint,
     RuntimeEntrypointId, RuntimeEntrypointIdError, RuntimeEntrypointKind, RuntimeEntrypointTarget,
     RuntimeKind, RuntimeRouter, RuntimeRoutingError, RuntimeStatus, ProviderRuntimeAdapter,
-    RuntimeChannel, RuntimeChannelError, RuntimeChannelRegistry, RuntimeEvent,
+    RuntimeCapabilityExecution, RuntimeChannel, RuntimeChannelError, RuntimeChannelRegistry,
+    RuntimeEvent,
 };
 
 pub use permissions::{
@@ -92,7 +93,8 @@ pub use capabilities::{
     CapabilityAccessRegistry, CapabilityAccessRegistryError, CapabilityAccessRule,
     CapabilityAccessRuleError, CapabilityDispatchError, CapabilityDispatchOutcome,
     CapabilityDispatcher, CapabilityExecution, CapabilityId, CapabilityIdError,
-    CapabilityInvocation, CapabilityProvider, CapabilityProviderError, CapabilityRegistry,
+    CapabilityInvocation, CapabilityInvocationError, CapabilityInvocationOutcome, CapabilityInvoker,
+    CapabilityProvider, CapabilityProviderError, CapabilityRegistry,
     CapabilityRegistryError,
 };
 

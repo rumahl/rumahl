@@ -12,7 +12,8 @@ use std::sync::{Arc, Mutex};
 
 use rand::RngCore;
 use rumahl_core::{
-    InstallationId, RuntimeChannel, RuntimeChannelError, RuntimeChannelRegistry, RuntimeEvent,
+    InstallationId, RuntimeCapabilityExecution, RuntimeChannel, RuntimeChannelError,
+    RuntimeChannelRegistry, RuntimeEvent,
 };
 use serde::{Deserialize, Serialize};
 
@@ -33,6 +34,13 @@ pub enum ChannelFrame {
     #[serde(rename_all = "camelCase")]
     Event {
         topic: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        resource: Option<String>,
+    },
+    /// A capability invocation the OS routes to the app that provides it.
+    #[serde(rename_all = "camelCase")]
+    Capability {
+        capability: String,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         resource: Option<String>,
     },
@@ -111,6 +119,20 @@ impl<W: Write + Send> RuntimeChannel for SocketRuntimeChannel<W> {
         let frame = ChannelFrame::Event {
             topic: event.topic.clone(),
             resource: event.resource.clone(),
+        };
+        let line = frame.encode().map_err(|_| RuntimeChannelError::Rejected)?;
+        let mut writer = self
+            .writer
+            .lock()
+            .map_err(|_| RuntimeChannelError::Unavailable)?;
+        writeln!(writer, "{line}").map_err(|_| RuntimeChannelError::Unavailable)?;
+        writer.flush().map_err(|_| RuntimeChannelError::Unavailable)
+    }
+
+    fn execute(&self, execution: &RuntimeCapabilityExecution) -> Result<(), RuntimeChannelError> {
+        let frame = ChannelFrame::Capability {
+            capability: execution.capability.clone(),
+            resource: execution.resource.clone(),
         };
         let line = frame.encode().map_err(|_| RuntimeChannelError::Rejected)?;
         let mut writer = self
@@ -267,6 +289,23 @@ mod tests {
 
         let written = String::from_utf8(sink.0.lock().unwrap().clone()).unwrap();
         assert_eq!(written, "{\"kind\":\"event\",\"topic\":\"rumahl.apps.installed\"}\n");
+    }
+
+    #[test]
+    fn channel_writes_capability_frames() {
+        let sink = SharedWriter::default();
+        let channel = SocketRuntimeChannel::new(sink.clone());
+        channel
+            .execute(&RuntimeCapabilityExecution {
+                capability: "rumahl.search.query".into(),
+                resource: None,
+            })
+            .unwrap();
+        let written = String::from_utf8(sink.0.lock().unwrap().clone()).unwrap();
+        assert_eq!(
+            written,
+            "{\"kind\":\"capability\",\"capability\":\"rumahl.search.query\"}\n"
+        );
     }
 
     #[test]

@@ -4,6 +4,7 @@ mod dispatcher;
 mod execution;
 mod id;
 mod invocation;
+mod invoker;
 mod provider;
 mod registry;
 
@@ -18,6 +19,8 @@ pub use execution::CapabilityExecution;
 pub use id::{CapabilityId, CapabilityIdError};
 
 pub use invocation::CapabilityInvocation;
+
+pub use invoker::{CapabilityInvocationError, CapabilityInvocationOutcome, CapabilityInvoker};
 
 pub use provider::{CapabilityProvider, CapabilityProviderError};
 
