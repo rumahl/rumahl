@@ -2,9 +2,17 @@ use std::collections::HashSet;
 use std::error::Error;
 use std::fmt;
 
-use crate::{InstallationId, InstalledApp, InstalledAppSnapshot, UnixTimestamp};
+use crate::{InstallationId, InstalledApp, InstalledAppSnapshot, RuntimeKind, RuntimeLifecycle, UnixTimestamp};
 
 use super::AppOperationId;
+
+/// On-demand container apps are not activated at install; they start when the
+/// user opens them. Always-on services keep the activation step, and web apps
+/// (browser-backed) keep it too, where the provider activation is a no-op.
+fn activates_at_install(app: &InstalledApp) -> bool {
+    !(app.manifest().runtime().kind() == RuntimeKind::Container
+        && app.manifest().lifecycle() == RuntimeLifecycle::OnDemand)
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AppOperationKind {
@@ -100,7 +108,9 @@ impl AppOperation {
                 if app.manifest().oidc_client().is_some() {
                     resources.push(AppOperationResource::OidcClient);
                 }
-                resources.push(AppOperationResource::RuntimeActivation);
+                if activates_at_install(app) {
+                    resources.push(AppOperationResource::RuntimeActivation);
+                }
                 resources
             }
             AppOperationKind::Uninstall => {

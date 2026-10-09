@@ -4,8 +4,9 @@ use std::fmt;
 
 use rumahl_core::{
     AppId, AppManifest, AppSettingDeclaration, AppSettingKey, AppSettingKind, AppSettingOption,
-    AppVersion, PackagePath, PublisherId, RuntimeDescriptor, RuntimeEndpointId, RuntimeEntrypoint,
-    RuntimeEntrypointId, RuntimeKind,
+    AppVersion, PackagePath, PermissionId, PermissionRequest, PermissionScope, PublisherId,
+    RuntimeDescriptor, RuntimeEndpointId, RuntimeEntrypoint, RuntimeEntrypointId, RuntimeKind,
+    RuntimeLifecycle,
 };
 use serde::Deserialize;
 
@@ -45,6 +46,8 @@ pub struct PackageAppManifest {
     version: AppVersion,
     display_name: String,
     runtime: RuntimeDescriptor,
+    lifecycle: RuntimeLifecycle,
+    permissions: Vec<PermissionRequest>,
     settings: Vec<AppSettingDeclaration>,
 }
 
@@ -82,6 +85,8 @@ pub enum PackageManifestError {
     PackageTooLarge,
     InvalidAppManifest,
     InvalidSetting,
+    InvalidLifecycle,
+    InvalidPermission,
 }
 
 #[derive(Deserialize)]
@@ -102,7 +107,23 @@ struct RawApp {
     display_name: String,
     runtime: RawRuntime,
     #[serde(default)]
+    lifecycle: Option<String>,
+    #[serde(default)]
+    permissions: Vec<RawPermission>,
+    #[serde(default)]
     settings: Vec<RawSetting>,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+struct RawPermission {
+    id: String,
+    #[serde(default)]
+    scope: Option<String>,
+    #[serde(default)]
+    required: bool,
+    #[serde(default)]
+    reason: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -263,6 +284,14 @@ impl PackageAppManifest {
         &self.runtime
     }
 
+    pub fn lifecycle(&self) -> RuntimeLifecycle {
+        self.lifecycle
+    }
+
+    pub fn permissions(&self) -> &[PermissionRequest] {
+        &self.permissions
+    }
+
     pub fn settings(&self) -> &[AppSettingDeclaration] {
         &self.settings
     }
@@ -282,6 +311,23 @@ impl PackageAppManifest {
 
         let runtime = parse_runtime(raw.runtime)?;
 
+        let lifecycle = match raw.lifecycle.as_deref() {
+            None => RuntimeLifecycle::default(),
+            Some(value) => {
+                RuntimeLifecycle::parse(value).ok_or(PackageManifestError::InvalidLifecycle)?
+            }
+        };
+
+        let mut permissions = Vec::with_capacity(raw.permissions.len());
+        let mut permission_ids = HashSet::new();
+        for permission in raw.permissions {
+            let permission = parse_permission(permission)?;
+            if !permission_ids.insert(permission.permission().clone()) {
+                return Err(PackageManifestError::InvalidPermission);
+            }
+            permissions.push(permission);
+        }
+
         let mut settings = Vec::with_capacity(raw.settings.len());
         let mut setting_keys = HashSet::new();
         for setting in raw.settings {
@@ -297,6 +343,8 @@ impl PackageAppManifest {
             version,
             display_name,
             runtime,
+            lifecycle,
+            permissions,
             settings,
         })
     }
@@ -313,6 +361,12 @@ impl PackageAppManifest {
             self.runtime.clone(),
         )
         .map_err(|_| PackageManifestError::InvalidAppManifest)?;
+        manifest.set_lifecycle(self.lifecycle);
+        for permission in &self.permissions {
+            manifest
+                .add_permission_request(permission.clone())
+                .map_err(|_| PackageManifestError::InvalidPermission)?;
+        }
         for setting in &self.settings {
             manifest
                 .add_setting(setting.clone())
@@ -381,6 +435,36 @@ fn parse_setting(raw: RawSetting) -> Result<AppSettingDeclaration, PackageManife
         declaration = declaration.required();
     }
     Ok(declaration)
+}
+
+fn parse_permission(raw: RawPermission) -> Result<PermissionRequest, PackageManifestError> {
+    let permission =
+        PermissionId::parse(raw.id).map_err(|_| PackageManifestError::InvalidPermission)?;
+    let scope = match raw.scope.as_deref() {
+        None | Some("user-own") => PermissionScope::UserOwn,
+        Some("app-private") => PermissionScope::AppPrivate,
+        Some("user-selected") => PermissionScope::UserSelected,
+        Some("explicit") => PermissionScope::Explicit,
+        Some("family-shared") => PermissionScope::FamilyShared,
+        Some("system") => PermissionScope::System,
+        Some(_) => return Err(PackageManifestError::InvalidPermission),
+    };
+    let reason = raw
+        .reason
+        .map(|reason| reason.trim().to_owned())
+        .filter(|reason| !reason.is_empty());
+    if reason
+        .as_ref()
+        .is_some_and(|reason| reason.chars().count() > 240)
+    {
+        return Err(PackageManifestError::InvalidPermission);
+    }
+    Ok(PermissionRequest::new(
+        permission,
+        scope,
+        raw.required,
+        reason,
+    ))
 }
 
 fn parse_runtime(raw: RawRuntime) -> Result<RuntimeDescriptor, PackageManifestError> {
@@ -514,6 +598,12 @@ impl fmt::Display for PackageManifestError {
             Self::InvalidSetting => {
                 write!(f, "package manifest declares an invalid app setting")
             }
+            Self::InvalidLifecycle => {
+                write!(f, "package manifest declares an unknown lifecycle")
+            }
+            Self::InvalidPermission => {
+                write!(f, "package manifest declares an invalid permission")
+            }
         }
     }
 }
@@ -544,7 +634,9 @@ impl Error for PackageManifestError {
             | Self::FileTooLarge
             | Self::PackageTooLarge
             | Self::InvalidAppManifest
-            | Self::InvalidSetting => None,
+            | Self::InvalidSetting
+            | Self::InvalidLifecycle
+            | Self::InvalidPermission => None,
         }
     }
 }
@@ -603,5 +695,36 @@ mod tests {
         let manifest = PackageManifest::from_bytes(bytes.as_bytes()).unwrap();
         assert!(manifest.app().settings().is_empty());
         assert!(manifest.to_app_manifest().unwrap().settings().is_empty());
+    }
+
+    #[test]
+    fn parses_lifecycle_and_permissions_into_the_app_manifest() {
+        let bytes = r#"{"formatVersion":1,"publisherId":"com.rumahl","app":{"appId":"com.rumahl.cloud","version":"1.0.0","displayName":"Cloud","runtime":{"kind":"container","entrypoints":[{"id":"main","kind":"container-artifact","path":"image.tar"}]},"lifecycle":"always-on","permissions":[{"id":"com.rumahl.os.window","scope":"user-own","required":true,"reason":"Control its window"}]},"files":[]}"#;
+        let manifest = PackageManifest::from_bytes(bytes.as_bytes()).unwrap();
+        assert_eq!(manifest.app().lifecycle(), RuntimeLifecycle::AlwaysOn);
+        let app = manifest.to_app_manifest().unwrap();
+        assert_eq!(app.lifecycle(), RuntimeLifecycle::AlwaysOn);
+        assert_eq!(app.permission_requests().len(), 1);
+        assert_eq!(
+            app.permission_requests()[0].permission().as_str(),
+            "com.rumahl.os.window"
+        );
+    }
+
+    #[test]
+    fn lifecycle_and_permissions_default_and_fail_closed() {
+        let default_bytes = r#"{"formatVersion":1,"publisherId":"com.rumahl","app":{"appId":"com.rumahl.notes","version":"1.0.0","displayName":"Notes","runtime":{"kind":"web","entrypoints":[{"id":"main","kind":"web-asset","path":"index.html"}]}},"files":[]}"#;
+        let app = PackageManifest::from_bytes(default_bytes.as_bytes())
+            .unwrap()
+            .to_app_manifest()
+            .unwrap();
+        assert_eq!(app.lifecycle(), RuntimeLifecycle::OnDemand);
+        assert!(app.permission_requests().is_empty());
+
+        let bad_lifecycle = r#"{"formatVersion":1,"publisherId":"com.rumahl","app":{"appId":"com.rumahl.notes","version":"1.0.0","displayName":"Notes","runtime":{"kind":"web","entrypoints":[{"id":"main","kind":"web-asset","path":"index.html"}]},"lifecycle":"sometimes"},"files":[]}"#;
+        assert!(PackageManifest::from_bytes(bad_lifecycle.as_bytes()).is_err());
+
+        let bad_permission = r#"{"formatVersion":1,"publisherId":"com.rumahl","app":{"appId":"com.rumahl.notes","version":"1.0.0","displayName":"Notes","runtime":{"kind":"web","entrypoints":[{"id":"main","kind":"web-asset","path":"index.html"}]},"permissions":[{"id":"nope"}]},"files":[]}"#;
+        assert!(PackageManifest::from_bytes(bad_permission.as_bytes()).is_err());
     }
 }

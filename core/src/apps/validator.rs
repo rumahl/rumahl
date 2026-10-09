@@ -6,7 +6,7 @@ use crate::{
     RuntimeKind,
 };
 
-use super::{AppManifest, ContributionDeclaration};
+use super::{AppManifest, ContributionDeclaration, RuntimeLifecycle};
 
 #[derive(Debug, Default, Clone, Copy)]
 pub struct AppManifestValidator;
@@ -18,6 +18,7 @@ pub enum AppManifestValidationError {
         required: RuntimeEntrypointKind,
     },
     NativeRuntimeUnsupported,
+    AlwaysOnRequiresContainerRuntime(RuntimeKind),
     StreamRequiresContainerRuntime(RuntimeKind),
     StreamEntrypointMissing(RuntimeEntrypointId),
     StreamEntrypointIncompatible(RuntimeEntrypointId),
@@ -44,6 +45,7 @@ impl AppManifestValidator {
 
     pub fn validate(&self, manifest: &AppManifest) -> Result<(), AppManifestValidationError> {
         self.validate_runtime(manifest)?;
+        self.validate_lifecycle(manifest)?;
         self.validate_stream_presentation(manifest)?;
         self.validate_oidc(manifest)?;
 
@@ -51,6 +53,22 @@ impl AppManifestValidator {
             self.validate_contribution(manifest, contribution)?;
         }
 
+        Ok(())
+    }
+
+    fn validate_lifecycle(
+        &self,
+        manifest: &AppManifest,
+    ) -> Result<(), AppManifestValidationError> {
+        // A continuously running service needs a backend runtime; a static web
+        // app (browser-backed) is always on demand.
+        if manifest.lifecycle() == RuntimeLifecycle::AlwaysOn
+            && manifest.runtime().kind() != RuntimeKind::Container
+        {
+            return Err(AppManifestValidationError::AlwaysOnRequiresContainerRuntime(
+                manifest.runtime().kind(),
+            ));
+        }
         Ok(())
     }
 
@@ -194,6 +212,11 @@ impl fmt::Display for AppManifestValidationError {
                 )
             }
 
+            Self::AlwaysOnRequiresContainerRuntime(runtime) => write!(
+                f,
+                "an always-on lifecycle requires a container runtime, found '{runtime:?}'"
+            ),
+
             Self::StreamRequiresContainerRuntime(runtime) => write!(
                 f,
                 "stream presentation requires a container runtime, found '{runtime:?}'"
@@ -279,6 +302,19 @@ mod tests {
         let validator = AppManifestValidator::new();
 
         assert!(validator.validate(&manifest).is_ok());
+    }
+
+    #[test]
+    fn always_on_lifecycle_requires_a_container_runtime() {
+        let mut manifest = manifest();
+        manifest.set_lifecycle(RuntimeLifecycle::AlwaysOn);
+
+        assert_eq!(
+            AppManifestValidator::new().validate(&manifest),
+            Err(AppManifestValidationError::AlwaysOnRequiresContainerRuntime(
+                RuntimeKind::Web
+            ))
+        );
     }
 
     #[test]

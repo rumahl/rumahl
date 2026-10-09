@@ -36,7 +36,7 @@ pub use apps::{
     MAX_APP_SETTINGS, OidcCallbackPath, OidcCallbackPathError, OidcClientDeclaration,
     OidcClientDeclarationError, OidcClientType, OidcScope, PlatformDeregistrationReport,
     PlatformRegistrar, PlatformRegistrarError, PlatformRegistration, PlatformRegistrationError,
-    PreferredStreamSize, STREAMING_ENGINE_CAPABILITY, SearchContributionDeclaration,
+    PreferredStreamSize, RuntimeLifecycle, STREAMING_ENGINE_CAPABILITY, SearchContributionDeclaration,
     StreamPresentation, StreamPresentationError,
 };
 
@@ -66,10 +66,12 @@ pub use secrets::{
 
 pub use runtime::{
     AppRuntimeInstallationState, AppRuntimeProvider, PackagePath, PackagePathError, RuntimeAdapter,
-    RuntimeAdapterError, RuntimeAdapterRegistry, RuntimeAdapterRegistryError, RuntimeDescriptor,
+    RuntimeAdapterError, RuntimeAdapterRegistry, RuntimeAdapterRegistryError, RuntimeController,
+    RuntimeDescriptor,
     RuntimeDescriptorError, RuntimeEndpointId, RuntimeEndpointIdError, RuntimeEntrypoint,
     RuntimeEntrypointId, RuntimeEntrypointIdError, RuntimeEntrypointKind, RuntimeEntrypointTarget,
-    RuntimeKind, RuntimeRouter, RuntimeRoutingError, RuntimeStatus,
+    RuntimeKind, RuntimeRouter, RuntimeRoutingError, RuntimeStatus, ProviderRuntimeAdapter,
+    RuntimeChannel, RuntimeChannelError, RuntimeChannelRegistry, RuntimeEvent,
 };
 
 pub use permissions::{

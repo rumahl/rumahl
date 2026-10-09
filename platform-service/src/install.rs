@@ -192,6 +192,32 @@ impl InstallConfig {
     }
 }
 
+/// Builds the runtime adapter registry for the serve path when the supervisor
+/// environment is configured. Returns `None` (fail closed) otherwise, so the
+/// runtime control API answers 503 instead of assuming a runtime exists.
+pub fn runtime_adapters_from_env() -> Option<std::sync::Arc<rumahl_core::RuntimeAdapterRegistry>> {
+    let config = InstallConfig::from_env().ok()?;
+    let provider = std::sync::Arc::new(PlatformRuntimeProvider::new(
+        UnixAppRuntimeProvider::new(
+            UnixAppRuntimeProviderConfig::new(&config.control_socket, config.runtime_uid).ok()?,
+        ),
+    ));
+    let mut registry = rumahl_core::RuntimeAdapterRegistry::new();
+    registry
+        .register(Box::new(rumahl_core::ProviderRuntimeAdapter::new(
+            rumahl_core::RuntimeKind::Web,
+            provider.clone(),
+        )))
+        .ok()?;
+    registry
+        .register(Box::new(rumahl_core::ProviderRuntimeAdapter::new(
+            rumahl_core::RuntimeKind::Container,
+            provider,
+        )))
+        .ok()?;
+    Some(std::sync::Arc::new(registry))
+}
+
 /// Verifies and installs a package, recovering interrupted container installs.
 pub fn install_package(state_dir: &Path, package_dir: &Path) -> Result<(), InstallError> {
     install_with(&InstallConfig::from_env()?, state_dir, package_dir)

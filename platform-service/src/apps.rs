@@ -4,12 +4,13 @@ use rumahl_core::*;
 use rumahl_persistence_sqlite::{SqliteAccountStateRepository, SqliteSnapshotRepository};
 use rumahl_platform_web::{
     AppAccessError, AppAsset, AppData, AppDataEntry, AppProvider, AppSettingInfo,
-    AppSettingOptionInfo, CatalogApp, ShellIdentity,
+    AppSettingOptionInfo, CatalogApp, RuntimeState, ShellIdentity,
 };
 use rustix::fs::{Dir, FileType, Mode, OFlags, fstat, open, openat};
 use std::fs::File;
 use std::io::Read;
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 
 pub const APP_LAUNCH_PERMISSION: &str = "rumahl.apps.launch";
 pub fn app_launch_resource(installation: InstallationId) -> ResourceRef {
@@ -77,6 +78,8 @@ pub struct PersistentApps {
     root: PathBuf,
     /// Apps data volume root, one directory per app id. `None` disables app-data browsing.
     data_root: Option<PathBuf>,
+    /// Runtime adapters for status/start/stop. `None` fails closed.
+    runtime: Option<Arc<rumahl_core::RuntimeAdapterRegistry>>,
 }
 impl PersistentApps {
     pub fn open(
@@ -92,7 +95,17 @@ impl PersistentApps {
             platform: SqliteSnapshotRepository::open(platform)?,
             root,
             data_root: None,
+            runtime: None,
         })
+    }
+
+    /// Enables runtime status/start/stop through the registered adapters.
+    pub fn with_runtime_adapters(
+        mut self,
+        runtime: Arc<rumahl_core::RuntimeAdapterRegistry>,
+    ) -> Self {
+        self.runtime = Some(runtime);
+        self
     }
 
     /// Enables read-only browsing of each app's private data directory.
@@ -103,6 +116,28 @@ impl PersistentApps {
         self.data_root = Some(data_root);
         Ok(self)
     }
+    /// Recovers platform state and builds a runtime controller when runtime
+    /// adapters are configured. Fails closed otherwise.
+    fn runtime_control(
+        &self,
+        identity: ShellIdentity,
+        installation: InstallationId,
+    ) -> Result<RuntimeController, AppAccessError> {
+        let adapters = self.runtime.clone().ok_or(AppAccessError::Unavailable)?;
+        self.app(identity, installation)?;
+        let snapshot = self
+            .platform
+            .load()
+            .map_err(|_| AppAccessError::Unavailable)?
+            .ok_or(AppAccessError::Unavailable)?;
+        let mut state = PlatformState::new();
+        let mut grants = InMemoryGrantStore::new();
+        PlatformRecovery::new()
+            .recover(&snapshot, &mut state, &mut grants)
+            .map_err(|_| AppAccessError::Unavailable)?;
+        Ok(RuntimeController::new(Arc::new(state), adapters))
+    }
+
     fn apps(&self, identity: ShellIdentity) -> Result<Vec<InstalledAppSnapshot>, AppAccessError> {
         let accounts = self
             .accounts
@@ -361,6 +396,7 @@ impl AppProvider for PersistentApps {
                     self.read_asset(*app.installation_id(), path, false).is_ok()
                 }),
                 capabilities: app_capabilities(app),
+                lifecycle: app.manifest().lifecycle().as_str().into(),
             })
             .collect())
     }
@@ -428,6 +464,37 @@ impl AppProvider for PersistentApps {
     ) -> Result<AppData, AppAccessError> {
         let app = self.app(identity, installation)?;
         self.read_app_data(app.identity().app_id().as_str(), path)
+    }
+    fn runtime_status(
+        &self,
+        identity: ShellIdentity,
+        installation: InstallationId,
+    ) -> Result<RuntimeState, AppAccessError> {
+        runtime_state(self.runtime_control(identity, installation)?.status(&installation))
+    }
+    fn start_runtime(
+        &self,
+        identity: ShellIdentity,
+        installation: InstallationId,
+    ) -> Result<RuntimeState, AppAccessError> {
+        runtime_state(self.runtime_control(identity, installation)?.start(&installation))
+    }
+    fn stop_runtime(
+        &self,
+        identity: ShellIdentity,
+        installation: InstallationId,
+    ) -> Result<RuntimeState, AppAccessError> {
+        runtime_state(self.runtime_control(identity, installation)?.stop(&installation))
+    }
+}
+
+fn runtime_state(result: Result<RuntimeStatus, RuntimeRoutingError>) -> Result<RuntimeState, AppAccessError> {
+    match result {
+        Ok(RuntimeStatus::Running | RuntimeStatus::Starting) => Ok(RuntimeState::Running),
+        Ok(RuntimeStatus::Stopped | RuntimeStatus::Stopping | RuntimeStatus::Failed) => {
+            Ok(RuntimeState::Stopped)
+        }
+        Err(_) => Err(AppAccessError::Unavailable),
     }
 }
 

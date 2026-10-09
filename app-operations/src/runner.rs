@@ -842,7 +842,8 @@ mod tests {
         AppId, AppManifestValidator, AppOperationStep, AppRuntimeInstallationState, AppVersion,
         InstallationId, InstalledAppSnapshot, OidcCallbackPath, OidcClientDeclaration,
         OidcClientType, OidcScope, PackagePath, PublisherId, RuntimeDescriptor, RuntimeEndpointId,
-        RuntimeEntrypoint, RuntimeEntrypointId, SecretId, SecretPurpose, SecretRecord, SecretValue,
+        RuntimeEntrypoint, RuntimeEntrypointId, RuntimeLifecycle, SecretId, SecretPurpose,
+        SecretRecord, SecretValue,
     };
     use rumahl_oidc_provider::{
         OidcClientId, OidcClientRecord, OidcClientSecret, OidcClientSecretDigest,
@@ -1326,6 +1327,8 @@ mod tests {
             runtime,
         )
         .unwrap();
+        // A service that runs in the background: it activates at install.
+        manifest.set_lifecycle(RuntimeLifecycle::AlwaysOn);
         manifest
             .add_database(AppDatabaseDeclaration::new(
                 AppDatabaseId::parse("primary").unwrap(),
@@ -1343,6 +1346,25 @@ mod tests {
             )
             .unwrap();
         manifest
+    }
+
+    fn on_demand_container_manifest() -> AppManifest {
+        let mut runtime = RuntimeDescriptor::container();
+        runtime
+            .add_entrypoint(RuntimeEntrypoint::container_artifact(
+                RuntimeEntrypointId::parse("service").unwrap(),
+                PackagePath::parse("runtime/server.oci").unwrap(),
+            ))
+            .unwrap();
+        // On-demand by default: it starts when opened, not at install.
+        AppManifest::new(
+            AppId::parse("com.rumahl.weather").unwrap(),
+            PublisherId::parse("com.rumahl").unwrap(),
+            AppVersion::new(1, 0, 0),
+            "Weather",
+            runtime,
+        )
+        .unwrap()
     }
 
     #[test]
@@ -1483,6 +1505,34 @@ mod tests {
             AppRuntimeInstallationState::Absent
         );
         assert!(runner.oidc_repository().clients.borrow().is_empty());
+    }
+
+    #[test]
+    fn on_demand_container_apps_prepare_but_do_not_activate_at_install() {
+        let runner = runner();
+        let mut state = PlatformState::new();
+        let grants = InMemoryGrantStore::new();
+
+        let result = runner
+            .install(on_demand_container_manifest(), &mut state, &grants)
+            .unwrap();
+
+        assert_eq!(
+            runner
+                .runtime_provider()
+                .installation_state(result.app().installation_id())
+                .unwrap(),
+            AppRuntimeInstallationState::Prepared
+        );
+        assert!(
+            !runner
+                .runtime_provider()
+                .trace
+                .borrow()
+                .iter()
+                .any(|entry| *entry == "runtime-activated"),
+            "an on-demand app must not activate at install"
+        );
     }
 
     #[test]

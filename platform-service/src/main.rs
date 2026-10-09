@@ -163,6 +163,12 @@ async fn run() -> Result<(), ServiceError> {
         Some(data_root) => apps_provider.with_data_root(data_root)?,
         None => apps_provider,
     };
+    // Runtime status/start/stop through the supervisor when it is configured;
+    // otherwise the runtime API stays fail-closed (503).
+    let apps_provider = match install::runtime_adapters_from_env() {
+        Some(adapters) => apps_provider.with_runtime_adapters(adapters),
+        None => apps_provider,
+    };
     let apps = Arc::new(
         rumahl_platform_web::AppAccess::new(
             Arc::new(apps_provider),

@@ -30,6 +30,18 @@ describe("installed app contracts", () => {
     expect(() => parseLaunch({ ...launch, installationId: "other" }, app, "https://localhost:8443")).toThrow();
     expect(() => parseLaunch({ ...launch, renewAfterSeconds: 99999 }, app, "https://localhost:8443")).toThrow();
   });
+  it("accepts declared capabilities and lifecycle, and rejects malformed ones", () => {
+    const withMeta = { ...app, capabilities: ["com.rumahl.os.window", "com.rumahl.os.info"], lifecycle: "always-on" };
+    expect(parseCatalog({ catalogVersion: 1, apps: [withMeta] })[0]).toMatchObject({ capabilities: ["com.rumahl.os.window", "com.rumahl.os.info"], lifecycle: "always-on" });
+    expect(parseCatalog({ catalogVersion: 1, apps: [{ ...app }] })[0]?.capabilities).toBeUndefined();
+    const cases = [
+      { ...app, capabilities: "window" },
+      { ...app, capabilities: [""] },
+      { ...app, capabilities: ["x".repeat(300)] },
+      { ...app, lifecycle: "sometimes" },
+    ];
+    for (const value of cases) expect(() => parseCatalog({ catalogVersion: 1, apps: [value] })).toThrow();
+  });
   it("renders only typed manifest settings and rejects malformed declarations", () => {
     const parsed = parseAppSettings(settings);
     expect(parsed.manifest).toHaveLength(2);

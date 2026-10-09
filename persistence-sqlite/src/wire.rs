@@ -10,7 +10,7 @@ use rumahl_core::{
     PermissionRequest, PermissionScope, PlatformSnapshot, PreferredStreamSize, PublisherId,
     ResourceKey, ResourceKind, ResourceNamespace, ResourceRef, RuntimeDescriptor,
     RuntimeEndpointId, RuntimeEntrypoint, RuntimeEntrypointId, RuntimeEntrypointTarget,
-    RuntimeKind, ServiceId, ServiceIdentity, StreamPresentation, UserId, UserIdentity,
+    RuntimeKind, RuntimeLifecycle, ServiceId, ServiceIdentity, StreamPresentation, UserId, UserIdentity,
 };
 use serde::{Deserialize, Serialize};
 
@@ -135,6 +135,8 @@ struct WireManifest {
     version: String,
     display_name: String,
     runtime: WireRuntime,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    lifecycle: Option<String>,
     permission_requests: Vec<WirePermissionRequest>,
     provided_capabilities: Vec<String>,
     contributions: Vec<WireContribution>,
@@ -157,6 +159,10 @@ impl WireManifest {
             version: manifest.version().to_string(),
             display_name: manifest.display_name().to_owned(),
             runtime: WireRuntime::capture(manifest.runtime()),
+            lifecycle: match manifest.lifecycle() {
+                RuntimeLifecycle::OnDemand => None,
+                other => Some(other.as_str().to_owned()),
+            },
             permission_requests: manifest
                 .permission_requests()
                 .iter()
@@ -206,6 +212,13 @@ impl WireManifest {
             self.runtime.into_domain()?,
         )
         .map_err(|error| WireSnapshotError::invalid("manifest", error))?;
+
+        if let Some(lifecycle) = self.lifecycle.as_deref() {
+            let lifecycle = RuntimeLifecycle::parse(lifecycle).ok_or_else(|| {
+                WireSnapshotError::invalid("manifest lifecycle", "unknown lifecycle")
+            })?;
+            manifest.set_lifecycle(lifecycle);
+        }
 
         for request in self.permission_requests {
             manifest

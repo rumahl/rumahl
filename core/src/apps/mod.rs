@@ -16,7 +16,7 @@ pub use contribution::{
     SearchContributionDeclaration,
 };
 
-pub use manifest::{AppManifest, AppManifestError};
+pub use manifest::{AppManifest, AppManifestError, RuntimeLifecycle};
 
 pub use settings::{
     AppSettingDeclaration, AppSettingError, AppSettingKey, AppSettingKind, AppSettingOption,

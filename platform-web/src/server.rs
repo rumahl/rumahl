@@ -118,6 +118,10 @@ pub fn router(state: GatewayState) -> Router {
         )
         .route("/api/v1/shell/apps/{id}/settings", get(app_settings))
         .route("/api/v1/shell/apps/{id}/data", get(app_data))
+        .route(
+            "/api/v1/shell/apps/{id}/runtime",
+            get(app_runtime_status).post(app_runtime_action),
+        )
         .route("/api/v1/shell/events", get(events))
         .route("/api/v1/shell/widgets/{id}/frame", get(widget_frame))
         .route("/api/v1/shell/streams", get(stream_list))
@@ -197,6 +201,7 @@ async fn app_catalog(State(state): State<Arc<GatewayState>>, headers: HeaderMap)
             let apps: Vec<_> = apps.into_iter().map(|app| serde_json::json!({
                 "id": app.id, "installationId": app.installation_id.to_string(), "title": app.title,
                 "version": app.version, "launchable": app.launchable, "capabilities": app.capabilities,
+                "lifecycle": app.lifecycle,
             })).collect();
             let mut response =
                 axum::Json(serde_json::json!({"catalogVersion": 1, "apps": apps})).into_response();
@@ -412,6 +417,123 @@ async fn app_data(
                 }
             };
             let mut response = axum::Json(value).into_response();
+            secure_headers(&mut response);
+            response
+        }
+        Ok(Err(error)) => crate::app_error(error),
+        Err(_) => error(StatusCode::SERVICE_UNAVAILABLE),
+    }
+}
+
+async fn app_runtime_status(
+    State(state): State<Arc<GatewayState>>,
+    UrlPath(id): UrlPath<String>,
+    Query(query): Query<BTreeMap<String, String>>,
+    headers: HeaderMap,
+) -> Response {
+    let identity = match credential(&headers) {
+        Ok(token) => match authenticate(&state, &token).await {
+            Ok(identity) => identity,
+            Err(error) => return backend_error(error),
+        },
+        Err(_) => return error(StatusCode::UNAUTHORIZED),
+    };
+    if query.len() != 1 {
+        return error(StatusCode::BAD_REQUEST);
+    }
+    let Some(installation) = query.get("installationId").cloned() else {
+        return error(StatusCode::BAD_REQUEST);
+    };
+    let Some(apps) = state.apps.clone() else {
+        return error(StatusCode::SERVICE_UNAVAILABLE);
+    };
+    let app_id = id.clone();
+    let installation_id = installation.clone();
+    match tokio::task::spawn_blocking(move || {
+        apps.runtime(identity, &app_id, &installation_id, crate::RuntimeAction::Status)
+    })
+    .await
+    {
+        Ok(Ok(runtime)) => {
+            let mut response = axum::Json(serde_json::json!({
+                "runtimeVersion": 1,
+                "id": id,
+                "installationId": installation,
+                "state": runtime.as_str(),
+            }))
+            .into_response();
+            secure_headers(&mut response);
+            response
+        }
+        Ok(Err(error)) => crate::app_error(error),
+        Err(_) => error(StatusCode::SERVICE_UNAVAILABLE),
+    }
+}
+
+async fn app_runtime_action(
+    State(state): State<Arc<GatewayState>>,
+    UrlPath(id): UrlPath<String>,
+    headers: HeaderMap,
+    body: axum::body::Bytes,
+) -> Response {
+    if !valid_origin(&headers, &state.config.public_origin) {
+        return error(StatusCode::FORBIDDEN);
+    }
+    if body.len() > 1024 {
+        return error(StatusCode::PAYLOAD_TOO_LARGE);
+    }
+    if headers.get("content-type").and_then(|v| v.to_str().ok()) != Some("application/json") {
+        return error(StatusCode::UNSUPPORTED_MEDIA_TYPE);
+    }
+    let identity = match credential(&headers) {
+        Ok(token) => match authenticate(&state, &token).await {
+            Ok(identity) => identity,
+            Err(error) => return backend_error(error),
+        },
+        Err(_) => return error(StatusCode::UNAUTHORIZED),
+    };
+    let Ok(value) = serde_json::from_slice::<serde_json::Value>(&body) else {
+        return error(StatusCode::BAD_REQUEST);
+    };
+    let Some(object) = value.as_object() else {
+        return error(StatusCode::BAD_REQUEST);
+    };
+    if object
+        .keys()
+        .any(|key| key != "installationId" && key != "action")
+    {
+        return error(StatusCode::BAD_REQUEST);
+    }
+    let Some(installation) = value
+        .get("installationId")
+        .and_then(|v| v.as_str())
+        .map(str::to_owned)
+    else {
+        return error(StatusCode::BAD_REQUEST);
+    };
+    let action = match value.get("action").and_then(|v| v.as_str()) {
+        Some("start") => crate::RuntimeAction::Start,
+        Some("stop") => crate::RuntimeAction::Stop,
+        _ => return error(StatusCode::BAD_REQUEST),
+    };
+    let Some(apps) = state.apps.clone() else {
+        return error(StatusCode::SERVICE_UNAVAILABLE);
+    };
+    let app_id = id.clone();
+    let installation_id = installation.clone();
+    match tokio::task::spawn_blocking(move || {
+        apps.runtime(identity, &app_id, &installation_id, action)
+    })
+    .await
+    {
+        Ok(Ok(runtime)) => {
+            let mut response = axum::Json(serde_json::json!({
+                "runtimeVersion": 1,
+                "id": id,
+                "installationId": installation,
+                "state": runtime.as_str(),
+            }))
+            .into_response();
             secure_headers(&mut response);
             response
         }

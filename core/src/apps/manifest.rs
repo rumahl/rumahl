@@ -9,6 +9,33 @@ use crate::{
 use super::settings::{self, AppSettingDeclaration};
 use super::{AppVersion, ContributionDeclaration, OidcClientDeclaration, StreamPresentation};
 
+/// When an app's runtime runs. Orthogonal to `RuntimeKind`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum RuntimeLifecycle {
+    /// Starts on demand (when a window opens) and stops when idle. Default.
+    #[default]
+    OnDemand,
+    /// Runs continuously in the background once installed (a service).
+    AlwaysOn,
+}
+
+impl RuntimeLifecycle {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::OnDemand => "on-demand",
+            Self::AlwaysOn => "always-on",
+        }
+    }
+
+    pub fn parse(value: &str) -> Option<Self> {
+        match value {
+            "on-demand" => Some(Self::OnDemand),
+            "always-on" => Some(Self::AlwaysOn),
+            _ => None,
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AppManifest {
     app_id: AppId,
@@ -16,6 +43,7 @@ pub struct AppManifest {
     version: AppVersion,
     display_name: String,
     runtime: RuntimeDescriptor,
+    lifecycle: RuntimeLifecycle,
     permission_requests: Vec<PermissionRequest>,
     provided_capabilities: Vec<CapabilityId>,
     contributions: Vec<ContributionDeclaration>,
@@ -70,6 +98,7 @@ impl AppManifest {
             version,
             display_name: display_name.to_owned(),
             runtime,
+            lifecycle: RuntimeLifecycle::default(),
             permission_requests: Vec::new(),
             provided_capabilities: Vec::new(),
             contributions: Vec::new(),
@@ -99,6 +128,14 @@ impl AppManifest {
 
     pub fn runtime(&self) -> &RuntimeDescriptor {
         &self.runtime
+    }
+
+    pub fn lifecycle(&self) -> RuntimeLifecycle {
+        self.lifecycle
+    }
+
+    pub fn set_lifecycle(&mut self, lifecycle: RuntimeLifecycle) {
+        self.lifecycle = lifecycle;
     }
 
     pub fn add_permission_request(

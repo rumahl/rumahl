@@ -39,6 +39,8 @@ export interface InstalledApp {
   launchable: boolean;
   /** Permission ids the app's manifest declares (used to gate the OS bridge). */
   capabilities?: readonly string[];
+  /** Runtime lifecycle declared by the app: `always-on` (service) or `on-demand`. */
+  lifecycle?: "always-on" | "on-demand";
 }
 function record(value: unknown): Record<string, unknown> {
   if (typeof value !== "object" || !value || Array.isArray(value)) throw new Error("invalid app response");
@@ -66,8 +68,13 @@ export function parseCatalog(value: unknown): readonly InstalledApp[] {
           app.capabilities.some((entry) => typeof entry !== "string" || entry.length === 0 || entry.length > 255)) throw new Error("invalid app capabilities");
       capabilities = app.capabilities as string[];
     }
+    let lifecycle: "always-on" | "on-demand" | undefined;
+    if (app.lifecycle !== undefined) {
+      if (app.lifecycle !== "always-on" && app.lifecycle !== "on-demand") throw new Error("invalid app lifecycle");
+      lifecycle = app.lifecycle;
+    }
     ids.add(app.id);
-    return { id: app.id, installationId: app.installationId, title: app.title, version: app.version, launchable: app.launchable, ...(capabilities ? { capabilities } : {}) };
+    return { id: app.id, installationId: app.installationId, title: app.title, version: app.version, launchable: app.launchable, ...(capabilities ? { capabilities } : {}), ...(lifecycle ? { lifecycle } : {}) };
   });
 }
 export async function fetchCatalog(request: ShellRequest, signal: AbortSignal): Promise<readonly InstalledApp[]> {

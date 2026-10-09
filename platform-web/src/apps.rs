@@ -23,6 +23,8 @@ pub struct CatalogApp {
     /// Permission ids the installed app's manifest declares, exposed so the
     /// shell can gate the app <-> OS bridge per method.
     pub capabilities: Vec<String>,
+    /// Runtime lifecycle: `"always-on"` (service) or `"on-demand"`.
+    pub lifecycle: String,
 }
 /// One rendered setting declared by an app manifest, typed for the shell.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -67,6 +69,27 @@ pub enum AppAccessError {
     Denied,
     Unavailable,
 }
+/// The runtime activation state of an installed app.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RuntimeState {
+    Running,
+    Stopped,
+}
+impl RuntimeState {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Running => "running",
+            Self::Stopped => "stopped",
+        }
+    }
+}
+/// A runtime control action requested for an installed app.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RuntimeAction {
+    Status,
+    Start,
+    Stop,
+}
 pub struct AppAsset {
     pub bytes: Vec<u8>,
     pub content_type: &'static str,
@@ -98,6 +121,30 @@ pub trait AppProvider: Send + Sync + 'static {
         installation: InstallationId,
         path: &str,
     ) -> Result<AppData, AppAccessError>;
+    /// Runtime activation state. Fails closed when no runtime control is wired.
+    fn runtime_status(
+        &self,
+        _identity: ShellIdentity,
+        _installation: InstallationId,
+    ) -> Result<RuntimeState, AppAccessError> {
+        Err(AppAccessError::Unavailable)
+    }
+    /// Starts an app runtime (used for on-demand apps and manual control).
+    fn start_runtime(
+        &self,
+        _identity: ShellIdentity,
+        _installation: InstallationId,
+    ) -> Result<RuntimeState, AppAccessError> {
+        Err(AppAccessError::Unavailable)
+    }
+    /// Stops an app runtime while retaining its prepared namespace.
+    fn stop_runtime(
+        &self,
+        _identity: ShellIdentity,
+        _installation: InstallationId,
+    ) -> Result<RuntimeState, AppAccessError> {
+        Err(AppAccessError::Unavailable)
+    }
 }
 #[derive(Clone)]
 struct Lease {
@@ -202,6 +249,25 @@ impl AppAccess {
             .find(|app| app.id == id && app.installation_id.to_string() == installation)
             .ok_or(AppAccessError::Denied)?;
         self.provider.data(identity, app.installation_id, path)
+    }
+    pub fn runtime(
+        &self,
+        identity: ShellIdentity,
+        id: &str,
+        installation: &str,
+        action: RuntimeAction,
+    ) -> Result<RuntimeState, AppAccessError> {
+        AppId::parse(id).map_err(|_| AppAccessError::Denied)?;
+        let app = self
+            .catalog(identity)?
+            .into_iter()
+            .find(|app| app.id == id && app.installation_id.to_string() == installation)
+            .ok_or(AppAccessError::Denied)?;
+        match action {
+            RuntimeAction::Status => self.provider.runtime_status(identity, app.installation_id),
+            RuntimeAction::Start => self.provider.start_runtime(identity, app.installation_id),
+            RuntimeAction::Stop => self.provider.stop_runtime(identity, app.installation_id),
+        }
     }
     pub fn launch(
         &self,
@@ -355,10 +421,18 @@ mod tests {
                     version: "1.0.0".into(),
                     launchable: true,
                     capabilities: vec!["com.rumahl.os.window".into()],
+                    lifecycle: "on-demand".into(),
                 }]
             } else {
                 vec![]
             })
+        }
+        fn runtime_status(
+            &self,
+            _: ShellIdentity,
+            _: InstallationId,
+        ) -> Result<RuntimeState, AppAccessError> {
+            Ok(RuntimeState::Running)
         }
         fn entrypoint(
             &self,
@@ -414,6 +488,46 @@ mod tests {
             }]))
         }
     }
+    #[test]
+    fn runtime_control_reports_state_and_denies_other_installations() {
+        let owner = ShellIdentity {
+            user_id: UserId::new(),
+            session_id: SessionId::new(),
+        };
+        let installation = InstallationId::new();
+        let access = AppAccess::new(
+            Arc::new(Provider {
+                owner,
+                installation,
+            }),
+            &Url::parse("https://localhost:8443").unwrap(),
+            "apps.localhost",
+        )
+        .unwrap();
+        assert_eq!(
+            access
+                .runtime(
+                    owner,
+                    "com.rumahl.test",
+                    &installation.to_string(),
+                    RuntimeAction::Status
+                )
+                .unwrap(),
+            RuntimeState::Running
+        );
+        assert_eq!(
+            access
+                .runtime(
+                    owner,
+                    "com.rumahl.test",
+                    &InstallationId::new().to_string(),
+                    RuntimeAction::Status
+                )
+                .unwrap_err(),
+            AppAccessError::Denied
+        );
+    }
+
     #[test]
     fn leases_bind_host_installation_session_and_expire() {
         let owner = ShellIdentity {
