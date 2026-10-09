@@ -8,6 +8,7 @@
     ".": "./src/v1.ts",
     "./parse": "./src/parse.ts",
     "./events": "./src/events.ts",
-    "./widget": "./src/widget.ts"
+    "./widget": "./src/widget.ts",
+    "./bridge": "./src/bridge.ts"
   }
 }

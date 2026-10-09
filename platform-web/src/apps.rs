@@ -20,6 +20,9 @@ pub struct CatalogApp {
     pub title: String,
     pub version: String,
     pub launchable: bool,
+    /// Permission ids the installed app's manifest declares, exposed so the
+    /// shell can gate the app <-> OS bridge per method.
+    pub capabilities: Vec<String>,
 }
 /// One rendered setting declared by an app manifest, typed for the shell.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -351,6 +354,7 @@ mod tests {
                     title: "Test".into(),
                     version: "1.0.0".into(),
                     launchable: true,
+                    capabilities: vec!["com.rumahl.os.window".into()],
                 }]
             } else {
                 vec![]

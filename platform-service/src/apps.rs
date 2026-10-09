@@ -19,6 +19,21 @@ pub fn app_launch_resource(installation: InstallationId) -> ResourceRef {
         ResourceKey::parse(installation.to_string()).unwrap(),
     )
 }
+/// The permission ids an installed app's manifest declares, sorted, deduped and
+/// bounded. The shell gates each app <-> OS bridge method against this list.
+fn app_capabilities(app: &InstalledAppSnapshot) -> Vec<String> {
+    let mut ids: Vec<String> = app
+        .manifest()
+        .permission_requests()
+        .iter()
+        .map(|request| request.permission().as_str().to_owned())
+        .collect();
+    ids.sort();
+    ids.dedup();
+    ids.truncate(64);
+    ids
+}
+
 pub fn authorized_apps(
     snapshot: &PlatformSnapshot,
     identity: ShellIdentity,
@@ -345,6 +360,7 @@ impl AppProvider for PersistentApps {
                 launchable: Self::web_entry(app).is_some_and(|path| {
                     self.read_asset(*app.installation_id(), path, false).is_ok()
                 }),
+                capabilities: app_capabilities(app),
             })
             .collect())
     }

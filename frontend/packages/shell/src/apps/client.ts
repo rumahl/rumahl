@@ -37,6 +37,8 @@ export interface InstalledApp {
   title: string;
   version: string;
   launchable: boolean;
+  /** Permission ids the app's manifest declares (used to gate the OS bridge). */
+  capabilities?: readonly string[];
 }
 function record(value: unknown): Record<string, unknown> {
   if (typeof value !== "object" || !value || Array.isArray(value)) throw new Error("invalid app response");
@@ -58,8 +60,14 @@ export function parseCatalog(value: unknown): readonly InstalledApp[] {
         typeof app.installationId !== "string" || !INSTALLATION.test(app.installationId) ||
         typeof app.title !== "string" || !app.title.trim() || app.title.length > 256 ||
         typeof app.version !== "string" || app.version.length > 128 || typeof app.launchable !== "boolean") throw new Error("invalid app entry");
+    let capabilities: readonly string[] | undefined;
+    if (app.capabilities !== undefined) {
+      if (!Array.isArray(app.capabilities) || app.capabilities.length > 64 ||
+          app.capabilities.some((entry) => typeof entry !== "string" || entry.length === 0 || entry.length > 255)) throw new Error("invalid app capabilities");
+      capabilities = app.capabilities as string[];
+    }
     ids.add(app.id);
-    return { id: app.id, installationId: app.installationId, title: app.title, version: app.version, launchable: app.launchable };
+    return { id: app.id, installationId: app.installationId, title: app.title, version: app.version, launchable: app.launchable, ...(capabilities ? { capabilities } : {}) };
   });
 }
 export async function fetchCatalog(request: ShellRequest, signal: AbortSignal): Promise<readonly InstalledApp[]> {

@@ -196,7 +196,7 @@ async fn app_catalog(State(state): State<Arc<GatewayState>>, headers: HeaderMap)
         Ok(Ok(apps)) => {
             let apps: Vec<_> = apps.into_iter().map(|app| serde_json::json!({
                 "id": app.id, "installationId": app.installation_id.to_string(), "title": app.title,
-                "version": app.version, "launchable": app.launchable,
+                "version": app.version, "launchable": app.launchable, "capabilities": app.capabilities,
             })).collect();
             let mut response =
                 axum::Json(serde_json::json!({"catalogVersion": 1, "apps": apps})).into_response();
