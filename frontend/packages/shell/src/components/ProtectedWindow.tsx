@@ -47,7 +47,7 @@ export function ProtectedWindow({
   );
   const titleBlock = <div className="titlebar-titles">
     <h2 className="titlebar-title">{title}</h2>
-    <p className="titlebar-subtitle">{subtitle}</p>
+    {subtitle ? <p className="titlebar-subtitle">{subtitle}</p> : null}
   </div>;
   const maximizeButton = onMaximize ? controlButton("maximize", t(maximized ? "window.restore" : "window.maximize", { title }), onMaximize, maximized ? <WindowRestoreIcon aria-hidden="true" /> : <WindowMaximizeIcon aria-hidden="true" />) : null;
   const controlsBlock = <div aria-label={t("window.controls")} className="winbuttons shell-window__controls">
@@ -99,7 +99,7 @@ export function ProtectedWindow({
         aria-label={onTitleKeyDown ? t("window.move", { title }) : undefined}
         onPointerDown={onTitlePointerDown} onKeyDown={onTitleKeyDown}
         onDoubleClick={(event) => { if (!(event.target as HTMLElement).closest("button")) onMaximize?.(); }}>
-        {windowSlot ? renderSlot(windowSlot, bindings) : <>{titleBlock}{controlsBlock}</>}
+        {frameless ? null : windowSlot ? renderSlot(windowSlot, bindings) : <>{titleBlock}{controlsBlock}</>}
       </header>
       <div className="shell-window__content">{children}</div>
       {onResizePointerDown ? <button hidden={frameless || maximized} className="window-resize" aria-label={t("window.resize", { title })} onPointerDown={onResizePointerDown} onKeyDown={onResizeKeyDown} type="button" /> : null}

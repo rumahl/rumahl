@@ -64,7 +64,7 @@ export function ShellLayout({ snapshot, live }: { snapshot: ShellSnapshotV1; liv
   const catalog = useAppCatalog();
   const installedTitle = catalog.apps.find((app) => app.id === route.appId)?.title;
   const routedWindow = useMemo<Omit<ShellWindow, "minimized">>(() => ({
-    id: route.id, title: route.streamTitle ?? installedTitle ?? t(route.title), subtitle: t("appManager.subtitle"),
+    id: route.id, title: route.streamTitle ?? installedTitle ?? t(route.title), subtitle: "",
     location: path, ...(route.stream ? { streamId: route.id.slice(7) } : {})
   }), [installedTitle, route.id, route.title, route.streamTitle, route.stream, path, t]);
   const workspace = useWorkspace();
@@ -76,11 +76,11 @@ export function ShellLayout({ snapshot, live }: { snapshot: ShellSnapshotV1; liv
       const description = describeRoute(saved.location);
       if (description.presentation !== "window" || description.stream || windows.some(w => w.id === description.id)) continue;
       const title = catalog.apps.find(app => app.id === description.appId)?.title ?? t(description.title);
-      windows.push({ ...saved, id: description.id, title, subtitle: t("appManager.subtitle") });
+      windows.push({ ...saved, id: description.id, title, subtitle: "" });
     }
     for (const saved of includeInternal ? readInternalWindows() : []) {
       const description = describeRoute(saved.location!);
-      windows.push({ ...saved, id: description.id, title: t(description.title), subtitle: t("appManager.subtitle") });
+      windows.push({ ...saved, id: description.id, title: t(description.title), subtitle: "" });
     }
     return windows;
   };
@@ -103,7 +103,7 @@ export function ShellLayout({ snapshot, live }: { snapshot: ShellSnapshotV1; liv
       return;
     }
     setInternalReady(true);
-    const saved = readInternalWindows().map(w => ({ ...w, id: describeRoute(w.location!).id, title: t(describeRoute(w.location!).title), subtitle: t("appManager.subtitle") }));
+    const saved = readInternalWindows().map(w => ({ ...w, id: describeRoute(w.location!).id, title: t(describeRoute(w.location!).title), subtitle: "" }));
     if (saved.length) dispatch({ type: "restore-workspace", windows: [
       ...saved.filter(w => !state.windows.some(current => current.location === w.location)),
       ...state.windows.map(current => {
