@@ -1,17 +1,20 @@
-import { useCallback, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent, type PointerEvent } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent, type PointerEvent } from "react";
 import { AppIcon } from "../../apps/AppTile";
 import { rememberRecent } from "../../apps/recents";
 import { useShellApps, type ShellApp } from "../../apps/useShellApps";
 import { useI18n } from "../../i18n";
 import { useShellPreferences } from "../../preferences/ShellPreferences";
 import { useWorkspace } from "../../preferences/Workspace";
-import { setDesktopPosition, useDesktopPositions } from "./desktop-positions";
+import { setDesktopPosition, useDesktopPositions, clampDesktopPosition, desktopPositionInBounds, getDesktopPositions } from "./desktop-positions";
 import { ShellLink } from "../../routing/ShellLink";
 import { useShell } from "../ShellContext";
 import { DesktopContextMenu, type DesktopMenuState } from "./DesktopContextMenu";
 import { useDesktopLayout } from "./desktop-layout";
 import { DesktopWidgets } from "./DesktopWidgets";
 import { rectsIntersect, type SelectionRect } from "./geometry";
+
+/** Nominal icon footprint used to keep free positions inside the container. */
+const ICON_FOOTPRINT = { width: 96, height: 104 };
 
 export function DesktopHome() {
   const { t } = useI18n();
@@ -23,13 +26,34 @@ export function DesktopHome() {
   const layout = useDesktopLayout(apps.map((app) => app.id));
   const positions = useDesktopPositions();
   const suppressClick = useRef(false);
-  const freeDrag = useRef<null | { id: string; pointer: number; startX: number; startY: number; originX: number; originY: number; element: HTMLElement; moved: boolean }>(null);
+  const freeDrag = useRef<null | { id: string; pointer: number; startX: number; startY: number; originX: number; originY: number; element: HTMLElement; host: HTMLElement; moved: boolean }>(null);
   const [selected, setSelected] = useState<ReadonlySet<string>>(new Set());
   const [menu, setMenu] = useState<DesktopMenuState | null>(null);
   const [marquee, setMarquee] = useState<SelectionRect | null>(null);
   const [folder, setFolder] = useState<string | null>(null);
   const shortcuts = useRef<HTMLDivElement>(null);
   const marqueeStart = useRef<{ x: number; y: number; base: ReadonlySet<string> } | null>(null);
+
+  // Repair stale or dragged-off-screen free positions (and keep them in bounds
+  // on resize) so an icon never hides past the container edge.
+  useEffect(() => {
+    const host = shortcuts.current;
+    if (!host) return;
+    const sanitize = () => {
+      const bounds = { width: host.clientWidth, height: host.clientHeight };
+      if (!bounds.width || !bounds.height) return;
+      for (const [id, position] of Object.entries(getDesktopPositions())) {
+        if (!desktopPositionInBounds(position, bounds, ICON_FOOTPRINT)) {
+          setDesktopPosition(id, clampDesktopPosition(position, bounds, ICON_FOOTPRINT));
+        }
+      }
+    };
+    sanitize();
+    if (typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(sanitize);
+    observer.observe(host);
+    return () => observer.disconnect();
+  }, []);
 
   const currentFolder = workspace.effective.folders.find((item) => item.id === folder);
   const visible = (currentFolder ? currentFolder.apps.map((id) => byId.get(id)) : layout.visibleIds.map((id) => byId.get(id)))
@@ -107,13 +131,15 @@ export function DesktopHome() {
     if (!host) return;
     const box = host.getBoundingClientRect();
     const icon = element.getBoundingClientRect();
-    const origin = positions[app.id] ?? { x: icon.left - box.left, y: icon.top - box.top };
+    // Add the scroll offset: `getBoundingClientRect` is viewport-relative while
+    // an absolute position is relative to the (unscrolled) container.
+    const origin = positions[app.id] ?? { x: icon.left - box.left + host.scrollLeft, y: icon.top - box.top + host.scrollTop };
     element.style.position = "absolute";
     element.style.left = `${origin.x}px`;
     element.style.top = `${origin.y}px`;
     element.style.zIndex = "5";
     element.setPointerCapture(event.pointerId);
-    freeDrag.current = { id: app.id, pointer: event.pointerId, startX: event.clientX, startY: event.clientY, originX: origin.x, originY: origin.y, element, moved: false };
+    freeDrag.current = { id: app.id, pointer: event.pointerId, startX: event.clientX, startY: event.clientY, originX: origin.x, originY: origin.y, element, host, moved: false };
   }
 
   function moveFreeDrag(event: PointerEvent<HTMLElement>) {
@@ -132,7 +158,9 @@ export function DesktopHome() {
     drag.element.style.zIndex = "";
     if (drag.moved) {
       suppressClick.current = true;
-      setDesktopPosition(drag.id, { x: Math.round(drag.originX + dx), y: Math.round(drag.originY + dy) });
+      const bounds = { width: drag.host.clientWidth, height: drag.host.clientHeight };
+      const footprint = { width: drag.element.offsetWidth || ICON_FOOTPRINT.width, height: drag.element.offsetHeight || ICON_FOOTPRINT.height };
+      setDesktopPosition(drag.id, clampDesktopPosition({ x: drag.originX + dx, y: drag.originY + dy }, bounds, footprint));
     } else {
       drag.element.style.position = "";
       drag.element.style.left = "";
