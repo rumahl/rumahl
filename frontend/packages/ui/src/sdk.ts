@@ -1,6 +1,11 @@
 import { defaultTokens, type Tokens } from "./tokens";
 import { resolveVariants, type VariantSelection } from "./variants";
-import { themes, type AppearanceMode, type Theme, type ThemeParameter } from "./themes";
+import {
+  themes,
+  type AppearanceMode,
+  type Theme,
+  type ThemeParameter,
+} from "./themes";
 import { sanitizeSlots, type SlotName, type SlotTemplate } from "./slots";
 
 /**
@@ -19,11 +24,13 @@ export interface ThemeInput {
   slots?: Partial<Record<SlotName, SlotTemplate>> | undefined;
   /** Optional theme stylesheet (applied CSP-safely). */
   css?: string | undefined;
+  material?: "solid" | undefined;
 }
 
 /** Merges partial tokens/variants over the rumahl defaults into a full theme. */
 export function defineTheme(input: ThemeInput): Theme {
-  if (!input.id.trim() || !input.name.trim()) throw new Error("theme id and name are required");
+  if (!input.id.trim() || !input.name.trim())
+    throw new Error("theme id and name are required");
   return {
     id: input.id,
     name: input.name,
@@ -32,11 +39,14 @@ export function defineTheme(input: ThemeInput): Theme {
     parameters: input.parameters ?? [],
     modes: input.modes ?? ["light"],
     ...(input.slots ? { slots: sanitizeSlots(input.slots) } : {}),
-    ...(input.css ? { css: input.css.slice(0, 200_000) } : {})
+    ...(input.material ? { material: input.material } : {}),
+    ...(input.css ? { css: input.css.slice(0, 200_000) } : {}),
   };
 }
 
-const registry = new Map<string, Theme>(themes.map((theme) => [theme.id, theme]));
+const registry = new Map<string, Theme>(
+  themes.map((theme) => [theme.id, theme]),
+);
 
 export function registerTheme(theme: Theme): Theme {
   registry.set(theme.id, theme);

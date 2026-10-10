@@ -1,3 +1,6 @@
+import { classicTheme } from "@rumahl/ui/themes";
+import { paletteTokens } from "@rumahl/ui/palette";
+import { applyThemeTuning } from "./theme-tuning";
 import wallpaperUrl from "../assets/monstera.jpg";
 import { expect, test } from "vitest";
 import { defaultTheme } from "@rumahl/ui";
@@ -9,15 +12,34 @@ test("automatic colour survives parsing and follows wallpaper changes", () => {
   const first = applyTuning(defaultTheme.tokens, appearance);
   expect(first["color.accent"]).toBe("#0c1619");
   expect(wallpaperSeed(`url(${wallpaperUrl})`, "#ffffff")).toBe("#0c1619");
-  const second = applyTuning(defaultTheme.tokens, { ...appearance, tokens: { "texture.wallpaper": "linear-gradient(160deg, #000000, #ffffff)" } });
+  const second = applyTuning(defaultTheme.tokens, {
+    ...appearance,
+    tokens: {
+      "texture.wallpaper": "linear-gradient(160deg, #000000, #ffffff)",
+    },
+  });
   expect(second["color.accent"]).toBe("#808080");
   expect(wallpaperSeed("none", "#123456")).toBe("#123456");
-  const manual = applyTuning(defaultTheme.tokens, { ...appearance, autoColor: false, seed: "#0078ff" });
+  const manual = applyTuning(defaultTheme.tokens, {
+    ...appearance,
+    autoColor: false,
+    seed: "#0078ff",
+  });
   expect(manual["color.accent"]).toBe("#0078ff");
 });
 
 test("explicit glass activation recovers from solid and automatic reduction", () => {
-  const solid = { ...emptyAppearance, glassEnabled: false, glassReduced: true, tokens: { "material.opacity": "1", "material.morphism": "0", "material.blur": "0px", "color.accent": "#abcdef" } };
+  const solid = {
+    ...emptyAppearance,
+    glassEnabled: false,
+    glassReduced: true,
+    tokens: {
+      "material.opacity": "1",
+      "material.morphism": "0",
+      "material.blur": "0px",
+      "color.accent": "#abcdef",
+    },
+  };
   const next = enableGlass(solid);
   expect(next.glassEnabled).toBe(true);
   expect(next.glassReduced).toBe(false);
@@ -29,6 +51,36 @@ test("explicit glass activation recovers from solid and automatic reduction", ()
 });
 test("glass activation supplies transparent defaults but preserves custom glass values", () => {
   expect(enableGlass(emptyAppearance).tokens["material.opacity"]).toBe("0.72");
-  const tokens = { "material.opacity": "0.85", "material.morphism": "0.6", "material.blur": "18px" };
+  const tokens = {
+    "material.opacity": "0.85",
+    "material.morphism": "0.6",
+    "material.blur": "18px",
+  };
   expect(enableGlass({ ...emptyAppearance, tokens }).tokens).toEqual(tokens);
+});
+
+test("keeps Classic opaque despite saved glass settings and derives both modes from the palette", () => {
+  for (const mode of ["light", "dark"] as const) {
+    const tokens = applyThemeTuning(classicTheme, {
+      ...emptyAppearance,
+      autoColor: false,
+      seed: "#0078ff",
+      mode,
+      tokens: {
+        "material.opacity": "0.4",
+        "material.morphism": "1",
+        "material.blur": "30px",
+      },
+    });
+    expect(tokens["color.accent"]).toBe(
+      paletteTokens("#0078ff", { mode })["color.accent"],
+    );
+    expect(tokens["color.panel.background"]).toBe(
+      paletteTokens("#0078ff", { mode })["color.panel.background"],
+    );
+    expect(tokens["material.opacity"]).toBe("1");
+    expect(tokens["material.morphism"]).toBe("0");
+    expect(tokens["material.blur"]).toBe("0px");
+    expect(tokens["color.surface"]).toBe(tokens["color.surface.strong"]);
+  }
 });

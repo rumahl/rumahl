@@ -1038,3 +1038,9 @@
   -webkit-user-select: text;
   user-select: text;
 }
+
+@view-transition { navigation: auto; }
+::view-transition-group(root) { animation-duration: 240ms; }
+@media (prefers-reduced-motion: reduce) {
+  ::view-transition-group(*) { animation-duration: 0s; }
+}

@@ -306,3 +306,62 @@ async fn unauthenticated_navigation_reaches_login_even_when_renderer_is_down() {
         assert_eq!(response.status(), StatusCode::OK);
     }
 }
+
+#[tokio::test]
+async fn enhanced_login_preserves_csrf_password_and_session_boundaries() {
+    let dir = tempfile::tempdir().unwrap();
+    let password = test_password();
+    provision(
+        &dir.path().join("accounts.sqlite"),
+        "alice",
+        "Alice",
+        password.clone(),
+        LocalPasswordBlocklist::default(),
+    )
+    .unwrap();
+    let app = app(dir.path());
+    for (origin, submitted, expected) in [
+        (
+            "https://evil.test",
+            password.as_str(),
+            StatusCode::FORBIDDEN,
+        ),
+        (
+            "https://rumahl.test",
+            "wrong-password",
+            StatusCode::UNAUTHORIZED,
+        ),
+        ("https://rumahl.test", password.as_str(), StatusCode::OK),
+    ] {
+        let mut req = request(
+            "POST",
+            "/login",
+            None,
+            &format!("username=alice&password={submitted}&next=%2Fapp%2Fnotes"),
+            Some(origin),
+        );
+        req.headers_mut()
+            .insert("accept", "application/json".parse().unwrap());
+        let response = app.clone().oneshot(req).await.unwrap();
+        assert_eq!(response.status(), expected);
+        assert_eq!(response.headers()["cache-control"], "private, no-store");
+        if expected != StatusCode::OK {
+            assert!(!response.headers().contains_key("set-cookie"));
+            continue;
+        }
+        assert_eq!(response.headers()["content-type"], "application/json");
+        let cookie = response.headers()["set-cookie"]
+            .to_str()
+            .unwrap()
+            .split(';')
+            .next()
+            .unwrap()
+            .to_owned();
+        let body = response.into_body().collect().await.unwrap().to_bytes();
+        assert_eq!(
+            serde_json::from_slice::<serde_json::Value>(&body).unwrap(),
+            serde_json::json!({"next":"/app/notes"})
+        );
+        let _ = snapshot(&app, &cookie).await;
+    }
+}

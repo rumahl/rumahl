@@ -50,8 +50,9 @@ export function RumahlInput({
   className = "",
   status,
   error,
+  material,
   ...props
-}: InputProps & InputFeedbackProps) {
+}: InputProps & InputFeedbackProps & { material?: "glass" }) {
   const id = useId();
   return (
     <RumahlInputFeedback error={error} id={id}>
@@ -69,6 +70,7 @@ export function RumahlInput({
             .filter(Boolean)
             .join(" ") || undefined
         }
+        data-material={material}
         className={`rumahl-input ${className}`}
       />
     </RumahlInputFeedback>

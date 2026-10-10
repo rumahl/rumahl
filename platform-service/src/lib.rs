@@ -163,6 +163,14 @@ impl LocalBrowserSessions {
     }
 }
 impl BrowserSessions for LocalBrowserSessions {
+    fn login_accounts(&self) -> Result<Vec<rumahl_platform_web::LoginAccount>, ShellBackendError> {
+        let state = self.accounts.load().map_err(|_| ShellBackendError::Unavailable)?;
+        Ok(state.accounts().accounts().iter().filter(|account| account.can_authenticate()).map(|account| rumahl_platform_web::LoginAccount {
+            username: account.username().as_str().to_owned(),
+            display_name: account.display_name().to_owned(),
+        }).collect())
+    }
+
     fn login(
         &self,
         username: &str,

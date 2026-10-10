@@ -15,8 +15,7 @@ No Docker, nginx, root access or global watch utility is needed.
 
 ```sh
 pnpm --dir frontend install --frozen-lockfile
-pnpm --dir frontend dev
-```
+eee```
 
 Open `https://localhost:8443`. On first start the server creates an isolated
 `developer` account with a random password. Read it from
@@ -42,7 +41,11 @@ The certificate must cover `localhost`. Certificate creation uses OpenSSL only
 when no certificate/key pair is supplied. To rotate the generated certificate,
 stop the developer server, remove only `.rumahl-dev/tls`, and start again.
 Do not disable TLS verification or change the Secure/HttpOnly cookie posture.
-A trusted certificate is also necessary for reliable WSS hot reload.
+A trusted certificate is also necessary for reliable WSS hot reload and Service
+Worker registration. Merely continuing past the browser certificate warning may
+load the login page while Chromium rejects the worker script with SecurityError.
+Use a locally trusted certificate via `--cert` and `--key` for offline development.
+Settings → This device shows registration errors, worker version and cache status.
 
 ### Daily workflow
 

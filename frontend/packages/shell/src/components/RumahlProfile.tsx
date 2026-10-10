@@ -29,10 +29,12 @@ export function RumahlAvatar({
   src,
   size = "md",
   status,
+  material,
 }: {
   name: string;
   src?: string | undefined;
   size?: "sm" | "md" | "lg";
+  material?: "theme";
   status?: "online" | "away" | "offline";
 }) {
   const [failed, setFailed] = useState<string>();
@@ -49,6 +51,7 @@ export function RumahlAvatar({
   return (
     <span
       className={`rumahl-avatar rumahl-avatar--${size}`}
+      data-material={material}
       role="img"
       aria-label={name}
     >

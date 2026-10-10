@@ -149,6 +149,7 @@ pub fn router(state: GatewayState) -> Router {
         .merge(crate::workspace::routes())
         .merge(crate::files::routes())
         .merge(crate::browser_auth::routes())
+        .merge(crate::offline::routes())
         .with_state(Arc::new(state))
 }
 

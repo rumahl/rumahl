@@ -7,12 +7,13 @@ import { watchShellUpdates, type ShellLiveSource } from "./live-updates";
 import { ShellRouter, type ShellRouterOptions } from "./routing/ShellRouter";
 import { ShellPreferencesProvider, useShellPreferences } from "./preferences/ShellPreferences";
 import { OsModeProvider } from "./preferences/OsMode";
-import { applyTuning, useThemeTuning } from "./preferences/theme-tuning";
+import { applyThemeTuning, useThemeTuning } from "./preferences/theme-tuning";
 import { WorkspaceProvider } from "./preferences/Workspace";
 import { AppCatalog } from "./apps/AppCatalog";
 import { ShellLayout } from "./shell/ShellLayout";
 import { useSystemMode } from "./shell/system-scheme";
 import { buildSnapshotTheme, resolveActiveTheme, resolveTokens } from "./theme";
+import { rememberLoginAppearance } from "./preferences/login-appearance";
 
 export function App({ snapshot, live, theme, ...routing }: ShellRouterOptions & {
   snapshot: ShellSnapshotV1;
@@ -51,8 +52,11 @@ function ShellThemeGate({ override, serverTheme, children }: PropsWithChildren<{
   const systemMode = useSystemMode();
   const theme = useMemo(() => {
     const selected = override ?? resolveActiveTheme(serverTheme, preferences.theme);
-    return { ...selected, tokens: resolveTokens(applyTuning(selected.tokens, tuning, systemMode)) };
+    return { ...selected, tokens: resolveTokens(applyThemeTuning(selected, tuning, systemMode)) };
   }, [override, preferences.theme, serverTheme, tuning, systemMode]);
+  useEffect(() => {
+    rememberLoginAppearance(theme, tuning.mode ?? systemMode);
+  }, [theme, tuning.mode, systemMode]);
   return <ThemeProvider theme={theme}>{children}</ThemeProvider>;
 }
 
