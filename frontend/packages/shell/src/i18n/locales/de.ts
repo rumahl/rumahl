@@ -126,6 +126,7 @@ export const german = {
   "launcher.menu.open": "Öffnen",
   "launcher.menu.settings": "App-Einstellungen",
   "launcher.menu.openFolder": "Ordner öffnen",
+  "launcher.menu.renameFolder": "Ordner umbenennen",
   "launcher.menu.removeFolder": "Ordner entfernen",
   "launcher.menu.newFolder": "Neuer Ordner",
   "launcher.edit": "Bearbeiten",

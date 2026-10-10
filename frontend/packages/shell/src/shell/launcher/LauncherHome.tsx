@@ -34,6 +34,10 @@ export function LauncherHome() {
   const [cols, setCols] = useState(4);
   const [drag, setDrag] = useState<DragState | null>(null);
   const [dropFolder, setDropFolder] = useState<string | null>(null);
+  const [renaming, setRenaming] = useState<string | null>(null);
+  const [outDrag, setOutDrag] = useState<null | { id: string; x: number; y: number; width: number }>(null);
+  const outGesture = useRef<null | { pointer: number; x: number; y: number; width: number }>(null);
+  const outDragRef = useRef<null | { folderId: string; appId: string }>(null);
   const [menu, setMenu] = useState<null | { x: number; y: number; appId?: string; folderId?: string }>(null);
   const now = useClock();
   const swipe = useRef<number | null>(null);
@@ -58,7 +62,6 @@ export function LauncherHome() {
   const normalized = query.trim().toLocaleLowerCase();
   const currentFolder = effective.folders.find((item) => item.id === folder);
   useEffect(() => { setPage(0); }, [query, pageSize]);
-  useEffect(() => { setEditing(false); }, [folder]);
 
   const rootIds = useMemo(
     () => orderedIds.filter((id) => !effective.folders.some((item) => item.apps.includes(id))),
@@ -101,6 +104,36 @@ export function LauncherHome() {
       ? { ...item, apps: item.apps.filter((id) => id !== appId) }
       : item));
   }
+  function renameFolder(folderId: string, name: string) {
+    const trimmed = name.trim();
+    if (trimmed) persistFolders(effective.folders.map((item) => item.id === folderId ? { ...item, name: trimmed } : item));
+    setRenaming(null);
+  }
+  function beginOutDrag(folderId: string, appId: string, event: ReactPointerEvent<HTMLElement>) {
+    if (!editing || event.button !== 0) return;
+    const width = event.currentTarget.getBoundingClientRect().width || MIN_CELL;
+    outGesture.current = { pointer: event.pointerId, x: event.clientX, y: event.clientY, width };
+    outDragRef.current = { folderId, appId };
+    setOutDrag({ id: appId, x: event.clientX, y: event.clientY, width });
+    event.currentTarget.setPointerCapture?.(event.pointerId);
+  }
+  function moveOutDrag(event: ReactPointerEvent) {
+    const entry = outGesture.current;
+    if (!entry || entry.pointer !== event.pointerId) return;
+    setOutDrag((previous) => previous ? { ...previous, x: event.clientX, y: event.clientY } : previous);
+  }
+  function endOutDrag(event: ReactPointerEvent) {
+    const entry = outGesture.current;
+    const target = outDragRef.current;
+    if (!entry || entry.pointer !== event.pointerId || !target) return;
+    const dx = event.clientX - entry.x, dy = event.clientY - entry.y;
+    outGesture.current = null;
+    outDragRef.current = null;
+    if (Math.abs(dx) + Math.abs(dy) > 6 && !document.elementFromPoint(event.clientX, event.clientY)?.closest(".launcher-folder")) {
+      removeFromFolder(target.folderId, target.appId);
+    }
+    setOutDrag(null);
+  }
   function menuItems(): LauncherMenuItem[] {
     if (!menu) return [];
     if (menu.appId) {
@@ -116,6 +149,7 @@ export function LauncherHome() {
       const id = menu.folderId;
       return [
         { label: t("launcher.menu.openFolder"), onSelect: () => setFolder(id) },
+        { label: t("launcher.menu.renameFolder"), onSelect: () => setRenaming(id) },
         { label: t("launcher.menu.removeFolder"), danger: true, onSelect: () => removeFolder(id) }
       ];
     }
@@ -208,10 +242,18 @@ export function LauncherHome() {
       {effective.folders.length > 0 ? <section className="launcher-section launcher-section--folders">
         <h2>{t("launcher.folders")}</h2>
         <div className="app-grid">
-          {effective.folders.map((item) => <button className={`app-tile${dropFolder === item.id ? " is-drop-target" : ""}`} key={item.id} type="button"
-            data-folder-id={item.id} onClick={() => setFolder(item.id)} onContextMenu={(event) => openMenu(event, { folderId: item.id })}>
-            <span className="app-tile__icon folder-preview" aria-hidden="true">{item.apps.slice(0, 4).map((id) => { const app = byId.get(id); return app ? <span key={id}><AppIcon app={app} /></span> : null; })}</span><span>{item.name}</span>
-          </button>)}
+          {effective.folders.map((item) => renaming === item.id
+            ? <div className="app-tile" key={item.id} data-folder-id={item.id}>
+                <span className="app-tile__icon folder-preview" aria-hidden="true">{item.apps.slice(0, 4).map((id) => { const app = byId.get(id); return app ? <span key={id}><AppIcon app={app} /></span> : null; })}</span>
+                <input className="launcher-rename" autoFocus defaultValue={item.name} maxLength={128}
+                  onClick={(event) => event.stopPropagation()}
+                  onBlur={(event) => renameFolder(item.id, event.target.value)}
+                  onKeyDown={(event) => { if (event.key === "Enter") event.currentTarget.blur(); if (event.key === "Escape") setRenaming(null); }} />
+              </div>
+            : <button className={`app-tile${dropFolder === item.id ? " is-drop-target" : ""}`} key={item.id} type="button"
+                data-folder-id={item.id} onClick={() => setFolder(item.id)} onContextMenu={(event) => openMenu(event, { folderId: item.id })}>
+                <span className="app-tile__icon folder-preview" aria-hidden="true">{item.apps.slice(0, 4).map((id) => { const app = byId.get(id); return app ? <span key={id}><AppIcon app={app} /></span> : null; })}</span><span>{item.name}</span>
+              </button>)}
         </div>
       </section> : null}
       <div className="springboard-grid" style={{ gridTemplateColumns: `repeat(${cols}, 1fr)` }}>
@@ -238,15 +280,30 @@ export function LauncherHome() {
     {currentFolder ? <div className="launcher-folder-overlay" role="dialog" aria-label={currentFolder.name} onClick={(event) => { if (event.target === event.currentTarget) setFolder(null); }}>
       <div className="launcher-folder">
         <header className="launcher-folder__header">
-          <h2>{currentFolder.name}</h2>
-          <button type="button" aria-label={t("launcher.closeFolder")} onClick={() => setFolder(null)}>×</button>
+          {renaming === currentFolder.id
+            ? <input className="launcher-rename" autoFocus defaultValue={currentFolder.name} maxLength={128}
+                onBlur={(event) => renameFolder(currentFolder.id, event.target.value)}
+                onKeyDown={(event) => { if (event.key === "Enter") event.currentTarget.blur(); if (event.key === "Escape") setRenaming(null); }} />
+            : <h2>{currentFolder.name}</h2>}
+          <div className="launcher-folder__actions">
+            <button className="launcher-edit" type="button" aria-pressed={editing} onClick={() => setEditing((value) => !value)}>{t(editing ? "launcher.done" : "launcher.edit")}</button>
+            <button type="button" aria-label={t("launcher.closeFolder")} onClick={() => setFolder(null)}>×</button>
+          </div>
         </header>
         <div className="app-grid">
-          {currentFolder.apps.map((id) => { const app = byId.get(id); return app ? <div key={id} onContextMenu={(event) => openMenu(event, { appId: id })}><AppTile app={app} /></div> : null; })}
+          {currentFolder.apps.map((id) => { const app = byId.get(id); return app ? <div key={id}
+            onContextMenu={(event) => openMenu(event, { appId: id })}
+            onPointerDown={(event) => beginOutDrag(currentFolder.id, id, event)} onPointerMove={moveOutDrag} onPointerUp={endOutDrag} onPointerCancel={endOutDrag}>
+            <AppTile app={app} /></div> : null; })}
         </div>
         {currentFolder.apps.length === 0 ? <p role="status" className="launcher-empty">{t("launcher.folderEmpty")}</p> : null}
       </div>
     </div> : null}
+
+    {outDrag ? createPortal(
+      <div className="springboard-float" style={{ left: outDrag.x, top: outDrag.y, width: outDrag.width }} aria-hidden="true">
+        {byId.get(outDrag.id) ? <AppTile app={byId.get(outDrag.id)!} /> : null}
+      </div>, document.body) : null}
 
     {drag?.moved && !dropFolder ? createPortal(
       <div className="springboard-float" style={{ left: drag.x, top: drag.y, width: drag.width }} aria-hidden="true">

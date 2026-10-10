@@ -131,6 +131,7 @@ export const english = {
   "launcher.menu.open": "Open",
   "launcher.menu.settings": "App settings",
   "launcher.menu.openFolder": "Open folder",
+  "launcher.menu.renameFolder": "Rename folder",
   "launcher.menu.removeFolder": "Remove folder",
   "launcher.menu.newFolder": "New folder",
   "launcher.edit": "Edit",
