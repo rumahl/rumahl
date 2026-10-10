@@ -14,6 +14,16 @@ export interface RumahlProfile {
   detail?: string;
   avatar?: string;
 }
+/** Constrains an avatar source to safe URL schemes (never `javascript:`/HTML data URLs). */
+function safeAvatarSrc(value: string | undefined): string | undefined {
+  if (!value) return undefined;
+  const url = value.trim();
+  if (!url) return undefined;
+  if (/^data:image\//i.test(url)) return url;
+  if (/^[a-z][a-z0-9+.-]*:/i.test(url)) return /^(https?|blob):/i.test(url) ? url : undefined;
+  return url; // relative path
+}
+
 export function RumahlAvatar({
   name,
   src,
@@ -26,6 +36,7 @@ export function RumahlAvatar({
   status?: "online" | "away" | "offline";
 }) {
   const [failed, setFailed] = useState<string>();
+  const safeSrc = safeAvatarSrc(src);
   const initials =
     name
       .trim()
@@ -41,8 +52,8 @@ export function RumahlAvatar({
       role="img"
       aria-label={name}
     >
-      {src && failed !== src ? (
-        <img src={src} alt="" onError={() => setFailed(src)} />
+      {safeSrc && failed !== safeSrc ? (
+        <img src={safeSrc} alt="" onError={() => setFailed(safeSrc)} />
       ) : (
         <span aria-hidden="true">{initials}</span>
       )}
