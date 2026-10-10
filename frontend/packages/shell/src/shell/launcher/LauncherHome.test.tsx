@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 import { beforeEach, describe, expect, test } from "vitest";
 import { App } from "../../App";
 import { demoSnapshot } from "../../demo/snapshot";
@@ -18,7 +18,7 @@ describe("launcher shell", () => {
     await screen.findByRole("button", { name: "Tools" });
     expect(screen.queryByRole("link", { name: "Files" })).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "Tools" }));
-    expect(screen.getByRole("button", { name: /All apps/ })).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Files" })).toBeInTheDocument();
+    const dialog = await screen.findByRole("dialog", { name: "Tools" });
+    expect(within(dialog).getByRole("link", { name: "Files" })).toBeInTheDocument();
   });
 });
