@@ -13,6 +13,7 @@
 @import "./shell/dock-indicators.css";
 @import "./shell/glass-surfaces.css";
 @import "./shell/launcher/launcher.css";
+@import "./shell/desktop/desktop-widgets.css";
 
 @layer foundation {
   :root {

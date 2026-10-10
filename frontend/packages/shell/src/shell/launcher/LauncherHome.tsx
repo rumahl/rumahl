@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent } from "react";
 import { AppIcon, AppTile } from "../../apps/AppTile";
-import { resolveRecentApp, useRecents } from "../../apps/recents";
-import { useShellApps, type ShellApp } from "../../apps/useShellApps";
+import { useShellApps } from "../../apps/useShellApps";
 import { useI18n } from "../../i18n";
 import { useWorkspace } from "../../preferences/Workspace";
 import { useShell } from "../ShellContext";
@@ -24,7 +23,6 @@ export function LauncherHome() {
   const { snapshot } = useShell();
   const apps = useShellApps();
   const { effective } = useWorkspace();
-  const recents = useRecents();
   const order = useLauncherOrder();
   const [query, setQuery] = useState("");
   const [folder, setFolder] = useState<string | null>(null);
@@ -65,15 +63,6 @@ export function LauncherHome() {
     if (currentFolder) return currentFolder.apps.includes(app.id);
     return false;
   });
-  const recentApps = useMemo(() => {
-    const seen = new Set<string>();
-    const result: ShellApp[] = [];
-    for (const path of recents) {
-      const app = resolveRecentApp(path, apps);
-      if (app && !seen.has(app.id)) { seen.add(app.id); result.push(app); }
-    }
-    return result.slice(0, 6);
-  }, [recents, apps]);
 
   const clock = now ? new Intl.DateTimeFormat(locale, { hour: "2-digit", minute: "2-digit" }).format(now) : "";
   const date = now ? new Intl.DateTimeFormat(locale, { weekday: "long", day: "numeric", month: "long" }).format(now) : "";
@@ -147,11 +136,6 @@ export function LauncherHome() {
         <input type="search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder={t("launcher.searchPlaceholder")} />
       </label>
     </header>
-
-    {!normalized && !currentFolder && recentApps.length > 0 ? <section className="launcher-section launcher-section--recent">
-      <h2>{t("launcher.recent")}</h2>
-      <div className="app-grid">{recentApps.map((app) => <AppTile app={app} key={app.id} />)}</div>
-    </section> : null}
 
     {normalized || currentFolder ? <section className="launcher-section">
       <h2>{currentFolder ? currentFolder.name : t("launcher.searchResults")}</h2>

@@ -148,14 +148,29 @@
   gap: 16px 12px;
 }
 .launcher-home .app-tile {
-  padding: 10px 4px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
   gap: 9px;
+  padding: 10px 4px;
   border-radius: 18px;
   border: 1px solid transparent;
   color: #fff;
   font-size: 12px;
+  line-height: 1.25;
+  text-align: center;
+  text-decoration: none;
+  overflow-wrap: anywhere;
   text-shadow: 0 1px 6px rgba(0, 0, 0, 0.5);
   transition: background 0.15s ease, border-color 0.15s ease;
+}
+.launcher-home .app-tile small {
+  display: block;
+  margin-top: 2px;
+  opacity: 0.72;
+}
+.launcher-home a {
+  text-decoration: none;
 }
 .launcher-home .app-tile:hover {
   background: rgba(255, 255, 255, 0.1);

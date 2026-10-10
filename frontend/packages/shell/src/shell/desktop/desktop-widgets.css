@@ -1,0 +1,19 @@
+/* Desktop widgets are freely placed: the layer covers the desktop (pointer
+   events pass through) and each widget is absolutely positioned and draggable.
+   Without a stored position they default to a top-right column. */
+.desktop-widgets {
+  position: absolute;
+  inset: 0;
+  display: block;
+  width: auto;
+  pointer-events: none;
+}
+.desktop-widgets .desktop-widget {
+  position: absolute;
+  width: min(230px, 42vw);
+  pointer-events: auto;
+}
+.desktop-widget.is-dragging {
+  z-index: 4;
+  cursor: grabbing;
+}
