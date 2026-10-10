@@ -1529,8 +1529,7 @@ mod tests {
                 .runtime_provider()
                 .trace
                 .borrow()
-                .iter()
-                .any(|entry| *entry == "runtime-activated"),
+                .contains(&"runtime-activated"),
             "an on-demand app must not activate at install"
         );
     }
