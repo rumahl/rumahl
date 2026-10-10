@@ -354,8 +354,8 @@ impl PackageAppManifest {
         let mut provided_capabilities = Vec::with_capacity(raw.provided_capabilities.len());
         let mut capability_ids = HashSet::new();
         for capability in raw.provided_capabilities {
-            let capability =
-                CapabilityId::parse(capability).map_err(|_| PackageManifestError::InvalidCapability)?;
+            let capability = CapabilityId::parse(capability)
+                .map_err(|_| PackageManifestError::InvalidCapability)?;
             if !capability_ids.insert(capability.clone()) {
                 return Err(PackageManifestError::InvalidCapability);
             }

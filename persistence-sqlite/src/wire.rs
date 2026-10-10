@@ -3,14 +3,15 @@ use std::fmt;
 
 use rumahl_core::{
     AppDatabaseDeclaration, AppDatabaseId, AppId, AppIdentity, AppManifest, AppSettingDeclaration,
-    AppSettingKey, AppSettingKind, AppSettingOption,     AppVersion, CapabilityId, CommandAction, ConnectorDeclaration, ConnectorTarget,
-    CommandContributionDeclaration, ContributionDeclaration, ContributionId, EventName, GrantId,
-    Identity, InstallationId, InstalledAppSnapshot, OidcCallbackPath, OidcClientDeclaration,
-    OidcClientType, OidcScope, PackagePath, PermissionGrantSnapshot, PermissionId,
-    PermissionRequest, PermissionScope, PlatformSnapshot, PreferredStreamSize, PublisherId,
-    ResourceKey, ResourceKind, ResourceNamespace, ResourceRef, RuntimeDescriptor,
-    RuntimeEndpointId, RuntimeEntrypoint, RuntimeEntrypointId, RuntimeEntrypointTarget,
-    RuntimeKind, RuntimeLifecycle, ServiceId, ServiceIdentity, StreamPresentation, UserId, UserIdentity,
+    AppSettingKey, AppSettingKind, AppSettingOption, AppVersion, CapabilityId, CommandAction,
+    CommandContributionDeclaration, ConnectorDeclaration, ConnectorTarget, ContributionDeclaration,
+    ContributionId, EventName, GrantId, Identity, InstallationId, InstalledAppSnapshot,
+    OidcCallbackPath, OidcClientDeclaration, OidcClientType, OidcScope, PackagePath,
+    PermissionGrantSnapshot, PermissionId, PermissionRequest, PermissionScope, PlatformSnapshot,
+    PreferredStreamSize, PublisherId, ResourceKey, ResourceKind, ResourceNamespace, ResourceRef,
+    RuntimeDescriptor, RuntimeEndpointId, RuntimeEntrypoint, RuntimeEntrypointId,
+    RuntimeEntrypointTarget, RuntimeKind, RuntimeLifecycle, ServiceId, ServiceIdentity,
+    StreamPresentation, UserId, UserIdentity,
 };
 use serde::{Deserialize, Serialize};
 

@@ -6,7 +6,10 @@ use crate::{
     PlatformState,
 };
 
-use super::{RuntimeAdapterError, RuntimeAdapterRegistry, RuntimeCapabilityResult, RuntimeKind, RuntimeStatus};
+use super::{
+    RuntimeAdapterError, RuntimeAdapterRegistry, RuntimeCapabilityResult, RuntimeKind,
+    RuntimeStatus,
+};
 
 #[derive(Debug, Default, Clone, Copy)]
 pub struct RuntimeRouter;

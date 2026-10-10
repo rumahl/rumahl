@@ -59,18 +59,17 @@ impl AppManifestValidator {
         Ok(())
     }
 
-    fn validate_lifecycle(
-        &self,
-        manifest: &AppManifest,
-    ) -> Result<(), AppManifestValidationError> {
+    fn validate_lifecycle(&self, manifest: &AppManifest) -> Result<(), AppManifestValidationError> {
         // A continuously running service needs a backend runtime; a static web
         // app (browser-backed) is always on demand.
         if manifest.lifecycle() == RuntimeLifecycle::AlwaysOn
             && manifest.runtime().kind() != RuntimeKind::Container
         {
-            return Err(AppManifestValidationError::AlwaysOnRequiresContainerRuntime(
-                manifest.runtime().kind(),
-            ));
+            return Err(
+                AppManifestValidationError::AlwaysOnRequiresContainerRuntime(
+                    manifest.runtime().kind(),
+                ),
+            );
         }
         Ok(())
     }
@@ -347,9 +346,7 @@ mod tests {
 
         assert_eq!(
             AppManifestValidator::new().validate(&manifest),
-            Err(AppManifestValidationError::AlwaysOnRequiresContainerRuntime(
-                RuntimeKind::Web
-            ))
+            Err(AppManifestValidationError::AlwaysOnRequiresContainerRuntime(RuntimeKind::Web))
         );
     }
 

@@ -175,10 +175,22 @@ mod tests {
 
         let controller = RuntimeController::new(Arc::new(state), Arc::new(adapters));
 
-        assert_eq!(controller.status(&installation).unwrap(), RuntimeStatus::Stopped);
-        assert_eq!(controller.start(&installation).unwrap(), RuntimeStatus::Running);
-        assert_eq!(controller.status(&installation).unwrap(), RuntimeStatus::Running);
-        assert_eq!(controller.stop(&installation).unwrap(), RuntimeStatus::Stopped);
+        assert_eq!(
+            controller.status(&installation).unwrap(),
+            RuntimeStatus::Stopped
+        );
+        assert_eq!(
+            controller.start(&installation).unwrap(),
+            RuntimeStatus::Running
+        );
+        assert_eq!(
+            controller.status(&installation).unwrap(),
+            RuntimeStatus::Running
+        );
+        assert_eq!(
+            controller.stop(&installation).unwrap(),
+            RuntimeStatus::Stopped
+        );
     }
 
     #[test]

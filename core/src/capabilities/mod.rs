@@ -27,4 +27,4 @@ pub use provider::{CapabilityProvider, CapabilityProviderError};
 
 pub use registry::{CapabilityRegistry, CapabilityRegistryError};
 
-pub use registry_builder::{build_capability_registries, CapabilityRegistryBuildError};
+pub use registry_builder::{CapabilityRegistryBuildError, build_capability_registries};

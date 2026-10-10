@@ -1,5 +1,5 @@
-mod contribution;
 mod connector;
+mod contribution;
 mod installed;
 mod installed_registry;
 mod lifecycle;

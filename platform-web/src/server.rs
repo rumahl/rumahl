@@ -4,7 +4,6 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Duration;
 
-use base64::Engine as _;
 use axum::Router;
 use axum::body::Body;
 use axum::extract::ws::{Message, WebSocket, WebSocketUpgrade};
@@ -15,6 +14,7 @@ use axum::http::header::{
 use axum::http::{HeaderMap, HeaderValue, StatusCode, Uri};
 use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post};
+use base64::Engine as _;
 use futures_util::{SinkExt, StreamExt};
 use http_body_util::{BodyExt, Full, Limited};
 use hyper::client::conn::http1;
@@ -459,7 +459,12 @@ async fn app_runtime_status(
     let app_id = id.clone();
     let installation_id = installation.clone();
     match tokio::task::spawn_blocking(move || {
-        apps.runtime(identity, &app_id, &installation_id, crate::RuntimeAction::Status)
+        apps.runtime(
+            identity,
+            &app_id,
+            &installation_id,
+            crate::RuntimeAction::Status,
+        )
     })
     .await
     {

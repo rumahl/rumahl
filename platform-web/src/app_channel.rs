@@ -154,7 +154,11 @@ impl<W: Write + Send> Connection<W> {
             .ok()
             .and_then(|mut pending| pending.remove(&id));
         if let Some(waiter) = waiter {
-            let _ = waiter.send(if ok { Ok(result.unwrap_or_default()) } else { Err(()) });
+            let _ = waiter.send(if ok {
+                Ok(result.unwrap_or_default())
+            } else {
+                Err(())
+            });
         }
     }
 
@@ -277,7 +281,9 @@ where
         return Ok(());
     };
     let connection = Arc::new(Connection::new(writer));
-    let channel = Arc::new(SocketRuntimeChannel::from_connection(Arc::clone(&connection)));
+    let channel = Arc::new(SocketRuntimeChannel::from_connection(Arc::clone(
+        &connection,
+    )));
     if !registry.register(installation, channel) {
         return Ok(());
     }
@@ -307,7 +313,9 @@ pub fn serve_channel_listener(
 ) {
     for stream in listener.incoming() {
         let Ok(stream) = stream else { continue };
-        let Ok(writer) = stream.try_clone() else { continue };
+        let Ok(writer) = stream.try_clone() else {
+            continue;
+        };
         let reader = BufReader::new(stream);
         let registry = Arc::clone(&registry);
         let authenticator = Arc::clone(&authenticator);
@@ -384,7 +392,10 @@ mod tests {
             .unwrap();
 
         let written = String::from_utf8(sink.0.lock().unwrap().clone()).unwrap();
-        assert_eq!(written, "{\"kind\":\"event\",\"topic\":\"rumahl.apps.installed\"}\n");
+        assert_eq!(
+            written,
+            "{\"kind\":\"event\",\"topic\":\"rumahl.apps.installed\"}\n"
+        );
     }
 
     #[test]
@@ -492,8 +503,9 @@ mod tests {
         let registry = Arc::new(RuntimeChannelRegistry::new());
         let authenticator: Arc<dyn ChannelAuthenticator> = Arc::new(FakeAuthenticator);
         let server_registry = Arc::clone(&registry);
-        let handle =
-            thread::spawn(move || run_connection(reader, server, server_registry, authenticator).unwrap());
+        let handle = thread::spawn(move || {
+            run_connection(reader, server, server_registry, authenticator).unwrap()
+        });
 
         let installation = installation();
         let hello = ChannelFrame::Hello {

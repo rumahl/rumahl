@@ -32,12 +32,12 @@ pub use apps::{
     AppManifestValidator, AppSettingDeclaration, AppSettingError, AppSettingKey, AppSettingKind,
     AppSettingOption, AppUninstallResult, AppVersion, AppVersionError,
     CommandContributionDeclaration, CommandContributionDeclarationError, ConnectorDeclaration,
-    ConnectorTarget, ConnectorTargetError, ContributionDeclaration,
-    InstalledApp, InstalledAppError, InstalledAppRegistry, InstalledAppRegistryError,
-    MAX_APP_SETTINGS, OidcCallbackPath, OidcCallbackPathError, OidcClientDeclaration,
-    OidcClientDeclarationError, OidcClientType, OidcScope, PlatformDeregistrationReport,
-    PlatformRegistrar, PlatformRegistrarError, PlatformRegistration, PlatformRegistrationError,
-    PreferredStreamSize, RuntimeLifecycle, STREAMING_ENGINE_CAPABILITY, SearchContributionDeclaration,
+    ConnectorTarget, ConnectorTargetError, ContributionDeclaration, InstalledApp,
+    InstalledAppError, InstalledAppRegistry, InstalledAppRegistryError, MAX_APP_SETTINGS,
+    OidcCallbackPath, OidcCallbackPathError, OidcClientDeclaration, OidcClientDeclarationError,
+    OidcClientType, OidcScope, PlatformDeregistrationReport, PlatformRegistrar,
+    PlatformRegistrarError, PlatformRegistration, PlatformRegistrationError, PreferredStreamSize,
+    RuntimeLifecycle, STREAMING_ENGINE_CAPABILITY, SearchContributionDeclaration,
     StreamPresentation, StreamPresentationError,
 };
 
@@ -66,14 +66,14 @@ pub use secrets::{
 };
 
 pub use runtime::{
-    AppRuntimeInstallationState, AppRuntimeProvider, PackagePath, PackagePathError, RuntimeAdapter,
-    RuntimeAdapterError, RuntimeAdapterRegistry, RuntimeAdapterRegistryError, RuntimeController,
-    RuntimeDescriptor,
-    RuntimeDescriptorError, RuntimeEndpointId, RuntimeEndpointIdError, RuntimeEntrypoint,
-    RuntimeEntrypointId, RuntimeEntrypointIdError, RuntimeEntrypointKind, RuntimeEntrypointTarget,
-    RuntimeKind, RuntimeRouter, RuntimeRoutingError, RuntimeStatus, ProviderRuntimeAdapter,
-    RuntimeCapabilityExecution, RuntimeCapabilityResult, RuntimeChannel, RuntimeChannelError,
-    RuntimeChannelRegistry, RuntimeEvent,
+    AppRuntimeInstallationState, AppRuntimeProvider, PackagePath, PackagePathError,
+    ProviderRuntimeAdapter, RuntimeAdapter, RuntimeAdapterError, RuntimeAdapterRegistry,
+    RuntimeAdapterRegistryError, RuntimeCapabilityExecution, RuntimeCapabilityResult,
+    RuntimeChannel, RuntimeChannelError, RuntimeChannelRegistry, RuntimeController,
+    RuntimeDescriptor, RuntimeDescriptorError, RuntimeEndpointId, RuntimeEndpointIdError,
+    RuntimeEntrypoint, RuntimeEntrypointId, RuntimeEntrypointIdError, RuntimeEntrypointKind,
+    RuntimeEntrypointTarget, RuntimeEvent, RuntimeKind, RuntimeRouter, RuntimeRoutingError,
+    RuntimeStatus,
 };
 
 pub use permissions::{
@@ -93,9 +93,9 @@ pub use capabilities::{
     CapabilityAccessRegistry, CapabilityAccessRegistryError, CapabilityAccessRule,
     CapabilityAccessRuleError, CapabilityDispatchError, CapabilityDispatchOutcome,
     CapabilityDispatcher, CapabilityExecution, CapabilityId, CapabilityIdError,
-    CapabilityInvocation, CapabilityInvocationError, CapabilityInvocationOutcome, CapabilityInvoker,
-    CapabilityProvider, CapabilityProviderError, CapabilityRegistry,
-    CapabilityRegistryError, CapabilityRegistryBuildError, build_capability_registries,
+    CapabilityInvocation, CapabilityInvocationError, CapabilityInvocationOutcome,
+    CapabilityInvoker, CapabilityProvider, CapabilityProviderError, CapabilityRegistry,
+    CapabilityRegistryBuildError, CapabilityRegistryError, build_capability_registries,
 };
 
 pub use contributions::{

@@ -6,7 +6,9 @@
 //! reach the real runtime instead of failing closed.
 use crate::{AppRuntimeInstallationState, AppRuntimeProvider, InstalledApp, OperationContext};
 
-use super::{RuntimeAdapter, RuntimeAdapterError, RuntimeChannelRegistry, RuntimeKind, RuntimeStatus};
+use super::{
+    RuntimeAdapter, RuntimeAdapterError, RuntimeChannelRegistry, RuntimeKind, RuntimeStatus,
+};
 
 /// Adapts one `AppRuntimeProvider` for one `RuntimeKind`.
 pub struct ProviderRuntimeAdapter<P> {
@@ -199,11 +201,26 @@ mod tests {
         let context = OperationContext::for_background_app(app.identity().clone());
 
         assert_eq!(adapter.kind(), RuntimeKind::Container);
-        assert_eq!(adapter.status(&context, &app).unwrap(), RuntimeStatus::Stopped);
-        assert_eq!(adapter.start(&context, &app).unwrap(), RuntimeStatus::Running);
-        assert_eq!(adapter.status(&context, &app).unwrap(), RuntimeStatus::Running);
-        assert_eq!(adapter.stop(&context, &app).unwrap(), RuntimeStatus::Stopped);
-        assert_eq!(adapter.status(&context, &app).unwrap(), RuntimeStatus::Stopped);
+        assert_eq!(
+            adapter.status(&context, &app).unwrap(),
+            RuntimeStatus::Stopped
+        );
+        assert_eq!(
+            adapter.start(&context, &app).unwrap(),
+            RuntimeStatus::Running
+        );
+        assert_eq!(
+            adapter.status(&context, &app).unwrap(),
+            RuntimeStatus::Running
+        );
+        assert_eq!(
+            adapter.stop(&context, &app).unwrap(),
+            RuntimeStatus::Stopped
+        );
+        assert_eq!(
+            adapter.status(&context, &app).unwrap(),
+            RuntimeStatus::Stopped
+        );
     }
 
     #[test]
@@ -228,9 +245,7 @@ mod tests {
                 execution: &RuntimeCapabilityExecution,
             ) -> Result<RuntimeCapabilityResult, RuntimeChannelError> {
                 self.0.lock().unwrap().push(execution.capability.clone());
-                Ok(RuntimeCapabilityResult::new(
-                    "{\"ok\":true}".to_owned(),
-                ))
+                Ok(RuntimeCapabilityResult::new("{\"ok\":true}".to_owned()))
             }
         }
 
@@ -297,7 +312,10 @@ mod tests {
             None,
         );
         adapter
-            .deliver_event(&app, &EventDelivery::new(app.identity().clone().into(), event))
+            .deliver_event(
+                &app,
+                &EventDelivery::new(app.identity().clone().into(), event),
+            )
             .unwrap();
         assert_eq!(sink.0.lock().unwrap().as_slice(), ["rumahl.files.changed"]);
 
@@ -314,7 +332,10 @@ mod tests {
             None,
         );
         assert_eq!(
-            bare.deliver_event(&app, &EventDelivery::new(app.identity().clone().into(), event)),
+            bare.deliver_event(
+                &app,
+                &EventDelivery::new(app.identity().clone().into(), event)
+            ),
             Err(RuntimeAdapterError::Unavailable)
         );
     }

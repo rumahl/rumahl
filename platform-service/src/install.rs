@@ -15,7 +15,7 @@ use std::path::{Path, PathBuf};
 use rumahl_app_operations::{AppOperationRunner, AppRuntimeServices};
 use rumahl_core::{
     AccountStateRepository, AppRuntimeInstallationState, AppRuntimeProvider, GrantAuthority,
-    GrantIssuerPolicy, Identity, InMemoryGrantStore, InstalledApp, InstallationId, PermissionId,
+    GrantIssuerPolicy, Identity, InMemoryGrantStore, InstallationId, InstalledApp, PermissionId,
     PermissionScope, PlatformRecovery, PlatformSnapshot, PlatformSnapshotRepository, PlatformState,
     ResourceRef, RuntimeEntrypointId, RuntimeKind, UserIdentity, UserRole,
 };
@@ -199,16 +199,17 @@ pub fn runtime_adapters_from_env(
     channels: &std::sync::Arc<rumahl_core::RuntimeChannelRegistry>,
 ) -> Option<std::sync::Arc<rumahl_core::RuntimeAdapterRegistry>> {
     let config = InstallConfig::from_env().ok()?;
-    let provider = std::sync::Arc::new(PlatformRuntimeProvider::new(
-        UnixAppRuntimeProvider::new(
-            UnixAppRuntimeProviderConfig::new(&config.control_socket, config.runtime_uid).ok()?,
-        ),
-    ));
+    let provider = std::sync::Arc::new(PlatformRuntimeProvider::new(UnixAppRuntimeProvider::new(
+        UnixAppRuntimeProviderConfig::new(&config.control_socket, config.runtime_uid).ok()?,
+    )));
     let mut registry = rumahl_core::RuntimeAdapterRegistry::new();
     registry
         .register(Box::new(
-            rumahl_core::ProviderRuntimeAdapter::new(rumahl_core::RuntimeKind::Web, provider.clone())
-                .with_channels(std::sync::Arc::clone(channels)),
+            rumahl_core::ProviderRuntimeAdapter::new(
+                rumahl_core::RuntimeKind::Web,
+                provider.clone(),
+            )
+            .with_channels(std::sync::Arc::clone(channels)),
         ))
         .ok()?;
     registry
@@ -337,8 +338,11 @@ fn install_with(
         let launch_permission = PermissionId::parse(crate::apps::APP_LAUNCH_PERMISSION)
             .map_err(InstallError::provider)?;
         let launch_resource = crate::apps::app_launch_resource(*installed.installation_id());
-        let mut targets: Vec<(PermissionId, PermissionScope, Vec<ResourceRef>)> =
-            vec![(launch_permission, PermissionScope::Explicit, vec![launch_resource])];
+        let mut targets: Vec<(PermissionId, PermissionScope, Vec<ResourceRef>)> = vec![(
+            launch_permission,
+            PermissionScope::Explicit,
+            vec![launch_resource],
+        )];
 
         if let Some(app) = recovered
             .installed_apps()

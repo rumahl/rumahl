@@ -2,7 +2,10 @@ use std::collections::HashSet;
 use std::error::Error;
 use std::fmt;
 
-use crate::{InstallationId, InstalledApp, InstalledAppSnapshot, RuntimeKind, RuntimeLifecycle, UnixTimestamp};
+use crate::{
+    InstallationId, InstalledApp, InstalledAppSnapshot, RuntimeKind, RuntimeLifecycle,
+    UnixTimestamp,
+};
 
 use super::AppOperationId;
 

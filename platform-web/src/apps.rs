@@ -354,7 +354,8 @@ impl AppAccess {
         capability: String,
         resource: Option<CapabilityResource>,
     ) -> Result<CapabilityResult, AppAccessError> {
-        self.provider.invoke_capability(identity, capability, resource)
+        self.provider
+            .invoke_capability(identity, capability, resource)
     }
     pub fn launch(
         &self,

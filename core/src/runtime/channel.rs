@@ -93,11 +93,7 @@ impl RuntimeChannelRegistry {
 
     /// Registers a channel for an installation. Returns `false` when a channel
     /// is already live (the caller must not replace a running channel blindly).
-    pub fn register(
-        &self,
-        installation: InstallationId,
-        channel: Arc<dyn RuntimeChannel>,
-    ) -> bool {
+    pub fn register(&self, installation: InstallationId, channel: Arc<dyn RuntimeChannel>) -> bool {
         match self.channels.lock() {
             Ok(mut channels) => {
                 if channels.contains_key(&installation) {
@@ -216,11 +212,17 @@ mod tests {
             Ok(())
         }
 
-        fn execute(&self, execution: &RuntimeCapabilityExecution) -> Result<RuntimeCapabilityResult, RuntimeChannelError> {
+        fn execute(
+            &self,
+            execution: &RuntimeCapabilityExecution,
+        ) -> Result<RuntimeCapabilityResult, RuntimeChannelError> {
             if self.reject {
                 return Err(RuntimeChannelError::Rejected);
             }
-            self.executions.lock().unwrap().push(execution.capability.clone());
+            self.executions
+                .lock()
+                .unwrap()
+                .push(execution.capability.clone());
             Ok(RuntimeCapabilityResult::new(format!(
                 "{{\"capability\":\"{}\"}}",
                 execution.capability

@@ -484,21 +484,30 @@ impl AppProvider for PersistentApps {
         identity: ShellIdentity,
         installation: InstallationId,
     ) -> Result<RuntimeState, AppAccessError> {
-        runtime_state(self.runtime_control(identity, installation)?.status(&installation))
+        runtime_state(
+            self.runtime_control(identity, installation)?
+                .status(&installation),
+        )
     }
     fn start_runtime(
         &self,
         identity: ShellIdentity,
         installation: InstallationId,
     ) -> Result<RuntimeState, AppAccessError> {
-        runtime_state(self.runtime_control(identity, installation)?.start(&installation))
+        runtime_state(
+            self.runtime_control(identity, installation)?
+                .start(&installation),
+        )
     }
     fn stop_runtime(
         &self,
         identity: ShellIdentity,
         installation: InstallationId,
     ) -> Result<RuntimeState, AppAccessError> {
-        runtime_state(self.runtime_control(identity, installation)?.stop(&installation))
+        runtime_state(
+            self.runtime_control(identity, installation)?
+                .stop(&installation),
+        )
     }
     fn import_package(
         &self,
@@ -581,7 +590,13 @@ impl AppProvider for PersistentApps {
         // so the shell delivers the invocation to the frame.
         if web_provider {
             let decision = CapabilityInvoker::new()
-                .authorize(&invocation, resource, &capabilities, &access, grants.grants())
+                .authorize(
+                    &invocation,
+                    resource,
+                    &capabilities,
+                    &access,
+                    grants.grants(),
+                )
                 .map_err(|_| AppAccessError::Denied)?;
             return Ok(match decision {
                 AuthorizationDecision::Allow => CapabilityResult {
@@ -642,7 +657,9 @@ fn write_staging(dir: &Path, files: &[PackageUploadFile]) -> Result<(), AppAcces
     Ok(())
 }
 
-fn runtime_state(result: Result<RuntimeStatus, RuntimeRoutingError>) -> Result<RuntimeState, AppAccessError> {
+fn runtime_state(
+    result: Result<RuntimeStatus, RuntimeRoutingError>,
+) -> Result<RuntimeState, AppAccessError> {
     match result {
         Ok(RuntimeStatus::Running | RuntimeStatus::Starting) => Ok(RuntimeState::Running),
         Ok(RuntimeStatus::Stopped | RuntimeStatus::Stopping | RuntimeStatus::Failed) => {

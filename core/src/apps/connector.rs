@@ -52,10 +52,9 @@ impl ConnectorTarget {
         if value.len() > Self::MAX_LENGTH {
             return Err(ConnectorTargetError::TooLong);
         }
-        if !value
-            .bytes()
-            .all(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit() || byte == b'-' || byte == b'.')
-        {
+        if !value.bytes().all(|byte| {
+            byte.is_ascii_lowercase() || byte.is_ascii_digit() || byte == b'-' || byte == b'.'
+        }) {
             return Err(ConnectorTargetError::InvalidCharacter);
         }
         Ok(Self(value))
@@ -94,13 +93,19 @@ mod tests {
 
     #[test]
     fn parses_valid_targets_and_rejects_bad_ones() {
-        assert_eq!(ConnectorTarget::parse("nextcloud").unwrap().as_str(), "nextcloud");
+        assert_eq!(
+            ConnectorTarget::parse("nextcloud").unwrap().as_str(),
+            "nextcloud"
+        );
         assert_eq!(ConnectorTarget::parse("plex").unwrap().as_str(), "plex");
         assert_eq!(
             ConnectorTarget::parse("next-cloud.2").unwrap().as_str(),
             "next-cloud.2"
         );
-        assert!(matches!(ConnectorTarget::parse(""), Err(ConnectorTargetError::Empty)));
+        assert!(matches!(
+            ConnectorTarget::parse(""),
+            Err(ConnectorTargetError::Empty)
+        ));
         assert!(matches!(
             ConnectorTarget::parse("Nextcloud"),
             Err(ConnectorTargetError::InvalidCharacter)

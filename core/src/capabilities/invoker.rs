@@ -168,7 +168,9 @@ mod tests {
             _: &CapabilityExecution,
         ) -> Result<RuntimeCapabilityResult, RuntimeAdapterError> {
             self.executions.fetch_add(1, Ordering::Relaxed);
-            Ok(RuntimeCapabilityResult::new("{\"preview\":\"ok\"}".to_owned()))
+            Ok(RuntimeCapabilityResult::new(
+                "{\"preview\":\"ok\"}".to_owned(),
+            ))
         }
         fn deliver_event(
             &self,
@@ -219,7 +221,10 @@ mod tests {
         let resource = file("document-1");
 
         let mut state = PlatformState::new();
-        state.installed_apps_mut().register(provider_app.clone()).unwrap();
+        state
+            .installed_apps_mut()
+            .register(provider_app.clone())
+            .unwrap();
 
         let mut capabilities = CapabilityRegistry::new();
         capabilities
@@ -230,7 +235,10 @@ mod tests {
             .unwrap();
         let mut access = CapabilityAccessRegistry::new();
         access
-            .register(CapabilityAccessRule::new(capability.clone(), permission.clone()))
+            .register(CapabilityAccessRule::new(
+                capability.clone(),
+                permission.clone(),
+            ))
             .unwrap();
 
         // The consumer app is explicitly granted the permission for this resource.
