@@ -196,7 +196,7 @@ function HostedWindow({ item, area, zIndex }: { item: ShellWindow; area: WorkAre
     transition={isLauncher ? { type: "spring", stiffness: 320, damping: 30 } : { duration: 0.22, ease: [0.2, 0.7, 0.2, 1] }}
     onPointerMove={move} onPointerUp={end} onPointerCancel={end} onLostPointerCapture={end}>
     {snap ? <div aria-hidden="true" className={`snap-preview snap-preview--${snap}`} /> : null}
-    <ProtectedWindow flush={flush} id={item.id} focused={state.focusedWindowId === item.id}
+    <ProtectedWindow frameless={isLauncher} flush={flush} id={item.id} focused={state.focusedWindowId === item.id}
       style={area ? { left: rect.x, top: rect.y, width: rect.width, height: rect.height } : undefined}
       onClose={() => { dispatch({ type: "close-window", id: item.id }); if (active === item.id) open("/"); }}
       onFocus={focus} onMinimize={() => { dispatch({ type: "toggle-minimize", id: item.id }); if (active === item.id) open("/"); }}

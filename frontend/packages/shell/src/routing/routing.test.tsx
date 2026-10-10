@@ -36,7 +36,7 @@ describe("shell routes and presentation", () => {
     localStorage.setItem("rumahl.demo.shell-mode", "launcher");
     render(<App snapshot={demoSnapshot} initialLocation="/app/test/documents/42?view=grid" />);
     expect(screen.getByRole("heading", { name: "Document 42: grid" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /Close Apps/ })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Close Apps/ })).toBeNull();
     expect(document.querySelector(".shell")).toHaveAttribute("data-shell-mode", "launcher");
   });
 
@@ -59,7 +59,7 @@ describe("shell routes and presentation", () => {
     render(<App snapshot={demoSnapshot} initialLocation="/app/test/documents/42?view=grid" />);
     choose("Shell mode", "Launcher");
     expect(await screen.findByRole("heading", { name: "Document 42: grid" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /Close Apps/ })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Close Apps/ })).toBeNull();
     choose("Shell mode", "Desktop");
     expect(await screen.findByRole("region", { name: "Apps" })).toBeInTheDocument();
   });

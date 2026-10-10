@@ -99,7 +99,7 @@ export function ProtectedWindow({
         aria-label={onTitleKeyDown ? t("window.move", { title }) : undefined}
         onPointerDown={onTitlePointerDown} onKeyDown={onTitleKeyDown}
         onDoubleClick={(event) => { if (!(event.target as HTMLElement).closest("button")) onMaximize?.(); }}>
-        {frameless ? null : windowSlot ? renderSlot(windowSlot, bindings) : <>{titleBlock}{controlsBlock}</>}
+        {windowSlot ? renderSlot(windowSlot, bindings) : <>{titleBlock}{controlsBlock}</>}
       </header>
       <div className="shell-window__content">{children}</div>
       {onResizePointerDown ? <button hidden={frameless || maximized} className="window-resize" aria-label={t("window.resize", { title })} onPointerDown={onResizePointerDown} onKeyDown={onResizeKeyDown} type="button" /> : null}
