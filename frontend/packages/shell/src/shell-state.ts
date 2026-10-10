@@ -40,12 +40,15 @@ export function shellReducer(state: ShellState, action: ShellAction): ShellState
     case "restore-workspace": return { ...state, windows: action.windows, focusedWindowId: action.windows.filter(w => !w.minimized).at(-1)?.id ?? null };
     case "open-window": {
       const existing = state.windows.find((window) => window.id === action.window.id);
+      // Keep the array order stable so opening or focusing an existing window
+      // never reorders the DOM (and thus never replays the window entry
+      // animation); stacking uses the z-index map.
       const windows = existing
         ? state.windows.map((window) =>
             window.id === action.window.id ? { ...window, ...action.window, minimized: false } : window
           )
         : [...state.windows, { placement: "floating" as const, ...action.window, minimized: false }];
-      return { ...state, windows: [...windows.filter((item) => item.id !== action.window.id), windows.find((item) => item.id === action.window.id)!], focusedWindowId: action.window.id };
+      return { ...state, windows, focusedWindowId: action.window.id };
     }
     case "close-window": {
       const windows = state.windows.filter((window) => window.id !== action.id);
