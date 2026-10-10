@@ -18,7 +18,21 @@ describe("menu bar", () => {
     render(<App snapshot={demoSnapshot} initialLocation="/" />);
     fireEvent.click(screen.getByRole("button", { name: "View" }));
     fireEvent.click(screen.getByRole("menuitemradio", { name: "Launcher" }));
-    expect(screen.getByRole("button", { name: "Shell mode" })).toHaveTextContent("Launcher");
+    expect(document.querySelector(".shell")).toHaveAttribute("data-shell-mode", "launcher");
+  });
+
+  test("switches the shell mode from the top-bar toggle", () => {
+    render(<App snapshot={demoSnapshot} initialLocation="/" />);
+    const group = document.querySelector(".topbar__mode") as HTMLElement;
+    fireEvent.click(within(group).getByRole("button", { name: "Launcher" }));
+    expect(document.querySelector(".shell")).toHaveAttribute("data-shell-mode", "launcher");
+  });
+
+  test("opens the control centre from the top bar", () => {
+    render(<App snapshot={demoSnapshot} initialLocation="/" />);
+    fireEvent.click(screen.getByRole("button", { name: "Control centre" }));
+    const panel = screen.getByRole("dialog", { name: "Control centre" });
+    expect(within(panel).getAllByRole("button").length).toBeGreaterThanOrEqual(4);
   });
 
   test("lists open windows and focuses one", () => {

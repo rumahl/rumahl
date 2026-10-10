@@ -1,0 +1,235 @@
+/*
+ * Floating top-bar islands (desktop + launcher). Imported unlayered (after the
+ * presentation layers) so it supersedes the legacy full-width `.menubar` bar.
+ */
+.shell .menubar.topbar {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  height: 54px;
+  min-height: 54px;
+  padding: 8px 14px;
+  background: transparent;
+  border: 0;
+  box-shadow: none;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  color: var(--rumahl-ui-color-text-primary, #f5f7f8);
+  font-size: 12px;
+  z-index: 70;
+  pointer-events: none;
+}
+.topbar__island {
+  pointer-events: auto;
+}
+/* Fullscreen launcher: the island hides upward (a slim sliver stays tucked away)
+   and drops back down when the pointer nears the top edge or on a top swipe-down. */
+.shell .menubar.topbar.is-auto-hide {
+  transition: transform 0.34s cubic-bezier(0.32, 0.72, 0, 1);
+  transform: translateY(calc(-100% + 18px));
+}
+.shell .menubar.topbar.is-auto-hide.is-revealed {
+  transform: translateY(0);
+}
+@media (prefers-reduced-motion: reduce) {
+  .shell .menubar.topbar.is-auto-hide {
+    transition: none;
+  }
+}
+/* The bar floats over the wallpaper; shift top-anchored desktop content clear. */
+.shell .desktop-home {
+  padding-top: 60px;
+}
+/* Transparency off: legacy rules force an opaque full-width bar — keep the strip
+   transparent and only make the islands solid. */
+.shell[data-material="solid"] .menubar.topbar,
+.shell[data-material="solid"] .menubar.topbar.topbar {
+  background: transparent !important;
+  border: 0 !important;
+  box-shadow: none !important;
+}
+.shell[data-material="solid"] .topbar__island,
+.shell[data-material="solid"] .topbar__island.topbar__island {
+  background: var(--rumahl-ui-color-surface-strong, var(--rumahl-ui-color-panel-background, #26292c));
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+.topbar__island {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  height: 38px;
+  padding: 0 8px;
+  border-radius: 999px;
+  background: color-mix(
+    in srgb,
+    var(--rumahl-ui-color-surface-strong, var(--rumahl-ui-color-panel-background, #26292c))
+      calc(var(--rumahl-ui-material-opacity, 0.84) * 100%),
+    transparent
+  );
+  border: 1px solid color-mix(in srgb, var(--rumahl-ui-color-text-primary, #fff) 12%, transparent);
+  box-shadow:
+    0 10px 30px rgba(0, 0, 0, 0.3),
+    inset 0 1px 0 rgba(255, 255, 255, 0.18);
+  backdrop-filter: blur(28px) saturate(1.5);
+  -webkit-backdrop-filter: blur(28px) saturate(1.5);
+  color: var(--rumahl-ui-color-text-primary, #f5f7f8);
+}
+.topbar__island--left {
+  padding: 0 6px;
+}
+.topbar__island--right {
+  margin-left: auto;
+  gap: 2px;
+  padding: 0 6px;
+}
+.menubar__menus {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  min-width: 0;
+}
+
+/* Right-island controls */
+.topbar__anchor,
+.topbar__mode {
+  display: flex;
+  align-items: center;
+}
+.topbar__mode {
+  gap: 2px;
+  padding: 2px;
+  border-radius: 999px;
+  background: color-mix(in srgb, currentColor 10%, transparent);
+}
+.topbar__button {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  color: inherit;
+  background: transparent;
+}
+.topbar__button svg {
+  width: 16px;
+  height: 16px;
+  stroke: currentColor;
+  stroke-width: 1.7;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  fill: none;
+}
+.topbar__button:hover {
+  background: color-mix(in srgb, currentColor 15%, transparent);
+}
+.topbar__mode .topbar__button[aria-pressed="true"] {
+  background: var(--rumahl-ui-color-accent, #4f8f78);
+  color: var(--rumahl-ui-color-on-accent, #fff);
+}
+.topbar__button:disabled {
+  opacity: 0.45;
+}
+.menubar__clock {
+  padding: 0 8px;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  opacity: 0.92;
+}
+
+/* Control center popover */
+.menubar__dropdown--control {
+  min-width: 264px;
+  padding: 12px;
+}
+.control-center {
+  display: grid;
+  gap: 12px;
+}
+.control-center__grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 8px;
+}
+.control-center__tile {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid color-mix(in srgb, currentColor 14%, transparent);
+  border-radius: 14px;
+  background: color-mix(in srgb, currentColor 8%, transparent);
+  color: inherit;
+  font-size: 12px;
+  text-align: left;
+}
+.control-center__tile svg {
+  width: 20px;
+  height: 20px;
+  stroke: currentColor;
+  stroke-width: 1.7;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  fill: none;
+}
+.control-center__tile:hover {
+  background: color-mix(in srgb, currentColor 14%, transparent);
+}
+.control-center__tile.is-on {
+  background: var(--rumahl-ui-color-accent, #4f8f78);
+  border-color: transparent;
+  color: var(--rumahl-ui-color-on-accent, #fff);
+}
+.control-center__status {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-top: 2px;
+  color: var(--rumahl-ui-color-text-muted, #999);
+  font-size: 12px;
+}
+.control-center__error {
+  margin: 0;
+  color: #a64335;
+  font-size: 11px;
+}
+.control-center__settings {
+  padding: 9px;
+  border: 0;
+  border-radius: 12px;
+  background: color-mix(in srgb, currentColor 10%, transparent);
+  color: inherit;
+  font-size: 13px;
+}
+.control-center__settings:hover {
+  background: color-mix(in srgb, currentColor 16%, transparent);
+}
+
+@media (prefers-reduced-transparency: reduce) {
+  .topbar__island {
+    background: var(--rumahl-ui-color-surface-strong, var(--rumahl-ui-color-panel-background, #26292c));
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+  }
+}
+@media (max-width: 640px) {
+  .shell .menubar.topbar {
+    gap: 6px;
+    padding: 8px 8px;
+  }
+  .menubar__clock {
+    display: none;
+  }
+  .menubar__menus > .menubar__menu:not(:first-child) {
+    display: none;
+  }
+}

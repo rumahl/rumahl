@@ -1,6 +1,6 @@
 import { paletteTokens } from "./palette";
 import { themeColorValues } from "./color";
-import { defaultTokens, type TokenId, type Tokens } from "./tokens";
+import { defaultTokens, FONT_STACKS, type TokenId, type Tokens } from "./tokens";
 import { defaultVariants, type VariantSelection } from "./variants";
 import type { SlotName, SlotTemplate } from "./slots";
 
@@ -93,12 +93,42 @@ const COLOR_PRESETS = [
   { id: "purple", value: "#8b5cf6", labelKey: "theme.color.purple" }
 ] as const;
 
+/** Selectable typography variants (device-resolved system stacks). */
+const FONTS: readonly { value: string; labelKey: string }[] = [
+  { value: FONT_STACKS.modern, labelKey: "theme.font.modern" },
+  { value: FONT_STACKS.system, labelKey: "theme.font.system" },
+  { value: FONT_STACKS.neutral, labelKey: "theme.font.neutral" },
+  { value: FONT_STACKS.rounded, labelKey: "theme.font.rounded" },
+  { value: FONT_STACKS.serif, labelKey: "theme.font.serif" },
+  { value: FONT_STACKS.mono, labelKey: "theme.font.mono" },
+  { value: FONT_STACKS.manrope, labelKey: "theme.font.manrope" },
+  { value: FONT_STACKS.plusJakartaSans, labelKey: "theme.font.plusJakartaSans" }
+];
+
+/** Bundled display faces for the launcher greeting (statement typography). */
+const DISPLAY_FONTS: readonly { value: string; labelKey: string }[] = [
+  { value: FONT_STACKS.spaceGrotesk, labelKey: "theme.font.spaceGrotesk" },
+  { value: FONT_STACKS.clashDisplay, labelKey: "theme.font.clashDisplay" },
+  { value: FONT_STACKS.bricolageGrotesque, labelKey: "theme.font.bricolageGrotesque" },
+  { value: FONT_STACKS.instrumentSerif, labelKey: "theme.font.instrumentSerif" },
+  { value: FONT_STACKS.outfit, labelKey: "theme.font.outfit" },
+  { value: FONT_STACKS.sora, labelKey: "theme.font.sora" },
+  { value: FONT_STACKS.syne, labelKey: "theme.font.syne" },
+  { value: FONT_STACKS.unbounded, labelKey: "theme.font.unbounded" },
+  { value: FONT_STACKS.fraunces, labelKey: "theme.font.fraunces" },
+  { value: FONT_STACKS.playfairDisplay, labelKey: "theme.font.playfairDisplay" },
+  { value: FONT_STACKS.dmSerifDisplay, labelKey: "theme.font.dmSerifDisplay" },
+  { value: FONT_STACKS.gabarito, labelKey: "theme.font.gabarito" }
+];
+
 /** Parameters offered by the official rumahl theme (colour, wallpaper, glass). */
 const officialParameters: readonly ThemeParameter[] = [
   { kind: "color", id: "accent", token: "color.accent", labelKey: "theme.parameter.accent", seed: true, presets: COLOR_PRESETS },
   { kind: "color", id: "panel", token: "color.surface.strong", labelKey: "theme.parameter.panel" },
   { kind: "color", id: "text", token: "color.text.primary", labelKey: "theme.parameter.text" },
   { kind: "choice", id: "wallpaper", token: "texture.wallpaper", labelKey: "theme.parameter.wallpaper", options: WALLPAPERS },
+  { kind: "choice", id: "font", token: "typography.family", labelKey: "theme.parameter.font", options: FONTS },
+  { kind: "choice", id: "displayFont", token: "typography.display", labelKey: "theme.parameter.displayFont", options: DISPLAY_FONTS },
   {
     kind: "range", id: "morphism", token: "material.morphism", labelKey: "theme.parameter.morphism", min: 0, max: 1, step: 0.05,
     format: (value) => value.toFixed(2),

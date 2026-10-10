@@ -11,6 +11,38 @@ import { RUMAHL_COLORS, themeColorValues } from "./color";
  */
 const COLORS = themeColorValues(RUMAHL_COLORS.base);
 
+/**
+ * System font stacks offered as typography variants. No webfonts are bundled
+ * (the shell CSP blocks `font-src`), so every variant resolves against fonts
+ * already present on the device.
+ */
+export const FONT_STACKS = {
+  modern: '"Inter", "SF Pro Text", system-ui, -apple-system, "Segoe UI Variable Text", "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif',
+  system: 'system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Noto Sans", sans-serif',
+  neutral: '"Helvetica Neue", Helvetica, Arial, system-ui, sans-serif',
+  rounded: '"SF Pro Rounded", ui-rounded, "Nunito", "Varela Round", system-ui, sans-serif',
+  serif: '"New York", "Iowan Old Style", Georgia, "Times New Roman", Times, serif',
+  mono: 'ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace',
+  // Bundled display/statement faces (local webfonts; used for the launcher greeting).
+  spaceGrotesk: '"Space Grotesk Variable", system-ui, sans-serif',
+  clashDisplay: '"Clash Display Variable", "Space Grotesk Variable", system-ui, sans-serif',
+  bricolageGrotesque: '"Bricolage Grotesque Variable", system-ui, sans-serif',
+  instrumentSerif: '"Instrument Serif", "New York", Georgia, serif',
+  // Open-source Google-Fonts-style faces (bundled locally via @fontsource).
+  outfit: '"Outfit Variable", system-ui, sans-serif',
+  sora: '"Sora Variable", system-ui, sans-serif',
+  syne: '"Syne Variable", system-ui, sans-serif',
+  unbounded: '"Unbounded Variable", system-ui, sans-serif',
+  fraunces: '"Fraunces Variable", "New York", Georgia, serif',
+  playfairDisplay: '"Playfair Display Variable", Georgia, serif',
+  dmSerifDisplay: '"DM Serif Display", Georgia, serif',
+  gabarito: '"Gabarito Variable", system-ui, sans-serif',
+  manrope: '"Manrope Variable", system-ui, sans-serif',
+  plusJakartaSans: '"Plus Jakarta Sans Variable", system-ui, sans-serif'
+} as const;
+
+export type FontVariant = keyof typeof FONT_STACKS;
+
 export const defaultTokens = {
   "color.accent": COLORS.accent,
   "color.accent.strong": COLORS.accentStrong,
@@ -43,7 +75,8 @@ export const defaultTokens = {
   "layout.dock.offset": "10px",
   "icon.gradient": "linear-gradient(150deg, #4f8f78, #28694c)",
   "texture.wallpaper": "default",
-  "typography.family": "system-ui, \"Segoe UI\", Roboto, \"Noto Sans\", sans-serif",
+  "typography.family": FONT_STACKS.modern,
+  "typography.display": FONT_STACKS.spaceGrotesk,
   "typography.scale": "1"
 } as const satisfies Record<string, string>;
 

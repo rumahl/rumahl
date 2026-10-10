@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent, type PointerEvent } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent, type PointerEvent } from "react";
 import { AppIcon } from "../../apps/AppTile";
 import { rememberRecent } from "../../apps/recents";
 import { useShellApps, type ShellApp } from "../../apps/useShellApps";
@@ -15,6 +15,8 @@ import { rectsIntersect, type SelectionRect } from "./geometry";
 
 /** Nominal icon footprint used to keep free positions inside the container. */
 const ICON_FOOTPRINT = { width: 96, height: 104 };
+/** Gap between desktop grid cells (matches `.desktop-grid`). */
+const ICON_GAP = 6;
 
 export function DesktopHome() {
   const { t } = useI18n();
@@ -26,11 +28,11 @@ export function DesktopHome() {
   const layout = useDesktopLayout(apps.map((app) => app.id));
   const positions = useDesktopPositions();
   const suppressClick = useRef(false);
-  const freeDrag = useRef<null | { id: string; pointer: number; startX: number; startY: number; originX: number; originY: number; element: HTMLElement; host: HTMLElement; moved: boolean }>(null);
   const [selected, setSelected] = useState<ReadonlySet<string>>(new Set());
   const [menu, setMenu] = useState<DesktopMenuState | null>(null);
   const [marquee, setMarquee] = useState<SelectionRect | null>(null);
   const [folder, setFolder] = useState<string | null>(null);
+  const [dragIcon, setDragIcon] = useState<null | { id: string; x: number; y: number }>(null);
   const shortcuts = useRef<HTMLDivElement>(null);
   const marqueeStart = useRef<{ x: number; y: number; base: ReadonlySet<string> } | null>(null);
 
@@ -55,11 +57,45 @@ export function DesktopHome() {
     return () => observer.disconnect();
   }, []);
 
+  // A drag suppresses the click that follows its release; any *new* pointer
+  // gesture (even outside an icon) must clear that flag so the next click is
+  // not swallowed.
+  useEffect(() => {
+    const clear = () => { suppressClick.current = false; };
+    window.addEventListener("pointerdown", clear, true);
+    return () => window.removeEventListener("pointerdown", clear, true);
+  }, []);
+
   const currentFolder = workspace.effective.folders.find((item) => item.id === folder);
   const visible = (currentFolder ? currentFolder.apps.map((id) => byId.get(id)) : layout.visibleIds.map((id) => byId.get(id)))
     .filter((app): app is ShellApp => app !== undefined);
   const hidden = layout.layout.hidden.map((id) => byId.get(id)).filter((app): app is ShellApp => app !== undefined);
   const menuApp = menu?.appId ? byId.get(menu.appId) : undefined;
+
+  // Apply free positions with CSSOM: the shell's strict style-src CSP blocks an
+  // inline `style` attribute (React's `style` prop), so positions must be set
+  // through `element.style` — like `ProtectedWindow` does for windows.
+  useLayoutEffect(() => {
+    const host = shortcuts.current;
+    if (!host) return;
+    for (const element of host.querySelectorAll<HTMLElement>("[data-app-id]")) {
+      const id = element.dataset.appId;
+      if (!id) continue;
+      const dragging = dragIcon?.id === id ? dragIcon : null;
+      const position = dragging ?? positions[id];
+      if (position) {
+        element.style.position = "absolute";
+        element.style.left = `${position.x}px`;
+        element.style.top = `${position.y}px`;
+        element.style.zIndex = dragging ? "5" : "";
+      } else {
+        element.style.removeProperty("position");
+        element.style.removeProperty("left");
+        element.style.removeProperty("top");
+        element.style.removeProperty("z-index");
+      }
+    }
+  }, [visible, positions, dragIcon]);
 
   const toggleSelected = useCallback((id: string, additive: boolean) => {
     setSelected((previous) => {
@@ -134,39 +170,36 @@ export function DesktopHome() {
     // Add the scroll offset: `getBoundingClientRect` is viewport-relative while
     // an absolute position is relative to the (unscrolled) container.
     const origin = positions[app.id] ?? { x: icon.left - box.left + host.scrollLeft, y: icon.top - box.top + host.scrollTop };
-    element.style.position = "absolute";
-    element.style.left = `${origin.x}px`;
-    element.style.top = `${origin.y}px`;
-    element.style.zIndex = "5";
-    element.setPointerCapture(event.pointerId);
-    freeDrag.current = { id: app.id, pointer: event.pointerId, startX: event.clientX, startY: event.clientY, originX: origin.x, originY: origin.y, element, host, moved: false };
-  }
-
-  function moveFreeDrag(event: PointerEvent<HTMLElement>) {
-    const drag = freeDrag.current;
-    if (!drag || drag.pointer !== event.pointerId) return;
-    const dx = event.clientX - drag.startX, dy = event.clientY - drag.startY;
-    if (Math.abs(dx) + Math.abs(dy) > 4) drag.moved = true;
-    drag.element.style.left = `${drag.originX + dx}px`;
-    drag.element.style.top = `${drag.originY + dy}px`;
-  }
-
-  function endFreeDrag(event: PointerEvent<HTMLElement>) {
-    const drag = freeDrag.current;
-    if (!drag || drag.pointer !== event.pointerId) return;
-    const dx = event.clientX - drag.startX, dy = event.clientY - drag.startY;
-    drag.element.style.zIndex = "";
-    if (drag.moved) {
-      suppressClick.current = true;
-      const bounds = { width: drag.host.clientWidth, height: drag.host.clientHeight };
-      const footprint = { width: drag.element.offsetWidth || ICON_FOOTPRINT.width, height: drag.element.offsetHeight || ICON_FOOTPRINT.height };
-      setDesktopPosition(drag.id, clampDesktopPosition({ x: drag.originX + dx, y: drag.originY + dy }, bounds, footprint));
-    } else {
-      drag.element.style.position = "";
-      drag.element.style.left = "";
-      drag.element.style.top = "";
-    }
-    freeDrag.current = null;
+    const startX = event.clientX, startY = event.clientY;
+    let moved = false;
+    setDragIcon({ id: app.id, x: origin.x, y: origin.y });
+    // Listen on the window: pointer capture can fail for synthetic pointers, so
+    // the drag must not depend on the events reaching the icon again.
+    const onMove = (move: Event) => {
+      const { clientX, clientY } = move as unknown as { clientX: number; clientY: number };
+      const dx = clientX - startX, dy = clientY - startY;
+      if (Math.abs(dx) + Math.abs(dy) > 4) moved = true;
+      if (moved) setDragIcon({ id: app.id, x: origin.x + dx, y: origin.y + dy });
+    };
+    const onUp = (up: Event) => {
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+      window.removeEventListener("pointercancel", onUp);
+      if (moved) {
+        suppressClick.current = true;
+        const { clientX, clientY } = up as unknown as { clientX: number; clientY: number };
+        const dx = clientX - startX, dy = clientY - startY;
+        const bounds = { width: host.clientWidth, height: host.clientHeight };
+        const footprint = { width: element.offsetWidth || ICON_FOOTPRINT.width, height: element.offsetHeight || ICON_FOOTPRINT.height };
+        const stepX = ICON_FOOTPRINT.width + ICON_GAP, stepY = ICON_FOOTPRINT.height + ICON_GAP;
+        const snapped = { x: Math.round((origin.x + dx) / stepX) * stepX, y: Math.round((origin.y + dy) / stepY) * stepY };
+        setDesktopPosition(app.id, clampDesktopPosition(snapped, bounds, footprint));
+      }
+      setDragIcon(null);
+    };
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp);
+    window.addEventListener("pointercancel", onUp);
   }
 
   function openShortcutsMenu(event: MouseEvent) {
@@ -187,7 +220,7 @@ export function DesktopHome() {
     <div ref={shortcuts} className="desktop-shortcuts" onPointerDown={beginMarquee} onPointerMove={moveMarquee} onPointerUp={endMarquee} onPointerCancel={endMarquee}>
       <div className="desktop-grid" role="group" aria-label={t("desktop.shortcuts")}>
         {!currentFolder ? workspace.effective.folders.map((item) => <button key={item.id} type="button" className="desktop-icon desktop-app" onClick={() => { setFolder(item.id); setSelected(new Set()); }}>
-          <span className="desktop-icon__art folder-preview" aria-hidden="true">{item.apps.slice(0, 4).map((id) => { const app = byId.get(id); return app ? <span key={id}><AppIcon app={app} /></span> : null; })}</span>
+          <span className="desktop-icon__art folder-preview" aria-hidden="true">{item.apps.slice(0, 9).map((id) => { const app = byId.get(id); return app ? <span key={id}><AppIcon app={app} /></span> : null; })}</span>
           <span className="desktop-icon__label">{item.name}</span>
         </button>) : null}
         {currentFolder ? <button type="button" className="desktop-icon desktop-app" onClick={() => setFolder(null)}>
@@ -195,20 +228,17 @@ export function DesktopHome() {
           <span className="desktop-icon__label">{t("workspace.back")}</span>
         </button> : null}
         {visible.map((app) => {
-          const position = positions[app.id];
           return <ShellLink
             key={app.id}
             to={app.path}
             className={`desktop-icon desktop-app${selected.has(app.id) ? " is-selected" : ""}`}
             data-app-id={app.id}
             aria-pressed={selected.has(app.id)}
-            style={position ? { position: "absolute", left: position.x, top: position.y } : undefined}
+            draggable={false}
             onClick={(event) => onIconClick(app, event)}
             onKeyDown={(event) => onIconKeyDown(app, event)}
             onPointerDown={(event) => beginFreeDrag(app, event)}
-            onPointerMove={moveFreeDrag}
-            onPointerUp={endFreeDrag}
-            onPointerCancel={endFreeDrag}
+            onDragStart={(event) => event.preventDefault()}
             onContextMenu={(event) => { event.preventDefault(); event.stopPropagation(); setSelected(new Set([app.id])); setMenu({ x: event.clientX, y: event.clientY, appId: app.id }); }}
           >
             <span className={`desktop-icon__art${app.system ? " is-system" : ""}`} aria-hidden="true"><AppIcon app={app} /></span>
@@ -216,7 +246,13 @@ export function DesktopHome() {
           </ShellLink>;
         })}
       </div>
-      {marquee ? <span className="desktop-marquee" aria-hidden="true" style={{ left: marquee.x, top: marquee.y, width: marquee.width, height: marquee.height }} /> : null}
+      {marquee ? <span className="desktop-marquee" aria-hidden="true" ref={(element) => {
+        if (!element) return;
+        element.style.left = `${marquee.x}px`;
+        element.style.top = `${marquee.y}px`;
+        element.style.width = `${marquee.width}px`;
+        element.style.height = `${marquee.height}px`;
+      }} /> : null}
     </div>
     {layout.layout.widgets ? <DesktopWidgets systemStatus={snapshot.systemStatus} /> : null}
     <div className="desktop-wordmark" aria-hidden="true"><span>rumahl</span><small>{t("desktop.tagline")}</small></div>

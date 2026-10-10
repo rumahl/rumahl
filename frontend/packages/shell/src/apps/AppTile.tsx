@@ -11,7 +11,7 @@ export function AppIcon({ app }: { app: ShellApp }) {
   let hue = 0;
   for (let index = 0; index < app.id.length; index += 1) hue = (hue * 31 + app.id.charCodeAt(index)) % 360;
   return <span className="app-icon-glyph" aria-hidden="true"
-    style={{ backgroundImage: `linear-gradient(150deg, hsl(${hue} 58% 54%), hsl(${(hue + 34) % 360} 52% 36%))` }}>{label}</span>;
+    ref={(element) => { if (element) element.style.backgroundImage = `linear-gradient(150deg, hsl(${hue} 58% 54%), hsl(${(hue + 34) % 360} 52% 36%))`; }}>{label}</span>;
 }
 
 export function AppTile({ app, onNavigate }: { app: ShellApp; onNavigate?: ((path: string) => void) | undefined }) {

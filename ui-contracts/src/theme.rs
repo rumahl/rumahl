@@ -533,7 +533,7 @@ fn stock_tokens() -> BTreeMap<ThemeToken, ThemeTokenValue> {
         (TextureWallpaper, css("default")),
         (
             TypographyFamily,
-            css("system-ui, \"Segoe UI\", Roboto, \"Noto Sans\", sans-serif"),
+            css("\"Inter\", \"SF Pro Text\", system-ui, -apple-system, \"Segoe UI Variable Text\", \"Segoe UI\", Roboto, \"Helvetica Neue\", Arial, sans-serif"),
         ),
         (TypographyScale, css("1")),
     ])

@@ -28,7 +28,9 @@ export function LauncherMenu({ x, y, items, onClose }: { x: number; y: number; i
   const left = Math.min(x, Math.max(8, window.innerWidth - 240));
   const top = Math.min(y, Math.max(8, window.innerHeight - 300));
   return createPortal(
-    <div className="desktop-menu" role="menu" style={{ left, top }} onPointerDown={(event) => event.stopPropagation()}>
+    <div className="desktop-menu" role="menu"
+      ref={(element) => { if (element) { element.style.left = `${left}px`; element.style.top = `${top}px`; } }}
+      onPointerDown={(event) => event.stopPropagation()}>
       {items.map((item) => <button key={item.label} role="menuitem" type="button" className={item.danger ? "is-danger" : undefined}
         onClick={() => { item.onSelect(); onClose(); }}>{item.icon}{item.label}</button>)}
     </div>,

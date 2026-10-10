@@ -46,9 +46,9 @@ export function OsDock() {
   };
   return <>
     <nav ref={dockRef} className={`dock os-dock rumahl-glass-host os-dock--${mode}`} aria-label={t("nav.main")} onPointerLeave={() => setHover(null)}>
-      <button className={`dock-item dock-icon dock-start${magnify("start")}`} type="button" aria-label={mode === "desktop" ? t("launcher.open") : t("launcher.home")} aria-expanded={launcher}
+      {mode === "desktop" ? <button className={`dock-item dock-icon dock-start${magnify("start")}`} type="button" aria-label={t("launcher.open")} aria-expanded={launcher}
         onPointerEnter={() => setHover("start")}
-        onClick={() => mode === "desktop" ? setLauncher((value) => !value) : open("/")}><RumahlMark /></button>
+        onClick={() => setLauncher((value) => !value)}><RumahlMark /></button> : null}
       {links.map(link => {
         const item = windows.find(window => windowBelongsToLink(window, link.to));
         const focused = item ? !item.minimized && state.focusedWindowId === item.id : active === describeRoute(link.to).id;

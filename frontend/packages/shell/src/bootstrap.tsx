@@ -4,6 +4,20 @@ import type { ShellSnapshotV1 } from "@rumahl/contracts";
 import { App } from "./App";
 import type { ShellLiveSource } from "./live-updates";
 import { preloadAppearance } from "./theme";
+import "@fontsource-variable/space-grotesk";
+import "@fontsource-variable/bricolage-grotesque";
+import "@fontsource/instrument-serif/400.css";
+import "@fontsource-variable/outfit";
+import "@fontsource-variable/sora";
+import "@fontsource-variable/syne";
+import "@fontsource-variable/unbounded";
+import "@fontsource-variable/fraunces";
+import "@fontsource-variable/playfair-display";
+import "@fontsource/dm-serif-display";
+import "@fontsource-variable/gabarito";
+import "@fontsource-variable/manrope";
+import "@fontsource-variable/plus-jakarta-sans";
+import "./fonts.css";
 import "./styles.css";
 
 export function renderShell(snapshot: ShellSnapshotV1, live?: ShellLiveSource): void {

@@ -83,7 +83,8 @@ export function DisplaySettings() {
     return <label key={parameter.id} className="theme-parameter">
       <span>{label}</span>
       <RumahlSelect label={label} value={current} onChange={value => setToken(parameter.token, value)}
-        options={parameter.options.map(option => ({ value: option.value, label: t(option.labelKey as MessageKey) }))} />
+        options={parameter.options.map(option => ({ value: option.value, label: t(option.labelKey as MessageKey),
+          font: parameter.token === "typography.family" || parameter.token === "typography.display" ? option.value : undefined }))} />
     </label>;
   };
   const renderOverride = (parameter: ColorParameter) => {

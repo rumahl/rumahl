@@ -14,12 +14,13 @@
 @import "./shell/glass-surfaces.css";
 @import "./shell/launcher/launcher.css";
 @import "./shell/desktop/desktop-widgets.css";
+@import "./shell/topbar.css";
 
 @layer foundation {
   :root {
     color: #18201c;
     background: #e8ece7;
-    font-family: Inter, system-ui, "Segoe UI", Roboto, "Noto Sans", sans-serif;
+    font-family: var(--rumahl-ui-typography-family, Inter, system-ui, "Segoe UI", Roboto, "Noto Sans", sans-serif);
     font-synthesis: none;
     text-rendering: optimizeLegibility;
     --rumahl-color-canvas-background: #e8ece7;
