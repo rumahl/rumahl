@@ -1,0 +1,54 @@
+# Codecov configuration for the rumahl monorepo.
+#
+# Coverage is advisory: the project and patch statuses are informational, so a
+# missing test never blocks a pull request. Tighten a flag (for example `rust`)
+# once it has a reliable baseline, and treat a high number as a signal, not a
+# proof of security (negative tests, permission checks and forbidden state
+# transitions matter more).
+coverage:
+  precision: 2
+  round: down
+  range: "50...100"
+  status:
+    project:
+      default:
+        target: auto
+        threshold: 1%
+        informational: true
+    patch:
+      default:
+        target: auto
+        threshold: 1%
+        informational: true
+  ignore:
+    - "frontend/packages/shell/src/assets/"
+    - "frontend/**/dist/"
+    - "frontend/coverage/"
+    - "**/*.test.*"
+    - "**/*.spec.*"
+    - "**/tests/"
+    - "scripts/"
+
+# Separate the security-critical Rust backend from the React frontend so a
+# well-tested frontend never hides an untested backend.
+flags:
+  rust:
+    paths:
+      - core/
+      - app-packages/
+      - app-operations/
+      - account-auth/
+      - oidc-provider/
+      - persistence-sqlite/
+      - platform-web/
+      - platform-service/
+      - platform-api/
+      - platform-buildroot/
+  frontend:
+    paths:
+      - frontend/
+
+comment:
+  layout: "reach, diff, flags, files"
+  behavior: default
+  require_changes: true
