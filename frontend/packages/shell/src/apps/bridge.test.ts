@@ -6,7 +6,7 @@ function handlers(overrides: Partial<AppBridgeHandlers> = {}): AppBridgeHandlers
   return {
     appId: "com.example.notes", appTitle: "Notes", version: "1.2.3", accountName: "Kaim", mode: "desktop",
     capabilities: BRIDGE_CAPABILITY_LIST,
-    theme: () => ({ scheme: "light", accent: "#28694c", reducedMotion: false }),
+    theme: () => ({ scheme: "light", accent: "#28694c", reducedMotion: false, palette: { background: "#ffffff", surface: "#f1f5f9", text: "#0f172a", textMuted: "#64748b", border: "#cbd5e1", accent: "#28694c", onAccent: "#ffffff" } }),
     notify: vi.fn(), windowControl: vi.fn(),
     invokeCapability: vi.fn(async (capability: string) => ({ capability, outcome: "invoked" as const })),
     ...overrides
