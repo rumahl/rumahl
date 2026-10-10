@@ -292,7 +292,7 @@ try {
   // Move back to the root through the context menus.
   await files.getByText("renamed.txt", { exact: true }).click({ button: "right" });
   await page.getByRole("menuitem", { name: "Move", exact: true }).click();
-  await files.getByRole("button", { name: "My files", exact: true }).click();
+  await files.getByRole("complementary", { name: "Locations", exact: true }).getByRole("button", { name: "My files", exact: true }).click();
   await files.locator(".files-surface").click({ button: "right", position: { x: 4, y: 4 } });
   await page.getByRole("menuitem", { name: "Move here", exact: true }).click();
   await files.getByText("renamed.txt", { exact: true }).waitFor();
