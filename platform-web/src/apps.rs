@@ -447,7 +447,7 @@ impl AppAccess {
         let mut response = Response::new(Body::from(asset.bytes));
         let origin = format!("https://{host}");
         let csp = format!(
-            "sandbox allow-scripts allow-forms; default-src 'none'; script-src {origin} 'unsafe-inline'; style-src {origin} 'unsafe-inline'; img-src {origin} data:; font-src {origin}; connect-src {origin}; frame-src 'none'; form-action 'none'; base-uri 'none'; object-src 'none'; frame-ancestors {}",
+            "sandbox allow-scripts; default-src 'none'; script-src {origin} 'unsafe-inline'; style-src {origin} 'unsafe-inline'; img-src {origin} data:; font-src {origin}; connect-src {origin}; frame-src 'none'; form-action 'none'; base-uri 'none'; object-src 'none'; frame-ancestors {}",
             self.shell_origin
         );
         let headers = response.headers_mut();
@@ -819,7 +819,7 @@ mod tests {
             response.headers()["content-security-policy"]
                 .to_str()
                 .unwrap()
-                .starts_with("sandbox allow-scripts allow-forms;")
+                .starts_with("sandbox allow-scripts;")
         );
         access
             .leases
