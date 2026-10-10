@@ -106,6 +106,20 @@ app's result. Delivery waits for the app's bridge handshake first, so it does no
 race provider registration. The provider app registers handlers with
 `rumahl.provide(capability, handler)`.
 
+The OS also pushes `os.theme.changed` (carrying a semantic palette) whenever the
+shell appearance changes, so an app follows the OS theme instead of rendering a
+static surface. `@rumahl/bridge-client` ships `rumahl.watchTheme(applyRumahlTheme)`
+(and `applyRumahlTheme`), which projects the palette onto an element as
+`--rumahl-*` CSS variables plus `color-scheme`/`data-rumahl-theme`.
+
+Standalone services (Nextcloud, Plesk, …) that the OS embeds as streams are
+themed the same way without any app-specific code. The stream proxy serves them
+same-origin under `/api/v1/shell/streams/{id}/`, so the shell projects the OS
+palette into the app's document: it sets `data-rumahl-theme`, `color-scheme` and
+the `--rumahl-*` variables, exposes `window.rumahlTheme`, and dispatches a
+`rumahl:theme` document event on every change. Streamed apps opt in by reading
+any of those; the OS never depends on a particular app honouring them.
+
 Runtime control reaches the supervisor: `RuntimeController` and
 `ProviderRuntimeAdapter` route `status`/`start`/`stop` over the
 `AppRuntimeProvider` boundary, exposed as

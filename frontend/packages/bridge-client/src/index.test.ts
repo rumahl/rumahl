@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, test, vi } from "vitest";
 import { RUMAHL_BRIDGE } from "@rumahl/contracts/bridge";
-import { connectRumahlBridge, RumahlBridgeError, type RumahlBridge } from "./index";
+import { applyRumahlTheme, connectRumahlBridge, RumahlBridgeError, type RumahlBridge } from "./index";
 
 function fakeParent(): { target: Window; posted: Record<string, unknown>[] } {
   const posted: Record<string, unknown>[] = [];
@@ -12,6 +12,10 @@ function deliver(target: Window, data: unknown): void {
 }
 const welcome = (appId = "com.example.notes") => ({ bridge: RUMAHL_BRIDGE, kind: "welcome", version: 1, appId, methods: [] as string[] });
 const response = (id: string, result: unknown) => ({ bridge: RUMAHL_BRIDGE, kind: "response", id, ok: true, result });
+const fullTheme = {
+  scheme: "dark", accent: "#28694c", reducedMotion: false,
+  palette: { background: "#0f172a", surface: "#1e293b", text: "#e2e8f0", textMuted: "#94a3b8", border: "#334155", accent: "#28694c", onAccent: "#ffffff" }
+};
 
 let active: RumahlBridge | null = null;
 afterEach(() => { active?.dispose(); active = null; });
@@ -84,6 +88,27 @@ describe("connectRumahlBridge", () => {
     off();
     deliver(target, { bridge: RUMAHL_BRIDGE, kind: "event", topic: "os.theme.changed", payload: { scheme: "light" } });
     expect(listener).toHaveBeenCalledTimes(1);
+  });
+
+  test("applyRumahlTheme projects the palette as CSS variables", () => {
+    const root = document.createElement("div");
+    applyRumahlTheme(fullTheme as never, root);
+    expect(root.dataset.rumahlTheme).toBe("dark");
+    expect(root.style.colorScheme).toBe("dark");
+    expect(root.style.getPropertyValue("--rumahl-accent")).toBe("#28694c");
+    expect(root.style.getPropertyValue("--rumahl-background")).toBe("#0f172a");
+  });
+
+  test("watchTheme applies the current theme and follows changes", async () => {
+    const { target, posted } = fakeParent();
+    const bridge = active = connectRumahlBridge({ target, timeoutMs: 100 });
+    const seen: string[] = [];
+    bridge.watchTheme((theme) => seen.push(theme.scheme));
+    const request = posted.find((message) => message.method === "os.theme.get")!;
+    deliver(target, response(request.id as string, fullTheme));
+    await vi.waitFor(() => expect(seen).toContain("dark"));
+    deliver(target, { bridge: RUMAHL_BRIDGE, kind: "event", topic: "os.theme.changed", payload: { ...fullTheme, scheme: "light" } });
+    await vi.waitFor(() => expect(seen).toContain("light"));
   });
 
   test("ignores other sources and reports unavailability outside the shell", async () => {

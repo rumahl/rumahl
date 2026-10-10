@@ -67,6 +67,8 @@ export interface RumahlBridge {
   notify(input: BridgeNotification): Promise<void>;
   /** Invokes a capability provided by another installed app, on the user's behalf. */
   invokeCapability(capability: string, resource?: BridgeCapabilityResource): Promise<BridgeCapabilityResult>;
+  /** Applies the current OS theme and every change to `handler`. Returns an unsubscribe. */
+  watchTheme(handler: (theme: BridgeTheme) => void): () => void;
   /** Registers a handler for a capability this app provides. Returns an unregister. */
   provide(capability: string, handler: BridgeProviderHandler): () => void;
   readonly window: {
@@ -104,6 +106,39 @@ function normalizeProviderInvocation(value: unknown): BridgeProviderInvocation |
     invocation.resource = { namespace: resource.namespace, kind: resource.kind, key: resource.key };
   }
   return invocation;
+}
+
+function isBridgeTheme(value: unknown): value is BridgeTheme {
+  if (typeof value !== "object" || value === null) return false;
+  const record = value as Record<string, unknown>;
+  const palette = record.palette as Record<string, unknown> | undefined;
+  return (record.scheme === "light" || record.scheme === "dark") &&
+    typeof record.accent === "string" &&
+    typeof record.reducedMotion === "boolean" &&
+    typeof palette === "object" && palette !== null &&
+    ["background", "surface", "text", "textMuted", "border", "accent", "onAccent"].every(
+      (key) => typeof palette[key] === "string"
+    );
+}
+
+/**
+ * Applies a rumahl theme to an element as `--rumahl-*` CSS variables and a
+ * `color-scheme`, plus `data-rumahl-theme`/`data-rumahl-reduced-motion`
+ * attributes. Pair with `rumahl.watchTheme(applyRumahlTheme)` so an app follows
+ * the OS appearance.
+ */
+export function applyRumahlTheme(theme: BridgeTheme, root: HTMLElement = document.documentElement): void {
+  const { palette } = theme;
+  root.dataset.rumahlTheme = theme.scheme;
+  root.dataset.rumahlReducedMotion = String(theme.reducedMotion);
+  root.style.colorScheme = theme.scheme;
+  root.style.setProperty("--rumahl-background", palette.background);
+  root.style.setProperty("--rumahl-surface", palette.surface);
+  root.style.setProperty("--rumahl-text", palette.text);
+  root.style.setProperty("--rumahl-text-muted", palette.textMuted);
+  root.style.setProperty("--rumahl-border", palette.border);
+  root.style.setProperty("--rumahl-accent", palette.accent);
+  root.style.setProperty("--rumahl-on-accent", palette.onAccent);
 }
 
 export function connectRumahlBridge(options: ConnectOptions = {}): RumahlBridge {
@@ -230,6 +265,14 @@ export function connectRumahlBridge(options: ConnectOptions = {}): RumahlBridge 
     notify: async (input) => { await request("os.notification", input); },
     invokeCapability: (capability, resource) =>
       request<BridgeCapabilityResult>("os.capabilities.invoke", resource ? { capability, resource } : { capability }),
+    watchTheme: (handler) => {
+      const set = listeners.get("os.theme.changed") ?? new Set<BridgeEventHandler>();
+      const listener: BridgeEventHandler = (payload) => { if (isBridgeTheme(payload)) handler(payload); };
+      set.add(listener);
+      listeners.set("os.theme.changed", set);
+      void request<BridgeTheme>("os.theme.get").then((theme) => { if (isBridgeTheme(theme)) handler(theme); }).catch(() => undefined);
+      return () => { set.delete(listener); if (!set.size) listeners.delete("os.theme.changed"); };
+    },
     provide: (capability, handler) => {
       providers.set(capability, handler);
       return () => { if (providers.get(capability) === handler) providers.delete(capability); };

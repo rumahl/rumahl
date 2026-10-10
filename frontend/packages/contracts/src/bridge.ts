@@ -79,10 +79,22 @@ export interface BridgeAppInfo {
   mode: "desktop" | "launcher";
 }
 
+/** Semantic colours an app can adopt, mirrored from the shell palette. */
+export interface BridgeThemePalette {
+  background: string;
+  surface: string;
+  text: string;
+  textMuted: string;
+  border: string;
+  accent: string;
+  onAccent: string;
+}
+
 export interface BridgeTheme {
   scheme: BridgeScheme;
   accent: string;
   reducedMotion: boolean;
+  palette: BridgeThemePalette;
 }
 
 export interface BridgeNotification {

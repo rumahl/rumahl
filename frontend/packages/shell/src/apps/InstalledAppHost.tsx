@@ -9,6 +9,7 @@ import { useAppCatalog } from "./AppCatalog";
 import { attachAppBridge, postAppBridgeEvent, type AppBridgeHandlers } from "./bridge";
 import { attachProviderChannel } from "./provider-channel";
 import { invokeProvider, registerProviderChannel } from "./providers";
+import { readShellTheme } from "./shell-theme";
 import { BRIDGE_CAPABILITY_LIST } from "@rumahl/contracts/bridge";
 import { controlAppRuntime, invokeCapability as requestCapabilityInvocation, launchApp, type InstalledApp } from "./client";
 import { setLaunching } from "./launching";
@@ -84,15 +85,7 @@ function AppFrame({ app }: { app: InstalledApp }) {
     });
     return () => controller.abort();
   }, [frame]);
-  const readTheme = useCallback((): BridgeTheme => {
-    const scene = document.querySelector<HTMLElement>(".scene");
-    const scheme = scene?.dataset.scheme ?? (document.body.classList.contains("light") ? "light" : "dark");
-    return {
-      scheme: scheme === "light" ? "light" : "dark",
-      accent: String(tokens["color.accent"] ?? ""),
-      reducedMotion: typeof window.matchMedia === "function" && window.matchMedia("(prefers-reduced-motion: reduce)").matches
-    };
-  }, [tokens]);
+  const readTheme = useCallback((): BridgeTheme => readShellTheme(tokens as Record<string, string>), [tokens]);
   // App <-> OS bridge: a sandboxed, opaque-origin app can only reach the shell
   // through postMessage. Rebound only when the frame changes; the handlers are
   // read through a ref so a shell re-render never detaches the listener.
@@ -134,14 +127,16 @@ function AppFrame({ app }: { app: InstalledApp }) {
     const unregister = registerProviderChannel(app.id, provider);
     return () => { appBridge.dispose(); unregister(); provider.dispose(); };
   }, [frame, app.id]);
-  // Push `os.theme.changed` whenever the shell switches appearance.
+  // Push `os.theme.changed` whenever the shell switches appearance: once when
+  // the theme is (re)bound and on any DOM scheme/theme attribute change.
   useEffect(() => {
+    postAppBridgeEvent(frameRef.current, "os.theme.changed", readTheme());
     const scene = document.querySelector(".scene");
     if (!scene) return;
     const observer = new MutationObserver(() => postAppBridgeEvent(frameRef.current, "os.theme.changed", readTheme()));
     observer.observe(scene, { attributes: true, attributeFilter: ["data-scheme", "data-theme"] });
     return () => observer.disconnect();
-  }, [readTheme]);
+  }, [readTheme, frame]);
   // On-demand apps start when their window opens and stop when it closes;
   // always-on services keep running in the background.
   useEffect(() => {
