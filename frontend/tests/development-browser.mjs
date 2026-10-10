@@ -235,7 +235,7 @@ try {
   await page.goto(`${info.origin}/`);
   // Save a snapped workspace and app folder; verify a real browser reload.
   await page.goto(`${info.origin}/app/files`);
-  await page.getByRole("heading", { name: "Files", exact: true, level: 1 }).waitFor();
+  await page.locator(".files-app").waitFor();
   // Snap controls live in a hover flyout on the window chrome.
   await page.locator('[data-window-id="app:files"] .window-control-group').hover();
   await page.getByRole("button", { name: "Snap Files left", exact: true }).click();
@@ -266,27 +266,40 @@ try {
   assert(Math.abs((await page.getByRole("region", { name: "Files", exact: true }).boundingBox()).width - snapped.width) < 2);
   await page.getByRole("navigation", { name: "Main navigation" }).getByRole("button", { name: "Files", exact: true }).click();
   const files = page.getByRole("region", { name: "Files", exact: true });
-  await files.getByLabel("New folder", { exact: true }).fill("Documents");
+  // New folder through the explorer toolbar, then open it.
+  await files.getByRole("button", { name: "New folder", exact: true }).click();
+  await files.locator(".files-draft input").fill("Documents");
   await files.getByRole("button", { name: "Save", exact: true }).click();
-  await files.getByRole("button", { name: "Documents/", exact: true }).click();
+  await files.locator("[data-file-key]", { hasText: "Documents" }).dblclick();
   await files.getByLabel("Upload file").setInputFiles({ name: "hello.txt", mimeType: "text/plain", buffer: Buffer.from("workspace upload") });
-  await files.getByRole("link", { name: "hello.txt", exact: true }).waitFor();
-  const downloadUrl = await files.getByRole("link", { name: "hello.txt", exact: true }).getAttribute("href");
-  const downloaded = await page.evaluate(async path => { const response = await globalThis.fetch(path); return { text: await response.text(), disposition: response.headers.get("content-disposition") }; }, downloadUrl);
-  assert.equal(downloaded.text, "workspace upload");
-  assert(downloaded.disposition.startsWith("attachment;"));
-  await files.getByRole("button", { name: "Rename", exact: true }).click();
-  await files.getByLabel("Rename", { exact: true }).fill("renamed.txt");
-  await files.getByRole("button", { name: "Save", exact: true }).click();
-  await files.getByRole("link", { name: "renamed.txt", exact: true }).waitFor();
-  await files.getByRole("button", { name: "Move", exact: true }).click();
+  await files.getByText("hello.txt", { exact: true }).waitFor();
+  // Opening a file downloads it (the explorer clicks a `download` anchor).
+  const [download] = await Promise.all([
+    page.waitForEvent("download"),
+    files.getByText("hello.txt", { exact: true }).dblclick()
+  ]);
+  const stream = await download.createReadStream();
+  const chunks = [];
+  for await (const chunk of stream) chunks.push(chunk);
+  assert.equal(Buffer.concat(chunks).toString(), "workspace upload");
+  // Rename through the item context menu.
+  await files.getByText("hello.txt", { exact: true }).click({ button: "right" });
+  await page.getByRole("menuitem", { name: "Rename", exact: true }).click();
+  const rename = files.locator(".files-rename");
+  await rename.fill("renamed.txt");
+  await rename.press("Enter");
+  await files.getByText("renamed.txt", { exact: true }).waitFor();
+  // Move back to the root through the context menus.
+  await files.getByText("renamed.txt", { exact: true }).click({ button: "right" });
+  await page.getByRole("menuitem", { name: "Move", exact: true }).click();
   await files.getByRole("button", { name: "My files", exact: true }).click();
-  await files.getByRole("button", { name: "Move here", exact: true }).click();
-  await files.getByRole("link", { name: "renamed.txt", exact: true }).waitFor();
-  const row = files.locator("li").filter({ has: page.getByRole("link", { name: "renamed.txt", exact: true }) });
-  await row.getByRole("button", { name: "Delete", exact: true }).click();
-  await files.getByRole("alertdialog").getByRole("button", { name: "Delete", exact: true }).click();
-  await files.getByRole("link", { name: "renamed.txt", exact: true }).waitFor({ state: "detached" });
+  await files.locator(".files-surface").click({ button: "right", position: { x: 4, y: 4 } });
+  await page.getByRole("menuitem", { name: "Move here", exact: true }).click();
+  await files.getByText("renamed.txt", { exact: true }).waitFor();
+  // Delete through the context menu (the explorer deletes immediately).
+  await files.getByText("renamed.txt", { exact: true }).click({ button: "right" });
+  await page.getByRole("menuitem", { name: "Delete", exact: true }).click();
+  await files.getByText("renamed.txt", { exact: true }).waitFor({ state: "detached" });
   // Saved account folders are delivered to an independent browser profile.
   const workspaceContext = await browser.newContext(reducedMotion);
   const workspacePage = await workspaceContext.newPage();
