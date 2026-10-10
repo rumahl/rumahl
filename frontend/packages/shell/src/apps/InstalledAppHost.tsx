@@ -169,6 +169,6 @@ function AppFrame({ app }: { app: InstalledApp }) {
   query.delete("mode");
   // App navigation is a fragment on the authorized entrypoint, never an asset path.
   url.hash = `/${params["*"] ?? ""}${query.size ? `?${query}` : ""}`;
-  return <iframe ref={frameRef} className="installed-app-frame" sandbox="allow-scripts" referrerPolicy="no-referrer"
+  return <iframe ref={frameRef} className="installed-app-frame" sandbox="allow-scripts allow-forms" referrerPolicy="no-referrer"
     title={app.title} src={url.href} onLoad={() => { loaded.current = true; }} onError={() => { cancel.current(); setFrame(null); setFailed(true); }} />;
 }

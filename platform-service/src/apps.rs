@@ -534,7 +534,6 @@ impl AppProvider for PersistentApps {
         resource: Option<CapabilityResource>,
     ) -> Result<CapabilityResult, AppAccessError> {
         self.authenticate(identity)?;
-        let adapters = self.runtime.clone().ok_or(AppAccessError::Unavailable)?;
         let snapshot = self
             .platform
             .load()
@@ -601,6 +600,9 @@ impl AppProvider for PersistentApps {
             });
         }
 
+        // A container/backend provider needs the runtime adapters to reach its
+        // live channel; a web provider was already handled above.
+        let adapters = self.runtime.clone().ok_or(AppAccessError::Unavailable)?;
         match CapabilityInvoker::new().invoke(
             &invocation,
             resource,
