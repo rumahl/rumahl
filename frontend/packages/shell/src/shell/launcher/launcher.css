@@ -1,0 +1,189 @@
+/* Launcher mode: one coherent app surface over the wallpaper.
+   Imported unlayered (like glass-surfaces.css) so it wins over the layered
+   presentation styles that predate the current design. */
+.shell[data-shell-mode="launcher"] .launcher-workspace {
+  display: flex;
+  justify-content: center;
+  align-items: stretch;
+  padding: clamp(16px, 4vh, 56px) clamp(16px, 4vw, 48px);
+  overflow: auto;
+}
+.launcher-home {
+  width: min(100%, 960px);
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 28px;
+  color: #fff;
+}
+.launcher-header {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 20px;
+  text-align: center;
+}
+.launcher-heading {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  text-shadow: 0 2px 24px rgba(0, 0, 0, 0.45);
+}
+.launcher-greeting {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  margin: 0;
+  font-size: clamp(22px, 3.4vw, 34px);
+  font-weight: 350;
+  letter-spacing: -0.02em;
+}
+.launcher-greeting > span {
+  font-size: clamp(40px, 6.5vw, 76px);
+  font-weight: 250;
+  letter-spacing: -0.045em;
+  line-height: 1.05;
+}
+.launcher-clock {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 6px;
+}
+.launcher-clock strong {
+  font-size: clamp(48px, 8vw, 84px);
+  font-weight: 250;
+  letter-spacing: -0.04em;
+  line-height: 1;
+}
+.launcher-clock span {
+  font-size: 14px;
+  font-weight: 500;
+  opacity: 0.85;
+}
+.launcher-search {
+  width: min(100%, 440px);
+}
+.launcher-search > span {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+}
+.launcher-search input {
+  width: 100%;
+  border-radius: 999px;
+  padding: 13px 22px;
+  text-align: center;
+  color: #fff;
+  background: rgba(10, 22, 18, 0.5);
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  backdrop-filter: blur(24px);
+  outline: none;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+.launcher-search input::placeholder {
+  color: rgba(255, 255, 255, 0.7);
+}
+.launcher-search input:focus-visible {
+  border-color: rgba(255, 255, 255, 0.5);
+  box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.18);
+}
+.launcher-view {
+  display: grid;
+  gap: 26px;
+  outline: none;
+}
+.launcher-section {
+  display: grid;
+  gap: 12px;
+}
+.launcher-section > h2 {
+  margin: 0 8px;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.76);
+  text-shadow: 0 1px 6px rgba(0, 0, 0, 0.5);
+}
+.launcher-back {
+  justify-self: start;
+  margin: 0 8px;
+  padding: 6px 14px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.24);
+  background: rgba(255, 255, 255, 0.08);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 500;
+}
+.launcher-back:hover {
+  background: rgba(255, 255, 255, 0.16);
+}
+.launcher-home .app-grid {
+  grid-template-columns: repeat(auto-fill, minmax(min(84px, 18vw), 1fr));
+  gap: 16px 12px;
+}
+.launcher-home .app-tile {
+  padding: 10px 4px;
+  gap: 9px;
+  border-radius: 18px;
+  border: 1px solid transparent;
+  color: #fff;
+  font-size: 12px;
+  text-shadow: 0 1px 6px rgba(0, 0, 0, 0.5);
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+.launcher-home .app-tile:hover {
+  background: rgba(255, 255, 255, 0.1);
+  border-color: rgba(255, 255, 255, 0.16);
+}
+.launcher-home .app-tile:focus-visible {
+  outline: 3px solid rgba(255, 255, 255, 0.55);
+  outline-offset: 2px;
+}
+.launcher-home .app-tile__icon {
+  border-radius: 20px;
+  box-shadow:
+    0 6px 16px rgba(0, 0, 0, 0.28),
+    inset 0 1px 1px rgba(255, 255, 255, 0.34);
+}
+.launcher-home .folder-preview {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 5px;
+  padding: 8px;
+  background: rgba(255, 255, 255, 0.16);
+  backdrop-filter: blur(18px);
+}
+.launcher-empty {
+  text-align: center;
+  color: rgba(255, 255, 255, 0.76);
+}
+.launcher-pages {
+  display: flex;
+  gap: 8px;
+  justify-content: center;
+  margin-top: 4px;
+}
+.launcher-pages button {
+  width: 8px;
+  height: 8px;
+  padding: 0;
+  border: 0;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.35);
+}
+.launcher-pages button[aria-current="page"] {
+  background: #fff;
+}
+@media (prefers-reduced-motion: reduce) {
+  .launcher-home * {
+    transition: none !important;
+    animation: none !important;
+  }
+}

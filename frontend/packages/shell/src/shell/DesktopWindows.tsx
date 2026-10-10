@@ -24,7 +24,7 @@ export function isInstalledAppWindow(id: string): boolean {
   return appId !== undefined && findFirstPartyApp(appId) === undefined;
 }
 
-export function DesktopWindows() {
+export function DesktopWindows({ animations = true }: { animations?: boolean } = {}) {
   const { state } = useShell();
   const layer = useRef<HTMLDivElement>(null);
   // `null` until the layer is measured; until then the server-rendered nonce
@@ -57,11 +57,11 @@ export function DesktopWindows() {
   }, [state.windows, state.focusedWindowId]);
   return <div ref={layer} className="window-layer">
     <AnimatePresence initial={false}>{state.windows.map((item) =>
-      <HostedWindow key={item.id} item={item} area={area} zIndex={zIndex[item.id] ?? 1} />
+      <HostedWindow key={item.id} item={item} area={area} zIndex={zIndex[item.id] ?? 1} animations={animations} />
     )}</AnimatePresence>
   </div>;
 }
-function HostedWindow({ item, area, zIndex }: { item: ShellWindow; area: WorkArea | null; zIndex: number }) {
+function HostedWindow({ item, area, zIndex, animations: motionEnabled = true }: { item: ShellWindow; area: WorkArea | null; zIndex: number; animations?: boolean }) {
   const { state, dispatch, open, mode } = useShell();
   const { variants } = useTheme();
   const location = useLocation();
@@ -185,7 +185,7 @@ function HostedWindow({ item, area, zIndex }: { item: ShellWindow; area: WorkAre
     const next = resize ? { ...rect, width: rect.width + delta[0]! * step, height: rect.height + delta[1]! * step } : { ...rect, x: rect.x + delta[0]! * step, y: rect.y + delta[1]! * step };
     dispatch({ type: "set-window-rect", id: item.id, rect: constrainRect(next, area) });
   }
-  const animate = typeof window !== "undefined" && typeof window.matchMedia === "function" && !window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  const animate = motionEnabled && typeof window !== "undefined" && typeof window.matchMedia === "function" && !window.matchMedia("(prefers-reduced-motion: reduce)").matches;
   const enter = isLauncher ? { opacity: 0, y: 140 } : { opacity: 0 };
   return <motion.div
     aria-hidden={hidden ? true : undefined}
@@ -196,7 +196,7 @@ function HostedWindow({ item, area, zIndex }: { item: ShellWindow; area: WorkAre
     transition={isLauncher ? { type: "spring", stiffness: 320, damping: 30 } : { duration: 0.22, ease: [0.2, 0.7, 0.2, 1] }}
     onPointerMove={move} onPointerUp={end} onPointerCancel={end} onLostPointerCapture={end}>
     {snap ? <div aria-hidden="true" className={`snap-preview snap-preview--${snap}`} /> : null}
-    <ProtectedWindow frameless={isLauncher} flush={flush} id={item.id} focused={state.focusedWindowId === item.id}
+    <ProtectedWindow flush={flush} id={item.id} focused={state.focusedWindowId === item.id}
       style={area ? { left: rect.x, top: rect.y, width: rect.width, height: rect.height } : undefined}
       onClose={() => { dispatch({ type: "close-window", id: item.id }); if (active === item.id) open("/"); }}
       onFocus={focus} onMinimize={() => { dispatch({ type: "toggle-minimize", id: item.id }); if (active === item.id) open("/"); }}

@@ -293,7 +293,7 @@ export function ShellLayout({ snapshot, live }: { snapshot: ShellSnapshotV1; liv
         <div className="workspace-surfaces">
           {mode === "desktop" ? <DesktopLayout><RouteBoundary location={path}>{route.presentation === "window" ? <HomePage /> : <ShellRoutes />}</RouteBoundary></DesktopLayout>
             : <LauncherLayout><RouteBoundary location={path}>{route.presentation === "window" ? null : <ShellRoutes />}</RouteBoundary></LauncherLayout>}
-          <DesktopWindows />
+          <DesktopWindows animations={animations} />
         </div>
         <CommandPalette />
       </div>

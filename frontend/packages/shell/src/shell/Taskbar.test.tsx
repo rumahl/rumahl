@@ -13,11 +13,10 @@ describe("theme-driven shell layout", () => {
     expect(within(nav).getByRole("link", { name: "Apps" })).toBeInTheDocument();
   });
 
-  test("uses the theme launcher layout as the default view", async () => {
+  test("renders the launcher home", async () => {
     localStorage.setItem("rumahl.demo.shell-mode", "launcher");
     render(<App snapshot={demoSnapshot} theme={classicTheme} initialLocation="/" />);
-    expect(await screen.findByRole("heading", { name: "Your apps. Your space." })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "App drawer" })).toHaveAttribute("aria-pressed", "true");
-    expect(document.querySelector(".launcher-view--drawer")).not.toBeNull();
+    expect(await screen.findByRole("searchbox")).toBeInTheDocument();
+    expect(document.querySelector(".launcher-view--grid")).not.toBeNull();
   });
 });

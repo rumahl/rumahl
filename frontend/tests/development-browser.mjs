@@ -127,7 +127,7 @@ try {
   if (process.env.RUMAHL_SCREENSHOT_DIR) await page.screenshot({ path: join(process.env.RUMAHL_SCREENSHOT_DIR, "desktop.png") });
   await setMode("launcher");
   assert.equal(await page.locator(".shell").getAttribute("data-shell-mode"), "launcher");
-  assert.equal(await page.getByRole("button", { name: "Close App manager", exact: true }).count(), 0);
+  assert.equal(await page.getByRole("button", { name: "Close App manager", exact: true }).count(), 1);
   await page.getByRole("navigation", { name: "Main navigation" }).getByRole("link", { name: "Settings" }).click();
   await page.getByRole("navigation", { name: "Settings", exact: true }).getByRole("link", { name: "Personalization" }).click();
   assert.equal(new URL(page.url()).pathname, "/settings/display");
