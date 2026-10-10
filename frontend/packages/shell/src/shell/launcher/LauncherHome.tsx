@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent } from "react";
 import { AppIcon, AppTile } from "../../apps/AppTile";
 import { useShellApps } from "../../apps/useShellApps";
 import { useI18n } from "../../i18n";
@@ -6,6 +6,7 @@ import { useWorkspace } from "../../preferences/Workspace";
 import { useShell } from "../ShellContext";
 import { useClock } from "../clock";
 import { applyOrder, moveInOrder, paginate, setLauncherOrder, useLauncherOrder } from "./launcher-order";
+import { LauncherMenu, type LauncherMenuItem } from "./LauncherMenu";
 
 /** Grid: a fixed number of rows and a responsive number of columns. */
 const ROWS = 4;
@@ -20,14 +21,15 @@ const GAP = 12;
  */
 export function LauncherHome() {
   const { t, locale } = useI18n();
-  const { snapshot } = useShell();
+  const { snapshot, open } = useShell();
   const apps = useShellApps();
-  const { effective } = useWorkspace();
+  const { effective, save } = useWorkspace();
   const order = useLauncherOrder();
   const [query, setQuery] = useState("");
   const [folder, setFolder] = useState<string | null>(null);
   const [page, setPage] = useState(0);
   const [cols, setCols] = useState(4);
+  const [menu, setMenu] = useState<null | { x: number; y: number; appId?: string; folderId?: string }>(null);
   const now = useClock();
   const swipe = useRef<number | null>(null);
   const board = useRef<HTMLDivElement>(null);
@@ -73,6 +75,43 @@ export function LauncherHome() {
     : hour < 18 ? "launcher.greetingAfternoon"
     : "launcher.greetingEvening";
   const step = (delta: number) => setPage((value) => Math.min(Math.max(value + delta, 0), pages.length - 1));
+
+  function persistFolders(folders: typeof effective.folders) {
+    void save("device", { ...effective, folders });
+  }
+  function newFolder() {
+    const id = `folder-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`;
+    persistFolders([...effective.folders, { id, name: t("launcher.newFolder"), apps: [] }]);
+    setFolder(id);
+  }
+  function removeFolder(id: string) {
+    persistFolders(effective.folders.filter((item) => item.id !== id));
+    if (folder === id) setFolder(null);
+  }
+  function menuItems(): LauncherMenuItem[] {
+    if (!menu) return [];
+    if (menu.appId) {
+      const app = byId.get(menu.appId);
+      if (!app) return [];
+      return [
+        { label: t("launcher.menu.open"), onSelect: () => open(app.path) },
+        ...(!app.system ? [{ label: t("launcher.menu.settings"), onSelect: () => open(`${app.path}/settings`) }] : [])
+      ];
+    }
+    if (menu.folderId) {
+      const id = menu.folderId;
+      return [
+        { label: t("launcher.menu.openFolder"), onSelect: () => setFolder(id) },
+        { label: t("launcher.menu.removeFolder"), danger: true, onSelect: () => removeFolder(id) }
+      ];
+    }
+    return [{ label: t("launcher.menu.newFolder"), onSelect: newFolder }];
+  }
+  function openMenu(event: ReactMouseEvent, extra: { appId?: string; folderId?: string } = {}) {
+    event.preventDefault();
+    event.stopPropagation();
+    setMenu({ x: event.clientX, y: event.clientY, ...extra });
+  }
 
   function onPointerDown(event: ReactPointerEvent) {
     if (event.pointerType === "mouse") return;
@@ -142,12 +181,12 @@ export function LauncherHome() {
       {currentFolder ? <button className="launcher-back" type="button" onClick={() => setFolder(null)}>{t("workspace.back")} · {currentFolder.name}</button> : null}
       <div className="app-grid">{filtered.map((app) => <AppTile app={app} key={app.id} />)}</div>
       {filtered.length === 0 ? <p role="status" className="launcher-empty">{t("launcher.noResults")}</p> : null}
-    </section> : <div className="launcher-board" ref={board}
+    </section> : <div className="launcher-board" ref={board} onContextMenu={(event) => openMenu(event)}
       onPointerDown={onPointerDown} onPointerUp={onPointerUp} onPointerCancel={() => { swipe.current = null; }} onKeyDown={onKeyDown} tabIndex={0}>
       {!normalized && effective.folders.length > 0 ? <section className="launcher-section">
         <h2>{t("launcher.folders")}</h2>
         <div className="app-grid">
-          {effective.folders.map((item) => <button className="app-tile" key={item.id} type="button" onClick={() => setFolder(item.id)}>
+          {effective.folders.map((item) => <button className="app-tile" key={item.id} type="button" onClick={() => setFolder(item.id)} onContextMenu={(event) => openMenu(event, { folderId: item.id })}>
             <span className="app-tile__icon folder-preview" aria-hidden="true">{item.apps.slice(0, 4).map((id) => { const app = byId.get(id); return app ? <span key={id}><AppIcon app={app} /></span> : null; })}</span><span>{item.name}</span>
           </button>)}
         </div>
@@ -160,6 +199,7 @@ export function LauncherHome() {
           return <div key={id} className="springboard-cell" data-springboard-index={index}
             onPointerDown={(event) => beginDrag(index, event)} onPointerMove={moveDrag} onPointerUp={endDrag} onPointerCancel={endDrag}
             onDragStart={(event) => event.preventDefault()}
+            onContextMenu={(event) => openMenu(event, { appId: app.id })}
             onClickCapture={(event) => { if (suppressClick.current) { event.preventDefault(); event.stopPropagation(); suppressClick.current = false; } }}>
             <AppTile app={app} />
           </div>;
@@ -170,5 +210,6 @@ export function LauncherHome() {
           aria-label={t("launcher.page", { page: index + 1 })} onClick={() => setPage(index)} />)}
       </nav> : null}
     </div>}
+    {menu ? <LauncherMenu x={menu.x} y={menu.y} items={menuItems()} onClose={() => setMenu(null)} /> : null}
   </main>;
 }
