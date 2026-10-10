@@ -1,4 +1,4 @@
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 use std::os::unix::fs::{MetadataExt, PermissionsExt};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -7,13 +7,14 @@ use std::time::Duration;
 use axum::Router;
 use axum::body::Body;
 use axum::extract::ws::{Message, WebSocket, WebSocketUpgrade};
-use axum::extract::{OriginalUri, Path as UrlPath, State};
+use axum::extract::{OriginalUri, Path as UrlPath, Query, State};
 use axum::http::header::{
     CACHE_CONTROL, CONTENT_SECURITY_POLICY, CONTENT_TYPE, COOKIE, ORIGIN, SET_COOKIE,
 };
 use axum::http::{HeaderMap, HeaderValue, StatusCode, Uri};
 use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post};
+use base64::Engine as _;
 use futures_util::{SinkExt, StreamExt};
 use http_body_util::{BodyExt, Full, Limited};
 use hyper::client::conn::http1;
@@ -96,6 +97,10 @@ pub struct GatewayState {
     pub files: Option<Arc<dyn rumahl_core::PersonalFiles>>,
     pub workspace: Option<Arc<dyn rumahl_core::WorkspaceRepository>>,
     pub preferences: Option<Arc<dyn rumahl_core::ShellPreferencesRepository>>,
+    /// Exposure-mode policy; None keeps the guided default.
+    pub os_mode: Option<Arc<dyn rumahl_core::OsModeRepository>>,
+    /// Real host roots the explorer may browse; None disables them.
+    pub host_files: Option<Arc<dyn crate::HostFiles>>,
     /// None leaves the Shell and recovery routes usable while OIDC is offline.
     pub oidc: Option<Arc<dyn oidc::OidcGateway>>,
     pub browser_sessions: Option<Arc<dyn crate::BrowserSessions>>,
@@ -112,6 +117,20 @@ pub fn router(state: GatewayState) -> Router {
             "/api/v1/shell/apps/{id}/launch",
             post(app_launch).layer(axum::extract::DefaultBodyLimit::max(1024)),
         )
+        .route("/api/v1/shell/apps/{id}/settings", get(app_settings))
+        .route("/api/v1/shell/apps/{id}/data", get(app_data))
+        .route(
+            "/api/v1/shell/apps/{id}/runtime",
+            get(app_runtime_status).post(app_runtime_action),
+        )
+        .route(
+            "/api/v1/shell/apps/import",
+            post(app_import).layer(axum::extract::DefaultBodyLimit::max(32 * 1024 * 1024)),
+        )
+        .route(
+            "/api/v1/shell/capabilities/invoke",
+            post(capabilities_invoke).layer(axum::extract::DefaultBodyLimit::max(4096)),
+        )
         .route("/api/v1/shell/events", get(events))
         .route("/api/v1/shell/widgets/{id}/frame", get(widget_frame))
         .route("/api/v1/shell/streams", get(stream_list))
@@ -125,6 +144,8 @@ pub fn router(state: GatewayState) -> Router {
         .route("/recovery", get(recovery))
         .merge(oidc::routes())
         .merge(crate::preferences::routes())
+        .merge(crate::os_mode::routes())
+        .merge(crate::host_files::routes())
         .merge(crate::workspace::routes())
         .merge(crate::files::routes())
         .merge(crate::browser_auth::routes())
@@ -188,7 +209,8 @@ async fn app_catalog(State(state): State<Arc<GatewayState>>, headers: HeaderMap)
         Ok(Ok(apps)) => {
             let apps: Vec<_> = apps.into_iter().map(|app| serde_json::json!({
                 "id": app.id, "installationId": app.installation_id.to_string(), "title": app.title,
-                "version": app.version, "launchable": app.launchable,
+                "version": app.version, "launchable": app.launchable, "capabilities": app.capabilities,
+                "lifecycle": app.lifecycle, "connectors": app.connectors,
             })).collect();
             let mut response =
                 axum::Json(serde_json::json!({"catalogVersion": 1, "apps": apps})).into_response();
@@ -255,6 +277,485 @@ async fn app_launch(
     {
         Ok(Ok(launch)) => {
             let mut response = axum::Json(serde_json::json!({"launchVersion": 1, "id": launch.app.id, "installationId": launch.app.installation_id.to_string(), "lease": launch.lease, "frameUrl": launch.frame_url, "renewAfterSeconds": 30})).into_response();
+            secure_headers(&mut response);
+            response
+        }
+        Ok(Err(error)) => crate::app_error(error),
+        Err(_) => error(StatusCode::SERVICE_UNAVAILABLE),
+    }
+}
+
+async fn app_settings(
+    State(state): State<Arc<GatewayState>>,
+    UrlPath(id): UrlPath<String>,
+    Query(query): Query<BTreeMap<String, String>>,
+    headers: HeaderMap,
+) -> Response {
+    let identity = match credential(&headers) {
+        Ok(token) => match authenticate(&state, &token).await {
+            Ok(identity) => identity,
+            Err(error) => return backend_error(error),
+        },
+        Err(_) => return error(StatusCode::UNAUTHORIZED),
+    };
+    if query.len() != 1 {
+        return error(StatusCode::BAD_REQUEST);
+    }
+    let Some(installation) = query.get("installationId") else {
+        return error(StatusCode::BAD_REQUEST);
+    };
+    let installation = installation.clone();
+    let Some(apps) = state.apps.clone() else {
+        return error(StatusCode::SERVICE_UNAVAILABLE);
+    };
+    match tokio::task::spawn_blocking(move || apps.settings(identity, &id, &installation)).await {
+        Ok(Ok(settings)) => {
+            let manifest: Vec<_> = settings
+                .manifest
+                .into_iter()
+                .map(|setting| {
+                    let options: Vec<_> = setting
+                        .options
+                        .into_iter()
+                        .map(|option| {
+                            serde_json::json!({"value": option.value, "label": option.label})
+                        })
+                        .collect();
+                    serde_json::json!({
+                        "key": setting.key,
+                        "title": setting.title,
+                        "description": setting.description,
+                        "type": setting.kind,
+                        "required": setting.required,
+                        "options": options,
+                    })
+                })
+                .collect();
+            let mut response = axum::Json(serde_json::json!({
+                "settingsVersion": 1,
+                "id": settings.app.id,
+                "installationId": settings.app.installation_id.to_string(),
+                "manifest": manifest,
+                "extended": serde_json::Value::Null,
+            }))
+            .into_response();
+            secure_headers(&mut response);
+            response
+        }
+        Ok(Err(error)) => crate::app_error(error),
+        Err(_) => error(StatusCode::SERVICE_UNAVAILABLE),
+    }
+}
+
+/// Read-only access to an app's private data directory. Only the app owner may
+/// read it, and only in advanced mode or above.
+async fn app_data(
+    State(state): State<Arc<GatewayState>>,
+    UrlPath(id): UrlPath<String>,
+    Query(query): Query<BTreeMap<String, String>>,
+    headers: HeaderMap,
+) -> Response {
+    let identity = match credential(&headers) {
+        Ok(token) => match authenticate(&state, &token).await {
+            Ok(identity) => identity,
+            Err(error) => return backend_error(error),
+        },
+        Err(_) => return error(StatusCode::UNAUTHORIZED),
+    };
+    if query.len() < 2 || query.len() > 3 {
+        return error(StatusCode::BAD_REQUEST);
+    }
+    let Some(installation) = query.get("installationId").cloned() else {
+        return error(StatusCode::BAD_REQUEST);
+    };
+    let Some(device) = query
+        .get("device")
+        .and_then(|value| BrowserProfileId::parse(value))
+    else {
+        return error(StatusCode::BAD_REQUEST);
+    };
+    let path = query.get("path").cloned().unwrap_or_default();
+
+    let Some(mode_repository) = state.os_mode.clone() else {
+        return error(StatusCode::SERVICE_UNAVAILABLE);
+    };
+    let user = identity.user_id;
+    let mode = match tokio::task::spawn_blocking(move || mode_repository.load(user, device)).await {
+        Ok(Ok(settings)) => settings.effective_mode(),
+        Ok(Err(_)) => return error(StatusCode::SERVICE_UNAVAILABLE),
+        Err(_) => return error(StatusCode::SERVICE_UNAVAILABLE),
+    };
+    if !mode.policy().can_browse_system_files() {
+        return error(StatusCode::FORBIDDEN);
+    }
+
+    let Some(apps) = state.apps.clone() else {
+        return error(StatusCode::SERVICE_UNAVAILABLE);
+    };
+    let requested = path.clone();
+    match tokio::task::spawn_blocking(move || apps.data(identity, &id, &installation, &requested))
+        .await
+    {
+        Ok(Ok(data)) => {
+            let value = match data {
+                crate::AppData::Directory(entries) => serde_json::json!({
+                    "dataVersion": 1,
+                    "kind": "directory",
+                    "path": path,
+                    "entries": entries.into_iter().map(|entry| serde_json::json!({
+                        "name": entry.name, "directory": entry.directory, "size": entry.size,
+                    })).collect::<Vec<_>>(),
+                }),
+                crate::AppData::File {
+                    bytes,
+                    content_type,
+                } => {
+                    let text = if bytes.len() <= 256 * 1024 {
+                        std::str::from_utf8(&bytes).ok().map(str::to_owned)
+                    } else {
+                        None
+                    };
+                    serde_json::json!({
+                        "dataVersion": 1,
+                        "kind": "file",
+                        "path": path,
+                        "size": bytes.len(),
+                        "contentType": content_type,
+                        "text": text,
+                    })
+                }
+            };
+            let mut response = axum::Json(value).into_response();
+            secure_headers(&mut response);
+            response
+        }
+        Ok(Err(error)) => crate::app_error(error),
+        Err(_) => error(StatusCode::SERVICE_UNAVAILABLE),
+    }
+}
+
+async fn app_runtime_status(
+    State(state): State<Arc<GatewayState>>,
+    UrlPath(id): UrlPath<String>,
+    Query(query): Query<BTreeMap<String, String>>,
+    headers: HeaderMap,
+) -> Response {
+    let identity = match credential(&headers) {
+        Ok(token) => match authenticate(&state, &token).await {
+            Ok(identity) => identity,
+            Err(error) => return backend_error(error),
+        },
+        Err(_) => return error(StatusCode::UNAUTHORIZED),
+    };
+    if query.len() != 1 {
+        return error(StatusCode::BAD_REQUEST);
+    }
+    let Some(installation) = query.get("installationId").cloned() else {
+        return error(StatusCode::BAD_REQUEST);
+    };
+    let Some(apps) = state.apps.clone() else {
+        return error(StatusCode::SERVICE_UNAVAILABLE);
+    };
+    let app_id = id.clone();
+    let installation_id = installation.clone();
+    match tokio::task::spawn_blocking(move || {
+        apps.runtime(
+            identity,
+            &app_id,
+            &installation_id,
+            crate::RuntimeAction::Status,
+        )
+    })
+    .await
+    {
+        Ok(Ok(runtime)) => {
+            let mut response = axum::Json(serde_json::json!({
+                "runtimeVersion": 1,
+                "id": id,
+                "installationId": installation,
+                "state": runtime.as_str(),
+            }))
+            .into_response();
+            secure_headers(&mut response);
+            response
+        }
+        Ok(Err(error)) => crate::app_error(error),
+        Err(_) => error(StatusCode::SERVICE_UNAVAILABLE),
+    }
+}
+
+async fn app_runtime_action(
+    State(state): State<Arc<GatewayState>>,
+    UrlPath(id): UrlPath<String>,
+    headers: HeaderMap,
+    body: axum::body::Bytes,
+) -> Response {
+    if !valid_origin(&headers, &state.config.public_origin) {
+        return error(StatusCode::FORBIDDEN);
+    }
+    if body.len() > 1024 {
+        return error(StatusCode::PAYLOAD_TOO_LARGE);
+    }
+    if headers.get("content-type").and_then(|v| v.to_str().ok()) != Some("application/json") {
+        return error(StatusCode::UNSUPPORTED_MEDIA_TYPE);
+    }
+    let identity = match credential(&headers) {
+        Ok(token) => match authenticate(&state, &token).await {
+            Ok(identity) => identity,
+            Err(error) => return backend_error(error),
+        },
+        Err(_) => return error(StatusCode::UNAUTHORIZED),
+    };
+    let Ok(value) = serde_json::from_slice::<serde_json::Value>(&body) else {
+        return error(StatusCode::BAD_REQUEST);
+    };
+    let Some(object) = value.as_object() else {
+        return error(StatusCode::BAD_REQUEST);
+    };
+    if object
+        .keys()
+        .any(|key| key != "installationId" && key != "action")
+    {
+        return error(StatusCode::BAD_REQUEST);
+    }
+    let Some(installation) = value
+        .get("installationId")
+        .and_then(|v| v.as_str())
+        .map(str::to_owned)
+    else {
+        return error(StatusCode::BAD_REQUEST);
+    };
+    let action = match value.get("action").and_then(|v| v.as_str()) {
+        Some("start") => crate::RuntimeAction::Start,
+        Some("stop") => crate::RuntimeAction::Stop,
+        _ => return error(StatusCode::BAD_REQUEST),
+    };
+    let Some(apps) = state.apps.clone() else {
+        return error(StatusCode::SERVICE_UNAVAILABLE);
+    };
+    let app_id = id.clone();
+    let installation_id = installation.clone();
+    match tokio::task::spawn_blocking(move || {
+        apps.runtime(identity, &app_id, &installation_id, action)
+    })
+    .await
+    {
+        Ok(Ok(runtime)) => {
+            let mut response = axum::Json(serde_json::json!({
+                "runtimeVersion": 1,
+                "id": id,
+                "installationId": installation,
+                "state": runtime.as_str(),
+            }))
+            .into_response();
+            secure_headers(&mut response);
+            response
+        }
+        Ok(Err(error)) => crate::app_error(error),
+        Err(_) => error(StatusCode::SERVICE_UNAVAILABLE),
+    }
+}
+
+async fn capabilities_invoke(
+    State(state): State<Arc<GatewayState>>,
+    headers: HeaderMap,
+    body: axum::body::Bytes,
+) -> Response {
+    if !valid_origin(&headers, &state.config.public_origin) {
+        return error(StatusCode::FORBIDDEN);
+    }
+    if body.len() > 4096 {
+        return error(StatusCode::PAYLOAD_TOO_LARGE);
+    }
+    if headers.get("content-type").and_then(|v| v.to_str().ok()) != Some("application/json") {
+        return error(StatusCode::UNSUPPORTED_MEDIA_TYPE);
+    }
+    let identity = match credential(&headers) {
+        Ok(token) => match authenticate(&state, &token).await {
+            Ok(identity) => identity,
+            Err(error) => return backend_error(error),
+        },
+        Err(_) => return error(StatusCode::UNAUTHORIZED),
+    };
+    let Ok(value) = serde_json::from_slice::<serde_json::Value>(&body) else {
+        return error(StatusCode::BAD_REQUEST);
+    };
+    let Some(object) = value.as_object() else {
+        return error(StatusCode::BAD_REQUEST);
+    };
+    if object
+        .keys()
+        .any(|key| key != "capability" && key != "resource")
+    {
+        return error(StatusCode::BAD_REQUEST);
+    }
+    let Some(capability) = value
+        .get("capability")
+        .and_then(|v| v.as_str())
+        .filter(|value| value.len() <= 200)
+        .map(str::to_owned)
+    else {
+        return error(StatusCode::BAD_REQUEST);
+    };
+    let resource = match value.get("resource") {
+        None | Some(serde_json::Value::Null) => None,
+        Some(serde_json::Value::Object(resource)) => {
+            if resource
+                .keys()
+                .any(|key| key != "namespace" && key != "kind" && key != "key")
+            {
+                return error(StatusCode::BAD_REQUEST);
+            }
+            let (Some(namespace), Some(kind), Some(key)) = (
+                resource.get("namespace").and_then(|v| v.as_str()),
+                resource.get("kind").and_then(|v| v.as_str()),
+                resource.get("key").and_then(|v| v.as_str()),
+            ) else {
+                return error(StatusCode::BAD_REQUEST);
+            };
+            Some(crate::CapabilityResource {
+                namespace: namespace.to_owned(),
+                kind: kind.to_owned(),
+                key: key.to_owned(),
+            })
+        }
+        _ => return error(StatusCode::BAD_REQUEST),
+    };
+    let Some(apps) = state.apps.clone() else {
+        return error(StatusCode::SERVICE_UNAVAILABLE);
+    };
+    match tokio::task::spawn_blocking(move || {
+        apps.invoke_capability(identity, capability, resource)
+    })
+    .await
+    {
+        Ok(Ok(result)) => {
+            let value = result
+                .result
+                .as_deref()
+                .and_then(|text| serde_json::from_str::<serde_json::Value>(text).ok());
+            let browser = result.browser.as_ref().map(|delivery| {
+                serde_json::json!({
+                    "appId": delivery.app_id,
+                    "installationId": delivery.installation_id,
+                })
+            });
+            let mut response = axum::Json(serde_json::json!({
+                "capabilityVersion": 1,
+                "outcome": result.outcome.as_str(),
+                "result": value,
+                "browser": browser,
+            }))
+            .into_response();
+            secure_headers(&mut response);
+            response
+        }
+        Ok(Err(error)) => crate::app_error(error),
+        Err(_) => error(StatusCode::SERVICE_UNAVAILABLE),
+    }
+}
+
+async fn app_import(
+    State(state): State<Arc<GatewayState>>,
+    headers: HeaderMap,
+    body: axum::body::Bytes,
+) -> Response {
+    if !valid_origin(&headers, &state.config.public_origin) {
+        return error(StatusCode::FORBIDDEN);
+    }
+    if headers.get("content-type").and_then(|v| v.to_str().ok()) != Some("application/json") {
+        return error(StatusCode::UNSUPPORTED_MEDIA_TYPE);
+    }
+    let identity = match credential(&headers) {
+        Ok(token) => match authenticate(&state, &token).await {
+            Ok(identity) => identity,
+            Err(error) => return backend_error(error),
+        },
+        Err(_) => return error(StatusCode::UNAUTHORIZED),
+    };
+    let Ok(value) = serde_json::from_slice::<serde_json::Value>(&body) else {
+        return error(StatusCode::BAD_REQUEST);
+    };
+    let Some(object) = value.as_object() else {
+        return error(StatusCode::BAD_REQUEST);
+    };
+    if object
+        .keys()
+        .any(|key| key != "importVersion" && key != "files" && key != "device")
+    {
+        return error(StatusCode::BAD_REQUEST);
+    }
+    if value.get("importVersion").and_then(|v| v.as_i64()) != Some(1) {
+        return error(StatusCode::BAD_REQUEST);
+    }
+    let Some(device) = value
+        .get("device")
+        .and_then(|v| v.as_str())
+        .and_then(BrowserProfileId::parse)
+    else {
+        return error(StatusCode::BAD_REQUEST);
+    };
+    // Installing app packages requires an OS mode that permits it.
+    let Some(mode_repository) = state.os_mode.clone() else {
+        return error(StatusCode::SERVICE_UNAVAILABLE);
+    };
+    let user = identity.user_id;
+    let mode = match tokio::task::spawn_blocking(move || mode_repository.load(user, device)).await {
+        Ok(Ok(settings)) => settings.effective_mode(),
+        Ok(Err(_)) | Err(_) => return error(StatusCode::SERVICE_UNAVAILABLE),
+    };
+    if !mode.policy().can_install_apps() {
+        return error(StatusCode::FORBIDDEN);
+    }
+    let Some(files) = value.get("files").and_then(|v| v.as_array()) else {
+        return error(StatusCode::BAD_REQUEST);
+    };
+    if files.is_empty() || files.len() > 2048 {
+        return error(StatusCode::BAD_REQUEST);
+    }
+    let mut upload = Vec::with_capacity(files.len());
+    for file in files {
+        let Some(entry) = file.as_object() else {
+            return error(StatusCode::BAD_REQUEST);
+        };
+        if entry.keys().any(|key| key != "path" && key != "content") {
+            return error(StatusCode::BAD_REQUEST);
+        }
+        let Some(path) = entry.get("path").and_then(|v| v.as_str()) else {
+            return error(StatusCode::BAD_REQUEST);
+        };
+        if path.is_empty()
+            || path.len() > 1024
+            || path
+                .split('/')
+                .any(|segment| segment.is_empty() || segment == "." || segment == "..")
+        {
+            return error(StatusCode::BAD_REQUEST);
+        }
+        let Some(content) = entry.get("content").and_then(|v| v.as_str()) else {
+            return error(StatusCode::BAD_REQUEST);
+        };
+        let Ok(bytes) = base64::engine::general_purpose::STANDARD.decode(content) else {
+            return error(StatusCode::BAD_REQUEST);
+        };
+        upload.push(crate::PackageUploadFile {
+            path: path.to_owned(),
+            bytes,
+        });
+    }
+    let Some(apps) = state.apps.clone() else {
+        return error(StatusCode::SERVICE_UNAVAILABLE);
+    };
+    match tokio::task::spawn_blocking(move || apps.import_package(identity, upload)).await {
+        Ok(Ok(app)) => {
+            let mut response = axum::Json(serde_json::json!({
+                "importVersion": 1,
+                "id": app.id,
+                "installationId": app.installation_id.to_string(),
+                "title": app.title,
+                "version": app.version,
+            }))
+            .into_response();
             secure_headers(&mut response);
             response
         }
@@ -1027,6 +1528,7 @@ mod tests {
 
     fn state(available: bool, widget_url: &'static str) -> GatewayState {
         GatewayState {
+            host_files: None,
             config: GatewayConfig::new("https://rumahl.dev", "/private/run/rumahl-ssr.sock")
                 .unwrap(),
             backend: Arc::new(TestBackend {
@@ -1041,6 +1543,7 @@ mod tests {
             streams: None,
             apps: None,
             preferences: None,
+            os_mode: None,
             workspace: None,
             files: None,
             oidc: None,
@@ -1157,6 +1660,7 @@ mod tests {
             .await
             .unwrap();
         let app = router(GatewayState {
+            host_files: None,
             config: GatewayConfig::new("https://rumahl.dev", "/private/run/rumahl-ssr.sock")
                 .unwrap(),
             backend: Arc::new(TestBackend {
@@ -1168,6 +1672,7 @@ mod tests {
             streams: Some(Arc::new(StreamAccess::new(provider))),
             apps: None,
             preferences: None,
+            os_mode: None,
             workspace: None,
             files: None,
             oidc: None,
@@ -1289,6 +1794,7 @@ mod tests {
             .await
             .unwrap();
         let app = router(GatewayState {
+            host_files: None,
             config: GatewayConfig::new("https://rumahl.dev", "/private/run/rumahl-ssr.sock")
                 .unwrap(),
             backend: Arc::new(TestBackend {
@@ -1300,6 +1806,7 @@ mod tests {
             streams: Some(Arc::new(StreamAccess::new(provider))),
             apps: None,
             preferences: None,
+            os_mode: None,
             workspace: None,
             files: None,
             oidc: None,

@@ -1,3 +1,4 @@
+import {mountSurface} from './surface.js';
 import {normalizeMaterial} from './core.js';
 // Chromium can run an SVG graph on the *real* CSS backdrop. A per-surface Canvas
 // displacement texture drives R/G offsets; three passes give chromatic fringing.
@@ -14,7 +15,7 @@ export class SvgBackdrop {
     this.svg=make('svg',{width:0,height:0,'aria-hidden':'true'});
     Object.assign(this.svg.style,{position:'absolute',width:'0',height:'0',pointerEvents:'none'});
     this.filter=null;document.body.append(this.svg);
-    this.layer=document.createElement('div');this.layer.className='rumahl-glass-surface';host.prepend(this.layer);
+    this.layer=document.createElement('div');this.layer.className='rumahl-glass-surface rumahl-glass-effect';this.frame=mountSurface(host,this.layer);
     this.geometry='';this.resize=new ResizeObserver(()=>this.schedule());this.resize.observe(host);this.schedule();
   }
   setMaterial(material,profile){this.material=normalizeMaterial(material);this.profile=profile;this.schedule()}
@@ -103,5 +104,5 @@ if(chroma<=0.001){
     this.layer.style.background=this.material.tint;
     if(previous)requestAnimationFrame(()=>previous.remove());
   }
-  destroy(){this.destroyed=true;this.version++;clearTimeout(this.timer);this.resize.disconnect();this.layer.remove();this.svg.remove();if(this.url)URL.revokeObjectURL(this.url)}
+  destroy(){this.destroyed=true;this.version++;clearTimeout(this.timer);this.resize.disconnect();this.frame.remove();this.svg.remove();if(this.url)URL.revokeObjectURL(this.url)}
 }

@@ -3,7 +3,7 @@ use axum::{
     http::{Request, StatusCode},
 };
 use http_body_util::BodyExt;
-use rumahl_persistence_sqlite::SqliteShellPreferences;
+use rumahl_persistence_sqlite::{SqliteOsModeRepository, SqliteShellPreferences};
 use rumahl_platform_service::*;
 use rumahl_platform_web::{
     BrowserSessions, GatewayConfig, GatewayState, InMemoryShellEvents, router,
@@ -34,6 +34,7 @@ async fn preferences_are_session_scoped_csrf_protected_and_revision_checked() {
     let alice = sessions.login("alice", password.clone()).unwrap();
     let bob = sessions.login("bob", password).unwrap();
     let app = router(GatewayState {
+        host_files: None,
         config: GatewayConfig::new("https://rumahl.test", root.join("ssr.sock")).unwrap(),
         backend: shell_backend(&accounts, &root.join("platform.sqlite"), "test", "en").unwrap(),
         browser_sessions: Some(sessions.clone()),
@@ -52,6 +53,9 @@ async fn preferences_are_session_scoped_csrf_protected_and_revision_checked() {
         )),
         preferences: Some(Arc::new(
             SqliteShellPreferences::open(root.join("preferences.sqlite")).unwrap(),
+        )),
+        os_mode: Some(Arc::new(
+            SqliteOsModeRepository::open(root.join("preferences.sqlite")).unwrap(),
         )),
     });
     let endpoint = "/api/v1/shell/preferences?device=00000000-0000-4000-8000-000000000001";

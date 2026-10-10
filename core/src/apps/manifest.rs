@@ -6,7 +6,38 @@ use crate::{
     RuntimeDescriptor,
 };
 
-use super::{AppVersion, ContributionDeclaration, OidcClientDeclaration, StreamPresentation};
+use super::settings::{self, AppSettingDeclaration};
+use super::{
+    AppVersion, ConnectorDeclaration, ContributionDeclaration, OidcClientDeclaration,
+    StreamPresentation,
+};
+
+/// When an app's runtime runs. Orthogonal to `RuntimeKind`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum RuntimeLifecycle {
+    /// Starts on demand (when a window opens) and stops when idle. Default.
+    #[default]
+    OnDemand,
+    /// Runs continuously in the background once installed (a service).
+    AlwaysOn,
+}
+
+impl RuntimeLifecycle {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::OnDemand => "on-demand",
+            Self::AlwaysOn => "always-on",
+        }
+    }
+
+    pub fn parse(value: &str) -> Option<Self> {
+        match value {
+            "on-demand" => Some(Self::OnDemand),
+            "always-on" => Some(Self::AlwaysOn),
+            _ => None,
+        }
+    }
+}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AppManifest {
@@ -15,11 +46,14 @@ pub struct AppManifest {
     version: AppVersion,
     display_name: String,
     runtime: RuntimeDescriptor,
+    lifecycle: RuntimeLifecycle,
     permission_requests: Vec<PermissionRequest>,
     provided_capabilities: Vec<CapabilityId>,
     contributions: Vec<ContributionDeclaration>,
     event_subscriptions: Vec<EventName>,
     databases: Vec<AppDatabaseDeclaration>,
+    settings: Vec<AppSettingDeclaration>,
+    connectors: Vec<ConnectorDeclaration>,
     oidc_client: Option<OidcClientDeclaration>,
     stream_presentation: Option<StreamPresentation>,
 }
@@ -34,6 +68,9 @@ pub enum AppManifestError {
     DuplicateEventSubscription,
     DuplicateDatabaseDeclaration,
     TooManyDatabaseDeclarations,
+    DuplicateSetting,
+    TooManySettings,
+    DuplicateConnector,
     DuplicateOidcClientDeclaration,
     DuplicateStreamPresentation,
 }
@@ -66,11 +103,14 @@ impl AppManifest {
             version,
             display_name: display_name.to_owned(),
             runtime,
+            lifecycle: RuntimeLifecycle::default(),
             permission_requests: Vec::new(),
             provided_capabilities: Vec::new(),
             contributions: Vec::new(),
             event_subscriptions: Vec::new(),
             databases: Vec::new(),
+            settings: Vec::new(),
+            connectors: Vec::new(),
             oidc_client: None,
             stream_presentation: None,
         })
@@ -94,6 +134,14 @@ impl AppManifest {
 
     pub fn runtime(&self) -> &RuntimeDescriptor {
         &self.runtime
+    }
+
+    pub fn lifecycle(&self) -> RuntimeLifecycle {
+        self.lifecycle
+    }
+
+    pub fn set_lifecycle(&mut self, lifecycle: RuntimeLifecycle) {
+        self.lifecycle = lifecycle;
     }
 
     pub fn add_permission_request(
@@ -202,6 +250,47 @@ impl AppManifest {
         &self.databases
     }
 
+    pub fn add_setting(&mut self, setting: AppSettingDeclaration) -> Result<(), AppManifestError> {
+        if self
+            .settings
+            .iter()
+            .any(|existing| existing.key() == setting.key())
+        {
+            return Err(AppManifestError::DuplicateSetting);
+        }
+
+        if self.settings.len() == settings::MAX_APP_SETTINGS {
+            return Err(AppManifestError::TooManySettings);
+        }
+
+        self.settings.push(setting);
+
+        Ok(())
+    }
+
+    pub fn settings(&self) -> &[AppSettingDeclaration] {
+        &self.settings
+    }
+
+    pub fn add_connector(
+        &mut self,
+        connector: ConnectorDeclaration,
+    ) -> Result<(), AppManifestError> {
+        if self
+            .connectors
+            .iter()
+            .any(|existing| existing.target() == connector.target())
+        {
+            return Err(AppManifestError::DuplicateConnector);
+        }
+        self.connectors.push(connector);
+        Ok(())
+    }
+
+    pub fn connectors(&self) -> &[ConnectorDeclaration] {
+        &self.connectors
+    }
+
     pub fn declare_oidc_client(
         &mut self,
         declaration: OidcClientDeclaration,
@@ -290,6 +379,20 @@ impl fmt::Display for AppManifestError {
                 "app manifest cannot declare more than {} databases",
                 AppManifest::MAX_DATABASES
             ),
+            Self::DuplicateSetting => {
+                write!(f, "app manifest cannot declare the same setting key twice")
+            }
+            Self::TooManySettings => write!(
+                f,
+                "app manifest cannot declare more than {} settings",
+                settings::MAX_APP_SETTINGS
+            ),
+            Self::DuplicateConnector => {
+                write!(
+                    f,
+                    "app manifest cannot declare two connectors for the same target"
+                )
+            }
             Self::DuplicateOidcClientDeclaration => {
                 write!(f, "app manifest cannot declare more than one OIDC client")
             }
@@ -315,6 +418,9 @@ mod tests {
     use crate::{PermissionId, PermissionRequest, PermissionScope};
 
     use crate::apps::{CommandContributionDeclaration, SearchContributionDeclaration};
+
+    use super::settings::{AppSettingKey, AppSettingKind};
+    use crate::AppSettingDeclaration;
 
     fn database(id: &str) -> AppDatabaseDeclaration {
         AppDatabaseDeclaration::new(crate::AppDatabaseId::parse(id).unwrap())
@@ -776,6 +882,33 @@ mod tests {
         assert_eq!(
             manifest.add_database(database("overflow")).unwrap_err(),
             AppManifestError::TooManyDatabaseDeclarations
+        );
+    }
+
+    #[test]
+    fn settings_are_optional_and_deduplicated() {
+        let mut manifest = AppManifest::new(
+            AppId::parse("com.rumahl.notes").unwrap(),
+            PublisherId::parse("com.rumahl").unwrap(),
+            AppVersion::new(1, 0, 0),
+            "Notes",
+            RuntimeDescriptor::web(),
+        )
+        .unwrap();
+        assert!(manifest.settings().is_empty());
+
+        let setting = AppSettingDeclaration::new(
+            AppSettingKey::parse("server.url").unwrap(),
+            "Server URL",
+            AppSettingKind::Text,
+        )
+        .unwrap();
+        manifest.add_setting(setting.clone()).unwrap();
+        assert_eq!(manifest.settings()[0].title(), "Server URL");
+
+        assert_eq!(
+            manifest.add_setting(setting).unwrap_err(),
+            AppManifestError::DuplicateSetting
         );
     }
 }

@@ -47,6 +47,30 @@ fn private_directory(path: &std::path::Path) -> Result<(), ServiceError> {
     }
     Ok(())
 }
+
+/// Builds the field-encryption key provider from the TPM environment, if set.
+/// A deployment without TPM stores file content as plaintext.
+fn optional_key_provider() -> Option<Arc<dyn rumahl_persistence_sqlite::FieldKeyProvider>> {
+    let executable = env::var("RUMAHL_TPM2_EXECUTABLE").ok()?;
+    let key_id = rumahl_persistence_sqlite::SecretEncryptionKeyId::parse(
+        env::var("RUMAHL_SECRET_KEY_ID").ok()?,
+    )
+    .ok()?;
+    let object = PathBuf::from(env::var("RUMAHL_SECRET_KEY_OBJECT").ok()?);
+    let authorization = match env::var("RUMAHL_SECRET_KEY_POLICY_SESSION") {
+        Ok(value) if !value.is_empty() => {
+            rumahl_platform_buildroot::Tpm2Authorization::PolicySession(PathBuf::from(value))
+        }
+        _ => rumahl_platform_buildroot::Tpm2Authorization::Passwordless,
+    };
+    let sealed =
+        rumahl_platform_buildroot::Tpm2SealedKey::new(key_id.clone(), object, authorization)
+            .ok()?;
+    rumahl_platform_buildroot::Tpm2UnsealKeyProvider::new(executable, key_id, [sealed])
+        .ok()
+        .map(|provider| Arc::new(provider) as Arc<dyn rumahl_persistence_sqlite::FieldKeyProvider>)
+}
+
 async fn run() -> Result<(), ServiceError> {
     let args: Vec<String> = env::args().skip(1).collect();
     let state_dir = PathBuf::from(required("RUMAHL_STATE_DIR")?);
@@ -55,6 +79,17 @@ async fn run() -> Result<(), ServiceError> {
     }
     private_directory(&state_dir)?;
     let accounts = state_dir.join("accounts.sqlite");
+    // Refuse a database written by a newer binary before any provider opens it.
+    for database in [
+        accounts.clone(),
+        state_dir.join("platform.sqlite"),
+        state_dir.join("preferences.sqlite"),
+        state_dir.join("files.sqlite"),
+    ] {
+        rumahl_persistence_sqlite::verify_schema(&database).map_err(|error| {
+            std::io::Error::other(format!("database schema check failed: {error}"))
+        })?;
+    }
     if args.first().map(String::as_str) == Some("provision-account") {
         if args.len() != 4 || args[3] != "--password-stdin" || std::io::stdin().is_terminal() {
             return Err(std::io::Error::other("usage: provision-account USER DISPLAY_NAME --password-stdin (pipe from a hidden prompt)").into());
@@ -95,6 +130,14 @@ async fn run() -> Result<(), ServiceError> {
         install::install_package(&state_dir, std::path::Path::new(&args[1]))?;
         return Ok(());
     }
+    if args.first().map(String::as_str) == Some("backup") {
+        if args.len() != 2 {
+            return Err(std::io::Error::other("usage: backup DESTINATION_DIR").into());
+        }
+        backup_state(&state_dir, std::path::Path::new(&args[1]))?;
+        println!("State backup written.");
+        return Ok(());
+    }
     if args.as_slice() != ["serve"] {
         return Err(std::io::Error::other("usage: rumahl-platform-service serve").into());
     }
@@ -115,9 +158,22 @@ async fn run() -> Result<(), ServiceError> {
     let app_suffix = env::var("RUMAHL_APP_HOST_SUFFIX")
         .unwrap_or_else(|_| format!("apps.{}", config.public_origin.host_str().unwrap()));
     let app_root = state_dir.join("app-assets");
+    let apps_provider = apps::PersistentApps::open(&accounts, &platform, app_root)?;
+    let apps_provider = match apps_data_root() {
+        Some(data_root) => apps_provider.with_data_root(data_root)?,
+        None => apps_provider,
+    };
+    // Runtime status/start/stop through the supervisor when it is configured;
+    // otherwise the runtime API stays fail-closed (503). The same channel
+    // registry receives live app channels for background event delivery.
+    let runtime_channels = Arc::new(rumahl_core::RuntimeChannelRegistry::new());
+    let apps_provider = match install::runtime_adapters_from_env(&runtime_channels) {
+        Some(adapters) => apps_provider.with_runtime_adapters(adapters),
+        None => apps_provider,
+    };
     let apps = Arc::new(
         rumahl_platform_web::AppAccess::new(
-            Arc::new(apps::PersistentApps::open(&accounts, &platform, app_root)?),
+            Arc::new(apps_provider),
             &config.public_origin,
             &app_suffix,
         )
@@ -131,18 +187,36 @@ async fn run() -> Result<(), ServiceError> {
         .with_preferences(snapshot_store.clone())
         .with_workspace(snapshot_store.clone());
     let account_feed = SqliteAccountStateRepository::open(&accounts)?;
+    let audit: Arc<dyn rumahl_core::AuditLog> = Arc::new(
+        rumahl_persistence_sqlite::SqliteAuditLog::open(state_dir.join("audit.sqlite"))?,
+    );
     let state = GatewayState {
         config,
         backend: shell_backend(&accounts, &platform, build_id, &locale)?,
-        browser_sessions: Some(Arc::new(LocalBrowserSessions::open(&accounts)?)),
+        browser_sessions: Some(Arc::new(
+            LocalBrowserSessions::open(&accounts)?.with_audit(audit.clone()),
+        )),
         login_slots: Arc::new(tokio::sync::Semaphore::new(2)),
         events: events.clone(),
         widgets: Arc::new(NoWidgets),
         streams: None,
         apps: Some(apps.clone()),
-        files: Some(Arc::new(
-            rumahl_persistence_sqlite::SqlitePersonalFiles::open(state_dir.join("files.sqlite"))?,
-        )),
+        files: Some(match optional_key_provider() {
+            Some(provider) => Arc::new(
+                rumahl_persistence_sqlite::SqlitePersonalFiles::open_encrypted(
+                    state_dir.join("files.sqlite"),
+                    provider,
+                )?,
+            ),
+            None => {
+                eprintln!(
+                    "rumahl platform: file content encryption disabled (no TPM key configured)"
+                );
+                Arc::new(rumahl_persistence_sqlite::SqlitePersonalFiles::open(
+                    state_dir.join("files.sqlite"),
+                )?)
+            }
+        }),
         workspace: Some(Arc::new(
             rumahl_persistence_sqlite::SqliteShellPreferences::open(
                 state_dir.join("preferences.sqlite"),
@@ -152,6 +226,15 @@ async fn run() -> Result<(), ServiceError> {
             rumahl_persistence_sqlite::SqliteShellPreferences::open(
                 state_dir.join("preferences.sqlite"),
             )?,
+        )),
+        os_mode: Some(Arc::new(AuditedOsModeRepository::new(
+            Arc::new(rumahl_persistence_sqlite::SqliteOsModeRepository::open(
+                state_dir.join("preferences.sqlite"),
+            )?),
+            audit.clone(),
+        ))),
+        host_files: Some(Arc::new(
+            rumahl_platform_service::host_files::LocalHostFiles::from_environment(),
         )),
         oidc: None,
     };

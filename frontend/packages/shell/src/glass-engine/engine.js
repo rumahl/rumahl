@@ -1,11 +1,17 @@
 import {DEFAULT_MATERIAL,PROFILES,normalizeMaterial,percentile,chooseProfile} from './core.js';
+import {mountSurface} from './surface.js';
 import {SvgBackdrop,svgBackdropSupported} from './svg-backdrop.js';
 import {WebGLWallpaper} from './webgl-wallpaper.js';
 
+// One probe, once: creating a canvas context per capability read leaks WebGL
+// contexts until the browser refuses new ones, which silently degrades WebGL to
+// CSS. Probe here and release the context again.
+function probeWebgl(){try{const canvas=document.createElement('canvas');const gl=canvas.getContext('webgl')||canvas.getContext('experimental-webgl');if(!gl)return false;gl.getExtension('WEBGL_lose_context')?.loseContext();return true}catch{return false}}
+
 class CssFrosted {
-  constructor(host,material){this.host=host;this.layer=document.createElement('div');this.layer.className='rumahl-glass-surface';host.prepend(this.layer);this.setMaterial(material)}
+  constructor(host,material){this.host=host;this.layer=document.createElement('div');this.layer.className='rumahl-glass-surface';this.frame=mountSurface(host,this.layer);this.setMaterial(material)}
   setMaterial(material){const m=normalizeMaterial(material);this.layer.style.backdropFilter=`blur(${Math.max(8,m.blur*4)}px) saturate(${m.saturation}) brightness(${m.brightness})`;this.layer.style.webkitBackdropFilter=this.layer.style.backdropFilter;this.layer.style.background=m.tint}
-  destroy(){this.layer.remove()}
+  destroy(){this.frame.remove()}
 }
 /** Stable theme API: surface attributes are the contract, shaders are private. */
 export class GlassEngine extends EventTarget {
@@ -13,24 +19,25 @@ export class GlassEngine extends EventTarget {
     super();this.source=source;this.preference=quality;this.requestedBackend=backend;this.targetFps=targetFps;
     this.profile=quality==='auto'?'high':quality;this.backendIndex=0;this.lastChange=performance.now();this.surfaces=new Map();this.alive=true;
     this.samples=[];this.lastSample=performance.now();this.prevFrame=this.lastSample;this.slowWindows=0;this.fastWindows=0;this.longTasks=0;
+    this.webglAvailable=probeWebgl();
     this.reduced=matchMedia('(prefers-reduced-transparency: reduce)');this.contrast=matchMedia('(prefers-contrast: more)');
     this.onPreference=()=>this.reconcile();this.reduced.addEventListener('change',this.onPreference);this.contrast.addEventListener('change',this.onPreference);
     try{this.longObserver=new PerformanceObserver(list=>{this.longTasks+=list.getEntries().length});this.longObserver.observe({entryTypes:['longtask']})}catch{}
     this.tick=this.tick.bind(this);this.raf=requestAnimationFrame(this.tick);
   }
-  get capability(){return {svgBackdrop:svgBackdropSupported(),webgl:!!document.createElement('canvas').getContext('webgl'),reducedTransparency:this.reduced.matches||this.contrast.matches}}
-  get ladder(){const l=[];if(svgBackdropSupported())l.push('svg');if(this.capability.webgl)l.push('webgl');l.push('css');return l;}
+  get capability(){return {svgBackdrop:svgBackdropSupported(),webgl:this.webglAvailable,reducedTransparency:this.reduced.matches||this.contrast.matches}}
+  get ladder(){const l=[];if(svgBackdropSupported())l.push('svg');if(this.webglAvailable)l.push('webgl');l.push('css');return l;}
   get renderer(){if(this.reduced.matches||this.contrast.matches)return'css';
     if(this.requestedBackend==='css')return'css';if(this.requestedBackend==='svg')return svgBackdropSupported()?'svg':'css';
     if(this.requestedBackend==='webgl')return this.capability.webgl?'webgl':'css';
     const l=this.ladder;return l[Math.min(this.backendIndex,l.length-1)];}
   mount(element,material={}){
     if(this.surfaces.has(element))return this.surfaces.get(element).handle;
-    element.classList.add('rumahl-glass-host');const record={element,material:normalizeMaterial(material),impl:null,kind:''};
+    const ownsHostClass=!element.classList.contains('rumahl-glass-host');element.classList.add('rumahl-glass-host');const record={element,ownsHostClass,material:normalizeMaterial(material),impl:null,kind:''};
     const handle={update:(patch)=>{record.material=normalizeMaterial({...record.material,...patch});this.updateRecord(record)},destroy:()=>{this.removeRecord(record)}};
     record.handle=handle;this.surfaces.set(element,record);this.updateRecord(record);return handle;
   }
-  removeRecord(record){record.impl?.destroy();this.surfaces.delete(record.element);record.element.classList.remove('rumahl-glass-host')}
+  removeRecord(record){record.impl?.destroy();this.surfaces.delete(record.element);if(record.ownsHostClass)record.element.classList.remove('rumahl-glass-host')}
   updateRecord(record){const kind=this.renderer,profile=PROFILES[this.profile];
     if(record.kind!==kind){record.impl?.destroy();record.impl=null;record.kind=kind;try{
       record.impl=kind==='svg'?new SvgBackdrop(record.element,record.material,profile):kind==='webgl'?new WebGLWallpaper(record.element,record.material,profile,this.source):new CssFrosted(record.element,record.material);

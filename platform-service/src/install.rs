@@ -9,17 +9,21 @@ use std::env;
 use std::error::Error;
 use std::fmt;
 use std::io;
+use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 
 use rumahl_app_operations::{AppOperationRunner, AppRuntimeServices};
 use rumahl_core::{
-    AppRuntimeInstallationState, AppRuntimeProvider, InMemoryGrantStore, InstalledApp,
-    PlatformRecovery, PlatformSnapshotRepository, PlatformState, RuntimeEntrypointId, RuntimeKind,
+    AccountStateRepository, AppRuntimeInstallationState, AppRuntimeProvider, GrantAuthority,
+    GrantIssuerPolicy, Identity, InMemoryGrantStore, InstallationId, InstalledApp, PermissionId,
+    PermissionScope, PlatformRecovery, PlatformSnapshot, PlatformSnapshotRepository, PlatformState,
+    ResourceRef, RuntimeEntrypointId, RuntimeKind, UserIdentity, UserRole,
 };
 use rumahl_oidc_provider::InstalledAppOriginResolver;
 use rumahl_persistence_sqlite::{
-    SecretEncryptionKeyId, SqliteAppDatabaseProvider, SqliteAppOperationRepository,
-    SqliteOidcClientRepository, SqliteSecretStore, SqliteSnapshotRepository,
+    SecretEncryptionKeyId, SqliteAccountStateRepository, SqliteAppDatabaseProvider,
+    SqliteAppOperationRepository, SqliteOidcClientRepository, SqliteSecretStore,
+    SqliteSnapshotRepository,
 };
 use rumahl_platform_buildroot::{
     PackageImportError, PackageImporter, PackageImporterConfig, PackageImporterConfigError,
@@ -188,16 +192,63 @@ impl InstallConfig {
     }
 }
 
+/// Builds the runtime adapter registry for the serve path when the supervisor
+/// environment is configured. Returns `None` (fail closed) otherwise, so the
+/// runtime control API answers 503 instead of assuming a runtime exists.
+pub fn runtime_adapters_from_env(
+    channels: &std::sync::Arc<rumahl_core::RuntimeChannelRegistry>,
+) -> Option<std::sync::Arc<rumahl_core::RuntimeAdapterRegistry>> {
+    let config = InstallConfig::from_env().ok()?;
+    let provider = std::sync::Arc::new(PlatformRuntimeProvider::new(UnixAppRuntimeProvider::new(
+        UnixAppRuntimeProviderConfig::new(&config.control_socket, config.runtime_uid).ok()?,
+    )));
+    let mut registry = rumahl_core::RuntimeAdapterRegistry::new();
+    registry
+        .register(Box::new(
+            rumahl_core::ProviderRuntimeAdapter::new(
+                rumahl_core::RuntimeKind::Web,
+                provider.clone(),
+            )
+            .with_channels(std::sync::Arc::clone(channels)),
+        ))
+        .ok()?;
+    registry
+        .register(Box::new(
+            rumahl_core::ProviderRuntimeAdapter::new(rumahl_core::RuntimeKind::Container, provider)
+                .with_channels(std::sync::Arc::clone(channels)),
+        ))
+        .ok()?;
+    Some(std::sync::Arc::new(registry))
+}
+
 /// Verifies and installs a package, recovering interrupted container installs.
 pub fn install_package(state_dir: &Path, package_dir: &Path) -> Result<(), InstallError> {
+    install_with(&InstallConfig::from_env()?, state_dir, package_dir).map(|_| ())
+}
+
+/// Installs a package from a staged directory and returns its public metadata.
+/// Uses the environment-configured supervisor/trust/TPM settings.
+pub fn install_package_dir(
+    state_dir: &Path,
+    package_dir: &Path,
+) -> Result<InstalledPackageInfo, InstallError> {
     install_with(&InstallConfig::from_env()?, state_dir, package_dir)
+}
+
+/// Public metadata of an installed package, read from the trusted snapshot.
+#[derive(Debug, Clone)]
+pub struct InstalledPackageInfo {
+    pub app_id: String,
+    pub installation_id: InstallationId,
+    pub title: String,
+    pub version: String,
 }
 
 fn install_with(
     config: &InstallConfig,
     state_dir: &Path,
     package_dir: &Path,
-) -> Result<(), InstallError> {
+) -> Result<InstalledPackageInfo, InstallError> {
     let platform = state_dir.join("platform.sqlite");
 
     let origin = InstallationHostOriginResolver::new(config.app_host_suffix.clone())
@@ -255,12 +306,122 @@ fn install_with(
         .install(&runner, package_dir, &mut state, &mut grants)
         .map_err(InstallError::Import)?;
 
+    // Public metadata of the freshly installed app, read from the trusted snapshot.
+    let info = installed_info(&platform, installed.installation_id())?;
+
+    // Give the app its own directory under the apps volume, owner-only.
+    if let Some(apps_root) = crate::apps_data_root() {
+        let directory = apps_root.join(&info.app_id);
+        std::fs::create_dir_all(&directory)?;
+        std::fs::set_permissions(&directory, std::fs::Permissions::from_mode(0o700))?;
+    }
+
+    // Access is granted, not an install side effect: every existing account gets
+    // an explicit launch grant (so the app appears in the catalog) and an
+    // unconditional grant per provided capability (so the capability can be
+    // invoked; the providing app still enforces its own resource rules).
+    if let Some(snapshot) = SqliteSnapshotRepository::open(&platform)
+        .map_err(InstallError::provider)?
+        .load()
+        .map_err(InstallError::provider)?
+    {
+        let accounts = SqliteAccountStateRepository::open(state_dir.join("accounts.sqlite"))
+            .map_err(InstallError::provider)?
+            .load()
+            .map_err(InstallError::provider)?;
+        let mut recovered = PlatformState::new();
+        let mut grants = InMemoryGrantStore::new();
+        PlatformRecovery::new()
+            .recover(&snapshot, &mut recovered, &mut grants)
+            .map_err(|error| InstallError::Recovery(Box::new(error)))?;
+
+        let launch_permission = PermissionId::parse(crate::apps::APP_LAUNCH_PERMISSION)
+            .map_err(InstallError::provider)?;
+        let launch_resource = crate::apps::app_launch_resource(*installed.installation_id());
+        let mut targets: Vec<(PermissionId, PermissionScope, Vec<ResourceRef>)> = vec![(
+            launch_permission,
+            PermissionScope::Explicit,
+            vec![launch_resource],
+        )];
+
+        if let Some(app) = recovered
+            .installed_apps()
+            .apps()
+            .iter()
+            .find(|app| app.installation_id() == installed.installation_id())
+        {
+            for capability in app.manifest().provided_capabilities() {
+                if let Ok(permission) = PermissionId::parse(capability.as_str()) {
+                    targets.push((permission, PermissionScope::System, Vec::new()));
+                }
+            }
+        }
+
+        let mut policy = GrantIssuerPolicy::new();
+        for account in accounts.accounts().accounts() {
+            policy.set_user_role(*account.user_id(), UserRole::Owner);
+        }
+        let mut granted = false;
+        for account in accounts.accounts().accounts() {
+            let issuer: Identity = UserIdentity::new(*account.user_id()).into();
+            let subject: Identity = UserIdentity::new(*account.user_id()).into();
+            for (permission, scope, resources) in &targets {
+                let grant = GrantAuthority::new()
+                    .issue(
+                        &policy,
+                        issuer.clone(),
+                        subject.clone(),
+                        permission.clone(),
+                        *scope,
+                        resources.clone(),
+                    )
+                    .map_err(InstallError::provider)?;
+                grants.insert(grant);
+                granted = true;
+            }
+        }
+        if granted {
+            SqliteSnapshotRepository::open(&platform)
+                .map_err(InstallError::provider)?
+                .store(&PlatformSnapshot::capture(&recovered, &grants))
+                .map_err(InstallError::provider)?;
+        }
+    }
+
     println!(
         "Installed {} ({:?}).",
         installed.installation_id(),
         installed.published()
     );
-    Ok(())
+    Ok(info)
+}
+
+/// Reads the public metadata of an installed app from the trusted snapshot.
+fn installed_info(
+    platform: &Path,
+    installation: &InstallationId,
+) -> Result<InstalledPackageInfo, InstallError> {
+    let snapshot = SqliteSnapshotRepository::open(platform)
+        .map_err(InstallError::provider)?
+        .load()
+        .map_err(InstallError::provider)?;
+    let app = snapshot
+        .as_ref()
+        .and_then(|snapshot| {
+            snapshot
+                .installed_apps()
+                .iter()
+                .find(|app| app.installation_id() == installation)
+        })
+        .ok_or_else(|| {
+            InstallError::provider(std::io::Error::other("installed app missing from snapshot"))
+        })?;
+    Ok(InstalledPackageInfo {
+        app_id: app.identity().app_id().as_str().to_owned(),
+        installation_id: *installation,
+        title: app.manifest().display_name().to_owned(),
+        version: app.manifest().version().to_string(),
+    })
 }
 
 fn secret_key_provider(config: &InstallConfig) -> Result<Tpm2UnsealKeyProvider, InstallError> {
@@ -597,6 +758,105 @@ mod tests {
             fs::read(installation.join("frontend/index.html")).unwrap(),
             b"<html>notes</html>"
         );
+    }
+
+    #[test]
+    fn installation_grants_launch_and_capabilities_to_existing_accounts() {
+        let state = tempfile::tempdir().unwrap();
+        let package = tempfile::tempdir().unwrap();
+
+        let generated = GeneratedKey::generate("publisher-1").unwrap();
+        let trust_store_path = state.path().join("trust-store.json");
+        fs::write(
+            &trust_store_path,
+            serde_json::to_vec(&trust_store_json(
+                "publisher-1",
+                "com.rumahl",
+                &generated.public_key(),
+            ))
+            .unwrap(),
+        )
+        .unwrap();
+        fs::create_dir_all(package.path().join("frontend")).unwrap();
+        fs::write(
+            package.path().join("frontend/index.html"),
+            b"<html>notes</html>",
+        )
+        .unwrap();
+        let template = json!({
+            "formatVersion": 1,
+            "publisherId": "com.rumahl",
+            "app": {
+                "appId": "com.rumahl.notes",
+                "version": "1.0.0",
+                "displayName": "Notes",
+                "runtime": {
+                    "kind": "web",
+                    "entrypoints": [
+                        { "id": "main", "kind": "web-asset", "path": "frontend/index.html" },
+                    ],
+                },
+                "providedCapabilities": ["rumahl.files.preview"],
+            },
+        });
+        let manifest =
+            PackageManifest::from_bytes(&serde_json::to_vec(&template).unwrap()).unwrap();
+        generated
+            .key_store()
+            .signer()
+            .unwrap()
+            .sign(package.path(), &manifest)
+            .unwrap();
+
+        crate::provision(
+            &state.path().join("accounts.sqlite"),
+            "developer",
+            "Developer",
+            "correct horse battery staple".to_owned(),
+            crate::LocalPasswordBlocklist::default(),
+        )
+        .unwrap();
+
+        let config = InstallConfig {
+            runtime_uid: 0,
+            control_socket: state.path().join("control.sock"),
+            secret_socket: state.path().join("secret.sock"),
+            image_socket: state.path().join("image.sock"),
+            trust_store: trust_store_path,
+            tpm_executable: PathBuf::from("/usr/bin/tpm2_unseal"),
+            secret_key_id: SecretEncryptionKeyId::parse("root-1").unwrap(),
+            secret_key_object: state.path().join("root-1.ctx"),
+            secret_key_policy_session: None,
+            app_host_suffix: "apps.rumahl.test".to_owned(),
+        };
+        install_with(&config, state.path(), package.path()).unwrap();
+
+        let snapshot = SqliteSnapshotRepository::open(state.path().join("platform.sqlite"))
+            .unwrap()
+            .load()
+            .unwrap()
+            .unwrap();
+        let accounts = SqliteAccountStateRepository::open(state.path().join("accounts.sqlite"))
+            .unwrap()
+            .load()
+            .unwrap();
+        let user = *accounts.accounts().accounts()[0].user_id();
+        let identity = rumahl_platform_web::ShellIdentity {
+            user_id: user,
+            session_id: rumahl_core::SessionId::new(),
+        };
+        let authorized = crate::apps::authorized_apps(&snapshot, identity).unwrap();
+        assert_eq!(authorized.len(), 1);
+        assert_eq!(
+            authorized[0].identity().app_id().as_str(),
+            "com.rumahl.notes"
+        );
+
+        // The provided capability is granted unconditionally to the account.
+        let capability = PermissionId::parse("rumahl.files.preview").unwrap();
+        assert!(snapshot.grants().iter().any(|grant| {
+            grant.permission() == &capability && grant.scope() == PermissionScope::System
+        }));
     }
 
     /// Fake supervisor runtime target: preparation fails until the image

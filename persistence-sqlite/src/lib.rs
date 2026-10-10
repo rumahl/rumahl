@@ -7,6 +7,9 @@
 mod account_repository;
 mod app_database_provider;
 mod app_operation_repository;
+mod audit_log;
+mod backup;
+mod field_cipher;
 mod identity_schema;
 mod local_account_administration_repository;
 mod oidc_access_token_store;
@@ -14,8 +17,10 @@ mod oidc_authorization_store;
 mod oidc_client_repository;
 mod oidc_refresh_token_store;
 mod oidc_schema;
+mod os_mode;
 mod password_credential_repository;
 mod repository;
+mod schema;
 mod secret_store;
 mod session_credential_repository;
 mod wire;
@@ -25,6 +30,9 @@ pub use app_database_provider::{SqliteAppDatabaseProvider, SqliteAppDatabaseProv
 pub use app_operation_repository::{
     SqliteAppOperationRepository, SqliteAppOperationRepositoryError,
 };
+pub use audit_log::{MAX_RECENT_EVENTS, SqliteAuditLog, SqliteAuditLogError};
+pub use backup::{SqliteBackupError, backup_database, checkpoint_and_sync};
+pub use field_cipher::{FieldCipherError, FieldEnvelope, FieldKeyProvider, open_field, seal_field};
 pub use local_account_administration_repository::{
     SqliteLocalAccountAdministrationRepository, SqliteLocalAccountAdministrationRepositoryError,
 };
@@ -34,10 +42,12 @@ pub use oidc_authorization_store::{
 };
 pub use oidc_client_repository::{SqliteOidcClientRepository, SqliteOidcClientRepositoryError};
 pub use oidc_refresh_token_store::{SqliteOidcRefreshTokenStore, SqliteOidcRefreshTokenStoreError};
+pub use os_mode::SqliteOsModeRepository;
 pub use password_credential_repository::{
     SqlitePasswordCredentialRepository, SqlitePasswordCredentialRepositoryError,
 };
 pub use repository::{SqliteSnapshotRepository, SqliteSnapshotRepositoryError};
+pub use schema::{SCHEMA_VERSION, SchemaVersionError, verify_schema};
 pub use secret_store::{
     SecretEncryptionKey, SecretEncryptionKeyId, SecretEncryptionKeyIdError,
     SecretEncryptionKeyProvider, SqliteSecretStore, SqliteSecretStoreError,

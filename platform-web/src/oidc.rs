@@ -652,6 +652,7 @@ mod tests {
         )
         .unwrap();
         let app = router(GatewayState {
+            host_files: None,
             config: GatewayConfig::new("https://rumahl.dev", "/private/run/rumahl-ssr.sock")
                 .unwrap(),
             backend: Arc::new(TestLogin(ShellIdentity {
@@ -663,6 +664,7 @@ mod tests {
             streams: None,
             apps: None,
             preferences: None,
+            os_mode: None,
             workspace: None,
             files: None,
             browser_sessions: None,

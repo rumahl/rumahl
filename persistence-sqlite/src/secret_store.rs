@@ -138,7 +138,7 @@ impl SecretEncryptionKey {
         &self.id
     }
 
-    fn as_bytes(&self) -> &[u8; KEY_LENGTH] {
+    pub(crate) fn as_bytes(&self) -> &[u8; KEY_LENGTH] {
         &self.value
     }
 }

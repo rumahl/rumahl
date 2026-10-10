@@ -6,6 +6,7 @@ import { useI18n } from "../i18n";
 import { useShellApps } from "../apps/useShellApps";
 import { useShell } from "./ShellContext";
 import { useShellCommands } from "./commands";
+import { useOsModePolicy } from "../preferences/OsMode";
 
 interface Placement { top: number; right: number; width: number }
 
@@ -14,6 +15,7 @@ export function CommandPalette() {
   const { t } = useI18n();
   const apps = useShellApps();
   const commands = useShellCommands();
+  const policy = useOsModePolicy();
   const [query, setQuery] = useState("");
   const [index, setIndex] = useState(0);
   const [placement, setPlacement] = useState<Placement | null>(null);
@@ -112,7 +114,7 @@ export function CommandPalette() {
   if (raw && (target.startsWith("/") && !target.startsWith("//")) && target !== "/_design" && !items.some(item => item.subtitle === target)) {
     items.unshift({ id: "typed", kind: "page", title: t("command.openTarget"), subtitle: target, keywords: "", run: () => open(target) });
   }
-  if (term === "design.rl" || raw === DESIGN_URI) items.unshift({ id: "design.rl", kind: "command", title: t("command.design"), subtitle: "design.rl", keywords: "", run: () => { open(DESIGN_URI); } });
+  if (policy.browseSystemFiles && (term === "design.rl" || raw === DESIGN_URI)) items.unshift({ id: "design.rl", kind: "command", title: t("command.design"), subtitle: "design.rl", keywords: "", run: () => { open(DESIGN_URI); } });
   const selected = items.length ? Math.min(index, items.length - 1) : 0;
 
   useEffect(() => {

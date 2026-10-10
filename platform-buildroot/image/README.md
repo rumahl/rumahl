@@ -89,6 +89,12 @@ python3 platform-buildroot/image/create-data.py --seed "$RUMAHL_SEED" --output "
 platform-buildroot/image/run-qemu.sh "$BR_OUTPUT" "$RUMAHL_DATA_IMAGE"
 ```
 
+The data disk also carries the stable `/home` and `/apps` trees; the image binds
+them to those paths at boot. The system state stays under `/var/lib/rumahl` and
+is never mounted into the user- or app-visible path namespace. See
+[filesystem layout](../../../docs/architecture/filesystem-layout.md) and
+[storage and updates](../../../docs/architecture/storage-and-updates.md).
+
 The data-image command uses `mke2fs -d` and exclusive file creation; it never
 selects or formats a physical disk. QEMU exposes only guest HTTPS at host
 `127.0.0.1:8443`. Resolve `rumahl.home.arpa` to `127.0.0.1` on the host and open

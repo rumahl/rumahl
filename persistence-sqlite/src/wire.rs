@@ -2,15 +2,16 @@ use std::error::Error;
 use std::fmt;
 
 use rumahl_core::{
-    AppDatabaseDeclaration, AppDatabaseId, AppId, AppIdentity, AppManifest, AppVersion,
-    CapabilityId, CommandAction, CommandContributionDeclaration, ContributionDeclaration,
+    AppDatabaseDeclaration, AppDatabaseId, AppId, AppIdentity, AppManifest, AppSettingDeclaration,
+    AppSettingKey, AppSettingKind, AppSettingOption, AppVersion, CapabilityId, CommandAction,
+    CommandContributionDeclaration, ConnectorDeclaration, ConnectorTarget, ContributionDeclaration,
     ContributionId, EventName, GrantId, Identity, InstallationId, InstalledAppSnapshot,
     OidcCallbackPath, OidcClientDeclaration, OidcClientType, OidcScope, PackagePath,
     PermissionGrantSnapshot, PermissionId, PermissionRequest, PermissionScope, PlatformSnapshot,
     PreferredStreamSize, PublisherId, ResourceKey, ResourceKind, ResourceNamespace, ResourceRef,
     RuntimeDescriptor, RuntimeEndpointId, RuntimeEntrypoint, RuntimeEntrypointId,
-    RuntimeEntrypointTarget, RuntimeKind, ServiceId, ServiceIdentity, StreamPresentation, UserId,
-    UserIdentity,
+    RuntimeEntrypointTarget, RuntimeKind, RuntimeLifecycle, ServiceId, ServiceIdentity,
+    StreamPresentation, UserId, UserIdentity,
 };
 use serde::{Deserialize, Serialize};
 
@@ -135,12 +136,18 @@ struct WireManifest {
     version: String,
     display_name: String,
     runtime: WireRuntime,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    lifecycle: Option<String>,
     permission_requests: Vec<WirePermissionRequest>,
     provided_capabilities: Vec<String>,
     contributions: Vec<WireContribution>,
     event_subscriptions: Vec<String>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     databases: Vec<WireAppDatabase>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    settings: Vec<WireSetting>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    connectors: Vec<WireConnector>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     oidc_client: Option<WireOidcClient>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -155,6 +162,10 @@ impl WireManifest {
             version: manifest.version().to_string(),
             display_name: manifest.display_name().to_owned(),
             runtime: WireRuntime::capture(manifest.runtime()),
+            lifecycle: match manifest.lifecycle() {
+                RuntimeLifecycle::OnDemand => None,
+                other => Some(other.as_str().to_owned()),
+            },
             permission_requests: manifest
                 .permission_requests()
                 .iter()
@@ -180,6 +191,16 @@ impl WireManifest {
                 .iter()
                 .map(WireAppDatabase::capture)
                 .collect(),
+            settings: manifest
+                .settings()
+                .iter()
+                .map(WireSetting::capture)
+                .collect(),
+            connectors: manifest
+                .connectors()
+                .iter()
+                .map(WireConnector::capture)
+                .collect(),
             oidc_client: manifest.oidc_client().map(WireOidcClient::capture),
             stream_presentation: manifest
                 .stream_presentation()
@@ -199,6 +220,13 @@ impl WireManifest {
             self.runtime.into_domain()?,
         )
         .map_err(|error| WireSnapshotError::invalid("manifest", error))?;
+
+        if let Some(lifecycle) = self.lifecycle.as_deref() {
+            let lifecycle = RuntimeLifecycle::parse(lifecycle).ok_or_else(|| {
+                WireSnapshotError::invalid("manifest lifecycle", "unknown lifecycle")
+            })?;
+            manifest.set_lifecycle(lifecycle);
+        }
 
         for request in self.permission_requests {
             manifest
@@ -240,6 +268,18 @@ impl WireManifest {
                 .map_err(|error| WireSnapshotError::invalid("manifest database", error))?;
         }
 
+        for setting in self.settings {
+            manifest
+                .add_setting(setting.into_domain()?)
+                .map_err(|error| WireSnapshotError::invalid("manifest setting", error))?;
+        }
+
+        for connector in self.connectors {
+            manifest
+                .add_connector(connector.into_domain()?)
+                .map_err(|error| WireSnapshotError::invalid("manifest connector", error))?;
+        }
+
         if let Some(oidc_client) = self.oidc_client {
             manifest
                 .declare_oidc_client(oidc_client.into_domain()?)
@@ -255,6 +295,108 @@ impl WireManifest {
         }
 
         Ok(manifest)
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct WireSetting {
+    key: String,
+    title: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    description: Option<String>,
+    kind: String,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    options: Vec<WireSettingOption>,
+    #[serde(default)]
+    required: bool,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct WireSettingOption {
+    value: String,
+    label: String,
+}
+
+impl WireSetting {
+    fn capture(setting: &AppSettingDeclaration) -> Self {
+        let (kind, options) = match setting.kind() {
+            AppSettingKind::Text => ("text".to_owned(), Vec::new()),
+            AppSettingKind::Number => ("number".to_owned(), Vec::new()),
+            AppSettingKind::Boolean => ("boolean".to_owned(), Vec::new()),
+            AppSettingKind::Select { options } => (
+                "select".to_owned(),
+                options
+                    .iter()
+                    .map(|option| WireSettingOption {
+                        value: option.value().to_owned(),
+                        label: option.label().to_owned(),
+                    })
+                    .collect(),
+            ),
+        };
+        Self {
+            key: setting.key().as_str().to_owned(),
+            title: setting.title().to_owned(),
+            description: setting.description().map(str::to_owned),
+            kind,
+            options,
+            required: setting.is_required(),
+        }
+    }
+
+    fn into_domain(self) -> Result<AppSettingDeclaration, WireSnapshotError> {
+        let key = AppSettingKey::parse(&self.key)
+            .map_err(|error| WireSnapshotError::invalid("setting key", error))?;
+        let kind = match self.kind.as_str() {
+            "text" | "number" | "boolean" => {
+                if !self.options.is_empty() {
+                    return Err(WireSnapshotError::invalid(
+                        "setting options",
+                        "options on a non-select setting",
+                    ));
+                }
+                match self.kind.as_str() {
+                    "text" => AppSettingKind::Text,
+                    "number" => AppSettingKind::Number,
+                    _ => AppSettingKind::Boolean,
+                }
+            }
+            "select" => {
+                if self.options.is_empty() {
+                    return Err(WireSnapshotError::invalid(
+                        "setting options",
+                        "select setting without options",
+                    ));
+                }
+                let mut options = Vec::with_capacity(self.options.len());
+                for option in self.options {
+                    options
+                        .push(AppSettingOption::new(option.value, option.label).map_err(
+                            |error| WireSnapshotError::invalid("setting option", error),
+                        )?);
+                }
+                AppSettingKind::Select { options }
+            }
+            other => {
+                return Err(WireSnapshotError::invalid(
+                    "setting kind",
+                    format!("unknown kind {other:?}"),
+                ));
+            }
+        };
+        let mut declaration = AppSettingDeclaration::new(key, self.title, kind)
+            .map_err(|error| WireSnapshotError::invalid("setting", error))?;
+        if let Some(description) = self.description {
+            declaration = declaration
+                .with_description(description)
+                .map_err(|error| WireSnapshotError::invalid("setting description", error))?;
+        }
+        if self.required {
+            declaration = declaration.required();
+        }
+        Ok(declaration)
     }
 }
 
@@ -304,6 +446,30 @@ impl WireStreamPresentation {
             self.preferred_frame_rate,
         )
         .map_err(|error| WireSnapshotError::invalid("stream presentation", error))
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct WireConnector {
+    target: String,
+    entrypoint: String,
+}
+
+impl WireConnector {
+    fn capture(connector: &ConnectorDeclaration) -> Self {
+        Self {
+            target: connector.target().as_str().to_owned(),
+            entrypoint: connector.entrypoint().as_str().to_owned(),
+        }
+    }
+
+    fn into_domain(self) -> Result<ConnectorDeclaration, WireSnapshotError> {
+        let target = ConnectorTarget::parse(self.target)
+            .map_err(|error| WireSnapshotError::invalid("connector target", error))?;
+        let entrypoint = RuntimeEntrypointId::parse(self.entrypoint)
+            .map_err(|error| WireSnapshotError::invalid("connector entrypoint", error))?;
+        Ok(ConnectorDeclaration::new(target, entrypoint))
     }
 }
 

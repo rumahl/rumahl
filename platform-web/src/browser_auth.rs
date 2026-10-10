@@ -12,6 +12,7 @@ use axum::{
     response::{IntoResponse, Redirect, Response},
     routing::get,
 };
+use rumahl_core::UserId;
 use std::sync::Arc;
 use zeroize::Zeroizing;
 
@@ -25,6 +26,9 @@ pub trait BrowserSessions: Send + Sync + 'static {
         username: &str,
         password: String,
     ) -> Result<Zeroizing<String>, ShellBackendError>;
+    /// Re-checks the account password without creating a new session. Used to
+    /// gate security-sensitive changes such as the exposure mode.
+    fn reauthenticate(&self, user_id: UserId, password: String) -> Result<(), ShellBackendError>;
     fn logout(&self, credential: &str) -> Result<(), ShellBackendError>;
 }
 

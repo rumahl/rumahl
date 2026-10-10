@@ -20,6 +20,7 @@ fn test_password() -> String {
 fn app(root: &Path) -> Router {
     let accounts = root.join("accounts.sqlite");
     router(GatewayState {
+        host_files: None,
         config: GatewayConfig::new("https://rumahl.test", root.join("ssr.sock")).unwrap(),
         backend: shell_backend(&accounts, &root.join("platform.sqlite"), "build-test", "de")
             .unwrap(),
@@ -30,6 +31,7 @@ fn app(root: &Path) -> Router {
         streams: None,
         apps: None,
         preferences: None,
+        os_mode: None,
         workspace: None,
         files: None,
         oidc: None,

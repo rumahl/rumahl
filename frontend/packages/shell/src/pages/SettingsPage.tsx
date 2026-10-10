@@ -6,6 +6,7 @@ import { WorkspaceSettings } from "../preferences/WorkspaceSettings";
 import { useLocation, useRoutes } from "react-router";
 import { DisplaySettings } from "./DisplaySettings";
 import { SystemInfo } from "./SystemInfo";
+import { OsModeSettings } from "./OsModeSettings";
 import { RumahlMark } from "../components/RumahlMark";
 import { SettingsHeading } from "../components/SettingsHeading";
 import { ButtonLink } from "../components/Button";
@@ -34,6 +35,7 @@ export function SettingsPage() {
     { path: "display", Component: DisplaySettings },
     { path: "workspace", Component: WorkspaceSettings },
     { path: "accessibility", Component: AccessibilitySettings },
+    { path: "os", Component: OsModeSettings },
     { path: "system", Component: SystemSettings },
     { path: "system/about", Component: AboutSettings },
     { path: "system/licenses", Component: LicenseSettings },
@@ -49,6 +51,7 @@ export function SettingsPage() {
       <ShellLink className="nav-item" to="/settings/display" aria-current={pathname.startsWith("/settings/display") ? "page" : undefined}><DesktopIcon /><span>{t("settings.personalization")}</span></ShellLink>
       <ShellLink className="nav-item" to="/settings/workspace" aria-current={pathname.startsWith("/settings/workspace") ? "page" : undefined}><GridIcon /><span>{t("workspace.title")}</span></ShellLink>
       <ShellLink className="nav-item" to="/settings/accessibility" aria-current={pathname.startsWith("/settings/accessibility") ? "page" : undefined}><PulseIcon /><span>{t("settings.accessibility")}</span></ShellLink>
+      <ShellLink className="nav-item" to="/settings/os" aria-current={pathname.startsWith("/settings/os") ? "page" : undefined}><ShieldIcon /><span>{t("settings.osMode")}</span></ShellLink>
       <ShellLink className="nav-item" to="/settings/system" aria-current={pathname.startsWith("/settings/system") ? "page" : undefined}><ShieldIcon /><span>{t("settings.system")}</span></ShellLink>
       <ShellLink className="nav-item" to="/settings" aria-current={pathname === "/settings" ? "page" : undefined}><SettingsIcon /><span>{t("nav.settings")}</span></ShellLink>
     </nav>
@@ -66,6 +69,7 @@ function SettingsOverview() {
       <NavRow to="/settings/display" icon={<DesktopIcon />} title={t("settings.personalization")} subtitle={`${t(`mode.${settings.mode}`)} · ${themes.find(item => item.id === theme.id)?.name ?? theme.name}`} />
       <NavRow to="/settings/workspace" icon={<GridIcon />} title={t("workspace.title")} subtitle={t("settings.workspaceHelp")} />
       <NavRow to="/settings/accessibility" icon={<PulseIcon />} title={t("settings.accessibility")} subtitle={t("settings.accessibilityHelp")} />
+      <NavRow to="/settings/os" icon={<ShieldIcon />} title={t("settings.osMode")} subtitle={t("settings.osModeHelp")} />
       <NavRow to="/settings/system" icon={<ShieldIcon />} title={t("settings.system")} subtitle={t("settings.systemHelp")} />
     </div>
   </section>;

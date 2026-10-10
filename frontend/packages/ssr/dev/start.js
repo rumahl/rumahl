@@ -278,7 +278,8 @@ try {
   await writeFile(blocklist, "development-password-must-not-be-used\n", { mode: 0o600 });
   edge = await startGateway({ repo, runtime, state, cert, key, port, buildId, polling: values.poll });
   env = { ...process.env, RUMAHL_STATE_DIR: join(state, "data"), RUMAHL_PUBLIC_ORIGIN: edge.origin,
-    RUMAHL_APP_HOST_SUFFIX: "apps.localhost", RUMAHL_CLIENT_BUILD: buildFile, RUMAHL_PASSWORD_BLOCKLIST: blocklist,
+    RUMAHL_APP_HOST_SUFFIX: "apps.localhost", RUMAHL_APPS_ROOT: join(state, "data", "apps"),
+    RUMAHL_CLIENT_BUILD: buildFile, RUMAHL_PASSWORD_BLOCKLIST: blocklist,
     RUMAHL_GATEWAY_SOCKET: join(runtime, "gateway.sock"), RUMAHL_GATEWAY_SOCKET_ACCESS: "owner",
     RUMAHL_SSR_SOCKET: join(runtime, "ssr.sock"), RUMAHL_SSR_SOCKET_ACCESS: "owner" };
   await provision();

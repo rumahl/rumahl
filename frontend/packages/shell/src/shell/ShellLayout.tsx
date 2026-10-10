@@ -23,6 +23,7 @@ import { CommandPalette } from "./CommandPalette";
 import { DesktopWindows } from "./DesktopWindows";
 import { useShellPreferences } from "../preferences/ShellPreferences";
 import { useWorkspace } from "../preferences/Workspace";
+import { useOsMode } from "../preferences/OsMode";
 import { HomePage } from "../pages/HomePage";
 
 function WallpaperVideo({ src }: { src: string }) {
@@ -51,6 +52,7 @@ export function ShellLayout({ snapshot, live }: { snapshot: ShellSnapshotV1; liv
   const { t } = useI18n();
   const path = shellLocation(location.pathname + location.search + location.hash);
   const preferences = useShellPreferences();
+  const osMode = useOsMode();
   const mode = preferences.mode;
   useEffect(() => {
     if (new URLSearchParams(location.search).has("mode")) void navigate(localPath(location.pathname + location.search + location.hash), { replace: true });
@@ -62,7 +64,7 @@ export function ShellLayout({ snapshot, live }: { snapshot: ShellSnapshotV1; liv
   const catalog = useAppCatalog();
   const installedTitle = catalog.apps.find((app) => app.id === route.appId)?.title;
   const routedWindow = useMemo<Omit<ShellWindow, "minimized">>(() => ({
-    id: route.id, title: route.streamTitle ?? installedTitle ?? t(route.title), subtitle: t("appManager.subtitle"),
+    id: route.id, title: route.streamTitle ?? installedTitle ?? t(route.title), subtitle: "",
     location: path, ...(route.stream ? { streamId: route.id.slice(7) } : {})
   }), [installedTitle, route.id, route.title, route.streamTitle, route.stream, path, t]);
   const workspace = useWorkspace();
@@ -74,11 +76,11 @@ export function ShellLayout({ snapshot, live }: { snapshot: ShellSnapshotV1; liv
       const description = describeRoute(saved.location);
       if (description.presentation !== "window" || description.stream || windows.some(w => w.id === description.id)) continue;
       const title = catalog.apps.find(app => app.id === description.appId)?.title ?? t(description.title);
-      windows.push({ ...saved, id: description.id, title, subtitle: t("appManager.subtitle") });
+      windows.push({ ...saved, id: description.id, title, subtitle: "" });
     }
     for (const saved of includeInternal ? readInternalWindows() : []) {
       const description = describeRoute(saved.location!);
-      windows.push({ ...saved, id: description.id, title: t(description.title), subtitle: t("appManager.subtitle") });
+      windows.push({ ...saved, id: description.id, title: t(description.title), subtitle: "" });
     }
     return windows;
   };
@@ -94,7 +96,14 @@ export function ShellLayout({ snapshot, live }: { snapshot: ShellSnapshotV1; liv
   }, [mode, routedWindow, route.presentation]);
   const [internalReady, setInternalReady] = useState(false);
   useEffect(() => {
-    const saved = readInternalWindows().map(w => ({ ...w, id: describeRoute(w.location!).id, title: t(describeRoute(w.location!).title), subtitle: t("appManager.subtitle") }));
+    // Internal tools (the design lab) are gated by the OS mode.
+    if (!osMode.policy.browseSystemFiles) {
+      setInternalReady(false);
+      dispatch({ type: "restore-workspace", windows: state.windows.filter(w => !w.location || !isInternalTarget(shellLocation(w.location))) });
+      return;
+    }
+    setInternalReady(true);
+    const saved = readInternalWindows().map(w => ({ ...w, id: describeRoute(w.location!).id, title: t(describeRoute(w.location!).title), subtitle: "" }));
     if (saved.length) dispatch({ type: "restore-workspace", windows: [
       ...saved.filter(w => !state.windows.some(current => current.location === w.location)),
       ...state.windows.map(current => {
@@ -102,8 +111,7 @@ export function ShellLayout({ snapshot, live }: { snapshot: ShellSnapshotV1; liv
         return previous ? { ...current, ...previous, minimized: current.location === path ? false : previous.minimized } : current;
       })
     ] });
-    setInternalReady(true);
-  }, []);
+  }, [osMode.policy.browseSystemFiles]);
   useEffect(() => { if (internalReady) writeInternalWindows(state.windows); }, [state.windows, internalReady]);
   const restored = useRef(-1);
   useEffect(() => {
@@ -160,8 +168,9 @@ export function ShellLayout({ snapshot, live }: { snapshot: ShellSnapshotV1; liv
   const debug = useDebug();
   const mobileChecked = useRef(false);
   const stressWindows = useRef(0);
-  const effectiveGlass = glassEnabled && !glassOff && !glassReduced;
-  const material = transparencyOff || glassOff ? "solid" : "translucent";
+  const effectiveGlass = glassEnabled && (!glassOff || appearance.glassEnabled === true) && !glassReduced;
+  // A slow renderer may fall back to CSS, but must not override transparency.
+  const material = transparencyOff ? "solid" : "translucent";
   // An animated (promoted) wallpaper is excluded from the SVG backdrop, so SVG
   // switches the wallpaper to a still layer.
   // Resolve the SVG backdrop after mount so the server and the first client
@@ -206,7 +215,7 @@ export function ShellLayout({ snapshot, live }: { snapshot: ShellSnapshotV1; liv
     // Automatic, escalating response to *sustained* slowness (ignores momentary
     // load spikes; needs 3 consecutive slow windows). First drop glass only;
     // if it stays slow, drop transparency entirely.
-    if (performanceMode || inactive || glassOff) return;
+    if (performanceMode || inactive || glassOff || appearance.glassEnabled === true) return;
     if (transparencyOff && !glassEnabled) return;
     if (metrics.dropped <= 0.3) { stressWindows.current = 0; return; }
     stressWindows.current += 1;
@@ -219,7 +228,7 @@ export function ShellLayout({ snapshot, live }: { snapshot: ShellSnapshotV1; liv
       setTransparencyOff();
       showToast({ message: t("perf.transparencyOff"), variant: "info", duration: 6000 });
     }
-  }), [performanceMode, inactive, glassOff, transparencyOff, glassEnabled, glassReduced, setGlassReduced, setTransparencyOff, t]);
+  }), [performanceMode, inactive, glassOff, appearance.glassEnabled, transparencyOff, glassEnabled, glassReduced, setGlassReduced, setTransparencyOff, t]);
   // Debug mode + console API (`window.__rumahlDebug`), enable-able only from devtools.
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -269,7 +278,7 @@ export function ShellLayout({ snapshot, live }: { snapshot: ShellSnapshotV1; liv
     return () => { document.adoptedStyleSheets = previous; };
   }, [theme.css]);
   return <ShellContext value={{ snapshot, live, state, dispatch, mode, setMode, open }}>
-    <div className={`scene shell${showVideo ? "" : " image-mode"}${appearance.wallpaperMotion === false || svgActive || performanceMode ? " no-motion" : ""}`} data-theme={theme.id} data-material={material} data-glass={glassEngine} data-scheme={scheme} data-maximized={windowMaximized ? "true" : undefined} data-launcher={launcherWindow ? "app" : undefined} data-inactive={inactive ? "true" : undefined} data-debug={debug ? "true" : undefined} data-animations={animations ? undefined : "off"} data-shell-build={snapshot.shellBuildId} data-shell-mode={mode} data-preferences-revision={preferences.preferences?.revision}>
+    <div className={`scene shell${showVideo ? "" : " image-mode"}${appearance.wallpaperMotion === false || svgActive || performanceMode ? " no-motion" : ""}`} data-theme={theme.id} data-material={material} data-glass={glassEngine} data-scheme={scheme} data-maximized={windowMaximized ? "true" : undefined} data-launcher={launcherWindow ? "app" : undefined} data-inactive={inactive ? "true" : undefined} data-debug={debug ? "true" : undefined} data-animations={animations ? undefined : "off"} data-shell-build={snapshot.shellBuildId} data-shell-mode={mode} data-os-mode={osMode.mode} data-preferences-revision={preferences.preferences?.revision}>
       <div className="wallpaper media-wall" aria-hidden="true">
         {showVideo
           ? media.video ? <WallpaperVideo key={media.video} src={media.video} />

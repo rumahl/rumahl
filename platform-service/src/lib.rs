@@ -4,8 +4,10 @@ use rumahl_account_auth::{
     PasswordBlocklist, SessionToken, StoredSessionCredentialResolver,
 };
 use rumahl_core::{
-    AccountStateRepository, BrowserProfileId, PlatformSnapshotRepository,
-    ShellPreferencesRepository, UnixTimestamp, UserId, WorkspaceRepository,
+    AccountStateRepository, AuditAction, AuditActor, AuditLog, AuditOutcome, BrowserProfileId,
+    NewAuditEvent, OsMode, OsModeRepository, OsModeSettings, OsModeStoreError,
+    PlatformSnapshotRepository, PreferenceScope, ShellPreferencesRepository, UnixTimestamp, UserId,
+    WorkspaceRepository,
 };
 use rumahl_persistence_sqlite::{
     BrowserSessionError, SqliteAccountStateRepository, SqliteBrowserSessionRepository,
@@ -22,6 +24,7 @@ use rumahl_ui_contracts::{
     SystemProtectionStatus, theme_by_id,
 };
 use sha2::{Digest, Sha256};
+use std::os::unix::fs::PermissionsExt;
 use std::{collections::HashSet, path::Path, sync::Arc};
 use zeroize::Zeroizing;
 
@@ -60,11 +63,63 @@ pub fn provision(
     Ok(())
 }
 
+/// State-volume databases, in backup order.
+pub const STATE_DATABASES: [&str; 5] = [
+    "accounts.sqlite",
+    "platform.sqlite",
+    "preferences.sqlite",
+    "files.sqlite",
+    "audit.sqlite",
+];
+
+/// Writes a consistent snapshot of every state database into `destination`.
+///
+/// The destination is forced owner-only (`0700`) because backups contain
+/// accounts and personal files. Every source is schema-checked first, so a
+/// database written by a newer binary is refused instead of copied. Snapshots
+/// use the SQLite online backup API, never a live file copy.
+pub fn backup_state(state_dir: &Path, destination: &Path) -> Result<(), ServiceError> {
+    std::fs::create_dir_all(destination)?;
+    let metadata = std::fs::symlink_metadata(destination)?;
+    if !metadata.is_dir() || metadata.file_type().is_symlink() {
+        return Err(std::io::Error::other("backup destination must be a directory").into());
+    }
+    std::fs::set_permissions(destination, std::fs::Permissions::from_mode(0o700))?;
+    for name in STATE_DATABASES {
+        let source = state_dir.join(name);
+        if !source.exists() {
+            continue;
+        }
+        rumahl_persistence_sqlite::verify_schema(&source).map_err(|error| {
+            std::io::Error::other(format!("database schema check failed: {error}"))
+        })?;
+        rumahl_persistence_sqlite::backup_database(&source, &destination.join(name))?;
+    }
+    Ok(())
+}
+
+/// Resolves the apps data volume root.
+///
+/// `RUMAHL_APPS_ROOT` overrides it (development and tests); otherwise the
+/// product path `/apps` is used when it exists. `None` disables app-data
+/// browsing rather than silently writing somewhere else.
+pub fn apps_data_root() -> Option<std::path::PathBuf> {
+    match std::env::var_os("RUMAHL_APPS_ROOT") {
+        Some(value) => Some(std::path::PathBuf::from(value)),
+        None => {
+            let default = std::path::PathBuf::from("/apps");
+            default.is_dir().then_some(default)
+        }
+    }
+}
+
 pub struct LocalBrowserSessions {
     accounts: SqliteAccountStateRepository,
     passwords:
         PasswordAuthenticationService<SqlitePasswordCredentialRepository, LocalPasswordBlocklist>,
     sessions: SqliteBrowserSessionRepository,
+    /// Optional append-only audit trail; never receives secrets.
+    audit: Option<Arc<dyn AuditLog>>,
 }
 impl LocalBrowserSessions {
     pub fn open(path: &Path) -> Result<Self, ServiceError> {
@@ -75,7 +130,36 @@ impl LocalBrowserSessions {
                 LocalPasswordBlocklist::default(),
             )?,
             sessions: SqliteBrowserSessionRepository::open(path)?,
+            audit: None,
         })
+    }
+
+    /// Records authentication events to the audit trail.
+    pub fn with_audit(mut self, audit: Arc<dyn AuditLog>) -> Self {
+        self.audit = Some(audit);
+        self
+    }
+
+    fn record(
+        &self,
+        actor: AuditActor,
+        action: AuditAction,
+        outcome: AuditOutcome,
+        target: Option<&str>,
+    ) {
+        let Some(audit) = &self.audit else {
+            return;
+        };
+        let Ok(at) = UnixTimestamp::now() else {
+            return;
+        };
+        let mut event = NewAuditEvent::new(at, actor, action, outcome);
+        if let Some(target) = target
+            && let Ok(with_target) = event.clone().with_target(target)
+        {
+            event = with_target;
+        }
+        let _ = audit.record(event);
     }
 }
 impl BrowserSessions for LocalBrowserSessions {
@@ -90,13 +174,30 @@ impl BrowserSessions for LocalBrowserSessions {
             .accounts
             .load()
             .map_err(|_| ShellBackendError::Unavailable)?;
-        let proof = self
-            .passwords
-            .authenticate(&state, username, std::mem::take(&mut *password), now)
-            .map_err(|error| match error {
-                PasswordAuthenticationError::InvalidCredentials => ShellBackendError::Unauthorized,
-                _ => ShellBackendError::Unavailable,
-            })?;
+        let proof =
+            match self
+                .passwords
+                .authenticate(&state, username, std::mem::take(&mut *password), now)
+            {
+                Ok(proof) => proof,
+                Err(error) => {
+                    if matches!(error, PasswordAuthenticationError::InvalidCredentials) {
+                        self.record(
+                            AuditActor::System,
+                            AuditAction::SignInFailed,
+                            AuditOutcome::Denied,
+                            None,
+                        );
+                    }
+                    return Err(match error {
+                        PasswordAuthenticationError::InvalidCredentials => {
+                            ShellBackendError::Unauthorized
+                        }
+                        _ => ShellBackendError::Unavailable,
+                    });
+                }
+            };
+        let user_id = *proof.user_id();
         let expires = UnixTimestamp::from_seconds(
             now.as_seconds()
                 .checked_add(SESSION_SECONDS)
@@ -104,11 +205,61 @@ impl BrowserSessions for LocalBrowserSessions {
         );
         self.sessions
             .create(proof, expires)
-            .map(|token| token.encode())
+            .map(|token| {
+                self.record(
+                    AuditActor::User(user_id),
+                    AuditAction::SignIn,
+                    AuditOutcome::Success,
+                    None,
+                );
+                token.encode()
+            })
             .map_err(|error| match error {
                 BrowserSessionError::InvalidProof => ShellBackendError::Unauthorized,
                 BrowserSessionError::Storage => ShellBackendError::Unavailable,
             })
+    }
+    fn reauthenticate(&self, user_id: UserId, password: String) -> Result<(), ShellBackendError> {
+        let mut password = Zeroizing::new(password);
+        let now = UnixTimestamp::now().map_err(|_| ShellBackendError::Unavailable)?;
+        let state = self
+            .accounts
+            .load()
+            .map_err(|_| ShellBackendError::Unavailable)?;
+        let username = state
+            .accounts()
+            .accounts()
+            .iter()
+            .find(|account| *account.user_id() == user_id)
+            .map(|account| account.username().as_str().to_owned())
+            .ok_or(ShellBackendError::Unauthorized)?;
+        match self
+            .passwords
+            .authenticate(&state, &username, std::mem::take(&mut *password), now)
+        {
+            Ok(_) => {
+                self.record(
+                    AuditActor::User(user_id),
+                    AuditAction::Reauthenticate,
+                    AuditOutcome::Success,
+                    None,
+                );
+                Ok(())
+            }
+            Err(error) => {
+                if matches!(error, PasswordAuthenticationError::InvalidCredentials) {
+                    self.record(
+                        AuditActor::User(user_id),
+                        AuditAction::ReauthenticateFailed,
+                        AuditOutcome::Denied,
+                        None,
+                    );
+                    Err(ShellBackendError::Unauthorized)
+                } else {
+                    Err(ShellBackendError::Unavailable)
+                }
+            }
+        }
     }
     fn logout(&self, credential: &str) -> Result<(), ShellBackendError> {
         let Ok(token) = SessionToken::parse(credential) else {
@@ -119,7 +270,78 @@ impl BrowserSessions for LocalBrowserSessions {
                 &token,
                 UnixTimestamp::now().map_err(|_| ShellBackendError::Unavailable)?,
             )
-            .map_err(|_| ShellBackendError::Unavailable)
+            .map_err(|_| ShellBackendError::Unavailable)?;
+        self.record(
+            AuditActor::System,
+            AuditAction::SignOut,
+            AuditOutcome::Success,
+            None,
+        );
+        Ok(())
+    }
+}
+
+/// Wraps a mode repository so every accepted change is written to the audit
+/// trail. A failed change is recorded as a `failure` without rolling back.
+pub struct AuditedOsModeRepository {
+    inner: Arc<dyn OsModeRepository>,
+    audit: Arc<dyn AuditLog>,
+}
+
+impl AuditedOsModeRepository {
+    pub fn new(inner: Arc<dyn OsModeRepository>, audit: Arc<dyn AuditLog>) -> Self {
+        Self { inner, audit }
+    }
+
+    fn record(&self, user: UserId, mode: Option<OsMode>, outcome: AuditOutcome) {
+        let Ok(at) = UnixTimestamp::now() else {
+            return;
+        };
+        let mut event = NewAuditEvent::new(
+            at,
+            AuditActor::User(user),
+            AuditAction::OsModeChanged,
+            outcome,
+        );
+        if let Some(target) = mode.map(|mode| mode.as_str())
+            && let Ok(with_target) = event.clone().with_target(target)
+        {
+            event = with_target;
+        }
+        let _ = self.audit.record(event);
+    }
+}
+
+impl OsModeRepository for AuditedOsModeRepository {
+    fn load(
+        &self,
+        user: UserId,
+        device: BrowserProfileId,
+    ) -> Result<OsModeSettings, OsModeStoreError> {
+        self.inner.load(user, device)
+    }
+
+    fn save(
+        &self,
+        user: UserId,
+        device: BrowserProfileId,
+        revision: u64,
+        scope: PreferenceScope,
+        mode: Option<OsMode>,
+    ) -> Result<OsModeSettings, OsModeStoreError> {
+        let result = self.inner.save(user, device, revision, scope, mode);
+        let effective = result
+            .as_ref()
+            .ok()
+            .map(OsModeSettings::effective_mode)
+            .or(mode);
+        let outcome = if result.is_ok() {
+            AuditOutcome::Success
+        } else {
+            AuditOutcome::Failure
+        };
+        self.record(user, effective, outcome);
+        result
     }
 }
 
@@ -369,4 +591,5 @@ fn sha256_hex(bytes: &[u8]) -> String {
 }
 
 pub mod apps;
+pub mod host_files;
 pub mod install;

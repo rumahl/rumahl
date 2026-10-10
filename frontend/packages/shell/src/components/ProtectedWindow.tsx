@@ -8,6 +8,8 @@ import { WindowCloseIcon, WindowMaximizeIcon, WindowMinimizeIcon, WindowRestoreI
 interface ProtectedWindowProps extends PropsWithChildren {
   focused: boolean;
   frameless?: boolean;
+  /** Hosted iframe app: the content fills the window with no padding. */
+  flush?: boolean;
   style?: CSSProperties | undefined;
   maximized?: boolean;
   onSnap?: ((side: "left" | "right") => void) | undefined;
@@ -27,7 +29,7 @@ interface ProtectedWindowProps extends PropsWithChildren {
 }
 
 export function ProtectedWindow({
-  children, style, frameless, maximized, onMaximize, onSnap, onTitlePointerDown, onTitleKeyDown, onResizePointerDown, onResizeKeyDown,
+  children, style, frameless, flush = false, maximized, onMaximize, onSnap, onTitlePointerDown, onTitleKeyDown, onResizePointerDown, onResizeKeyDown,
   focused,
   id,
   onClose,
@@ -45,7 +47,7 @@ export function ProtectedWindow({
   );
   const titleBlock = <div className="titlebar-titles">
     <h2 className="titlebar-title">{title}</h2>
-    <p className="titlebar-subtitle">{subtitle}</p>
+    {subtitle ? <p className="titlebar-subtitle">{subtitle}</p> : null}
   </div>;
   const maximizeButton = onMaximize ? controlButton("maximize", t(maximized ? "window.restore" : "window.maximize", { title }), onMaximize, maximized ? <WindowRestoreIcon aria-hidden="true" /> : <WindowMaximizeIcon aria-hidden="true" />) : null;
   const controlsBlock = <div aria-label={t("window.controls")} className="winbuttons shell-window__controls">
@@ -80,7 +82,7 @@ export function ProtectedWindow({
   return (
     <section
       aria-label={title}
-      className={`window shell-window shell-window--${variant}${stream ? " shell-window--stream" : ""}${focused ? " is-focused" : ""}`}
+      className={`window shell-window shell-window--${variant}${stream ? " shell-window--stream" : ""}${flush ? " shell-window--flush" : ""}${focused ? " is-focused" : ""}`}
       data-window-id={id}
       ref={(element) => {
         // CSSOM property assignment works with the shell's strict style-src CSP;

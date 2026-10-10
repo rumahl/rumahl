@@ -25,9 +25,25 @@ mod browser_auth;
 pub use browser_auth::{BrowserSessions, SESSION_SECONDS};
 
 mod apps;
-pub use apps::{AppAccess, AppAccessError, AppAsset, AppProvider, CatalogApp, app_error};
+pub use apps::{
+    AppAccess, AppAccessError, AppAsset, AppData, AppDataEntry, AppProvider, AppSettingInfo,
+    AppSettingOptionInfo, AppSettingsInfo, BrowserDelivery, CapabilityOutcome, CapabilityResource,
+    CapabilityResult, CatalogApp, ImportedApp, PackageUploadFile, RuntimeAction, RuntimeState,
+    app_error,
+};
+
+mod app_channel;
+pub use app_channel::{
+    CHANNEL_PROTOCOL, ChannelAuthenticator, ChannelFrame, ChannelTokenStore, SocketRuntimeChannel,
+    read_hello, run_connection, serve_channel_listener,
+};
 
 mod preferences;
+
+mod host_files;
+pub use host_files::{HostArea, HostEntry, HostError, HostFiles};
+
+mod os_mode;
 
 mod files;
 mod workspace;

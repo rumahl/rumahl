@@ -1,3 +1,7 @@
 /dev/root / auto ro 0 1
 # QEMU's explicitly supplied second virtio disk owns all durable device state.
+# The product image uses dedicated volumes; the development image shares one
+# data disk and binds the user and app trees to their stable global paths.
 /dev/vdb /var ext4 defaults,nodev,nosuid 0 2
+/var/home /home none bind,x-systemd.requires-mounts-for=/var 0 0
+/var/apps /apps none bind,x-systemd.requires-mounts-for=/var 0 0

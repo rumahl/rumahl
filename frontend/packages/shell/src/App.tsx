@@ -6,6 +6,7 @@ import { I18nProvider, useI18n } from "./i18n";
 import { watchShellUpdates, type ShellLiveSource } from "./live-updates";
 import { ShellRouter, type ShellRouterOptions } from "./routing/ShellRouter";
 import { ShellPreferencesProvider, useShellPreferences } from "./preferences/ShellPreferences";
+import { OsModeProvider } from "./preferences/OsMode";
 import { applyTuning, useThemeTuning } from "./preferences/theme-tuning";
 import { WorkspaceProvider } from "./preferences/Workspace";
 import { AppCatalog } from "./apps/AppCatalog";
@@ -30,13 +31,15 @@ export function App({ snapshot, live, theme, ...routing }: ShellRouterOptions & 
   return <I18nProvider locale={current.user.locale}>
     <ShellRouter {...routing}>
       <ShellPreferencesProvider live={live} initial={{ mode: current.mode, theme: current.theme.id }}>
-        <AppCatalog live={live} revision={current.revision} initial={current.apps}>
-          <WorkspaceProvider live={live} initial={current.workspace}>
-            <ShellThemeGate override={theme} serverTheme={serverTheme}>
-              {sessionExpired ? <SessionExpired /> : <ShellLayout snapshot={current} live={live} />}
-            </ShellThemeGate>
-          </WorkspaceProvider>
-        </AppCatalog>
+        <OsModeProvider live={live}>
+          <AppCatalog live={live} revision={current.revision} initial={current.apps}>
+            <WorkspaceProvider live={live} initial={current.workspace}>
+              <ShellThemeGate override={theme} serverTheme={serverTheme}>
+                {sessionExpired ? <SessionExpired /> : <ShellLayout snapshot={current} live={live} />}
+              </ShellThemeGate>
+            </WorkspaceProvider>
+          </AppCatalog>
+        </OsModeProvider>
       </ShellPreferencesProvider>
     </ShellRouter>
   </I18nProvider>;

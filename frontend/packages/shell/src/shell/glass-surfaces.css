@@ -1,0 +1,25 @@
+/* Keep the dock outline independent of the selected glass renderer. */
+.shell .os-dock.rumahl-glass-host {
+  border: 1px solid rgba(222, 240, 255, 0.36);
+  background: transparent;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.22),
+    0 12px 32px rgba(5, 12, 36, 0.22);
+}
+/* The clip frame is style-neutral; the glass look lives on its child surface. */
+.shell :is(.os-dock, .desktop-widget) > .rumahl-glass-frame {
+  border-radius: inherit;
+  overflow: hidden;
+}
+.shell .os-dock > .rumahl-glass-frame > .rumahl-glass-surface {
+  border: 0;
+  box-shadow: inset 0 -1px 0 rgba(255, 255, 255, 0.1);
+}
+
+/* Solid mode paints a flat panel instead of the live refraction. */
+.shell[data-material="solid"] .rumahl-glass-frame {
+  background: var(--material-solid, var(--surface-base));
+}
+.shell[data-material="solid"] .rumahl-glass-frame > * {
+  display: none;
+}

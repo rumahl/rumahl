@@ -1,3 +1,4 @@
+mod connector;
 mod contribution;
 mod installed;
 mod installed_registry;
@@ -6,6 +7,7 @@ mod manifest;
 mod oidc;
 mod registrar;
 mod registration;
+mod settings;
 mod stream_presentation;
 mod validator;
 mod version;
@@ -15,7 +17,14 @@ pub use contribution::{
     SearchContributionDeclaration,
 };
 
-pub use manifest::{AppManifest, AppManifestError};
+pub use manifest::{AppManifest, AppManifestError, RuntimeLifecycle};
+
+pub use connector::{ConnectorDeclaration, ConnectorTarget, ConnectorTargetError};
+
+pub use settings::{
+    AppSettingDeclaration, AppSettingError, AppSettingKey, AppSettingKind, AppSettingOption,
+    MAX_APP_SETTINGS,
+};
 
 pub use stream_presentation::{
     PreferredStreamSize, STREAMING_ENGINE_CAPABILITY, StreamPresentation, StreamPresentationError,

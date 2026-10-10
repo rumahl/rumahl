@@ -40,7 +40,7 @@ export function createRendererServer(render) {
       const { stream, abort } = await render(payload);
       response.writeHead(200, {
         "Cache-Control": "private, no-store",
-        "Content-Security-Policy": `default-src 'none'; script-src 'self' 'nonce-${payload.nonce}'; style-src 'self' 'nonce-${payload.nonce}'; img-src 'self' data: blob:; media-src 'self' blob: data:; connect-src 'self'; frame-src 'self'${frameOrigins.length ? ` ${frameOrigins.join(" ")}` : ""}; base-uri 'none'; object-src 'none'; form-action 'self'; frame-ancestors 'none'`,
+        "Content-Security-Policy": `default-src 'none'; script-src 'self' 'nonce-${payload.nonce}'; style-src 'self' 'nonce-${payload.nonce}'; img-src 'self' data: blob:; media-src 'self' blob: data:; connect-src 'self'${frameOrigins.length ? ` ${frameOrigins.join(" ")}` : ""}; frame-src 'self'${frameOrigins.length ? ` ${frameOrigins.join(" ")}` : ""}; base-uri 'none'; object-src 'none'; form-action 'self'; frame-ancestors 'none'`,
         "Content-Type": "text/html; charset=utf-8",
         "X-Content-Type-Options": "nosniff"
       });

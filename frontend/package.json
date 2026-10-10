@@ -9,10 +9,11 @@
     "assets:update": "node ../scripts/fetch-assets.mjs && node ../scripts/sync-assets.mjs",
     "build": "pnpm --filter @rumahl/shell build && pnpm --filter @rumahl/ssr build",
     "dev": "pnpm --filter @rumahl/ssr dev",
+    "dev:app": "bash ../scripts/dev-install-app.sh",
     "dev:demo": "pnpm --filter @rumahl/shell dev:demo",
     "lint": "eslint .",
-    "test": "pnpm --filter @rumahl/ui test && pnpm --filter @rumahl/shell test && pnpm --filter @rumahl/ssr test",
-    "typecheck": "pnpm --filter @rumahl/ui typecheck && pnpm --filter @rumahl/shell typecheck && pnpm --filter @rumahl/ssr typecheck"
+    "test": "pnpm --filter @rumahl/ui test && pnpm --filter @rumahl/bridge-client test && pnpm --filter @rumahl/shell test && pnpm --filter @rumahl/ssr test",
+    "typecheck": "pnpm --filter @rumahl/ui typecheck && pnpm --filter @rumahl/bridge-client typecheck && pnpm --filter @rumahl/shell typecheck && pnpm --filter @rumahl/ssr typecheck"
   },
   "devDependencies": {
     "@eslint/js": "10.0.1",

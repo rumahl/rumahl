@@ -85,6 +85,61 @@ disposable integration helper; it is not packaged into OS images. Container web
 proxies, OIDC app login, networked app backends and an action/message bridge need
 separate authorization contracts; this host does not silently grant them access.
 
+## App <-> OS bridge, runtime control and channels
+
+Installed apps are opaque-origin iframes and reach the shell only through
+`window.postMessage`. The versioned `rumahl.bridge.v1` protocol (contract in
+`@rumahl/contracts/bridge`) binds the channel to the frame's `contentWindow`
+(`event.origin` is always `"null"` for a sandboxed app) and exposes capability
+gated methods (`os.info`, `os.theme.get`, `os.notification`,
+`os.window.{close,minimize,focus}`, `os.capabilities.invoke`). The app's declared
+manifest permissions are projected into the catalog and a method is refused
+unless its capability is declared; the app side uses `@rumahl/bridge-client`.
+`os.capabilities.invoke` calls another installed app's capability on the user's
+behalf through the authenticated `POST /api/v1/shell/capabilities/invoke` route;
+the capability registries are derived from the installed apps and every existing
+account is granted each provided capability at install. A capability provided by
+a running **web** app has no live channel, so the route authorizes the call and
+returns a browser-delivery instruction (provider app id); the shell then delivers
+the invocation to that app's iframe (`provider.invoke` request) and returns the
+app's result. Delivery waits for the app's bridge handshake first, so it does not
+race provider registration. The provider app registers handlers with
+`rumahl.provide(capability, handler)`.
+
+The OS also pushes `os.theme.changed` (carrying a semantic palette) whenever the
+shell appearance changes, so an app follows the OS theme instead of rendering a
+static surface. `@rumahl/bridge-client` ships `rumahl.watchTheme(applyRumahlTheme)`
+(and `applyRumahlTheme`), which projects the palette onto an element as
+`--rumahl-*` CSS variables plus `color-scheme`/`data-rumahl-theme`.
+
+Standalone services (Nextcloud, Plesk, …) that the OS embeds as streams are
+themed the same way without any app-specific code. The stream proxy serves them
+same-origin under `/api/v1/shell/streams/{id}/`, so the shell projects the OS
+palette into the app's document: it sets `data-rumahl-theme`, `color-scheme` and
+the `--rumahl-*` variables, exposes `window.rumahlTheme`, and dispatches a
+`rumahl:theme` document event on every change. Streamed apps opt in by reading
+any of those; the OS never depends on a particular app honouring them.
+
+Runtime control reaches the supervisor: `RuntimeController` and
+`ProviderRuntimeAdapter` route `status`/`start`/`stop` over the
+`AppRuntimeProvider` boundary, exposed as
+`GET/POST /api/v1/shell/apps/{id}/runtime`. The catalog carries each app's
+`lifecycle` (`always-on` | `on-demand`); on-demand container apps are prepared
+but not activated at install.
+
+Always-on services receive OS events without an open window over the persistent
+`rumahl.channel.v1` channel: the app connects to a loopback endpoint, a
+`hello`/token handshake authenticates the installation, and a live
+`RuntimeChannel` is registered until it disconnects. Capability invocations are
+delivered as `capability` frames carrying an `id`; the provider answers with a
+`capabilityResult` frame for that `id`, whose payload the OS returns to the
+caller. The bridge and the channel share the same method/event surface.
+
+Connectors let an app ship a bundle for an external service (for example
+Nextcloud or Plex): the manifest declares a connector target plus a
+container-artifact entrypoint, and the OS installs the bundle and registers the
+app as an OIDC relying party for it.
+
 ## Deployment and checks
 
 Development uses `*.apps.localhost`, the developer HTTPS port, and a certificate

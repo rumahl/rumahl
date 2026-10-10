@@ -96,6 +96,16 @@ export function InfoIcon(props: IconProps) {
   return <IconBase {...props}><circle cx="12" cy="12" r="9" /><path d="M12 11v5M12 7.6v.2" strokeLinecap="round" /></IconBase>;
 }
 
+export function WarningTriangleIcon(props: IconProps) {
+  return (
+    <IconBase stroke="currentColor" strokeWidth={1.6} strokeLinecap="round" strokeLinejoin="round" {...props}>
+      <path d="M10.4 4.3 2.7 17.8A2 2 0 0 0 4.4 20.8h15.2a2 2 0 0 0 1.7-3L13.6 4.3a2 2 0 0 0-3.2 0Z" />
+      <path d="M12 9.6v4.4" />
+      <path d="M12 17.3h.01" />
+    </IconBase>
+  );
+}
+
 export function DocumentIcon(props: IconProps) {
   return <IconBase {...props}><path d="M6 3h7l5 5v13H6z" /><path d="M13 3v5h5M9 13h6M9 17h6" strokeLinecap="round" /></IconBase>;
 }

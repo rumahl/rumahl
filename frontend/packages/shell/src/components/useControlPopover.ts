@@ -1,7 +1,16 @@
-import { useLayoutEffect, useRef, type Dispatch, type SetStateAction } from "react";
+import {
+  useLayoutEffect,
+  useRef,
+  type Dispatch,
+  type SetStateAction,
+} from "react";
 
 /** Keep theme inheritance, but render above clipping/scrolling window surfaces. */
-export function useControlPopover<T extends HTMLElement = HTMLButtonElement>(open: boolean, setOpen: Dispatch<SetStateAction<boolean>>, preferredWidth = 0) {
+export function useControlPopover<T extends HTMLElement = HTMLButtonElement>(
+  open: boolean,
+  setOpen: Dispatch<SetStateAction<boolean>>,
+  preferredWidth = 0,
+) {
   const triggerRef = useRef<T>(null);
   const popupRef = useRef<HTMLDivElement>(null);
 
@@ -14,7 +23,9 @@ export function useControlPopover<T extends HTMLElement = HTMLButtonElement>(ope
       const gap = 6;
       // Measure the options instead of imposing a wide minimum on short menus.
       if (!preferredWidth) popup.style.width = "max-content";
-      const desired = preferredWidth || Math.max(96, popup.getBoundingClientRect().width);
+      const desired =
+        preferredWidth ||
+        Math.max(rect.width, 96, popup.getBoundingClientRect().width);
       const width = Math.min(desired, 320, window.innerWidth - 24);
       popup.style.width = `${width}px`;
       const below = Math.max(0, window.innerHeight - rect.bottom - gap - 12);
@@ -34,7 +45,10 @@ export function useControlPopover<T extends HTMLElement = HTMLButtonElement>(ope
     if (popoverSupported) popup.showPopover();
     else popup.removeAttribute("popover");
     position();
-    const observer = typeof ResizeObserver !== "undefined" ? new ResizeObserver(position) : null;
+    const observer =
+      typeof ResizeObserver !== "undefined"
+        ? new ResizeObserver(position)
+        : null;
     observer?.observe(trigger);
     observer?.observe(popup);
     window.addEventListener("resize", position);
@@ -45,7 +59,11 @@ export function useControlPopover<T extends HTMLElement = HTMLButtonElement>(ope
       window.removeEventListener("scroll", position, true);
       popup.removeEventListener("toggle", onToggle);
       try {
-        if (typeof popup.hidePopover === "function" && popup.matches(":popover-open")) popup.hidePopover();
+        if (
+          typeof popup.hidePopover === "function" &&
+          popup.matches(":popover-open")
+        )
+          popup.hidePopover();
       } catch {
         // `:popover-open` is unsupported in some environments.
       }

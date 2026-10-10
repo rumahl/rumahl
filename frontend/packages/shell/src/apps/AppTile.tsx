@@ -12,8 +12,12 @@ export function AppIcon({ app }: { app: ShellApp }) {
 
 export function AppTile({ app, onNavigate }: { app: ShellApp; onNavigate?: ((path: string) => void) | undefined }) {
   const { t } = useI18n();
-  return <ShellLink className="app-tile" data-app-id={app.id} to={app.path} onClick={() => { rememberRecent(app.path); onNavigate?.(app.path); }}>
-    <span className={`app-tile__icon${app.system ? " is-system" : ""}`} aria-hidden="true"><AppIcon app={app} /></span>
-    <span>{app.title}</span>{!app.launchable ? <small>{t("apps.notLaunchable")}</small> : null}
-  </ShellLink>;
+  const settingsPath = `${app.path}/settings`;
+  return <div className="app-tile-item">
+    <ShellLink className="app-tile" data-app-id={app.id} to={app.path} onClick={() => { rememberRecent(app.path); onNavigate?.(app.path); }}>
+      <span className={`app-tile__icon${app.system ? " is-system" : ""}`} aria-hidden="true"><AppIcon app={app} /></span>
+      <span>{app.title}</span>{!app.launchable ? <small>{t("apps.notLaunchable")}</small> : null}
+    </ShellLink>
+    {!app.system ? <ShellLink className="app-tile__settings" to={settingsPath} aria-label={t("appSettings.open")} onClick={() => onNavigate?.(settingsPath)}><SettingsIcon /></ShellLink> : null}
+  </div>;
 }

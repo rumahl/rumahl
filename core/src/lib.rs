@@ -29,14 +29,16 @@ pub use app_operations::{
 
 pub use apps::{
     AppLifecycle, AppLifecycleError, AppManifest, AppManifestError, AppManifestValidationError,
-    AppManifestValidator, AppUninstallResult, AppVersion, AppVersionError,
-    CommandContributionDeclaration, CommandContributionDeclarationError, ContributionDeclaration,
-    InstalledApp, InstalledAppError, InstalledAppRegistry, InstalledAppRegistryError,
+    AppManifestValidator, AppSettingDeclaration, AppSettingError, AppSettingKey, AppSettingKind,
+    AppSettingOption, AppUninstallResult, AppVersion, AppVersionError,
+    CommandContributionDeclaration, CommandContributionDeclarationError, ConnectorDeclaration,
+    ConnectorTarget, ConnectorTargetError, ContributionDeclaration, InstalledApp,
+    InstalledAppError, InstalledAppRegistry, InstalledAppRegistryError, MAX_APP_SETTINGS,
     OidcCallbackPath, OidcCallbackPathError, OidcClientDeclaration, OidcClientDeclarationError,
     OidcClientType, OidcScope, PlatformDeregistrationReport, PlatformRegistrar,
     PlatformRegistrarError, PlatformRegistration, PlatformRegistrationError, PreferredStreamSize,
-    STREAMING_ENGINE_CAPABILITY, SearchContributionDeclaration, StreamPresentation,
-    StreamPresentationError,
+    RuntimeLifecycle, STREAMING_ENGINE_CAPABILITY, SearchContributionDeclaration,
+    StreamPresentation, StreamPresentationError,
 };
 
 pub use context::{CorrelationId, CorrelationIdError, OperationContext};
@@ -64,11 +66,14 @@ pub use secrets::{
 };
 
 pub use runtime::{
-    AppRuntimeInstallationState, AppRuntimeProvider, PackagePath, PackagePathError, RuntimeAdapter,
-    RuntimeAdapterError, RuntimeAdapterRegistry, RuntimeAdapterRegistryError, RuntimeDescriptor,
-    RuntimeDescriptorError, RuntimeEndpointId, RuntimeEndpointIdError, RuntimeEntrypoint,
-    RuntimeEntrypointId, RuntimeEntrypointIdError, RuntimeEntrypointKind, RuntimeEntrypointTarget,
-    RuntimeKind, RuntimeRouter, RuntimeRoutingError, RuntimeStatus,
+    AppRuntimeInstallationState, AppRuntimeProvider, PackagePath, PackagePathError,
+    ProviderRuntimeAdapter, RuntimeAdapter, RuntimeAdapterError, RuntimeAdapterRegistry,
+    RuntimeAdapterRegistryError, RuntimeCapabilityExecution, RuntimeCapabilityResult,
+    RuntimeChannel, RuntimeChannelError, RuntimeChannelRegistry, RuntimeController,
+    RuntimeDescriptor, RuntimeDescriptorError, RuntimeEndpointId, RuntimeEndpointIdError,
+    RuntimeEntrypoint, RuntimeEntrypointId, RuntimeEntrypointIdError, RuntimeEntrypointKind,
+    RuntimeEntrypointTarget, RuntimeEvent, RuntimeKind, RuntimeRouter, RuntimeRoutingError,
+    RuntimeStatus,
 };
 
 pub use permissions::{
@@ -88,8 +93,9 @@ pub use capabilities::{
     CapabilityAccessRegistry, CapabilityAccessRegistryError, CapabilityAccessRule,
     CapabilityAccessRuleError, CapabilityDispatchError, CapabilityDispatchOutcome,
     CapabilityDispatcher, CapabilityExecution, CapabilityId, CapabilityIdError,
-    CapabilityInvocation, CapabilityProvider, CapabilityProviderError, CapabilityRegistry,
-    CapabilityRegistryError,
+    CapabilityInvocation, CapabilityInvocationError, CapabilityInvocationOutcome,
+    CapabilityInvoker, CapabilityProvider, CapabilityProviderError, CapabilityRegistry,
+    CapabilityRegistryBuildError, CapabilityRegistryError, build_capability_registries,
 };
 
 pub use contributions::{
@@ -105,7 +111,11 @@ pub use events::{
     EventSubscription, EventSubscriptionError,
 };
 
-pub use platform::PlatformState;
+pub use platform::{
+    AuditAction, AuditActor, AuditError, AuditEvent, AuditLog, AuditOutcome, MAX_TARGET_BYTES,
+    NewAuditEvent, OsMode, OsModeError, OsModePolicy, OsModeRepository, OsModeSettings,
+    OsModeStoreError, PlatformState,
+};
 
 #[cfg(test)]
 mod tests {
