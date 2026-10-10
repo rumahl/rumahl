@@ -105,16 +105,28 @@
 }
 .springboard-cell {
   display: flex;
+  min-height: 104px;
 }
 .springboard-cell > a {
   width: 100%;
   -webkit-user-drag: none;
 }
-.springboard-cell.is-dragging {
-  z-index: 5;
-  opacity: 0.85;
-  cursor: grabbing;
+.springboard-cell.is-placeholder {
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px dashed rgba(255, 255, 255, 0.28);
+}
+.springboard-float {
+  position: fixed;
+  z-index: 60;
+  transform: translate(-50%, -50%) scale(1.06);
   pointer-events: none;
+  filter: drop-shadow(0 14px 26px rgba(0, 0, 0, 0.4));
+}
+.launcher-home .app-tile.is-drop-target {
+  background: rgba(255, 255, 255, 0.14);
+  border-color: rgba(255, 255, 255, 0.45);
+  transform: scale(1.05);
 }
 .launcher-section {
   display: grid;
@@ -198,22 +210,30 @@
   text-align: center;
   color: rgba(255, 255, 255, 0.76);
 }
+.launcher-home .app-tile:active {
+  transform: scale(0.96);
+}
 .launcher-pages {
   display: flex;
-  gap: 8px;
+  gap: 10px;
   justify-content: center;
-  margin-top: 4px;
+  margin-top: 6px;
 }
 .launcher-pages button {
-  width: 8px;
-  height: 8px;
+  width: 9px;
+  height: 9px;
   padding: 0;
   border: 0;
   border-radius: 999px;
-  background: rgba(255, 255, 255, 0.35);
+  background: rgba(255, 255, 255, 0.34);
+  transition: background 0.15s ease, transform 0.15s ease;
+}
+.launcher-pages button:hover {
+  background: rgba(255, 255, 255, 0.6);
 }
 .launcher-pages button[aria-current="page"] {
   background: #fff;
+  transform: scale(1.15);
 }
 @media (prefers-reduced-motion: reduce) {
   .launcher-home * {
