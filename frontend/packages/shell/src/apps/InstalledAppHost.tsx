@@ -11,7 +11,7 @@ import { attachProviderChannel } from "./provider-channel";
 import { invokeProvider, registerProviderChannel } from "./providers";
 import { readShellTheme } from "./shell-theme";
 import { BRIDGE_CAPABILITY_LIST } from "@rumahl/contracts/bridge";
-import { controlAppRuntime, invokeCapability as requestCapabilityInvocation, launchApp, type InstalledApp } from "./client";
+import { invokeCapability as requestCapabilityInvocation, launchApp, type InstalledApp } from "./client";
 import { setLaunching } from "./launching";
 import { showToast } from "../shell/toasts";
 import { Button } from "../components/Button";
@@ -137,17 +137,6 @@ function AppFrame({ app }: { app: InstalledApp }) {
     observer.observe(scene, { attributes: true, attributeFilter: ["data-scheme", "data-theme"] });
     return () => observer.disconnect();
   }, [readTheme, frame]);
-  // On-demand apps start when their window opens and stop when it closes;
-  // always-on services keep running in the background.
-  useEffect(() => {
-    if (!live || app.lifecycle === "always-on") return;
-    const controller = new AbortController();
-    void controlAppRuntime(live.request, app, "start", controller.signal).catch(() => undefined);
-    return () => {
-      controller.abort();
-      void controlAppRuntime(live.request, app, "stop", new AbortController().signal).catch(() => undefined);
-    };
-  }, [live, app.id, app.installationId, app.lifecycle]);
   if (failed) return <section className="route-failure" aria-label={app.title}>
     <div className="route-failure__content">
       <div className="route-failure__icon" aria-hidden="true">
