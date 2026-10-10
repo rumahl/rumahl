@@ -12,6 +12,10 @@ function fakeFrame(): { iframe: HTMLIFrameElement; posted: Record<string, unknow
 function deliver(source: Window, data: unknown): void {
   window.dispatchEvent(new MessageEvent("message", { data, source: source as unknown as MessageEventSource }));
 }
+async function waitRequest(posted: Record<string, unknown>[]): Promise<Record<string, unknown>> {
+  await vi.waitFor(() => expect(posted.some((message) => message.kind === "request")).toBe(true));
+  return posted.find((message) => message.kind === "request")!;
+}
 
 let active: ProviderChannel | null = null;
 afterEach(() => { active?.dispose(); active = null; });
@@ -19,9 +23,9 @@ afterEach(() => { active?.dispose(); active = null; });
 describe("provider channel", () => {
   test("delivers a capability invocation and resolves the provider result", async () => {
     const { iframe, posted, source } = fakeFrame();
-    const channel = active = attachProviderChannel(iframe, 200);
+    const channel = active = attachProviderChannel(iframe, { timeoutMs: 200 });
     const promise = channel.invoke("com.example.notes.search", { namespace: "rumahl.files", kind: "file", key: "a" });
-    const request = posted.find((message) => message.kind === "request")!;
+    const request = await waitRequest(posted);
     expect(request).toMatchObject({ bridge: RUMAHL_BRIDGE, method: "provider.invoke", params: { capability: "com.example.notes.search" } });
     deliver(source, { bridge: RUMAHL_BRIDGE, kind: "response", id: request.id, ok: true, result: { hits: 2 } });
     await expect(promise).resolves.toEqual({ hits: 2 });
@@ -29,12 +33,32 @@ describe("provider channel", () => {
 
   test("rejects on a provider error and when the provider does not answer", async () => {
     const { iframe, posted, source } = fakeFrame();
-    const channel = active = attachProviderChannel(iframe, 20);
+    const channel = active = attachProviderChannel(iframe, { timeoutMs: 200 });
     const rejected = channel.invoke("com.example.notes.search");
-    const request = posted.find((message) => message.kind === "request")!;
+    const request = await waitRequest(posted);
     deliver(source, { bridge: RUMAHL_BRIDGE, kind: "response", id: request.id, ok: false, error: { code: "no-provider", message: "not provided" } });
     await expect(rejected).rejects.toThrow("not provided");
     await expect(channel.invoke("com.example.notes.search")).rejects.toThrow("did not answer");
+  });
+
+  test("waits for the handshake before delivering", async () => {
+    const { iframe, posted, source } = fakeFrame();
+    let handshake!: () => void;
+    const ready = new Promise<void>((resolve) => { handshake = resolve; });
+    const channel = active = attachProviderChannel(iframe, { ready, timeoutMs: 200 });
+    const promise = channel.invoke("com.example.notes.search");
+    await Promise.resolve();
+    expect(posted).toHaveLength(0);
+    handshake();
+    const request = await waitRequest(posted);
+    deliver(source, { bridge: RUMAHL_BRIDGE, kind: "response", id: request.id, ok: true, result: "ok" });
+    await expect(promise).resolves.toBe("ok");
+  });
+
+  test("rejects when the provider never becomes ready", async () => {
+    const { iframe } = fakeFrame();
+    const channel = active = attachProviderChannel(iframe, { ready: new Promise<void>(() => undefined), timeoutMs: 20 });
+    await expect(channel.invoke("com.example.notes.search")).rejects.toThrow("not ready");
   });
 });
 

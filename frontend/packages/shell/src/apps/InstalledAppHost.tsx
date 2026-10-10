@@ -127,11 +127,12 @@ function AppFrame({ app }: { app: InstalledApp }) {
     const iframe = frameRef.current;
     const handlers = bridge.current;
     if (!iframe || !handlers) return;
-    const detachBridge = attachAppBridge(iframe, handlers);
-    // Open app windows also act as capability providers for other apps.
-    const provider = attachProviderChannel(iframe);
+    const appBridge = attachAppBridge(iframe, handlers);
+    // Open app windows also act as capability providers for other apps. Delivery
+    // waits for the app's handshake so it does not race provider registration.
+    const provider = attachProviderChannel(iframe, { ready: appBridge.ready });
     const unregister = registerProviderChannel(app.id, provider);
-    return () => { detachBridge(); unregister(); provider.dispose(); };
+    return () => { appBridge.dispose(); unregister(); provider.dispose(); };
   }, [frame, app.id]);
   // Push `os.theme.changed` whenever the shell switches appearance.
   useEffect(() => {

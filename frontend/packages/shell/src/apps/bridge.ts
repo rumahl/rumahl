@@ -141,13 +141,25 @@ function normalizeCapabilityResource(value: unknown): BridgeCapabilityResource |
 }
 
 /**
+ * The shell's side of one app iframe channel.
+ */
+export interface AppBridge {
+  dispose(): void;
+  /** Resolves once the app completed the handshake (its first `hello`). */
+  ready: Promise<void>;
+}
+
+/**
  * Binds the bridge to one app iframe. The channel is bound to the concrete
  * `iframe.contentWindow` because the sandboxed app has an opaque origin and
- * `event.origin` is always `"null"`. Returns a disposer.
+ * `event.origin` is always `"null"`. Returns a handle whose `ready` promise
+ * resolves when the app handshakes, so capability delivery can wait for it.
  */
-export function attachAppBridge(iframe: HTMLIFrameElement, handlers: AppBridgeHandlers): () => void {
+export function attachAppBridge(iframe: HTMLIFrameElement, handlers: AppBridgeHandlers): AppBridge {
   const source = iframe.contentWindow;
-  if (!source) return () => undefined;
+  let resolveReady: () => void = () => undefined;
+  const ready = new Promise<void>((resolve) => { resolveReady = resolve; });
+  if (!source) return { dispose: () => undefined, ready };
   const post = (message: BridgeMessage): void => {
     try { source.postMessage(message, "*"); } catch { /* the frame navigated or was removed */ }
   };
@@ -156,6 +168,7 @@ export function attachAppBridge(iframe: HTMLIFrameElement, handlers: AppBridgeHa
     const message = parseBridgeMessage(event.data);
     if (!message) return;
     if (message.kind === "hello") {
+      resolveReady();
       post({ bridge: RUMAHL_BRIDGE, kind: "welcome", version: RUMAHL_BRIDGE_VERSION, appId: handlers.appId, methods: BRIDGE_METHODS });
       // Push the current theme so the app does not need a round-trip.
       post({ bridge: RUMAHL_BRIDGE, kind: "event", topic: "os.theme.changed", payload: handlers.theme() });
@@ -165,7 +178,7 @@ export function attachAppBridge(iframe: HTMLIFrameElement, handlers: AppBridgeHa
     void Promise.resolve(handleBridgeRequestAsync(message, handlers)).then((response) => post(response)).catch(() => undefined);
   };
   window.addEventListener("message", onMessage);
-  return () => window.removeEventListener("message", onMessage);
+  return { dispose: () => window.removeEventListener("message", onMessage), ready };
 }
 
 /** Pushes an OS event to an app frame (for example `os.theme.changed`). */

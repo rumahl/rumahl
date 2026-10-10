@@ -102,7 +102,8 @@ account is granted each provided capability at install. A capability provided by
 a running **web** app has no live channel, so the route authorizes the call and
 returns a browser-delivery instruction (provider app id); the shell then delivers
 the invocation to that app's iframe (`provider.invoke` request) and returns the
-app's result. The provider app registers handlers with
+app's result. Delivery waits for the app's bridge handshake first, so it does not
+race provider registration. The provider app registers handlers with
 `rumahl.provide(capability, handler)`.
 
 Runtime control reaches the supervisor: `RuntimeController` and
