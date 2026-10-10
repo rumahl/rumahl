@@ -6,13 +6,18 @@ import { useI18n } from "../../i18n";
 import { useWorkspace } from "../../preferences/Workspace";
 import { useShell } from "../ShellContext";
 import { useClock } from "../clock";
+import { applyOrder, moveInOrder, paginate, setLauncherOrder, useLauncherOrder } from "./launcher-order";
 
-const PAGE_SIZE = 24;
+/** Grid: a fixed number of rows and a responsive number of columns. */
+const ROWS = 4;
+const MIN_CELL = 76;
+const GAP = 12;
 
 /**
- * The launcher: one coherent app surface. A greeting, clock and search up top;
- * recently used apps, workspace folders and the full app grid below. Folders
- * open in place.
+ * The launcher springboard: a single free surface with multiple pages. The
+ * order is stored (not pixel positions) so the grid stays responsive; drag an
+ * icon onto another to reorder across pages. Recently used apps and workspace
+ * folders sit above the board.
  */
 export function LauncherHome() {
   const { t, locale } = useI18n();
@@ -20,26 +25,46 @@ export function LauncherHome() {
   const apps = useShellApps();
   const { effective } = useWorkspace();
   const recents = useRecents();
+  const order = useLauncherOrder();
   const [query, setQuery] = useState("");
   const [folder, setFolder] = useState<string | null>(null);
   const [page, setPage] = useState(0);
+  const [cols, setCols] = useState(4);
   const now = useClock();
   const swipe = useRef<number | null>(null);
-  useEffect(() => { setPage(0); }, [query, folder]);
+  const board = useRef<HTMLDivElement>(null);
+  const suppressClick = useRef(false);
+  const drag = useRef<null | { start: number; pointer: number; element: HTMLElement; x: number; y: number; moved: boolean }>(null);
 
+  useEffect(() => {
+    const host = board.current;
+    if (!host) return;
+    const measure = () => setCols(Math.max(2, Math.floor((host.clientWidth + GAP) / (MIN_CELL + GAP))));
+    measure();
+    if (typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(measure);
+    observer.observe(host);
+    return () => observer.disconnect();
+  }, []);
+
+  const pageSize = cols * ROWS;
+  const byId = useMemo(() => new Map(apps.map((app) => [app.id, app])), [apps]);
+  const orderedIds = useMemo(() => applyOrder(apps.map((app) => app.id), order), [apps, order]);
   const normalized = query.trim().toLocaleLowerCase();
   const currentFolder = effective.folders.find((item) => item.id === folder);
-  const visible = apps.filter((app) => {
+  useEffect(() => { setPage(0); }, [query, folder, pageSize]);
+
+  const rootIds = useMemo(
+    () => orderedIds.filter((id) => !effective.folders.some((item) => item.apps.includes(id))),
+    [orderedIds, effective.folders]
+  );
+  const pages = useMemo(() => paginate(rootIds, pageSize), [rootIds, pageSize]);
+  const activePage = Math.min(page, pages.length - 1);
+  const filtered = apps.filter((app) => {
     if (normalized) return `${app.title} ${app.id}`.toLocaleLowerCase().includes(normalized);
     if (currentFolder) return currentFolder.apps.includes(app.id);
-    return !effective.folders.some((item) => item.apps.includes(app.id));
+    return false;
   });
-  const pages = useMemo(() => {
-    const result: ShellApp[][] = [];
-    for (let index = 0; index < visible.length; index += PAGE_SIZE) result.push(visible.slice(index, index + PAGE_SIZE));
-    return result.length ? result : [[]];
-  }, [visible]);
-  const activePage = Math.min(page, pages.length - 1);
   const recentApps = useMemo(() => {
     const seen = new Set<string>();
     const result: ShellApp[] = [];
@@ -77,6 +102,40 @@ export function LauncherHome() {
     else if (event.key === "ArrowLeft") { event.preventDefault(); step(-1); }
   }
 
+  function beginDrag(index: number, event: ReactPointerEvent<HTMLElement>) {
+    if (event.button !== 0) return;
+    const element = event.currentTarget;
+    drag.current = { start: index, pointer: event.pointerId, element, x: event.clientX, y: event.clientY, moved: false };
+    element.setPointerCapture?.(event.pointerId);
+    element.classList.add("is-dragging");
+  }
+  function moveDrag(event: ReactPointerEvent<HTMLElement>) {
+    const entry = drag.current;
+    if (!entry || entry.pointer !== event.pointerId) return;
+    const dx = event.clientX - entry.x, dy = event.clientY - entry.y;
+    if (Math.abs(dx) + Math.abs(dy) > 4) entry.moved = true;
+    entry.element.style.transform = `translate(${dx}px, ${dy}px)`;
+  }
+  function endDrag(event: ReactPointerEvent<HTMLElement>) {
+    const entry = drag.current;
+    if (!entry || entry.pointer !== event.pointerId) return;
+    entry.element.classList.remove("is-dragging");
+    entry.element.style.transform = "";
+    if (entry.moved) {
+      suppressClick.current = true;
+      const target = document.elementFromPoint(event.clientX, event.clientY)?.closest<HTMLElement>("[data-springboard-index]");
+      const to = target ? Number(target.dataset.springboardIndex) : -1;
+      if (Number.isInteger(to) && to >= 0 && to !== entry.start) {
+        const fromId = rootIds[entry.start];
+        const toId = rootIds[to];
+        const fromOrdered = fromId ? orderedIds.indexOf(fromId) : -1;
+        const toOrdered = toId ? orderedIds.indexOf(toId) : -1;
+        if (fromOrdered >= 0 && toOrdered >= 0) setLauncherOrder(moveInOrder(orderedIds, fromOrdered, toOrdered));
+      }
+    }
+    drag.current = null;
+  }
+
   return <main className="launcher-home">
     <header className="launcher-header">
       <div className="launcher-heading">
@@ -89,27 +148,43 @@ export function LauncherHome() {
       </label>
     </header>
 
-    <div className="launcher-view launcher-view--grid" tabIndex={0} aria-label={t("launcher.pages")}
-      onPointerDown={onPointerDown} onPointerUp={onPointerUp} onPointerCancel={() => { swipe.current = null; }} onKeyDown={onKeyDown}>
-      {!normalized && !currentFolder && recentApps.length > 0 ? <section className="launcher-section launcher-section--recent">
-        <h2>{t("launcher.recent")}</h2>
-        <div className="app-grid">{recentApps.map((app) => <AppTile app={app} key={app.id} />)}</div>
-      </section> : null}
-      <section className="launcher-section">
-        <h2>{currentFolder ? currentFolder.name : t("launcher.allApps")}</h2>
-        {currentFolder ? <button className="launcher-back" type="button" onClick={() => setFolder(null)}>{t("workspace.back")} · {currentFolder.name}</button> : null}
+    {!normalized && !currentFolder && recentApps.length > 0 ? <section className="launcher-section launcher-section--recent">
+      <h2>{t("launcher.recent")}</h2>
+      <div className="app-grid">{recentApps.map((app) => <AppTile app={app} key={app.id} />)}</div>
+    </section> : null}
+
+    {normalized || currentFolder ? <section className="launcher-section">
+      <h2>{currentFolder ? currentFolder.name : t("launcher.searchResults")}</h2>
+      {currentFolder ? <button className="launcher-back" type="button" onClick={() => setFolder(null)}>{t("workspace.back")} · {currentFolder.name}</button> : null}
+      <div className="app-grid">{filtered.map((app) => <AppTile app={app} key={app.id} />)}</div>
+      {filtered.length === 0 ? <p role="status" className="launcher-empty">{t("launcher.noResults")}</p> : null}
+    </section> : <div className="launcher-board" ref={board}
+      onPointerDown={onPointerDown} onPointerUp={onPointerUp} onPointerCancel={() => { swipe.current = null; }} onKeyDown={onKeyDown} tabIndex={0}>
+      {!normalized && effective.folders.length > 0 ? <section className="launcher-section">
+        <h2>{t("launcher.folders")}</h2>
         <div className="app-grid">
-          {!normalized && !currentFolder ? effective.folders.map((item) => <button className="app-tile" key={item.id} type="button" onClick={() => setFolder(item.id)}>
-            <span className="app-tile__icon folder-preview" aria-hidden="true">{item.apps.slice(0, 4).map((id) => { const app = apps.find((a) => a.id === id); return app ? <span key={id}><AppIcon app={app} /></span> : null; })}</span><span>{item.name}</span>
-          </button>) : null}
-          {pages[activePage]!.map((app) => <AppTile app={app} key={app.id} />)}
+          {effective.folders.map((item) => <button className="app-tile" key={item.id} type="button" onClick={() => setFolder(item.id)}>
+            <span className="app-tile__icon folder-preview" aria-hidden="true">{item.apps.slice(0, 4).map((id) => { const app = byId.get(id); return app ? <span key={id}><AppIcon app={app} /></span> : null; })}</span><span>{item.name}</span>
+          </button>)}
         </div>
-        {visible.length === 0 ? <p role="status" className="launcher-empty">{t("launcher.noResults")}</p> : null}
-      </section>
+      </section> : null}
+      <div className="springboard-grid" style={{ gridTemplateColumns: `repeat(${cols}, 1fr)` }}>
+        {pages[activePage]!.map((id, localIndex) => {
+          const app = byId.get(id);
+          if (!app) return null;
+          const index = activePage * pageSize + localIndex;
+          return <div key={id} className="springboard-cell" data-springboard-index={index}
+            onPointerDown={(event) => beginDrag(index, event)} onPointerMove={moveDrag} onPointerUp={endDrag} onPointerCancel={endDrag}
+            onDragStart={(event) => event.preventDefault()}
+            onClickCapture={(event) => { if (suppressClick.current) { event.preventDefault(); event.stopPropagation(); suppressClick.current = false; } }}>
+            <AppTile app={app} />
+          </div>;
+        })}
+      </div>
       {pages.length > 1 ? <nav className="launcher-pages" aria-label={t("launcher.pages")}>
         {pages.map((_, index) => <button key={index} type="button" aria-current={index === activePage ? "page" : undefined}
           aria-label={t("launcher.page", { page: index + 1 })} onClick={() => setPage(index)} />)}
       </nav> : null}
-    </div>
+    </div>}
   </main>;
 }

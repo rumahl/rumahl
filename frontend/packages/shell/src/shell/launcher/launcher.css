@@ -92,10 +92,29 @@
   border-color: rgba(255, 255, 255, 0.5);
   box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.18);
 }
-.launcher-view {
+.launcher-board {
   display: grid;
   gap: 26px;
   outline: none;
+  touch-action: pan-y;
+}
+.springboard-grid {
+  display: grid;
+  gap: 18px 12px;
+  align-content: start;
+}
+.springboard-cell {
+  display: flex;
+}
+.springboard-cell > a {
+  width: 100%;
+  -webkit-user-drag: none;
+}
+.springboard-cell.is-dragging {
+  z-index: 5;
+  opacity: 0.85;
+  cursor: grabbing;
+  pointer-events: none;
 }
 .launcher-section {
   display: grid;

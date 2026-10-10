@@ -125,6 +125,8 @@ export const english = {
   "launcher.noResults": "No matching apps.",
   "launcher.recent": "Recently used",
   "launcher.allApps": "All apps",
+  "launcher.folders": "Folders",
+  "launcher.searchResults": "Search results",
   "launcher.pages": "Launcher pages",
   "launcher.page": "Page {page}",
   "launcher.view.label": "Launcher layout",

@@ -120,6 +120,8 @@ export const german = {
   "launcher.noResults": "Keine passenden Apps.",
   "launcher.recent": "Zuletzt verwendet",
   "launcher.allApps": "Alle Apps",
+  "launcher.folders": "Ordner",
+  "launcher.searchResults": "Suchergebnisse",
   "launcher.pages": "Launcher-Seiten",
   "launcher.page": "Seite {page}",
   "launcher.view.label": "Launcher-Layout",

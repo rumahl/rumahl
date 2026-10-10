@@ -17,6 +17,6 @@ describe("theme-driven shell layout", () => {
     localStorage.setItem("rumahl.demo.shell-mode", "launcher");
     render(<App snapshot={demoSnapshot} theme={classicTheme} initialLocation="/" />);
     expect(await screen.findByRole("searchbox")).toBeInTheDocument();
-    expect(document.querySelector(".launcher-view--grid")).not.toBeNull();
+    expect(document.querySelector(".launcher-board")).not.toBeNull();
   });
 });
