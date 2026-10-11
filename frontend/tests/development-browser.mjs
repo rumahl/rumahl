@@ -35,7 +35,7 @@ const reducedMotion = { reducedMotion: "reduce" };
 try {
   const page = await browser.newPage(reducedMotion);
   const modeReady = () => {
-    const trigger = globalThis.document.querySelector('button[aria-label="Shell mode"]');
+    const trigger = globalThis.document.querySelector('.topbar__mode button');
     return Boolean(trigger) && !trigger.disabled;
   };
   async function choose(label, option, target = page) {
@@ -68,8 +68,17 @@ try {
     const revision = Number(await source.locator(".shell").getAttribute("data-preferences-revision"));
     await target.waitForFunction((revision) => Number(globalThis.document.querySelector(".shell")?.dataset.preferencesRevision) >= revision, revision);
   }
+  // The sign-in screen first lists account tiles; pick the test account to
+  // reveal its password form (the username is then carried in a hidden field).
+  async function chooseAccount(target) {
+    const tiles = target.locator("#login-accounts .account");
+    if ((await tiles.count()) === 0) return;
+    const match = tiles.filter({ hasText: `@${credentials.username}` });
+    await ((await match.count()) > 0 ? match.first() : tiles.first()).click();
+  }
   async function login(target, path = "/") {
     await target.goto(`${info.origin}${path}`);
+    await chooseAccount(target);
     await target.locator("form").evaluate((form, login) => {
       form.elements.username.value = login.username; form.elements.password.value = login.password;
     }, credentials);
@@ -89,6 +98,7 @@ try {
   page.on("pageerror", (error) => errors.push(error.message));
   page.on("console", (message) => { if (message.type() === "error" && !ignoredConsole.some((pattern) => pattern.test(message.text()))) errors.push(message.text()); });
   await page.goto(`${info.origin}/app/app-manager?mode=launcher`);
+  await chooseAccount(page);
   // Exercise a native form POST: the browser must supply its real Origin.
   await page.locator("form").evaluate((form, login) => {
     form.elements.username.value = login.username;
@@ -218,7 +228,7 @@ try {
     const sameProfileTab = await secondContext.newPage();
     await sameProfileTab.goto(`${info.origin}/`);
     await sameProfileTab.waitForFunction(() => {
-      const trigger = globalThis.document.querySelector('button[aria-label="Shell mode"]');
+      const trigger = globalThis.document.querySelector('.topbar__mode button');
       return Boolean(trigger) && !trigger.disabled;
     });
     assert.equal(await sameProfileTab.locator(".shell").getAttribute("data-shell-mode"), "desktop");
