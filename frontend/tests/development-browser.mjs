@@ -97,6 +97,8 @@ try {
   ];
   page.on("pageerror", (error) => errors.push(error.message));
   page.on("console", (message) => { if (message.type() === "error" && !ignoredConsole.some((pattern) => pattern.test(message.text()))) errors.push(message.text()); });
+  const logBad = (target) => target.on("response", (r) => { if (r.status() >= 400) console.log(`HTTP ${r.status()} ${r.request().method()} ${r.url()}`); });
+  logBad(page);
   await page.goto(`${info.origin}/app/app-manager?mode=launcher`);
   await chooseAccount(page);
   // Exercise a native form POST: the browser must supply its real Origin.
@@ -211,7 +213,7 @@ try {
   assert.equal((await inherited).status(), 200);
   const secondContext = await browser.newContext(reducedMotion);
   try {
-    const second = await secondContext.newPage();
+    const second = await secondContext.newPage(); logBad(second);
     second.on("pageerror", (error) => errors.push(error.message));
     await login(second);
     await choose("Save for", "My account · all devices", page);
@@ -225,7 +227,7 @@ try {
     await page.locator(".setting").getByRole("group", { name: "Shell mode" }).getByRole("button", { name: "Launcher", exact: true }).click();
     await page.locator('.shell[data-shell-mode="launcher"]').waitFor();
     assert.equal(await second.locator(".shell").getAttribute("data-shell-mode"), "desktop");
-    const sameProfileTab = await secondContext.newPage();
+    const sameProfileTab = await secondContext.newPage(); logBad(sameProfileTab);
     await sameProfileTab.goto(`${info.origin}/`);
     await sameProfileTab.waitForFunction(() => {
       const trigger = globalThis.document.querySelector('.topbar__mode button');
@@ -312,7 +314,7 @@ try {
   await files.getByText("renamed.txt", { exact: true }).waitFor({ state: "detached" });
   // Saved account folders are delivered to an independent browser profile.
   const workspaceContext = await browser.newContext(reducedMotion);
-  const workspacePage = await workspaceContext.newPage();
+  const workspacePage = await workspaceContext.newPage(); logBad(workspacePage);
   // This independent profile loads the full shell, catalog and workspace from a
   // cold cache, so allow more than the default 30s per step.
   workspacePage.setDefaultTimeout(60000);
