@@ -1,5 +1,6 @@
 import console from "node:console";
 import { createHash } from "node:crypto";
+import { realpathSync } from "node:fs";
 import { createServer as createHttpsServer } from "node:https";
 import { request as httpRequest } from "node:http";
 import { connect } from "node:net";
@@ -125,7 +126,9 @@ export async function startGateway({ repo, runtime, state, cert, key, port, buil
         cors: false,
         allowedHosts: ["localhost"],
         hmr: { server: edge, protocol: "wss", host: "localhost", clientPort: edge.address().port, path: "/__dev/hmr" },
-        fs: { strict: true, allow: [join(repo, "frontend")], deny: [".env", ".env.*", "*.{crt,pem,key}", "**/.git/**", "**/.rumahl-dev/**", `${state}/**`] },
+        // `frontend/node_modules` is a symlink in disposable dev copies, so its
+        // real path (where fonts and other deps actually live) must be allowed too.
+        fs: { strict: true, allow: [join(repo, "frontend"), realpathSync(join(repo, "frontend", "node_modules"))], deny: [".env", ".env.*", "*.{crt,pem,key}", "**/.git/**", "**/.rumahl-dev/**", `${state}/**`] },
         watch: { usePolling: polling, interval: 250 }
       },
       plugins: [{
