@@ -17,6 +17,7 @@
     "dev": "pnpm assets && vite",
     "dev:demo": "pnpm assets && vite --mode demo --open /demo.html",
     "test": "pnpm assets && vitest run --pool=threads --maxWorkers=1",
+    "test:coverage": "pnpm assets && vitest run --pool=threads --maxWorkers=1 --coverage --coverage.reporter=lcov --coverage.reportsDirectory=coverage",
     "typecheck": "pnpm assets && tsc --noEmit"
   },
   "dependencies": {

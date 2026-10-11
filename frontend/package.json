@@ -13,10 +13,12 @@
     "dev:demo": "pnpm --filter @rumahl/shell dev:demo",
     "lint": "eslint .",
     "test": "pnpm --filter @rumahl/ui test && pnpm --filter @rumahl/bridge-client test && pnpm --filter @rumahl/shell test && pnpm --filter @rumahl/ssr test",
+    "test:coverage": "pnpm --filter @rumahl/ui test:coverage && pnpm --filter @rumahl/bridge-client test:coverage && pnpm --filter @rumahl/shell test:coverage && pnpm --filter @rumahl/ssr test:coverage",
     "typecheck": "pnpm --filter @rumahl/ui typecheck && pnpm --filter @rumahl/bridge-client typecheck && pnpm --filter @rumahl/shell typecheck && pnpm --filter @rumahl/ssr typecheck"
   },
   "devDependencies": {
     "@eslint/js": "10.0.1",
+    "@vitest/coverage-v8": "5.0.1",
     "eslint": "10.11.0",
     "playwright": "1.63.0",
     "typescript": "6.0.3",

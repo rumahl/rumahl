@@ -10,6 +10,7 @@
     "start": "node server.js",
     "test:smoke": "node scripts/smoke.js",
     "test": "pnpm assets && vitest run --pool=threads --maxWorkers=1",
+    "test:coverage": "pnpm assets && vitest run --pool=threads --maxWorkers=1 --coverage --coverage.reporter=lcov --coverage.reportsDirectory=coverage",
     "typecheck": "pnpm assets && tsc --noEmit",
     "dev": "pnpm assets && node dev/start.js"
   },
