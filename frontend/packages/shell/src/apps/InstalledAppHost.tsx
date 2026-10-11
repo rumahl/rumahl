@@ -23,12 +23,12 @@ import "../routing/route-failure.css";
  * Reports an app lifecycle event (launch failure, crash, unresponsiveness) to
  * the OS so it lands in the central audit log. Best-effort: never blocks the UI.
  */
-function postReport(request: ShellRequest, appId: string, event: "launched" | "crashed" | "unresponsive" | "launch-failed" | "stopped"): void {
+function postReport(request: ShellRequest, appId: string, event: "launched" | "crashed" | "unresponsive" | "launch-failed" | "stopped", installationId?: string): void {
   void request("/api/v1/shell/report", {
     method: "POST",
     credentials: "same-origin",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ appId, event }),
+    body: JSON.stringify({ appId, event, ...(installationId ? { installationId } : {}) }),
   }).catch(() => undefined);
 }
 
@@ -86,7 +86,7 @@ function AppFrame({ app }: { app: InstalledApp }) {
     if (!frame || !live) return;
     const request = live.request;
     loaded.current = false;
-    const timer = setTimeout(() => { if (!loaded.current) { setFrame(null); setFailed(true); postReport(request, app.id, "unresponsive"); } }, 15_000);
+    const timer = setTimeout(() => { if (!loaded.current) { setFrame(null); setFailed(true); postReport(request, app.id, "unresponsive", app.installationId); } }, 15_000);
     return () => clearTimeout(timer);
   }, [frame, live, app.id]);
   // Reachability preflight: a network-level failure (the app's server is down)
@@ -98,7 +98,7 @@ function AppFrame({ app }: { app: InstalledApp }) {
     const request = live.request;
     const controller = new AbortController();
     fetch(frame, { mode: "no-cors", cache: "no-store", signal: controller.signal }).catch(() => {
-      if (!controller.signal.aborted) { cancel.current(); setFrame(null); setFailed(true); postReport(request, app.id, "unresponsive"); }
+      if (!controller.signal.aborted) { cancel.current(); setFrame(null); setFailed(true); postReport(request, app.id, "unresponsive", app.installationId); }
     });
     return () => controller.abort();
   }, [frame, live, app.id]);
@@ -176,5 +176,5 @@ function AppFrame({ app }: { app: InstalledApp }) {
   // App navigation is a fragment on the authorized entrypoint, never an asset path.
   url.hash = `/${params["*"] ?? ""}${query.size ? `?${query}` : ""}`;
   return <iframe ref={frameRef} className="installed-app-frame" sandbox="allow-scripts" referrerPolicy="no-referrer"
-    title={app.title} src={url.href} onLoad={() => { if (!loaded.current && live) postReport(live.request, app.id, "launched"); loaded.current = true; }} onError={() => { cancel.current(); setFrame(null); setFailed(true); if (live) postReport(live.request, app.id, "crashed"); }} />;
+    title={app.title} src={url.href} onLoad={() => { if (!loaded.current && live) postReport(live.request, app.id, "launched"); loaded.current = true; }} onError={() => { cancel.current(); setFrame(null); setFailed(true); if (live) postReport(live.request, app.id, "crashed", app.installationId); }} />;
 }

@@ -1831,7 +1831,7 @@ async fn shell_report(
     };
     if object
         .keys()
-        .any(|key| key != "appId" && key != "event" && key != "action")
+        .any(|key| key != "appId" && key != "event" && key != "action" && key != "installationId")
     {
         return error(StatusCode::BAD_REQUEST);
     }
@@ -1889,6 +1889,57 @@ async fn shell_report(
         outcome,
         Some(app_id.as_str()),
     );
+    // Self-healing: a crashed or unresponsive app runtime is restarted for the
+    // user, and the recovery is recorded as a rumahl OS action.
+    if matches!(
+        action,
+        rumahl_core::AuditAction::AppCrashed | rumahl_core::AuditAction::AppUnresponsive
+    ) && let Some(installation_id) = value
+        .get("installationId")
+        .and_then(|v| v.as_str())
+        .filter(|value| !value.is_empty() && value.len() <= 200)
+        .map(str::to_owned)
+        && let Some(apps) = state.apps.clone()
+    {
+        let user = identity.user_id;
+        let session = identity.session_id;
+        let audit_id = app_id.clone();
+        let recovered = tokio::task::spawn_blocking(move || {
+            apps.runtime(
+                identity,
+                &app_id,
+                &installation_id,
+                crate::RuntimeAction::Stop,
+            )?;
+            apps.runtime(
+                ShellIdentity {
+                    user_id: user,
+                    session_id: session,
+                },
+                &app_id,
+                &installation_id,
+                crate::RuntimeAction::Start,
+            )
+        })
+        .await;
+        let (heal_action, heal_outcome) = match recovered {
+            Ok(Ok(_)) => (
+                rumahl_core::AuditAction::ServiceRecovered,
+                rumahl_core::AuditOutcome::Success,
+            ),
+            _ => (
+                rumahl_core::AuditAction::SelfHeal,
+                rumahl_core::AuditOutcome::Failure,
+            ),
+        };
+        record_audit(
+            &state,
+            rumahl_core::AuditActor::Os,
+            heal_action,
+            heal_outcome,
+            Some(audit_id.as_str()),
+        );
+    }
     let mut response = StatusCode::NO_CONTENT.into_response();
     secure_headers(&mut response);
     response
