@@ -103,7 +103,11 @@ footer a { padding: 8px 12px; border-radius: var(--rumahl-ui-shape-radius-window
 .login-profiles .rumahl-avatar { --avatar-foreground: var(--rumahl-ui-color-on-wallpaper); }
 .shell[data-material="solid"] .rumahl-avatar { --avatar-foreground: var(--rumahl-ui-color-text-primary); }
 
-@view-transition { navigation: auto; }
+@media (prefers-reduced-motion: no-preference) {
+  @view-transition {
+    navigation: auto;
+  }
+}
 ::view-transition-group(root) { animation-duration: 240ms; }
 html[data-login-transition] .login-profiles, .login-profiles[data-transitioned] { animation: none; }
 .login-profiles form[aria-busy="true"] .password-row .btn > svg { display: none; }

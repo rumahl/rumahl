@@ -23,16 +23,27 @@ async function list(request: ShellRequest, parent: string): Promise<StoreEntry[]
   return Array.isArray(value) ? value as StoreEntry[] : [];
 }
 
-/** Finds the desktop folder, creating it on first use. Returns its id (or null). */
-export async function ensureDesktopFolder(request: ShellRequest | null | undefined): Promise<string | null> {
-  if (!request) return null;
-  try {
-    const existing = (await list(request, "root")).find((entry) => entry.directory && entry.name === DESKTOP_FOLDER_NAME);
-    if (existing) return existing.id;
-    const created = await call(request, `/api/v1/files?parent=root&name=${encodeURIComponent(DESKTOP_FOLDER_NAME)}&directory=true`, { method: "POST", headers: { "Content-Type": "application/octet-stream" } });
-    if (!created.ok) return null;
-    return (await list(request, "root")).find((entry) => entry.directory && entry.name === DESKTOP_FOLDER_NAME)?.id ?? null;
-  } catch { return null; }
+let desktopFolder: Promise<string | null> | null = null;
+
+/**
+ * Finds the desktop folder, creating it on first use. Returns its id (or null).
+ * The result is cached so concurrent callers (e.g. React StrictMode's double
+ * effect) share one lookup and never race into a duplicate-create conflict.
+ */
+export function ensureDesktopFolder(request: ShellRequest | null | undefined): Promise<string | null> {
+  if (!request) return Promise.resolve(null);
+  desktopFolder ??= resolveDesktopFolder(request).then(
+    (id) => { if (!id) desktopFolder = null; return id; },
+    () => { desktopFolder = null; return null; }
+  );
+  return desktopFolder;
+}
+
+async function resolveDesktopFolder(request: ShellRequest): Promise<string | null> {
+  const existing = (await list(request, "root")).find((entry) => entry.directory && entry.name === DESKTOP_FOLDER_NAME);
+  if (existing) return existing.id;
+  await call(request, `/api/v1/files?parent=root&name=${encodeURIComponent(DESKTOP_FOLDER_NAME)}&directory=true`, { method: "POST", headers: { "Content-Type": "application/octet-stream" } });
+  return (await list(request, "root")).find((entry) => entry.directory && entry.name === DESKTOP_FOLDER_NAME)?.id ?? null;
 }
 
 /** Lists (and stays in sync with) the files placed on the OS desktop. */
