@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent, type PointerEvent } from "react";
-import { AppIcon } from "../../apps/AppTile";
+import { createPortal } from "react-dom";
+import { AppIcon, AppTile } from "../../apps/AppTile";
 import { rememberRecent } from "../../apps/recents";
 import { useShellApps, type ShellApp } from "../../apps/useShellApps";
 import { useI18n } from "../../i18n";
@@ -55,22 +56,31 @@ export function DesktopHome() {
   }, []);
 
   const currentFolder = workspace.effective.folders.find((item) => item.id === folder);
-  const visible = (currentFolder ? currentFolder.apps.map((id) => byId.get(id)) : layout.visibleIds.map((id) => byId.get(id)))
-    .filter((app): app is ShellApp => app !== undefined);
+  // Apps filed into an app folder live only inside it (as on the launcher).
+  const filedAppIds = useMemo(() => new Set(workspace.effective.folders.flatMap((entry) => entry.apps)), [workspace.effective.folders]);
+  const visible = layout.visibleIds.map((id) => byId.get(id)).filter((app): app is ShellApp => app !== undefined).filter((app) => !filedAppIds.has(app.id));
   const hidden = layout.layout.hidden.map((id) => byId.get(id)).filter((app): app is ShellApp => app !== undefined);
   const menuApp = menu?.appId ? byId.get(menu.appId) : undefined;
 
   const items = useMemo<DesktopItem[]>(() => {
     const list: DesktopItem[] = [];
-    if (!currentFolder) for (const entry of workspace.effective.folders) list.push({ id: `folder:${entry.id}`, kind: "folder", folderId: entry.id, name: entry.name });
+    for (const entry of workspace.effective.folders) list.push({ id: `folder:${entry.id}`, kind: "folder", folderId: entry.id, name: entry.name });
     for (const app of visible) list.push({ id: app.id, kind: "app", app, name: app.title });
-    if (!currentFolder) for (const file of desktopFiles.files) list.push({ id: `file:${file.id}`, kind: "file", name: file.name, file });
+    for (const file of desktopFiles.files) list.push({ id: `file:${file.id}`, kind: "file", name: file.name, file });
     return list;
-  }, [currentFolder, workspace.effective.folders, visible, desktopFiles.files]);
+  }, [workspace.effective.folders, visible, desktopFiles.files]);
   // Enough rows to hold every item (never overlap); grows/scrolls if needed.
   const rows = useMemo(() => Math.max(gridMetrics(size.width, size.height, CELL.width, CELL.height, GAP).rows, Math.ceil(items.length / Math.max(1, cols))), [size.width, size.height, items.length, cols]);
   // Column-major like the macOS desktop: fill top-to-bottom, then the next column.
   const effective = useMemo(() => resolveCells(items.map((item) => item.id), storedCells, cols, rows, "column"), [items, storedCells, cols, rows]);
+
+  // Close the opened folder with Escape.
+  useEffect(() => {
+    if (!currentFolder) return;
+    const onKey = (event: KeyboardEvent) => { if (event.key === "Escape") setFolder(null); };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [currentFolder]);
 
   // Position every item with CSSOM: the shell's strict style-src CSP blocks an
   // inline `style` attribute, so positions are set through `element.style`.
@@ -212,7 +222,7 @@ export function DesktopHome() {
     });
   }
 
-  return <main className="desktop-home" aria-label={t("desktop.label")} onContextMenu={openShortcutsMenu}
+  return <main className={`desktop-home${currentFolder ? " is-folder-open" : ""}`} aria-label={t("desktop.label")} onContextMenu={openShortcutsMenu}
     onDragOver={(event) => { if (Array.from(event.dataTransfer.types).includes("Files")) event.preventDefault(); }}
     onDrop={(event) => { const dropped = event.dataTransfer?.files; if (!dropped || dropped.length === 0) return; event.preventDefault(); for (const file of Array.from(dropped)) void desktopFiles.upload(file); }}>
     <div ref={shortcuts} className="desktop-shortcuts" onPointerDown={beginMarquee} onPointerMove={moveMarquee} onPointerUp={endMarquee} onPointerCancel={endMarquee}>
@@ -246,10 +256,6 @@ export function DesktopHome() {
             <span className={`desktop-icon__art${item.app!.system ? " is-system" : ""}`} aria-hidden="true"><AppIcon app={item.app!} /></span>
             <span className="desktop-icon__label">{item.app!.title}</span>
           </ShellLink>)}
-        {currentFolder ? <button type="button" className="desktop-icon desktop-app" data-grid-id="folder:back" onClick={() => setFolder(null)}>
-          <span className="desktop-icon__art" aria-hidden="true">←</span>
-          <span className="desktop-icon__label">{t("workspace.back")}</span>
-        </button> : null}
       </div>
       {marquee ? <span className="desktop-marquee" aria-hidden="true" ref={(element) => {
         if (!element) return;
@@ -277,5 +283,22 @@ export function DesktopHome() {
       onToggleWidgets={layout.toggleWidgets}
       onOpenSettings={() => open("/settings")}
     />
+    {currentFolder ? createPortal(
+      <div className="launcher-folder-overlay" role="dialog" aria-label={currentFolder.name}
+        onContextMenu={(event) => event.preventDefault()}
+        onClick={(event) => { if (event.target === event.currentTarget) setFolder(null); }}>
+        <div className="launcher-folder">
+          <header className="launcher-folder__header">
+            <h2>{currentFolder.name}</h2>
+            <div className="launcher-folder__actions">
+              <button type="button" aria-label={t("workspace.back")} onClick={() => setFolder(null)}>×</button>
+            </div>
+          </header>
+          <div className="app-grid">
+            {currentFolder.apps.map((id) => { const app = byId.get(id); return app ? <div key={id}><AppTile app={app} /></div> : null; })}
+          </div>
+          {currentFolder.apps.length === 0 ? <p role="status" className="launcher-empty">{t("launcher.folderEmpty")}</p> : null}
+        </div>
+      </div>, document.body) : null}
   </main>;
 }

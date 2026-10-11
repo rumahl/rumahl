@@ -149,7 +149,7 @@ export function LauncherHome() {
     setRenaming(null);
   }
   function beginOutDrag(folderId: string, appId: string, event: ReactPointerEvent<HTMLElement>) {
-    if (!editing || event.button !== 0) return;
+    if (event.button !== 0) return;
     const width = event.currentTarget.getBoundingClientRect().width || CELL.width;
     outGesture.current = { pointer: event.pointerId, x: event.clientX, y: event.clientY, width };
     outDragRef.current = { folderId, appId };
@@ -168,8 +168,18 @@ export function LauncherHome() {
     const dx = event.clientX - entry.x, dy = event.clientY - entry.y;
     outGesture.current = null;
     outDragRef.current = null;
-    if (Math.abs(dx) + Math.abs(dy) > 6 && !document.elementFromPoint(event.clientX, event.clientY)?.closest(".launcher-folder")) {
+    const inside = document.elementFromPoint(event.clientX, event.clientY)?.closest(".launcher-folder");
+    if (Math.abs(dx) + Math.abs(dy) > 6 && !inside) {
+      // Dropped into the background: place the app on the launcher grid and
+      // close the folder so it can be positioned freely.
+      suppressClick.current = true;
+      const box = board.current?.getBoundingClientRect();
+      const stepX = CELL.width + GAP, stepY = CELL.height + GAP;
+      const point = { col: Math.round((event.clientX - (box?.left ?? 0)) / stepX), row: Math.round((event.clientY - (box?.top ?? 0)) / stepY) };
+      const taken = items.map((token) => cellOf[token]).filter((value): value is GridCell => value !== undefined);
+      launcherCells.set(target.appId, nearestFreeCell(point, taken, cols, rows));
       removeFromFolder(target.folderId, target.appId);
+      setFolder(null);
     }
     setOutDrag(null);
   }
@@ -272,7 +282,7 @@ export function LauncherHome() {
     setDropFolder(null);
   }
 
-  return <main className="launcher-home">
+  return <main className={`launcher-home${currentFolder ? " is-folder-open" : ""}`}>
     <header className="launcher-top">
       <div className="launcher-heading">
         <h1 className="launcher-greeting">{t(greeting)}<span>{snapshot.user.displayName}</span></h1>
@@ -338,7 +348,9 @@ export function LauncherHome() {
         <div className="app-grid">
           {currentFolder.apps.map((id) => { const app = byId.get(id); return app ? <div key={id}
             onContextMenu={(event) => openMenu(event, { appId: id })}
-            onPointerDown={(event) => beginOutDrag(currentFolder.id, id, event)} onPointerMove={moveOutDrag} onPointerUp={endOutDrag} onPointerCancel={endOutDrag}>
+            onPointerDown={(event) => beginOutDrag(currentFolder.id, id, event)} onPointerMove={moveOutDrag} onPointerUp={endOutDrag} onPointerCancel={endOutDrag}
+            onDragStart={(event) => event.preventDefault()}
+            onClickCapture={(event) => { if (suppressClick.current) { event.preventDefault(); event.stopPropagation(); suppressClick.current = false; } }}>
             <AppTile app={app} /></div> : null; })}
         </div>
         {currentFolder.apps.length === 0 ? <p role="status" className="launcher-empty">{t("launcher.folderEmpty")}</p> : null}

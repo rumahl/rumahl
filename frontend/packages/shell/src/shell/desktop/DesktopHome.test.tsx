@@ -29,7 +29,7 @@ describe("desktop shell", () => {
     localStorage.setItem("rumahl.demo.workspace", JSON.stringify({ version: 1, windows: [], folders: [{ id: "tools", name: "Tools", apps: ["files"] }] }));
     render(<App snapshot={demoSnapshot} initialLocation="/" />);
     fireEvent.click(await screen.findByRole("button", { name: "Tools" }));
-    expect(await screen.findByRole("link", { name: "Files" })).toBeInTheDocument();
-    expect(screen.queryByRole("link", { name: "App manager" })).toBeNull();
+    const dialog = await screen.findByRole("dialog", { name: "Tools" });
+    expect(within(dialog).getByRole("link", { name: "Files" })).toBeInTheDocument();
   });
 });
