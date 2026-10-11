@@ -324,7 +324,7 @@ try {
     try {
       await workspacePage.reload();
       await workspacePage.locator(".shell").waitFor();
-      await workspacePage.getByRole("button", { name: "Launcher home", exact: true }).click();
+      await workspacePage.locator(".topbar__mode").getByRole("button", { name: "Launcher", exact: true }).click();
       await workspacePage.getByRole("button", { name: "Tools", exact: true }).waitFor({ timeout: 15000 });
       await workspacePage.getByRole("button", { name: "Tools", exact: true }).click();
       await workspacePage.getByRole("link", { name: "Files", exact: true }).waitFor({ timeout: 15000 });
