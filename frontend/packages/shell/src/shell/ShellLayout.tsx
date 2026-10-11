@@ -20,6 +20,9 @@ import { RouteBoundary } from "../routing/RouteBoundary";
 import { ShellContext } from "./ShellContext";
 import { MenuBar } from "./MenuBar";
 import { CommandPalette } from "./CommandPalette";
+import { EmergencyShell } from "./EmergencyShell";
+import { installEmergencyShortcut, useEmergencyOpen } from "./emergency";
+import { reportActivity } from "../apps/recovery-client";
 import { DesktopWindows } from "./DesktopWindows";
 import { useShellPreferences } from "../preferences/ShellPreferences";
 import { useWorkspace } from "../preferences/Workspace";
@@ -297,6 +300,12 @@ export function ShellLayout({ snapshot, live }: { snapshot: ShellSnapshotV1; liv
     document.adoptedStyleSheets = [...previous, sheet];
     return () => { document.adoptedStyleSheets = previous; };
   }, [theme.css]);
+  const emergencyOpen = useEmergencyOpen();
+  // The OS "secure attention sequence" opens the emergency shell.
+  useEffect(() => installEmergencyShortcut(), []);
+  // Report shell activity (navigation, mode) into the central audit log.
+  useEffect(() => { if (live) reportActivity(live.request, `navigate ${path}`); }, [path, live]);
+  useEffect(() => { if (live) reportActivity(live.request, `mode ${mode}`); }, [mode, live]);
   return <ShellContext value={{ snapshot, live, state, dispatch, mode, setMode, open }}>
     <div className={`scene shell${showVideo ? "" : " image-mode"}${appearance.wallpaperMotion === false || svgActive || performanceMode ? " no-motion" : ""}`} data-theme={theme.id} data-material={material} data-glass={glassEngine} data-scheme={scheme} data-perf={ultra ? "ultra" : undefined} data-maximized={windowMaximized ? "true" : undefined} data-launcher={launcherWindow ? "app" : undefined} data-inactive={inactive ? "true" : undefined} data-debug={debug ? "true" : undefined} data-animations={animations ? undefined : "off"} data-shell-build={snapshot.shellBuildId} data-shell-mode={mode} data-os-mode={osMode.mode} data-preferences-revision={preferences.preferences?.revision}>
       <div className="wallpaper media-wall" aria-hidden="true">
@@ -318,6 +327,7 @@ export function ShellLayout({ snapshot, live }: { snapshot: ShellSnapshotV1; liv
         <CommandPalette />
       </div>
       {theme.slots?.dock ? <SlotRegion name="dock" /> : variants.shellLayout === "taskbar" ? <Taskbar /> : <OsDock />}
+      {emergencyOpen ? <EmergencyShell /> : null}
     </div>
   </ShellContext>;
 }
