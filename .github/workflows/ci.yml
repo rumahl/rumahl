@@ -126,7 +126,7 @@ jobs:
               echo "::error::Commit ${sha} is missing a DCO 'Signed-off-by' line."
               failed=1
             fi
-          done < <(git rev-list "${base}..${HEAD_SHA}")
+          done < <(git rev-list --no-merges "${base}..${HEAD_SHA}")
           if [ "${failed}" -ne 0 ]; then
             echo "Sign off with 'git commit -s' (see CONTRIBUTING.md)."
             exit 1
