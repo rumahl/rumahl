@@ -215,14 +215,14 @@ try {
     second.on("pageerror", (error) => errors.push(error.message));
     await login(second);
     await choose("Save for", "My account · all devices", page);
-    await page.getByRole("button", { name: "Launcher", exact: true }).click();
+    await page.locator(".topbar__mode").getByRole("button", { name: "Launcher", exact: true }).click();
     await page.locator('.shell[data-shell-mode="launcher"]').waitFor();
     await second.locator('.shell[data-shell-mode="launcher"]').waitFor();
     await setMode("desktop", second);
     await synchronized(page, second);
-    await page.getByRole("button", { name: "Desktop", exact: true }).click();
+    await page.locator(".topbar__mode").getByRole("button", { name: "Desktop", exact: true }).click();
     await page.locator('.shell[data-shell-mode="desktop"]').waitFor();
-    await page.getByRole("button", { name: "Launcher", exact: true }).click();
+    await page.locator(".topbar__mode").getByRole("button", { name: "Launcher", exact: true }).click();
     await page.locator('.shell[data-shell-mode="launcher"]').waitFor();
     assert.equal(await second.locator(".shell").getAttribute("data-shell-mode"), "desktop");
     const sameProfileTab = await secondContext.newPage();
