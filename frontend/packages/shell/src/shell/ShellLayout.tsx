@@ -132,20 +132,21 @@ export function ShellLayout({ snapshot, live }: { snapshot: ShellSnapshotV1; liv
     if (next === "desktop" && isMobile()) showToast({ message: t("perf.desktopMobile"), variant: "warning", duration: 6000 });
   };
   const glassEngine = workspace.effective.appearance.glassEngine ?? "canvas";
+  const ultra = workspace.effective.appearance.ultraPerformance === true;
   const systemMode = useSystemMode();
   const scheme = workspace.effective.appearance.mode ?? systemMode;
   const wallpaper = resolveWallpaper(tokens["texture.wallpaper"]);
   const wallpaperUrl = /^url\((.*)\)$/.exec(wallpaper)?.[1]?.replace(/^["']|["']$/g, "") ?? null;
   const media = useTestMedia();
-  const showVideo = media.video !== null;
-  const mediaSrc = showVideo ? media.video : media.image ?? wallpaperUrl;
+  const showVideo = media.video !== null && !ultra;
+  const mediaSrc = ultra ? null : showVideo ? media.video : media.image ?? wallpaperUrl;
   useEffect(() => {
     if (typeof document === "undefined") return;
     // The reference stylesheet keys its light theme off `body.light`.
     document.body.classList.toggle("light", scheme === "light");
   }, [scheme]);
   const appearance = workspace.effective.appearance;
-  const performanceMode = appearance.performanceMode === true;
+  const performanceMode = appearance.performanceMode === true || ultra;
   const animations = appearance.animations !== false && !performanceMode;
   // Transparency is the base layer; glass only works with transparency on.
   const transparencyOff = performanceMode || Number(tokens["material.opacity"]) >= 1 || Number(tokens["material.morphism"]) <= 0;
@@ -210,6 +211,25 @@ export function ShellLayout({ snapshot, live }: { snapshot: ShellSnapshotV1; liv
     raf = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(raf);
   }, []);
+  // On very weak devices, *suggest* the ultra performance mode once. It is never
+  // enabled automatically, and is not shown again after being handled.
+  useEffect(() => {
+    if (typeof navigator === "undefined" || typeof localStorage === "undefined") return;
+    if (ultra || localStorage.getItem("rumahl.ultra.prompt")) return;
+    const cores = navigator.hardwareConcurrency || 8;
+    const memory = (navigator as Navigator & { deviceMemory?: number }).deviceMemory || 8;
+    if (cores > 2 && memory > 2) return;
+    localStorage.setItem("rumahl.ultra.prompt", "1");
+    showToast({
+      message: t("perf.ultraSuggest"),
+      variant: "info",
+      duration: null,
+      buttons: [
+        { label: t("perf.ultraEnable"), variant: "primary", onClick: () => void workspace.save("device", { ...workspace.effective, appearance: { ...workspace.effective.appearance, ultraPerformance: true } }) },
+        { label: t("perf.dismiss") }
+      ]
+    });
+  }, [ultra, t, workspace]);
   // While running, only *suggest* reducing glass (the drop may be another app).
   useEffect(() => subscribeGlassMetrics((metrics) => {
     // Automatic, escalating response to *sustained* slowness (ignores momentary
@@ -278,7 +298,7 @@ export function ShellLayout({ snapshot, live }: { snapshot: ShellSnapshotV1; liv
     return () => { document.adoptedStyleSheets = previous; };
   }, [theme.css]);
   return <ShellContext value={{ snapshot, live, state, dispatch, mode, setMode, open }}>
-    <div className={`scene shell${showVideo ? "" : " image-mode"}${appearance.wallpaperMotion === false || svgActive || performanceMode ? " no-motion" : ""}`} data-theme={theme.id} data-material={material} data-glass={glassEngine} data-scheme={scheme} data-maximized={windowMaximized ? "true" : undefined} data-launcher={launcherWindow ? "app" : undefined} data-inactive={inactive ? "true" : undefined} data-debug={debug ? "true" : undefined} data-animations={animations ? undefined : "off"} data-shell-build={snapshot.shellBuildId} data-shell-mode={mode} data-os-mode={osMode.mode} data-preferences-revision={preferences.preferences?.revision}>
+    <div className={`scene shell${showVideo ? "" : " image-mode"}${appearance.wallpaperMotion === false || svgActive || performanceMode ? " no-motion" : ""}`} data-theme={theme.id} data-material={material} data-glass={glassEngine} data-scheme={scheme} data-perf={ultra ? "ultra" : undefined} data-maximized={windowMaximized ? "true" : undefined} data-launcher={launcherWindow ? "app" : undefined} data-inactive={inactive ? "true" : undefined} data-debug={debug ? "true" : undefined} data-animations={animations ? undefined : "off"} data-shell-build={snapshot.shellBuildId} data-shell-mode={mode} data-os-mode={osMode.mode} data-preferences-revision={preferences.preferences?.revision}>
       <div className="wallpaper media-wall" aria-hidden="true">
         {showVideo
           ? media.video ? <WallpaperVideo key={media.video} src={media.video} />

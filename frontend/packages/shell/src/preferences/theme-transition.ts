@@ -32,7 +32,7 @@ function waitForSchemeChange(before: string | null, timeout: number): Promise<vo
 /** Runs `update`; when supported, cross-fades the whole UI around the change. */
 export function withThemeTransition(update: () => void): void {
   const start = typeof document === "undefined" ? null : startViewTransition();
-  if (!start || window.matchMedia?.("(prefers-reduced-motion: reduce)").matches) {
+  if (!start || document.querySelector('.shell[data-perf="ultra"]') || window.matchMedia?.("(prefers-reduced-motion: reduce)").matches) {
     update();
     return;
   }

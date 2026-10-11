@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 import { useTheme } from "@rumahl/ui";
-import { MoonIcon, PulseIcon, SettingsIcon, SparkIcon } from "../icons";
+import { BoltIcon, MoonIcon, PulseIcon, SettingsIcon, SparkIcon } from "../icons";
 import { useI18n } from "../i18n";
 import type { MessageKey } from "../i18n/locales/en";
 import { useThemeTuning } from "../preferences/theme-tuning";
@@ -20,6 +20,7 @@ export function ControlCenter({ protection, state, error, onOpenSettings, onClos
   const transparency = Number(tokens["material.opacity"]) < 1 && Number(tokens["material.morphism"]) > 0;
   const animations = tuning.tuning.animations !== false;
   const performance = tuning.tuning.performanceMode === true;
+  const ultra = tuning.tuning.ultraPerformance === true;
 
   const tile = (active: boolean, onClick: () => void, icon: ReactNode, label: string) =>
     <button type="button" className={`control-center__tile${active ? " is-on" : ""}`} aria-pressed={active} onClick={onClick}>
@@ -32,6 +33,7 @@ export function ControlCenter({ protection, state, error, onOpenSettings, onClos
       {tile(transparency, () => tuning.setTransparency(!transparency), <SparkIcon />, t("controlCenter.transparency"))}
       {tile(animations, () => tuning.setAnimations(!animations), <PulseIcon />, t("controlCenter.animations"))}
       {tile(performance, () => tuning.setPerformanceMode(!performance), <SettingsIcon />, t("controlCenter.performance"))}
+      {tile(ultra, () => tuning.setUltraPerformance(!ultra), <BoltIcon />, t("controlCenter.ultra"))}
     </div>
     <div className="control-center__status" data-state={state}>
       <span className="menubar__dot" aria-hidden="true" />{protection}

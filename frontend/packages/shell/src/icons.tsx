@@ -91,6 +91,14 @@ export function SparkIcon(props: IconProps) {
   );
 }
 
+export function BoltIcon(props: IconProps) {
+  return (
+    <IconBase {...props}>
+      <path d="M13 2 4.5 13.5H11l-1 8.5 8.5-11.5H12z" />
+    </IconBase>
+  );
+}
+
 export function ArrowIcon(props: IconProps) {
   return (
     <IconBase {...props}>

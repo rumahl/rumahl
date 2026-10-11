@@ -163,6 +163,10 @@ export function useThemeTuning() {
     (performanceMode: boolean) => persist({ ...tuning, performanceMode }),
     [tuning, persist],
   );
+  const setUltraPerformance = useCallback(
+    (ultraPerformance: boolean) => persist({ ...tuning, ultraPerformance }),
+    [tuning, persist],
+  );
   const setMaterialPreset = useCallback(
     (preset: "clear" | "soft" | "bold" | "solid") => {
       const values = {
@@ -203,6 +207,7 @@ export function useThemeTuning() {
     setGlassReduced,
     setAnimations,
     setPerformanceMode,
+    setUltraPerformance,
     setMaterialPreset,
     reset,
   };
