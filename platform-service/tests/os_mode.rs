@@ -37,6 +37,7 @@ async fn raising_the_mode_requires_reauthentication() {
         backend: shell_backend(&accounts, &root.join("platform.sqlite"), "test", "en").unwrap(),
         browser_sessions: Some(sessions.clone()),
         login_slots: Arc::new(tokio::sync::Semaphore::new(2)),
+        audit: None,
         events: Arc::new(InMemoryShellEvents::new(8)),
         widgets: Arc::new(NoWidgets),
         streams: None,

@@ -4,9 +4,12 @@
 mod backend;
 mod events;
 mod oidc;
+mod sensors;
 mod server;
 mod ssr;
 mod streams;
+
+pub use sensors::{Sensors, read_sensors};
 
 pub use backend::{
     PlatformShellBackend, ShellAuthenticationError, ShellBackend, ShellBackendError, ShellIdentity,
