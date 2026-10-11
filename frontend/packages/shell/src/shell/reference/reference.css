@@ -18,7 +18,7 @@
   --menu: rgba(14, 19, 34, 0.55);
   --button: rgba(255, 255, 255, 0.105);
   --divider: rgba(255, 255, 255, 0.1);
-  --wall-dim: rgba(3, 5, 17, 0.07);
+  --wall-dim: rgba(3, 5, 17, 0.18);
 }
 * {
   box-sizing: border-box;
@@ -75,6 +75,7 @@ body {
   position: absolute;
   inset: 0;
   overflow: hidden;
+  isolation: isolate;
   transition:
     filter 0.45s,
     transform 0.6s;
@@ -126,6 +127,8 @@ body {
   content: "";
   position: absolute;
   inset: 0;
+  z-index: 1;
+  pointer-events: none;
   background: var(--wall-dim);
 }
 .wallpaper:after {

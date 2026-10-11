@@ -5,28 +5,35 @@ import { useShellApps, type ShellApp } from "../../apps/useShellApps";
 import { useI18n } from "../../i18n";
 import { useShellPreferences } from "../../preferences/ShellPreferences";
 import { useWorkspace } from "../../preferences/Workspace";
-import { setDesktopPosition, useDesktopPositions, clampDesktopPosition, desktopPositionInBounds, getDesktopPositions } from "./desktop-positions";
 import { ShellLink } from "../../routing/ShellLink";
 import { useShell } from "../ShellContext";
+import { useDesktopFiles, type DesktopFile } from "../desktop-files";
+import { FileIcon, FolderIcon } from "../../apps/files/icons";
 import { DesktopContextMenu, type DesktopMenuState } from "./DesktopContextMenu";
 import { useDesktopLayout } from "./desktop-layout";
 import { DesktopWidgets } from "./DesktopWidgets";
+import { createCellStore, gridMetrics, nearestFreeCell, resolveCells, useGridSize, type GridCell } from "./free-grid";
 import { rectsIntersect, type SelectionRect } from "./geometry";
 
-/** Nominal icon footprint used to keep free positions inside the container. */
-const ICON_FOOTPRINT = { width: 96, height: 104 };
-/** Gap between desktop grid cells (matches `.desktop-grid`). */
-const ICON_GAP = 6;
+/** Nominal grid cell (content + gap) used by the free desktop grid. */
+const CELL = { width: 96, height: 106 };
+const GAP = 6;
+
+/** Grid cells of every desktop item; the layout adapts to the container size. */
+export const desktopCells = createCellStore("rumahl.desktop.cells");
+
+interface DesktopItem { id: string; kind: "folder" | "app" | "file"; app?: ShellApp; folderId?: string; name: string; file?: DesktopFile }
 
 export function DesktopHome() {
   const { t } = useI18n();
-  const { snapshot, state, dispatch, open } = useShell();
+  const { snapshot, state, dispatch, open, live } = useShell();
   const settings = useShellPreferences();
   const workspace = useWorkspace();
   const apps = useShellApps();
   const byId = useMemo(() => new Map(apps.map((app) => [app.id, app])), [apps]);
   const layout = useDesktopLayout(apps.map((app) => app.id));
-  const positions = useDesktopPositions();
+  const storedCells = desktopCells.use();
+  const desktopFiles = useDesktopFiles(live?.request ?? null);
   const suppressClick = useRef(false);
   const [selected, setSelected] = useState<ReadonlySet<string>>(new Set());
   const [menu, setMenu] = useState<DesktopMenuState | null>(null);
@@ -35,27 +42,8 @@ export function DesktopHome() {
   const [dragIcon, setDragIcon] = useState<null | { id: string; x: number; y: number }>(null);
   const shortcuts = useRef<HTMLDivElement>(null);
   const marqueeStart = useRef<{ x: number; y: number; base: ReadonlySet<string> } | null>(null);
-
-  // Repair stale or dragged-off-screen free positions (and keep them in bounds
-  // on resize) so an icon never hides past the container edge.
-  useEffect(() => {
-    const host = shortcuts.current;
-    if (!host) return;
-    const sanitize = () => {
-      const bounds = { width: host.clientWidth, height: host.clientHeight };
-      if (!bounds.width || !bounds.height) return;
-      for (const [id, position] of Object.entries(getDesktopPositions())) {
-        if (!desktopPositionInBounds(position, bounds, ICON_FOOTPRINT)) {
-          setDesktopPosition(id, clampDesktopPosition(position, bounds, ICON_FOOTPRINT));
-        }
-      }
-    };
-    sanitize();
-    if (typeof ResizeObserver === "undefined") return;
-    const observer = new ResizeObserver(sanitize);
-    observer.observe(host);
-    return () => observer.disconnect();
-  }, []);
+  const size = useGridSize(shortcuts);
+  const cols = useMemo(() => gridMetrics(size.width, size.height, CELL.width, CELL.height, GAP).cols, [size.width, size.height]);
 
   // A drag suppresses the click that follows its release; any *new* pointer
   // gesture (even outside an icon) must clear that flag so the next click is
@@ -72,30 +60,36 @@ export function DesktopHome() {
   const hidden = layout.layout.hidden.map((id) => byId.get(id)).filter((app): app is ShellApp => app !== undefined);
   const menuApp = menu?.appId ? byId.get(menu.appId) : undefined;
 
-  // Apply free positions with CSSOM: the shell's strict style-src CSP blocks an
-  // inline `style` attribute (React's `style` prop), so positions must be set
-  // through `element.style` — like `ProtectedWindow` does for windows.
+  const items = useMemo<DesktopItem[]>(() => {
+    const list: DesktopItem[] = [];
+    if (!currentFolder) for (const entry of workspace.effective.folders) list.push({ id: `folder:${entry.id}`, kind: "folder", folderId: entry.id, name: entry.name });
+    for (const app of visible) list.push({ id: app.id, kind: "app", app, name: app.title });
+    if (!currentFolder) for (const file of desktopFiles.files) list.push({ id: `file:${file.id}`, kind: "file", name: file.name, file });
+    return list;
+  }, [currentFolder, workspace.effective.folders, visible, desktopFiles.files]);
+  // Enough rows to hold every item (never overlap); grows/scrolls if needed.
+  const rows = useMemo(() => Math.max(gridMetrics(size.width, size.height, CELL.width, CELL.height, GAP).rows, Math.ceil(items.length / Math.max(1, cols))), [size.width, size.height, items.length, cols]);
+  // Column-major like the macOS desktop: fill top-to-bottom, then the next column.
+  const effective = useMemo(() => resolveCells(items.map((item) => item.id), storedCells, cols, rows, "column"), [items, storedCells, cols, rows]);
+
+  // Position every item with CSSOM: the shell's strict style-src CSP blocks an
+  // inline `style` attribute, so positions are set through `element.style`.
   useLayoutEffect(() => {
     const host = shortcuts.current;
     if (!host) return;
-    for (const element of host.querySelectorAll<HTMLElement>("[data-app-id]")) {
-      const id = element.dataset.appId;
+    const stepX = CELL.width + GAP, stepY = CELL.height + GAP;
+    for (const element of host.querySelectorAll<HTMLElement>("[data-grid-id]")) {
+      const id = element.dataset.gridId;
       if (!id) continue;
       const dragging = dragIcon?.id === id ? dragIcon : null;
-      const position = dragging ?? positions[id];
-      if (position) {
-        element.style.position = "absolute";
-        element.style.left = `${position.x}px`;
-        element.style.top = `${position.y}px`;
-        element.style.zIndex = dragging ? "5" : "";
-      } else {
-        element.style.removeProperty("position");
-        element.style.removeProperty("left");
-        element.style.removeProperty("top");
-        element.style.removeProperty("z-index");
-      }
+      const cell: GridCell | undefined = effective[id];
+      const point = dragging ?? (cell ? { x: cell.col * stepX, y: cell.row * stepY } : { x: 0, y: 0 });
+      element.style.position = "absolute";
+      element.style.left = `${point.x}px`;
+      element.style.top = `${point.y}px`;
+      element.style.zIndex = dragging ? "5" : "";
     }
-  }, [visible, positions, dragIcon]);
+  }, [items, effective, dragIcon]);
 
   const toggleSelected = useCallback((id: string, additive: boolean) => {
     setSelected((previous) => {
@@ -109,6 +103,14 @@ export function DesktopHome() {
   function navigate(app: ShellApp) {
     rememberRecent(app.path);
     open(app.path);
+  }
+
+  function openFile(file: DesktopFile) {
+    if (file.directory) { open("/app/files"); return; }
+    const link = document.createElement("a");
+    link.href = `/api/v1/files/content?id=${encodeURIComponent(file.id)}`;
+    link.download = file.name;
+    link.click();
   }
 
   function onIconClick(app: ShellApp, event: MouseEvent) {
@@ -163,13 +165,10 @@ export function DesktopHome() {
   function beginFreeDrag(app: ShellApp, event: PointerEvent<HTMLElement>) {
     if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey) return;
     const host = shortcuts.current;
-    const element = event.currentTarget as HTMLElement;
     if (!host) return;
-    const box = host.getBoundingClientRect();
-    const icon = element.getBoundingClientRect();
-    // Add the scroll offset: `getBoundingClientRect` is viewport-relative while
-    // an absolute position is relative to the (unscrolled) container.
-    const origin = positions[app.id] ?? { x: icon.left - box.left + host.scrollLeft, y: icon.top - box.top + host.scrollTop };
+    const stepX = CELL.width + GAP, stepY = CELL.height + GAP;
+    const cell = effective[app.id] ?? { col: 0, row: 0 };
+    const origin = { x: cell.col * stepX, y: cell.row * stepY };
     const startX = event.clientX, startY = event.clientY;
     let moved = false;
     setDragIcon({ id: app.id, x: origin.x, y: origin.y });
@@ -188,12 +187,9 @@ export function DesktopHome() {
       if (moved) {
         suppressClick.current = true;
         const { clientX, clientY } = up as unknown as { clientX: number; clientY: number };
-        const dx = clientX - startX, dy = clientY - startY;
-        const bounds = { width: host.clientWidth, height: host.clientHeight };
-        const footprint = { width: element.offsetWidth || ICON_FOOTPRINT.width, height: element.offsetHeight || ICON_FOOTPRINT.height };
-        const stepX = ICON_FOOTPRINT.width + ICON_GAP, stepY = ICON_FOOTPRINT.height + ICON_GAP;
-        const snapped = { x: Math.round((origin.x + dx) / stepX) * stepX, y: Math.round((origin.y + dy) / stepY) * stepY };
-        setDesktopPosition(app.id, clampDesktopPosition(snapped, bounds, footprint));
+        const target = { col: Math.round((origin.x + (clientX - startX)) / stepX), row: Math.round((origin.y + (clientY - startY)) / stepY) };
+        const taken = items.filter((item) => item.id !== app.id).map((item) => effective[item.id]).filter((value): value is GridCell => value !== undefined);
+        desktopCells.set(app.id, nearestFreeCell(target, taken, cols, rows));
       }
       setDragIcon(null);
     };
@@ -216,35 +212,44 @@ export function DesktopHome() {
     });
   }
 
-  return <main className="desktop-home" aria-label={t("desktop.label")} onContextMenu={openShortcutsMenu}>
+  return <main className="desktop-home" aria-label={t("desktop.label")} onContextMenu={openShortcutsMenu}
+    onDragOver={(event) => { if (Array.from(event.dataTransfer.types).includes("Files")) event.preventDefault(); }}
+    onDrop={(event) => { const dropped = event.dataTransfer?.files; if (!dropped || dropped.length === 0) return; event.preventDefault(); for (const file of Array.from(dropped)) void desktopFiles.upload(file); }}>
     <div ref={shortcuts} className="desktop-shortcuts" onPointerDown={beginMarquee} onPointerMove={moveMarquee} onPointerUp={endMarquee} onPointerCancel={endMarquee}>
       <div className="desktop-grid" role="group" aria-label={t("desktop.shortcuts")}>
-        {!currentFolder ? workspace.effective.folders.map((item) => <button key={item.id} type="button" className="desktop-icon desktop-app" onClick={() => { setFolder(item.id); setSelected(new Set()); }}>
-          <span className="desktop-icon__art folder-preview" aria-hidden="true">{item.apps.slice(0, 9).map((id) => { const app = byId.get(id); return app ? <span key={id}><AppIcon app={app} /></span> : null; })}</span>
-          <span className="desktop-icon__label">{item.name}</span>
-        </button>) : null}
-        {currentFolder ? <button type="button" className="desktop-icon desktop-app" onClick={() => setFolder(null)}>
+        {items.map((item) => item.kind === "folder"
+          ? <button key={item.id} type="button" className="desktop-icon desktop-app" data-grid-id={item.id} onClick={() => { setFolder(item.folderId!); setSelected(new Set()); }}>
+            <span className="desktop-icon__art folder-preview" aria-hidden="true">{(workspace.effective.folders.find((entry) => entry.id === item.folderId)?.apps ?? []).slice(0, 9).map((id) => { const app = byId.get(id); return app ? <span key={id}><AppIcon app={app} /></span> : null; })}</span>
+            <span className="desktop-icon__label">{item.name}</span>
+          </button>
+          : item.kind === "file"
+          ? <button key={item.id} type="button" className="desktop-icon desktop-app" data-grid-id={item.id}
+              onDoubleClick={() => openFile(item.file!)}
+              onContextMenu={(event) => { event.preventDefault(); event.stopPropagation(); }}>
+              <span className="desktop-icon__art is-file" aria-hidden="true">{item.file!.directory ? <FolderIcon /> : <FileIcon />}</span>
+              <span className="desktop-icon__label">{item.name}</span>
+            </button>
+          : <ShellLink
+            key={item.id}
+            to={item.app!.path}
+            className={`desktop-icon desktop-app${selected.has(item.id) ? " is-selected" : ""}`}
+            data-grid-id={item.id}
+            data-app-id={item.id}
+            aria-pressed={selected.has(item.id)}
+            draggable={false}
+            onClick={(event) => onIconClick(item.app!, event)}
+            onKeyDown={(event) => onIconKeyDown(item.app!, event)}
+            onPointerDown={(event) => beginFreeDrag(item.app!, event)}
+            onDragStart={(event) => event.preventDefault()}
+            onContextMenu={(event) => { event.preventDefault(); event.stopPropagation(); setSelected(new Set([item.id])); setMenu({ x: event.clientX, y: event.clientY, appId: item.id }); }}
+          >
+            <span className={`desktop-icon__art${item.app!.system ? " is-system" : ""}`} aria-hidden="true"><AppIcon app={item.app!} /></span>
+            <span className="desktop-icon__label">{item.app!.title}</span>
+          </ShellLink>)}
+        {currentFolder ? <button type="button" className="desktop-icon desktop-app" data-grid-id="folder:back" onClick={() => setFolder(null)}>
           <span className="desktop-icon__art" aria-hidden="true">←</span>
           <span className="desktop-icon__label">{t("workspace.back")}</span>
         </button> : null}
-        {visible.map((app) => {
-          return <ShellLink
-            key={app.id}
-            to={app.path}
-            className={`desktop-icon desktop-app${selected.has(app.id) ? " is-selected" : ""}`}
-            data-app-id={app.id}
-            aria-pressed={selected.has(app.id)}
-            draggable={false}
-            onClick={(event) => onIconClick(app, event)}
-            onKeyDown={(event) => onIconKeyDown(app, event)}
-            onPointerDown={(event) => beginFreeDrag(app, event)}
-            onDragStart={(event) => event.preventDefault()}
-            onContextMenu={(event) => { event.preventDefault(); event.stopPropagation(); setSelected(new Set([app.id])); setMenu({ x: event.clientX, y: event.clientY, appId: app.id }); }}
-          >
-            <span className={`desktop-icon__art${app.system ? " is-system" : ""}`} aria-hidden="true"><AppIcon app={app} /></span>
-            <span className="desktop-icon__label">{app.title}</span>
-          </ShellLink>;
-        })}
       </div>
       {marquee ? <span className="desktop-marquee" aria-hidden="true" ref={(element) => {
         if (!element) return;

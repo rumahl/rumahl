@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent } from "react";
 import { createPortal } from "react-dom";
 import { AppIcon, AppTile } from "../../apps/AppTile";
 import { useShellApps } from "../../apps/useShellApps";
@@ -7,14 +7,18 @@ import { useWorkspace } from "../../preferences/Workspace";
 import { useShell } from "../ShellContext";
 import { useClock } from "../clock";
 import { SearchIcon } from "../../icons";
-import { applyOrder, moveInOrder, paginate, setLauncherOrder, useLauncherOrder } from "./launcher-order";
+import { createCellStore, gridMetrics, nearestFreeCell, resolveCells, useGridSize, type GridCell } from "../desktop/free-grid";
+import { applyOrder, useLauncherOrder } from "./launcher-order";
 import { LauncherMenu, type LauncherMenuItem } from "./LauncherMenu";
 
-const ROWS = 4;
-const MIN_CELL = 76;
+/** Nominal springboard cell (content + gap) used by the free grid. */
+const CELL = { width: 92, height: 104 };
 const GAP = 12;
 
-interface DragState { id: string; from: number; to: number; x: number; y: number; moved: boolean; width: number }
+/** Grid cells of every springboard item; the layout adapts to the container. */
+const launcherCells = createCellStore("rumahl.launcher.cells");
+
+interface DragState { id: string; x: number; y: number; moved: boolean; width: number }
 
 /**
  * Mirrors the shell's material mode. Portaled overlays live outside `.shell`, so
@@ -35,10 +39,10 @@ function useShellMaterial(): "solid" | "translucent" {
 }
 
 /**
- * The launcher springboard: a single free surface with pages. Icons can be
- * rearranged only in edit mode (drag onto one another to reorder — a gap opens
- * live — or onto a folder to file them). Recently used apps are not shown
- * separately. Folders open in an overlay.
+ * The launcher springboard: a single free grid of apps and folders. Items are
+ * laid out on responsive cells (never overlapping); rearranging happens only in
+ * edit mode (long-press to enter) — drag onto a cell to move, onto a folder to
+ * file the app in. Folders open in an overlay.
  */
 export function LauncherHome() {
   const { t, locale } = useI18n();
@@ -46,11 +50,10 @@ export function LauncherHome() {
   const apps = useShellApps();
   const { effective, save } = useWorkspace();
   const order = useLauncherOrder();
+  const storedCells = launcherCells.use();
   const [query, setQuery] = useState("");
   const [folder, setFolder] = useState<string | null>(null);
   const [editing, setEditing] = useState(false);
-  const [page, setPage] = useState(0);
-  const [cols, setCols] = useState(4);
   const [drag, setDrag] = useState<DragState | null>(null);
   const [dropFolder, setDropFolder] = useState<string | null>(null);
   const [renaming, setRenaming] = useState<string | null>(null);
@@ -59,23 +62,13 @@ export function LauncherHome() {
   const outDragRef = useRef<null | { folderId: string; appId: string }>(null);
   const [menu, setMenu] = useState<null | { x: number; y: number; appId?: string; folderId?: string }>(null);
   const now = useClock();
-  const swipe = useRef<number | null>(null);
   const press = useRef<null | { timer: number; x: number; y: number }>(null);
   const material = useShellMaterial();
   const board = useRef<HTMLDivElement>(null);
   const suppressClick = useRef(false);
-  const gesture = useRef<null | { pointer: number; x: number; y: number; to: number; folder: string | null }>(null);
-
-  useEffect(() => {
-    const host = board.current;
-    if (!host) return;
-    const measure = () => setCols(Math.max(2, Math.floor((host.clientWidth + GAP) / (MIN_CELL + GAP))));
-    measure();
-    if (typeof ResizeObserver === "undefined") return;
-    const observer = new ResizeObserver(measure);
-    observer.observe(host);
-    return () => observer.disconnect();
-  }, []);
+  const gesture = useRef<null | { pointer: number; x: number; y: number; folder: string | null }>(null);
+  const size = useGridSize(board);
+  const cols = useMemo(() => gridMetrics(size.width, size.height, CELL.width, CELL.height, GAP).cols, [size.width, size.height]);
 
   // A drag suppresses the click that follows its release; any *new* pointer
   // gesture (even outside the board) must clear that flag so the next click
@@ -86,25 +79,38 @@ export function LauncherHome() {
     return () => window.removeEventListener("pointerdown", clear, true);
   }, []);
 
-  const pageSize = cols * ROWS;
   const byId = useMemo(() => new Map(apps.map((app) => [app.id, app])), [apps]);
   const folderIds = useMemo(() => effective.folders.map((item) => item.id), [effective.folders]);
   const orderedTokens = useMemo(() => applyOrder([...apps.map((app) => app.id), ...folderIds], order), [apps, folderIds, order]);
   const filedAppIds = useMemo(() => new Set(effective.folders.flatMap((item) => item.apps)), [effective.folders]);
   const normalized = query.trim().toLocaleLowerCase();
   const currentFolder = effective.folders.find((item) => item.id === folder);
-  useEffect(() => { setPage(0); }, [query, pageSize]);
 
   // The board mixes apps and folders: a folder is a token that renders its own
   // tile, and the apps filed into it no longer appear on the board themselves.
-  const rootTokens = useMemo(
+  const items = useMemo(
     () => orderedTokens.filter((token) => byId.has(token) ? !filedAppIds.has(token) : true),
     [orderedTokens, byId, filedAppIds]
   );
-  const boardTokens = drag && drag.moved && drag.to !== drag.from ? moveInOrder(rootTokens, drag.from, drag.to) : rootTokens;
-  const pages = useMemo(() => paginate(boardTokens, pageSize), [boardTokens, pageSize]);
-  const activePage = Math.min(page, pages.length - 1);
+  const rows = useMemo(() => Math.max(gridMetrics(size.width, size.height, CELL.width, CELL.height, GAP).rows, Math.ceil(items.length / Math.max(1, cols))), [size.width, size.height, items.length, cols]);
+  const cellOf = useMemo(() => resolveCells(items, storedCells, cols, rows, "row"), [items, storedCells, cols, rows]);
   const results = normalized ? apps.filter((app) => `${app.title} ${app.id}`.toLocaleLowerCase().includes(normalized)) : [];
+
+  // Position items with CSSOM (the strict style-src CSP blocks a `style` prop).
+  useLayoutEffect(() => {
+    const host = board.current;
+    if (!host) return;
+    const stepX = CELL.width + GAP, stepY = CELL.height + GAP;
+    for (const element of host.querySelectorAll<HTMLElement>("[data-grid-id]")) {
+      const id = element.dataset.gridId;
+      const cell: GridCell | undefined = id ? cellOf[id] : undefined;
+      if (!id || !cell) continue;
+      element.style.position = "absolute";
+      element.style.left = `${cell.col * stepX}px`;
+      element.style.top = `${cell.row * stepY}px`;
+      element.style.opacity = drag?.moved && drag.id === id ? "0" : "";
+    }
+  }, [items, cellOf, drag]);
 
   const clock = now ? new Intl.DateTimeFormat(locale, { hour: "2-digit", minute: "2-digit" }).format(now) : "";
   const date = now ? new Intl.DateTimeFormat(locale, { weekday: "long", day: "numeric", month: "long" }).format(now) : "";
@@ -114,7 +120,6 @@ export function LauncherHome() {
     : hour < 12 ? "launcher.greetingMorning"
     : hour < 18 ? "launcher.greetingAfternoon"
     : "launcher.greetingEvening";
-  const step = (delta: number) => setPage((value) => Math.min(Math.max(value + delta, 0), pages.length - 1));
 
   function persistFolders(folders: typeof effective.folders) {
     void save("device", { ...effective, folders });
@@ -145,7 +150,7 @@ export function LauncherHome() {
   }
   function beginOutDrag(folderId: string, appId: string, event: ReactPointerEvent<HTMLElement>) {
     if (!editing || event.button !== 0) return;
-    const width = event.currentTarget.getBoundingClientRect().width || MIN_CELL;
+    const width = event.currentTarget.getBoundingClientRect().width || CELL.width;
     outGesture.current = { pointer: event.pointerId, x: event.clientX, y: event.clientY, width };
     outDragRef.current = { folderId, appId };
     setOutDrag({ id: appId, x: event.clientX, y: event.clientY, width });
@@ -207,7 +212,6 @@ export function LauncherHome() {
 
   function onPointerDown(event: ReactPointerEvent) {
     if (event.button !== 0) return;
-    if (event.pointerType !== "mouse") swipe.current = event.clientX;
     if (editing) return;
     // iOS-style: a long press enters the jiggle/edit mode.
     const timer = window.setTimeout(() => { press.current = null; setEditing(true); }, 480);
@@ -220,31 +224,19 @@ export function LauncherHome() {
       press.current = null;
     }
   }
-  function onPointerUp(event: ReactPointerEvent) {
+  function onPointerUp() {
     if (press.current) { window.clearTimeout(press.current.timer); press.current = null; }
-    const start = swipe.current;
-    swipe.current = null;
-    if (start === null || drag || currentFolder) return;
-    const distance = event.clientX - start;
-    if (Math.abs(distance) >= 60) step(distance < 0 ? 1 : -1);
-  }
-  function onPointerCancelPress() {
-    if (press.current) { window.clearTimeout(press.current.timer); press.current = null; }
-    swipe.current = null;
   }
   function onKeyDown(event: ReactKeyboardEvent) {
     if ((event.target as HTMLElement).closest("input, textarea, select")) return;
-    if (event.key === "ArrowRight") { event.preventDefault(); step(1); }
-    else if (event.key === "ArrowLeft") { event.preventDefault(); step(-1); }
-    else if (event.key === "Escape" && currentFolder) { event.preventDefault(); setFolder(null); }
+    if (event.key === "Escape" && currentFolder) { event.preventDefault(); setFolder(null); }
   }
 
-  function beginDrag(index: number, id: string, event: ReactPointerEvent<HTMLElement>) {
+  function beginDrag(token: string, event: ReactPointerEvent<HTMLElement>) {
     if (!editing || event.button !== 0) return;
-    const cell = event.currentTarget.closest<HTMLElement>(".springboard-cell");
-    const width = cell?.getBoundingClientRect().width ?? MIN_CELL;
-    gesture.current = { pointer: event.pointerId, x: event.clientX, y: event.clientY, to: index, folder: null };
-    setDrag({ id, from: index, to: index, x: event.clientX, y: event.clientY, moved: false, width });
+    const width = event.currentTarget.closest<HTMLElement>(".springboard-cell")?.getBoundingClientRect().width ?? CELL.width;
+    gesture.current = { pointer: event.pointerId, x: event.clientX, y: event.clientY, folder: null };
+    setDrag({ id: token, x: event.clientX, y: event.clientY, moved: false, width });
     event.currentTarget.setPointerCapture?.(event.pointerId);
   }
   function moveDrag(event: ReactPointerEvent) {
@@ -254,13 +246,9 @@ export function LauncherHome() {
     if (Math.abs(dx) + Math.abs(dy) > 6) {
       const element = document.elementFromPoint(event.clientX, event.clientY);
       const folderEl = drag && byId.has(drag.id) ? element?.closest<HTMLElement>("[data-folder-id]") : null;
-      const cellEl = element?.closest<HTMLElement>("[data-springboard-index]");
-      const nextFolder = folderEl?.dataset.folderId ?? null;
-      const nextTo = !nextFolder && cellEl ? Number(cellEl.dataset.springboardIndex) : entry.to;
-      entry.folder = nextFolder;
-      if (Number.isInteger(nextTo)) entry.to = nextTo;
-      setDropFolder(nextFolder);
-      setDrag((previous) => previous ? { ...previous, moved: true, to: entry.to, x: event.clientX, y: event.clientY } : previous);
+      entry.folder = folderEl?.dataset.folderId ?? null;
+      setDropFolder(entry.folder);
+      setDrag((previous) => previous ? { ...previous, moved: true, x: event.clientX, y: event.clientY } : previous);
     } else {
       setDrag((previous) => previous ? { ...previous, x: event.clientX, y: event.clientY } : previous);
     }
@@ -272,7 +260,13 @@ export function LauncherHome() {
     if (drag?.moved) {
       suppressClick.current = true;
       if (entry.folder && byId.has(drag.id)) fileIntoFolder(entry.folder, drag.id);
-      else if (entry.to !== drag.from) setLauncherOrder(moveInOrder(rootTokens, drag.from, entry.to));
+      else {
+        const box = board.current?.getBoundingClientRect();
+        const stepX = CELL.width + GAP, stepY = CELL.height + GAP;
+        const target = { col: Math.round((event.clientX - (box?.left ?? 0)) / stepX), row: Math.round((event.clientY - (box?.top ?? 0)) / stepY) };
+        const taken = items.filter((token) => token !== drag.id).map((token) => cellOf[token]).filter((value): value is GridCell => value !== undefined);
+        launcherCells.set(drag.id, nearestFreeCell(target, taken, cols, rows));
+      }
     }
     setDrag(null);
     setDropFolder(null);
@@ -292,21 +286,19 @@ export function LauncherHome() {
       <div className="app-grid">{results.map((app) => <AppTile app={app} key={app.id} />)}</div>
       {results.length === 0 ? <p role="status" className="launcher-empty">{t("launcher.noResults")}</p> : null}
     </section> : <div className={`launcher-board${editing ? " is-editing" : ""}`} ref={board} onContextMenu={(event) => openMenu(event)}
-      onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={onPointerUp} onPointerCancel={onPointerCancelPress} onKeyDown={onKeyDown} tabIndex={0}>
-      <div className="springboard-grid" ref={(element) => { if (element) element.style.setProperty("grid-template-columns", `repeat(${cols}, 1fr)`); }}>
-        {pages[activePage]!.map((token, localIndex) => {
-          const index = activePage * pageSize + localIndex;
-          const placeholder = drag?.moved && drag.id === token;
+      onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={onPointerUp} onKeyDown={onKeyDown} tabIndex={0}>
+      <div className="springboard-grid">
+        {items.map((token) => {
           const app = byId.get(token);
           const folderItem = app ? undefined : effective.folders.find((item) => item.id === token);
           if (!app && !folderItem) return null;
-          return <div key={token} data-springboard-index={index} data-folder-id={folderItem?.id}
-            className={`springboard-cell${placeholder ? " is-placeholder" : ""}`}
-            onPointerDown={(event) => beginDrag(index, token, event)} onPointerMove={moveDrag} onPointerUp={endDrag} onPointerCancel={endDrag}
+          return <div key={token} data-grid-id={token} data-folder-id={folderItem?.id}
+            className="springboard-cell"
+            onPointerDown={(event) => beginDrag(token, event)} onPointerMove={moveDrag} onPointerUp={endDrag} onPointerCancel={endDrag}
             onDragStart={(event) => event.preventDefault()}
             onContextMenu={(event) => openMenu(event, app ? { appId: token } : { folderId: token })}
             onClickCapture={(event) => { if (suppressClick.current || editing) { event.preventDefault(); event.stopPropagation(); suppressClick.current = false; } }}>
-            {placeholder ? null : app
+            {app
               ? <AppTile app={app} />
               : renaming === token
                 ? <input className="launcher-rename" autoFocus defaultValue={folderItem!.name} maxLength={128}
@@ -323,10 +315,6 @@ export function LauncherHome() {
     </div>}
 
     <footer className="launcher-footer">
-      {!normalized && !currentFolder && pages.length > 1 ? <nav className="launcher-pages" aria-label={t("launcher.pages")}>
-        {pages.map((_, index) => <button key={index} type="button" aria-current={index === activePage ? "page" : undefined}
-          aria-label={t("launcher.page", { page: index + 1 })} onClick={() => setPage(index)} />)}
-      </nav> : null}
       {!currentFolder ? <label className="launcher-search">
         <SearchIcon aria-hidden="true" />
         <span>{t("launcher.search")}</span>

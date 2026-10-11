@@ -10,6 +10,7 @@ import {
   type AppearanceMode,
   type AppearanceSettings,
 } from "./Workspace";
+import { withThemeTransition } from "./theme-transition";
 
 export type AppearanceTuning = AppearanceSettings;
 export { parseAppearance } from "./Workspace";
@@ -60,7 +61,9 @@ export function useThemeTuning() {
     [tuning, persist],
   );
   const setMode = useCallback(
-    (mode: AppearanceMode | null) => persist({ ...tuning, mode }),
+    (mode: AppearanceMode | null) => {
+      withThemeTransition(() => persist({ ...tuning, mode }));
+    },
     [tuning, persist],
   );
   const setToken = useCallback(

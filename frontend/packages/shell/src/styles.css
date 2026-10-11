@@ -13,7 +13,9 @@
 @import "./shell/dock-indicators.css";
 @import "./shell/glass-surfaces.css";
 @import "./shell/launcher/launcher.css";
+@import "./shell/folders.css";
 @import "./shell/desktop/desktop-widgets.css";
+@import "./shell/desktop/free-grid.css";
 @import "./shell/topbar.css";
 
 @layer foundation {
@@ -1041,6 +1043,13 @@
 
 @view-transition { navigation: auto; }
 ::view-transition-group(root) { animation-duration: 240ms; }
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation-duration: 320ms;
+  animation-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+}
 @media (prefers-reduced-motion: reduce) {
   ::view-transition-group(*) { animation-duration: 0s; }
+  ::view-transition-old(*),
+  ::view-transition-new(*) { animation: none; }
 }
