@@ -4,13 +4,15 @@ import { applyTokens, defaultTokens, type Tokens } from "@rumahl/ui/tokens";
 import type { Theme } from "@rumahl/ui/themes";
 import { resolveWallpaper } from "./wallpapers";
 import { emptyAppearance, parseWorkspace } from "./preferences/Workspace";
-import { applyTuning } from "./preferences/theme-tuning";
+import { applyThemeTuning } from "./preferences/theme-tuning";
 
 /** Builds the server-resolved theme, substituting the bundled wallpaper. */
 export function buildSnapshotTheme(snapshot: ShellSnapshotV1): Theme {
-  const base: Tokens = { ...defaultTokens, ...(snapshot.theme.tokens as Partial<Tokens>) };
+  const registered = getTheme(snapshot.theme.id);
+  const base: Tokens = { ...defaultTokens, ...registered?.tokens, ...(snapshot.theme.tokens as Partial<Tokens>) };
   const tokens = { ...base, "texture.wallpaper": resolveWallpaper(base["texture.wallpaper"]) };
   return {
+    ...registered,
     id: snapshot.theme.id,
     name: snapshot.theme.id,
     tokens,
@@ -53,5 +55,5 @@ export function preloadAppearance(snapshot: ShellSnapshotV1): void {
   if (typeof document === "undefined") return;
   const serverTheme = buildSnapshotTheme(snapshot);
   const active = resolveActiveTheme(serverTheme, snapshot.theme.id);
-  applyTokens(document.documentElement, resolveTokens(applyTuning(active.tokens, tuningFromSnapshot(snapshot))));
+  applyTokens(document.documentElement, resolveTokens(applyThemeTuning(active, tuningFromSnapshot(snapshot))));
 }

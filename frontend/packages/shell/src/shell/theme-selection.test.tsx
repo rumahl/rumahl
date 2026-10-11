@@ -18,6 +18,9 @@ describe("theme selection", () => {
     fireEvent.click(classic);
     expect(classic).toHaveAttribute("aria-pressed", "true");
     expect(document.documentElement.style.getPropertyValue("--rumahl-ui-color-accent")).toBe("#3465a4");
+    expect(document.querySelector(".shell")).toHaveAttribute("data-material", "solid");
+    expect(screen.queryByRole("switch", { name: "Transparency effects" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("switch", { name: "Glass effects" })).not.toBeInTheDocument();
     expect(document.querySelector(".taskbar")).not.toBeNull();
     expect(document.querySelector(".os-dock")).toBeNull();
   });

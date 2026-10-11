@@ -52,6 +52,23 @@
   --control-filter: none;
 }
 
+/* Standalone inputs over wallpaper use the same control geometry and states.
+   Only the material changes; both RumahlInput and server-rendered auth use it. */
+.shell .rumahl-input[data-material="glass"] {
+  --control-fill: color-mix(
+    in srgb,
+    var(--rumahl-ui-color-surface-strong) 58%,
+    transparent
+  );
+  --control-hover: color-mix(
+    in srgb,
+    var(--rumahl-ui-color-surface-strong) 68%,
+    transparent
+  );
+  --control-filter: blur(clamp(16px, var(--rumahl-ui-material-blur), 32px))
+    saturate(var(--rumahl-ui-material-saturation));
+}
+
 .shell
   :is(
     .rumahl-input,
@@ -1134,6 +1151,15 @@
     600 13px/1 Inter,
     system-ui,
     sans-serif;
+}
+/* Wallpaper avatars use the shared theme material, including solid themes. */
+.rumahl-avatar[data-material="theme"] {
+  background: var(--surface-sheen), var(--surface-fill);
+  border-color: var(--surface-edge);
+  box-shadow: var(--surface-rim), var(--surface-elevation);
+  backdrop-filter: var(--surface-filter);
+  -webkit-backdrop-filter: var(--surface-filter);
+  color: var(--avatar-foreground, var(--rumahl-ui-color-text-primary));
 }
 .rumahl-avatar--sm {
   width: 28px;

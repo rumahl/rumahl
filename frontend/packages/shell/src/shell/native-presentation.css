@@ -682,8 +682,10 @@
 /* Desktop folder tiles reuse the launcher's mini-app preview. */
 .desktop-icon__art.folder-preview {
   display: grid;
-  grid-template-columns: repeat(2, 1fr);
-  gap: 4px;
+  grid-template-columns: repeat(3, 1fr);
+  grid-template-rows: repeat(3, 1fr);
+  place-items: stretch;
+  gap: 3px;
   padding: 6px;
   background: #ffffff30;
   backdrop-filter: blur(14px);
@@ -691,12 +693,16 @@
 .desktop-icon__art.folder-preview > span {
   display: grid;
   place-items: center;
-  border-radius: 5px;
+  overflow: hidden;
+  border-radius: 4px;
   background: #ffffff38;
 }
 .desktop-icon__art.folder-preview svg {
-  width: 15px;
-  height: 15px;
+  width: 13px;
+  height: 13px;
+}
+.desktop-icon__art.folder-preview .app-icon-glyph {
+  font-size: 0.52rem;
 }
 /* Classic taskbar shell variant (theme variant shell.layout = "taskbar"). */
 .shell .taskbar {

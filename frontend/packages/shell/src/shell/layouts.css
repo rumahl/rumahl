@@ -159,7 +159,7 @@
 .window-position.is-moving iframe, .shell-window:not(.is-focused) iframe { pointer-events: none; }
 .shell .section-placeholder { padding-top: 24px; }
 .shell-window__content .installed-app-frame { height: 100%; min-height: 260px; }
-.shell[data-shell-mode="launcher"] .shell-window__titlebar, .shell[data-shell-mode="launcher"] .window-resize { display: none !important; }
+.shell[data-shell-mode="launcher"] .window-resize { display: none !important; }
 .shell[data-shell-mode="launcher"] .shell-window { box-shadow: none; border-radius: 22px; border: 0; }
 .shell[data-shell-mode="launcher"] .shell-window__content { padding: 28px; }
 @media (max-width: 640px) {

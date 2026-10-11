@@ -22,7 +22,8 @@ pub use streams::{
 };
 
 mod browser_auth;
-pub use browser_auth::{BrowserSessions, SESSION_SECONDS};
+mod offline;
+pub use browser_auth::{BrowserSessions, LoginAccount, SESSION_SECONDS};
 
 mod apps;
 pub use apps::{

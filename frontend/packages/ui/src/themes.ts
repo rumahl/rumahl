@@ -1,10 +1,10 @@
 import { paletteTokens } from "./palette";
-import { themeColorValues } from "./color";
-import { defaultTokens, type TokenId, type Tokens } from "./tokens";
+import classicCss from "./classic.css?raw";
+import { defaultTokens, FONT_STACKS, type TokenId, type Tokens } from "./tokens";
 import { defaultVariants, type VariantSelection } from "./variants";
 import type { SlotName, SlotTemplate } from "./slots";
 
-const CLASSIC_COLORS = themeColorValues("#3465a4");
+const CLASSIC_PALETTE = paletteTokens("#3465a4");
 
 /**
  * A tunable theme parameter. Themes declare their own parameters; the shell
@@ -31,7 +31,9 @@ export interface ColorParameter extends ParameterBase {
   /** When true the control seeds the colour engine and recomputes derived roles. */
   seed?: boolean | undefined;
   /** Directly selectable colours. `id` maps to a CSS swatch class. */
-  presets?: readonly { id: string; value: string; labelKey: string }[] | undefined;
+  presets?:
+    | readonly { id: string; value: string; labelKey: string }[]
+    | undefined;
 }
 
 export type AppearanceMode = "light" | "dark";
@@ -59,16 +61,30 @@ export interface Theme {
   slots?: Partial<Record<SlotName, SlotTemplate>> | undefined;
   /** Optional theme stylesheet (applied CSP-safely, first-party themes). */
   css?: string | undefined;
+  /** Fixed opaque material, even when device settings request transparency. */
+  material?: "solid" | undefined;
 }
 
-function px(token: TokenId, id: string, labelKey: string, fallback: number, max: number): RangeParameter {
+function px(
+  token: TokenId,
+  id: string,
+  labelKey: string,
+  fallback: number,
+  max: number,
+): RangeParameter {
   return {
-    kind: "range", id, token, labelKey, min: 0, max, step: 1,
+    kind: "range",
+    id,
+    token,
+    labelKey,
+    min: 0,
+    max,
+    step: 1,
     format: (value) => `${Math.round(value)}px`,
     parse: (value) => {
       const parsed = Number.parseFloat(value);
       return Number.isFinite(parsed) ? parsed : fallback;
-    }
+    },
   };
 }
 
@@ -78,10 +94,50 @@ const WALLPAPERS: readonly { value: string; labelKey: string }[] = [
   { value: "photo:towner", labelKey: "theme.wallpaper.photoTowner" },
   { value: "photo:jonny", labelKey: "theme.wallpaper.photoJonny" },
   { value: "none", labelKey: "theme.wallpaper.none" },
-  { value: "linear-gradient(160deg, #0f2027, #203a43, #2c5364)", labelKey: "theme.wallpaper.deep" },
-  { value: "linear-gradient(160deg, #1a2a6c, #b21f1f, #fdbb2d)", labelKey: "theme.wallpaper.sunset" },
-  { value: "linear-gradient(160deg, #134e5e, #71b280)", labelKey: "theme.wallpaper.forest" },
-  { value: "linear-gradient(160deg, #42275a, #734b6d)", labelKey: "theme.wallpaper.plum" }
+  {
+    value: "linear-gradient(160deg, #0f2027, #203a43, #2c5364)",
+    labelKey: "theme.wallpaper.deep",
+  },
+  {
+    value: "linear-gradient(160deg, #1a2a6c, #b21f1f, #fdbb2d)",
+    labelKey: "theme.wallpaper.sunset",
+  },
+  {
+    value: "linear-gradient(160deg, #134e5e, #71b280)",
+    labelKey: "theme.wallpaper.forest",
+  },
+  {
+    value: "linear-gradient(160deg, #42275a, #734b6d)",
+    labelKey: "theme.wallpaper.plum",
+  },
+];
+
+/** Selectable typography variants (device-resolved system stacks). */
+const FONTS: readonly { value: string; labelKey: string }[] = [
+  { value: FONT_STACKS.modern, labelKey: "theme.font.modern" },
+  { value: FONT_STACKS.system, labelKey: "theme.font.system" },
+  { value: FONT_STACKS.neutral, labelKey: "theme.font.neutral" },
+  { value: FONT_STACKS.rounded, labelKey: "theme.font.rounded" },
+  { value: FONT_STACKS.serif, labelKey: "theme.font.serif" },
+  { value: FONT_STACKS.mono, labelKey: "theme.font.mono" },
+  { value: FONT_STACKS.manrope, labelKey: "theme.font.manrope" },
+  { value: FONT_STACKS.plusJakartaSans, labelKey: "theme.font.plusJakartaSans" },
+];
+
+/** Bundled display faces for the launcher greeting (statement typography). */
+const DISPLAY_FONTS: readonly { value: string; labelKey: string }[] = [
+  { value: FONT_STACKS.spaceGrotesk, labelKey: "theme.font.spaceGrotesk" },
+  { value: FONT_STACKS.clashDisplay, labelKey: "theme.font.clashDisplay" },
+  { value: FONT_STACKS.bricolageGrotesque, labelKey: "theme.font.bricolageGrotesque" },
+  { value: FONT_STACKS.instrumentSerif, labelKey: "theme.font.instrumentSerif" },
+  { value: FONT_STACKS.outfit, labelKey: "theme.font.outfit" },
+  { value: FONT_STACKS.sora, labelKey: "theme.font.sora" },
+  { value: FONT_STACKS.syne, labelKey: "theme.font.syne" },
+  { value: FONT_STACKS.unbounded, labelKey: "theme.font.unbounded" },
+  { value: FONT_STACKS.fraunces, labelKey: "theme.font.fraunces" },
+  { value: FONT_STACKS.playfairDisplay, labelKey: "theme.font.playfairDisplay" },
+  { value: FONT_STACKS.dmSerifDisplay, labelKey: "theme.font.dmSerifDisplay" },
+  { value: FONT_STACKS.gabarito, labelKey: "theme.font.gabarito" },
 ];
 
 /** Directly selectable accent colours. */
@@ -90,50 +146,111 @@ const COLOR_PRESETS = [
   { id: "yellow", value: "#eab308", labelKey: "theme.color.yellow" },
   { id: "green", value: "#2f9e6b", labelKey: "theme.color.green" },
   { id: "blue", value: "#3b82f6", labelKey: "theme.color.blue" },
-  { id: "purple", value: "#8b5cf6", labelKey: "theme.color.purple" }
+  { id: "purple", value: "#8b5cf6", labelKey: "theme.color.purple" },
 ] as const;
 
 /** Parameters offered by the official rumahl theme (colour, wallpaper, glass). */
 const officialParameters: readonly ThemeParameter[] = [
-  { kind: "color", id: "accent", token: "color.accent", labelKey: "theme.parameter.accent", seed: true, presets: COLOR_PRESETS },
-  { kind: "color", id: "panel", token: "color.surface.strong", labelKey: "theme.parameter.panel" },
-  { kind: "color", id: "text", token: "color.text.primary", labelKey: "theme.parameter.text" },
-  { kind: "choice", id: "wallpaper", token: "texture.wallpaper", labelKey: "theme.parameter.wallpaper", options: WALLPAPERS },
   {
-    kind: "range", id: "morphism", token: "material.morphism", labelKey: "theme.parameter.morphism", min: 0, max: 1, step: 0.05,
+    kind: "color",
+    id: "accent",
+    token: "color.accent",
+    labelKey: "theme.parameter.accent",
+    seed: true,
+    presets: COLOR_PRESETS,
+  },
+  {
+    kind: "color",
+    id: "panel",
+    token: "color.surface.strong",
+    labelKey: "theme.parameter.panel",
+  },
+  {
+    kind: "color",
+    id: "text",
+    token: "color.text.primary",
+    labelKey: "theme.parameter.text",
+  },
+  {
+    kind: "choice",
+    id: "wallpaper",
+    token: "texture.wallpaper",
+    labelKey: "theme.parameter.wallpaper",
+    options: WALLPAPERS,
+  },
+  {
+    kind: "choice",
+    id: "font",
+    token: "typography.family",
+    labelKey: "theme.parameter.font",
+    options: FONTS,
+  },
+  {
+    kind: "choice",
+    id: "displayFont",
+    token: "typography.display",
+    labelKey: "theme.parameter.displayFont",
+    options: DISPLAY_FONTS,
+  },
+  {
+    kind: "range",
+    id: "morphism",
+    token: "material.morphism",
+    labelKey: "theme.parameter.morphism",
+    min: 0,
+    max: 1,
+    step: 0.05,
     format: (value) => value.toFixed(2),
     parse: (value) => {
       const parsed = Number.parseFloat(value);
       return Number.isFinite(parsed) ? parsed : 1;
-    }
+    },
   },
   {
-    kind: "range", id: "opacity", token: "material.opacity", labelKey: "theme.parameter.opacity", min: 0.2, max: 1, step: 0.02,
+    kind: "range",
+    id: "opacity",
+    token: "material.opacity",
+    labelKey: "theme.parameter.opacity",
+    min: 0.2,
+    max: 1,
+    step: 0.02,
     format: (value) => value.toFixed(2),
     parse: (value) => {
       const parsed = Number.parseFloat(value);
       return Number.isFinite(parsed) ? parsed : 0.7;
-    }
+    },
   },
   px("material.blur", "blur", "theme.parameter.blur", 60, 120),
   {
-    kind: "range", id: "saturation", token: "material.saturation", labelKey: "theme.parameter.saturation", min: 1, max: 3, step: 0.1,
+    kind: "range",
+    id: "saturation",
+    token: "material.saturation",
+    labelKey: "theme.parameter.saturation",
+    min: 1,
+    max: 3,
+    step: 0.1,
     format: (value) => value.toFixed(1),
     parse: (value) => {
       const parsed = Number.parseFloat(value);
       return Number.isFinite(parsed) ? parsed : 1.8;
-    }
+    },
   },
   px("shape.radius.dock", "radius", "theme.parameter.radius", 24, 40),
   px("shape.radius.window", "window", "theme.parameter.window", 12, 32),
-  px("shape.radius.icon", "icon", "theme.parameter.icon", 15, 30)
+  px("shape.radius.icon", "icon", "theme.parameter.icon", 15, 30),
 ];
 
 /** The classic fixture offers its own, different set of parameters. */
 const classicParameters: readonly ThemeParameter[] = [
-  { kind: "color", id: "accent", token: "color.accent", labelKey: "theme.parameter.accent", seed: true },
+  {
+    kind: "color",
+    id: "accent",
+    token: "color.accent",
+    labelKey: "theme.parameter.accent",
+    seed: true,
+  },
   px("shape.radius.icon", "icon", "theme.parameter.icon", 6, 20),
-  px("shape.radius.window", "window", "theme.parameter.window", 4, 24)
+  px("shape.radius.window", "window", "theme.parameter.window", 4, 24),
 ];
 
 /** The rumahl brand default: green accent, glass materials, dock + springboard. */
@@ -143,7 +260,7 @@ export const rumahlTheme: Theme = {
   tokens: { ...defaultTokens, ...paletteTokens(defaultTokens["color.accent"]) },
   variants: defaultVariants,
   parameters: officialParameters,
-  modes: ["light", "dark"]
+  modes: ["light", "dark"],
 };
 
 /**
@@ -154,16 +271,11 @@ export const rumahlTheme: Theme = {
 export const classicTheme: Theme = {
   id: "com.rumahl.classic",
   name: "Classic",
+  css: classicCss,
+  material: "solid",
   tokens: {
     ...defaultTokens,
-    "color.accent": CLASSIC_COLORS.accent,
-    "color.accent.strong": CLASSIC_COLORS.accentStrong,
-    "color.surface": "#ececec",
-    "color.surface.strong": "#f4f4f4",
-    "color.outline": "rgba(0, 0, 0, 0.28)",
-    "color.on.wallpaper": "#ffffff",
-    "color.on.accent": CLASSIC_COLORS.onAccent,
-    "color.shadow": "rgba(0, 0, 0, 0.4)",
+    ...CLASSIC_PALETTE,
     "material.blur": "0px",
     "material.saturation": "1",
     "material.opacity": "1",
@@ -180,32 +292,83 @@ export const classicTheme: Theme = {
     "icon.gradient": "linear-gradient(160deg, #5b8ac6, #3465a4)",
     "texture.wallpaper": "none",
     "typography.family": "Tahoma, Verdana, sans-serif",
-    "typography.scale": "0.95"
+    "typography.scale": "0.95",
   },
-  variants: { shellLayout: "taskbar", launcherLayout: "drawer", windowChrome: "compact" },
+  variants: {
+    shellLayout: "taskbar",
+    launcherLayout: "drawer",
+    windowChrome: "compact",
+  },
   parameters: classicParameters,
   modes: ["light", "dark"],
   // The classic shell defines its own taskbar markup here (theme code), instead
   // of relying on the shell's built-in variant.
   slots: {
     dock: [
-      { tag: "div", class: "taskbar slot-taskbar", attrs: { role: "navigation", "aria-label": "Main navigation" }, children: [
-        { tag: "button", class: "taskbar__start", action: "minimize-all", children: [{ component: "brand" }] },
-        { tag: "a", class: "taskbar__button", attrs: { href: "/apps" }, children: [{ text: "Apps" }] },
-        { tag: "div", class: "taskbar__apps", children: [
-          { repeat: "apps", as: "app", children: [
-            { tag: "button", class: "taskbar__button", attrs: { "data-open": "{{app.running}}", "data-focused": "{{app.focused}}" }, action: "open", arg: "{{app.path}}", children: [{ text: "{{app.title}}" }] }
-          ] }
-        ] },
-        { tag: "div", class: "taskbar__windows", children: [
-          { repeat: "windows", as: "win", children: [
-            { tag: "button", class: "taskbar__button taskbar__window", action: "focus-window", arg: "{{win.id}}", children: [{ text: "{{win.title}}" }] }
-          ] }
-        ] },
-        { component: "clock", class: "taskbar__clock" }
-      ] }
-    ]
-  }
+      {
+        tag: "div",
+        class: "taskbar slot-taskbar",
+        attrs: { role: "navigation", "aria-label": "Main navigation" },
+        children: [
+          {
+            tag: "button",
+            class: "taskbar__start",
+            action: "minimize-all",
+            children: [{ component: "brand" }],
+          },
+          {
+            tag: "a",
+            class: "taskbar__button",
+            attrs: { href: "/apps" },
+            children: [{ text: "Apps" }],
+          },
+          {
+            tag: "div",
+            class: "taskbar__apps",
+            children: [
+              {
+                repeat: "apps",
+                as: "app",
+                children: [
+                  {
+                    tag: "button",
+                    class: "taskbar__button",
+                    attrs: {
+                      "data-open": "{{app.running}}",
+                      "data-focused": "{{app.focused}}",
+                    },
+                    action: "open",
+                    arg: "{{app.path}}",
+                    children: [{ text: "{{app.title}}" }],
+                  },
+                ],
+              },
+            ],
+          },
+          {
+            tag: "div",
+            class: "taskbar__windows",
+            children: [
+              {
+                repeat: "windows",
+                as: "win",
+                children: [
+                  {
+                    tag: "button",
+                    class: "taskbar__button taskbar__window",
+                    action: "focus-window",
+                    arg: "{{win.id}}",
+                    children: [{ text: "{{win.title}}" }],
+                  },
+                ],
+              },
+            ],
+          },
+          { component: "clock", class: "taskbar__clock" },
+        ],
+      },
+    ],
+  },
 };
 
 export const themes = [rumahlTheme, classicTheme] as const;

@@ -49,7 +49,8 @@ export function DesktopContextMenu(props: DesktopContextMenuProps) {
   const top = Math.min(menu.y, Math.max(8, window.innerHeight - 300));
   return createPortal(
     <div className="desktop-menu" role="menu" aria-label={t("desktop.menu.label")}
-      style={{ left, top }} onPointerDown={(event) => event.stopPropagation()}>
+      ref={(element) => { if (element) { element.style.left = `${left}px`; element.style.top = `${top}px`; } }}
+      onPointerDown={(event) => event.stopPropagation()}>
       {menu.appId ? <>
         <p className="desktop-menu__title">{props.appTitle}</p>
         <button role="menuitem" type="button" onClick={() => { props.onOpen(menu.appId!); onClose(); }}>{t("desktop.menu.open")}</button>

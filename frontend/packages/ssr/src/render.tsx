@@ -106,6 +106,7 @@ function ShellDocument({
           id={EMBEDDED_SNAPSHOT_ID}
           type="application/json"
         />
+        <script nonce={nonce} src="/os-client.js" defer />
         <script nonce={nonce} src={assets.script} type="module" />
       </body>
     </html>

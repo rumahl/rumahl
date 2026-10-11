@@ -19,6 +19,7 @@ export interface AppearanceSettings {
   glassReduced?: boolean;
   animations?: boolean;
   performanceMode?: boolean;
+  ultraPerformance?: boolean;
   glassEngine?: GlassEngine;
   glassEnabled?: boolean;
   glassBackend?: GlassBackend;
@@ -73,6 +74,7 @@ export function parseAppearance(value: unknown): AppearanceSettings {
     ...(typeof record.glassReduced === "boolean" ? { glassReduced: record.glassReduced } : {}),
     ...(typeof record.animations === "boolean" ? { animations: record.animations } : {}),
     ...(typeof record.performanceMode === "boolean" ? { performanceMode: record.performanceMode } : {}),
+    ...(record.ultraPerformance === true ? { ultraPerformance: true } : {}),
     ...(record.glassEngine === "css" || record.glassEngine === "canvas" ? { glassEngine: record.glassEngine } : {}),
     ...(typeof record.glassEnabled === "boolean" ? { glassEnabled: record.glassEnabled } : {}),
     ...(["auto", "svg", "webgl", "css"].includes(record.glassBackend as string) ? { glassBackend: record.glassBackend as GlassBackend } : {}),

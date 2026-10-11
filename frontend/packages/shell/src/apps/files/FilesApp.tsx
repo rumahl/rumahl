@@ -3,13 +3,15 @@ import { useI18n } from "../../i18n";
 import { useOsModePolicy } from "../../preferences/OsMode";
 import { browserProfile } from "../../preferences/storage";
 import { useShell } from "../../shell/ShellContext";
+import { useShellApps } from "../../apps/useShellApps";
+import { useWorkspace } from "../../preferences/Workspace";
 import { Breadcrumb } from "./Breadcrumb";
 import { ContextMenu, type MenuItem } from "./ContextMenu";
 import { FileGrid, FileList, type ViewProps } from "./FileViews";
 import { Sidebar } from "./Sidebar";
 import { Toolbar } from "./Toolbar";
 import { AlertIcon, FilePlusIcon, MoveIcon, OpenIcon, PencilIcon, PlusIcon, TrashIcon, UploadIcon } from "./icons";
-import { type Item } from "./types";
+import { freshDesktop, type Item } from "./types";
 import { useExplorer } from "./useExplorer";
 import { useMarquee } from "./useMarquee";
 import { useSelection } from "./useSelection";
@@ -25,11 +27,19 @@ type Draft = { kind: "folder" | "file"; name: string };
 type Menu = { x: number; y: number; item: Item | null };
 
 export function FilesApp() {
-  const { live } = useShell();
+  const { live, open: openPath } = useShell();
   const { t } = useI18n();
   const { advancedSettings } = useOsModePolicy();
+  const apps = useShellApps();
+  const workspace = useWorkspace();
   const device = browserProfile().id;
-  const explorer = useExplorer(live ? live.request : null, device, advancedSettings);
+  const desktopSources = useMemo(() => ({ apps, folders: workspace.effective.folders }), [apps, workspace.effective.folders]);
+  const desktopKey = useMemo(() => JSON.stringify({ a: apps.map((app) => app.id), f: workspace.effective.folders.map((folderItem) => [folderItem.id, folderItem.apps]) }), [apps, workspace.effective.folders]);
+  const explorer = useExplorer(live ? live.request : null, device, advancedSettings, {
+    desktop: desktopSources,
+    openApp: openPath,
+    desktopKey
+  });
   const { selected, select, clear, selectAll, setSelection } = useSelection(explorer.entries);
   const surface = useRef<HTMLDivElement>(null);
   const marquee = useMarquee(surface, selected, setSelection);
@@ -68,6 +78,10 @@ export function FilesApp() {
   }
   const newFolder = () => setDraft({ kind: "folder", name: "" });
   const newFile = () => setDraft({ kind: "file", name: "untitled.txt" });
+
+  function openDesktop() {
+    explorer.navigate(freshDesktop());
+  }
 
   const viewProps: ViewProps = {
     items: visible,
@@ -149,7 +163,7 @@ export function FilesApp() {
 
   return <section ref={root} className="files-app" tabIndex={-1} onKeyDown={handleKeys}
     onPointerDown={(event) => { if (!(event.target as HTMLElement).closest("input, textarea, button, label, .files-menu")) root.current?.focus(); }}>
-    <Sidebar nav={explorer.nav} advanced={advancedSettings} onNavigate={explorer.navigate} />
+    <Sidebar nav={explorer.nav} advanced={advancedSettings} onNavigate={explorer.navigate} onOpenDesktop={openDesktop} />
     <div className="files-app__main">
       <Toolbar
         isStore={explorer.isStore} busy={explorer.busy}

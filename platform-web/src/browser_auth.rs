@@ -18,9 +18,19 @@ use zeroize::Zeroizing;
 
 pub const SESSION_SECONDS: u64 = 12 * 60 * 60;
 
+/// Public profile information shown on the OS sign-in screen.
+pub struct LoginAccount {
+    pub username: String,
+    pub display_name: String,
+}
+
 /// Implementations persist and revoke both OS sessions and opaque credentials.
 /// Secrets must never appear in Debug, logs, URLs or renderer payloads.
 pub trait BrowserSessions: Send + Sync + 'static {
+    fn login_accounts(&self) -> Result<Vec<LoginAccount>, ShellBackendError> {
+        Ok(Vec::new())
+    }
+
     fn login(
         &self,
         username: &str,
@@ -35,8 +45,32 @@ pub trait BrowserSessions: Send + Sync + 'static {
 pub(crate) fn routes() -> Router<Arc<GatewayState>> {
     Router::new()
         .route("/login", get(login_page).post(login))
+        .route("/login/appearance.js", get(login_appearance))
+        .route("/login/wallpaper.jpg", get(login_wallpaper))
         .route("/logout", get(logout_page).post(logout))
         .layer(DefaultBodyLimit::max(8192))
+}
+
+async fn login_wallpaper() -> Response {
+    let mut response = (
+        [(CONTENT_TYPE, "image/jpeg")],
+        include_bytes!("../assets/login-wallpaper.jpg").as_slice(),
+    )
+        .into_response();
+    secure_headers(&mut response);
+    response
+}
+
+// A blocking, same-origin script restores presentation before first paint.
+// It has no access to account data and does not participate in authentication.
+async fn login_appearance() -> Response {
+    let mut response = (
+        [(CONTENT_TYPE, "text/javascript; charset=utf-8")],
+        include_str!("login-appearance.js"),
+    )
+        .into_response();
+    secure_headers(&mut response);
+    response
 }
 
 pub(crate) fn login_redirect() -> Response {
@@ -76,6 +110,9 @@ pub(crate) fn valid_shell_target(target: &str) -> bool {
             "favicon.ico",
             "robots.txt",
             "manifest.webmanifest",
+            "service-worker.js",
+            "os-client.js",
+            "offline",
         ]
         .contains(&first)
 }
@@ -104,7 +141,13 @@ async fn login_page(
         .get("next")
         .filter(|target| valid_shell_target(target))
         .map_or("/", String::as_str);
-    page_with_next(&headers, false, false, next)
+    let sessions = Arc::clone(state.browser_sessions.as_ref().unwrap());
+    let accounts = match tokio::task::spawn_blocking(move || sessions.login_accounts()).await {
+        Ok(Ok(accounts)) => accounts,
+        _ => return failure(StatusCode::SERVICE_UNAVAILABLE),
+    };
+    let selected = query.get("user").map(String::as_str);
+    render_page(&headers, false, false, next, &accounts, selected)
 }
 
 async fn logout_page(headers: HeaderMap) -> Response {
@@ -154,6 +197,7 @@ async fn login(
     let Ok(permit) = state.login_slots.clone().try_acquire_owned() else {
         return failure(StatusCode::TOO_MANY_REQUESTS);
     };
+    let selected_username = username.clone();
     let sessions = Arc::clone(sessions);
     let result = tokio::task::spawn_blocking(move || {
         let _permit = permit;
@@ -170,13 +214,20 @@ async fn login(
                 return failure(StatusCode::SERVICE_UNAVAILABLE);
             };
             cookie.set_sensitive(true);
-            let mut response = Redirect::to(next).into_response();
+            let mut response = if headers.get("accept").and_then(|value| value.to_str().ok())
+                == Some("application/json")
+            {
+                axum::Json(serde_json::json!({ "next": next })).into_response()
+            } else {
+                Redirect::to(next).into_response()
+            };
             response.headers_mut().insert(SET_COOKIE, cookie);
             secure_headers(&mut response);
             response
         }
         Ok(Err(ShellBackendError::Unauthorized)) => {
-            let mut response = page_with_next(&headers, false, true, next);
+            let mut response =
+                render_page(&headers, false, true, next, &[], Some(&selected_username));
             *response.status_mut() = StatusCode::UNAUTHORIZED;
             response
         }
@@ -221,56 +272,166 @@ fn page(headers: &HeaderMap, logout: bool, invalid: bool) -> Response {
 }
 
 fn page_with_next(headers: &HeaderMap, logout: bool, invalid: bool, next: &str) -> Response {
-    let next = next
+    render_page(headers, logout, invalid, next, &[], Some(""))
+}
+
+fn escape(value: &str) -> String {
+    value
         .replace('&', "&amp;")
         .replace('"', "&quot;")
         .replace('<', "&lt;")
-        .replace('>', "&gt;");
+        .replace('>', "&gt;")
+        .replace('\'', "&#39;")
+}
+
+fn render_page(
+    headers: &HeaderMap,
+    logout: bool,
+    invalid: bool,
+    next: &str,
+    accounts: &[LoginAccount],
+    selected: Option<&str>,
+) -> Response {
     let de = headers
         .get("accept-language")
         .and_then(|h| h.to_str().ok())
         .is_some_and(|v| v.starts_with("de"));
-    let (lang, title, user, password, invalid_text, recovery) = if de {
+    let (lang, signin, signout, choose, other, user, password, recovery, invalid_text) = if de {
         (
             "de",
-            if logout { "Abmelden" } else { "Anmelden" },
+            "Anmelden",
+            "Abmelden",
+            "Wer meldet sich an?",
+            "Anderer Benutzer",
             "Benutzername",
             "Passwort",
-            "Anmeldung fehlgeschlagen. Bitte versuche es erneut.",
             "Wiederherstellung",
+            "Benutzername oder Passwort ist nicht korrekt. Bitte versuche es erneut.",
         )
     } else {
         (
             "en",
-            if logout { "Sign out" } else { "Sign in" },
+            "Sign in",
+            "Sign out",
+            "Who’s signing in?",
+            "Other user",
             "Username",
             "Password",
-            "Sign-in failed. Please try again.",
             "Recovery",
+            "The username or password is incorrect. Please try again.",
         )
     };
-    let fields = if logout {
-        String::new()
+    let switch_user = if de {
+        "Benutzer wechseln"
     } else {
+        "Switch user"
+    };
+    let previous = if de {
+        "Vorheriger Benutzer"
+    } else {
+        "Previous user"
+    };
+    let following = if de {
+        "Nächster Benutzer"
+    } else {
+        "Next user"
+    };
+    let title = if logout { signout } else { signin };
+    let query = |username: Option<&str>| {
+        let mut serializer = url::form_urlencoded::Serializer::new(String::new());
+        serializer.append_pair("next", next);
+        if let Some(username) = username {
+            serializer.append_pair("user", username);
+        }
+        escape(&format!("/login?{}", serializer.finish()))
+    };
+    let content = if !logout && selected.is_none() && !accounts.is_empty() {
+        let tiles = accounts.iter().map(|account| {
+            let name = escape(&account.display_name);
+            let initial = escape(&account.display_name.chars().next().unwrap_or('?').to_uppercase().to_string());
+            let href = query(Some(&account.username));
+            format!(r#"<a class="account" href="{href}"><span class="rumahl-avatar rumahl-avatar--lg" data-material="theme" aria-hidden="true"><span>{initial}</span></span><span>{name}</span><small>@{username}</small></a>"#, username = escape(&account.username))
+        }).collect::<String>();
         format!(
-            r#"<label>{user}<input name="username" autocomplete="username" maxlength="128" required autofocus></label><label>{password}<input name="password" type="password" autocomplete="current-password" maxlength="1024" required></label>"#
+            r#"<h1 class="visually-hidden">{choose}</h1><div class="account-slider"><nav id="login-accounts" class="accounts" aria-label="{choose}">{tiles}</nav><div class="slider-controls" hidden><button type="button" class="btn btn--secondary slider-step" data-step="-1" aria-label="{previous}" aria-controls="login-accounts"><svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="m15 6-6 6 6 6" /></svg></button><span class="slider-position" aria-hidden="true"></span><button type="button" class="btn btn--secondary slider-step" data-step="1" aria-label="{following}" aria-controls="login-accounts"><svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="m9 6 6 6-6 6" /></svg></button></div></div><a class="btn btn--secondary login-action" href="{other_url}">{other}</a>"#,
+            other_url = query(Some(""))
+        )
+    } else {
+        let username = selected.unwrap_or("");
+        let account = accounts.iter().find(|account| account.username == username);
+        let name = account.map_or(username, |account| account.display_name.as_str());
+        let heading = if logout {
+            signout
+        } else if name.is_empty() {
+            other
+        } else {
+            name
+        };
+        let initial = if name.is_empty() {
+            "◎".to_owned()
+        } else {
+            name.chars().next().unwrap().to_uppercase().to_string()
+        };
+        let fields = if logout {
+            String::new()
+        } else {
+            let username_field = if username.is_empty() || invalid {
+                format!(
+                    r#"<label><span class="visually-hidden">{user}</span><input placeholder="{user}" class="rumahl-input" data-material="glass" name="username" value="{}" autocomplete="username" maxlength="128" required {}></label>"#,
+                    escape(username),
+                    if username.is_empty() { "autofocus" } else { "" }
+                )
+            } else {
+                format!(
+                    r#"<input type="hidden" name="username" value="{}">"#,
+                    escape(username)
+                )
+            };
+            format!(
+                r#"{username_field}<div class="password-row"><label><span class="visually-hidden">{password}</span><input class="rumahl-input" data-material="glass" name="password" type="password" placeholder="{password}" autocomplete="current-password" maxlength="1024" required {}></label><button class="btn btn--primary" type="submit" aria-label="{signin}" title="{signin}"><svg aria-hidden="true" focusable="false" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="m9 6 6 6-6 6" /></svg></button></div><p class="login-status" role="status"></p>"#,
+                if username.is_empty() { "" } else { "autofocus" }
+            )
+        };
+        let submit = if logout {
+            format!(r#"<button class="btn btn--primary" type="submit">{signout}</button>"#)
+        } else {
+            String::new()
+        };
+        let error = if invalid {
+            format!(r#"<p class="error" role="alert">{invalid_text}</p>"#)
+        } else {
+            String::new()
+        };
+        let back = if logout {
+            String::new()
+        } else {
+            format!(
+                r#"<a class="btn btn--secondary login-action" href="{}"><svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="m15 6-6 6 6 6" /></svg>{switch_user}</a>"#,
+                query(None)
+            )
+        };
+        format!(
+            r#"<div class="rumahl-avatar rumahl-avatar--lg selected-avatar" data-material="theme" aria-hidden="true"><span>{initial}</span></div><h1>{heading}</h1>{error}<form method="post" action="{action}" data-login-form><input type="hidden" name="next" value="{next}">{fields}{submit}</form>{back}"#,
+            initial = escape(&initial),
+            heading = escape(heading),
+            action = if logout { "/logout" } else { "/login" },
+            next = escape(next)
         )
     };
-    let error = if invalid {
-        format!(r#"<p role="alert">{invalid_text}</p>"#)
-    } else {
-        String::new()
-    };
-    let action = if logout { "/logout" } else { "/login" };
+    let tokens = rumahl_ui_contracts::ResolvedTheme::stock().compile_css();
+    let materials = include_str!("../../frontend/packages/shell/src/shell/materials.css");
+    let controls = include_str!("../../frontend/packages/shell/src/components/controls.css");
+    let classic = include_str!("../../frontend/packages/ui/src/classic.css");
+    let css = include_str!("login.css");
     let html = format!(
-        r#"<!doctype html><html lang="{lang}"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>{title} · rumahl</title><style>html{{font:18px system-ui;background:#f4f5f7;color:#17202e}}main{{max-width:24rem;margin:12vh auto;padding:2rem;background:white;border-radius:1rem}}label,input,button{{display:block}}label{{margin:1rem 0}}input{{box-sizing:border-box;width:100%;padding:.7rem;font:inherit}}button{{padding:.7rem 1.2rem;font:inherit;cursor:pointer}}a{{display:inline-block;margin-top:1rem}}:focus-visible{{outline:3px solid #365ac4;outline-offset:3px}}</style><main><p>rumahl OS</p><h1>{title}</h1>{error}<form method="post" action="{action}"><input type="hidden" name="next" value="{next}">{fields}<button type="submit">{title}</button></form><a href="/recovery">{recovery}</a></main></html>"#
+        r#"<!doctype html><html lang="{lang}" class="shell" data-theme="com.rumahl.default" data-scheme="light"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>{title} · rumahl OS</title><style>{tokens}{materials}{controls}{classic}{css}</style><script src="/login/appearance.js"></script><script src="/os-client.js" defer></script></head><body><header class="lock-clock" aria-hidden="true"><span id="login-date"></span><time id="login-time"></time></header><main><section class="login-profiles" aria-label="{title}">{content}</section></main><footer><span class="brand">rumahl <span>OS</span></span><a href="/recovery">{recovery}</a></footer></body></html>"#
     );
     let mut response = Response::new(Body::from(html));
     response.headers_mut().insert(
         CONTENT_TYPE,
         HeaderValue::from_static("text/html; charset=utf-8"),
     );
-    response.headers_mut().insert(CONTENT_SECURITY_POLICY, HeaderValue::from_static("default-src 'none'; style-src 'unsafe-inline'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'"));
+    response.headers_mut().insert(CONTENT_SECURITY_POLICY, HeaderValue::from_static("default-src 'none'; script-src 'self'; worker-src 'self'; connect-src 'self'; img-src 'self'; style-src 'unsafe-inline'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'"));
     secure_headers(&mut response);
     response
 }
@@ -278,6 +439,76 @@ fn page_with_next(headers: &HeaderMap, logout: bool, invalid: bool, next: &str) 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    async fn html(response: Response) -> String {
+        let bytes = axum::body::to_bytes(response.into_body(), 1024 * 1024)
+            .await
+            .unwrap();
+        String::from_utf8(bytes.to_vec()).unwrap()
+    }
+
+    #[tokio::test]
+    async fn account_picker_escapes_profiles_and_preserves_destination() {
+        let accounts = vec![LoginAccount {
+            username: "alice".into(),
+            display_name: "<Alice & Bob>".into(),
+        }];
+        let body = html(render_page(
+            &HeaderMap::new(),
+            false,
+            false,
+            "/app/notes",
+            &accounts,
+            None,
+        ))
+        .await;
+        assert!(body.contains("&lt;Alice &amp; Bob&gt;"));
+        assert!(!body.contains("<Alice & Bob>"));
+        assert!(body.contains("next=%2Fapp%2Fnotes&amp;user=alice"));
+        assert!(body.contains("Other user"));
+        assert!(!body.contains("name=\"password\""));
+    }
+
+    #[tokio::test]
+    async fn selected_account_and_failed_login_keep_username_but_never_password() {
+        for invalid in [false, true] {
+            let body = html(render_page(
+                &HeaderMap::new(),
+                false,
+                invalid,
+                "/app/notes",
+                &[],
+                Some("alice"),
+            ))
+            .await;
+            assert!(body.contains("name=\"username\" value=\"alice\""));
+            assert!(body.contains("name=\"password\" type=\"password\""));
+            assert!(body.contains("name=\"next\" value=\"/app/notes\""));
+            assert_eq!(body.contains("<p class=\"error\" role=\"alert\""), invalid);
+        }
+    }
+
+    #[tokio::test]
+    async fn login_uses_shell_tokens_and_shared_controls_before_paint() {
+        let response = page(&HeaderMap::new(), false, false);
+        let policy = response.headers()[CONTENT_SECURITY_POLICY]
+            .to_str()
+            .unwrap();
+        assert!(policy.contains("script-src 'self'"));
+        assert!(policy.contains("connect-src 'self'"));
+        assert!(!policy.contains("script-src 'unsafe-inline'"));
+        let body = html(response).await;
+        assert!(body.contains("--rumahl-ui-color-accent:"));
+        assert!(body.contains("class=\"rumahl-input\""));
+        assert!(body.contains("class=\"btn btn--primary\""));
+        assert!(body.contains("data-theme=\"com.rumahl.default\""));
+        assert!(body.find("/login/appearance.js").unwrap() < body.find("</head>").unwrap());
+        let script = login_appearance().await;
+        assert_eq!(
+            script.headers()[CONTENT_TYPE],
+            "text/javascript; charset=utf-8"
+        );
+    }
 
     #[test]
     fn return_targets_cannot_escape_shell_or_bypass_reserved_routes() {

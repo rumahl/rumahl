@@ -1,11 +1,12 @@
-import { GridIcon, SettingsIcon } from "../../icons";
+import { DesktopIcon, GridIcon, SettingsIcon } from "../../icons";
 import { useI18n } from "../../i18n";
 import { FolderIcon } from "./icons";
 import { freshHost, freshStore, type HostArea, type Nav } from "./types";
 
-export function Sidebar({ nav, advanced, onNavigate }: { nav: Nav; advanced: boolean; onNavigate: (next: Nav) => void }) {
+export function Sidebar({ nav, advanced, onNavigate, onOpenDesktop }: { nav: Nav; advanced: boolean; onNavigate: (next: Nav) => void; onOpenDesktop: () => void }) {
   const { t } = useI18n();
   const isStore = nav.place.kind === "store";
+  const isDesktop = nav.place.kind === "desktop";
   const isHost = (area: HostArea) => nav.place.kind === "host" && nav.place.area === area;
   const item = (active: boolean) => `files-nav${active ? " is-active" : ""}`;
   return <aside className="files-app__sidebar" aria-label={t("files.locations")}>
@@ -13,6 +14,9 @@ export function Sidebar({ nav, advanced, onNavigate }: { nav: Nav; advanced: boo
     <nav>
       <button type="button" className={item(isStore)} aria-current={isStore ? "page" : undefined} onClick={() => onNavigate(freshStore())}>
         <FolderIcon className="files-nav__icon" />{t("files.root")}
+      </button>
+      <button type="button" className={item(isDesktop)} aria-current={isDesktop ? "page" : undefined} onClick={onOpenDesktop}>
+        <DesktopIcon className="files-nav__icon" />{t("files.desktop")}
       </button>
       {advanced
         ? <>

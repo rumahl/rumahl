@@ -1,0 +1,122 @@
+/* The login arranges the same rumahl avatars, inputs and buttons over wallpaper. */
+* { box-sizing: border-box; }
+html {
+  min-height: 100%;
+  color-scheme: light;
+  color: var(--rumahl-ui-color-on-wallpaper, white);
+  background: var(--rumahl-ui-color-canvas-background);
+  font: calc(14px * var(--rumahl-ui-typography-scale))/1.5 var(--rumahl-ui-typography-family);
+}
+body { margin: 0; min-height: 100svh; display: flex; flex-direction: column; isolation: isolate; }
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -2;
+  background-image: var(--surface-tint), var(--rumahl-ui-texture-wallpaper, url('/login/wallpaper.jpg')), url('/login/wallpaper.jpg');
+  background-position: center;
+  background-size: cover;
+}
+body::after { content: ""; position: fixed; inset: 0; z-index: -1; background: linear-gradient(180deg, #00000018, #00000008 35%, #00000055); }
+a { color: inherit; text-decoration: none; }
+.lock-clock { padding: clamp(36px, 8vh, 100px) 20px 20px; text-align: center; text-shadow: 0 2px 24px #0003; }
+#login-date { display: block; font-size: clamp(17px, 2vw, 23px); font-weight: 550; }
+#login-time { display: block; font-size: clamp(60px, 8vw, 100px); font-weight: 650; line-height: 1.12; letter-spacing: -.055em; font-variant-numeric: tabular-nums; }
+main { flex: 1; display: grid; grid-template-columns: minmax(0, 1fr); place-items: end center; padding: 48px 24px 28px; min-width: 0; }
+.login-profiles { display: flex; flex-direction: column; align-items: center; text-align: center; width: min(100%, 900px); min-width: 0; }
+h1 { font-size: 22px; line-height: 1.3; font-weight: 600; letter-spacing: -.025em; margin: 18px 0 24px; overflow-wrap: anywhere; max-width: 100%; text-shadow: 0 2px 12px #0006; }
+.account-slider { width: min(100%, 540px); min-width: 0; }
+.accounts {
+  display: flex;
+  gap: 20px;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  scroll-snap-type: x mandatory;
+  scroll-behavior: smooth;
+  scrollbar-width: thin;
+  padding: 20px max(0px, calc(50% - 72px));
+  margin: 0;
+}
+.account {
+  flex: 0 0 144px;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  flex-direction: column;
+  padding: 16px 8px;
+  border: 1px solid transparent;
+  border-radius: var(--rumahl-ui-shape-radius-window);
+  scroll-snap-align: center;
+  transition: transform 240ms var(--rumahl-ui-motion-easing-spring), opacity 240ms ease, background 160ms ease;
+}
+.accounts[data-enhanced] .account { transform: scale(.85); }
+.accounts[data-enhanced] .account.is-current { transform: scale(1); }
+.account:hover, .account:focus-visible { background: color-mix(in srgb, var(--surface-base) 12%, transparent); border-color: var(--surface-edge); }
+.slider-controls { display: flex; align-items: center; justify-content: center; gap: 18px; margin-top: 6px; }
+.slider-controls[hidden] { display: none; }
+.slider-position { min-width: 38px; font-size: 12px; font-variant-numeric: tabular-nums; opacity: .8; }
+.shell .slider-step { width: 36px; padding: 0; }
+.shell :is(.login-action, .slider-step) {
+  --control-fill: color-mix(in srgb, var(--surface-base) calc(max(.6, var(--surface-opacity)) * 100%), transparent);
+  --control-hover: color-mix(in srgb, var(--surface-base) calc(min(1, max(.6, var(--surface-opacity)) + .15) * 100%), transparent);
+  --control-filter: var(--surface-filter);
+}
+.shell .login-action { margin-top: 24px; min-height: 38px; }
+.login-profiles { animation: login-arrive 280ms ease-out; }
+@keyframes login-arrive { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: translateY(0); } }
+.account > span:not(.rumahl-avatar) { margin-top: 16px; max-width: 100%; overflow-wrap: anywhere; font-weight: 600; font-size: 16px; text-shadow: 0 2px 12px #0008; }
+.account small { opacity: .75; margin-top: 3px; overflow-wrap: anywhere; max-width: 100%; text-shadow: 0 1px 6px #0008; }
+/* Sizing belongs to this screen; avatar colour and shape remain component-owned. */
+.login-profiles .rumahl-avatar { width: 88px; height: 88px; font-size: 30px; }
+.login-profiles .selected-avatar { width: 100px; height: 100px; font-size: 36px; }
+form { width: min(100%, 260px); text-align: left; }
+label { display: block; min-width: 0; margin: 0; }
+form > label { margin-bottom: 12px; }
+/* All input appearance, including glass, is owned by shared controls.css. */
+.login-profiles input.rumahl-input { display: block; width: 100%; }
+.password-row { display: flex; align-items: center; gap: 8px; }
+.password-row label { flex: 1; }
+.shell .password-row .btn { flex: none; display: grid; place-items: center; width: 36px; min-height: 36px; padding: 0; border-radius: 50%; }
+.shell .password-row .btn svg { width: 20px; height: 20px; }
+footer a:hover { background: #ffffff18; }
+.error { max-width: 300px; border: 1px solid var(--rumahl-ui-color-outline); border-radius: var(--rumahl-ui-shape-radius-window); color: var(--rumahl-ui-color-text-primary); background: var(--rumahl-ui-color-surface-strong); padding: 12px 16px; font-size: 13px; margin: 0 0 20px; }
+footer { display: flex; align-items: center; justify-content: space-between; gap: 20px; padding: 20px 28px; font-size: 12px; text-shadow: 0 1px 8px #0008; }
+.brand { font-size: 16px; font-weight: 650; letter-spacing: -.05em; }
+.brand span { font-weight: 400; }
+footer a { padding: 8px 12px; border-radius: var(--rumahl-ui-shape-radius-window); }
+:focus-visible { outline: 2px solid currentColor; outline-offset: 5px; }
+.visually-hidden { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; border: 0; }
+@media (max-width: 520px) { main { padding: 32px 16px; } footer { padding: 16px; } }
+@media (max-height: 650px) { .lock-clock { padding-top: 24px; } #login-time { font-size: 54px; } main { padding-block: 20px; } }
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; scroll-behavior: auto !important; } }
+@media (forced-colors: active) { .account { border: 1px solid CanvasText; } body::before, body::after { display: none; } }
+
+/* Solid themes retain their material even on the light login wallpaper. */
+.shell[data-material="solid"] { --surface-opacity: 1; --surface-filter: none; }
+.accounts[data-enhanced] .account.is-current .rumahl-avatar {
+  border-color: var(--rumahl-ui-color-accent);
+}
+.account small { transition: opacity var(--rumahl-ui-motion-duration-fast); }
+.accounts[data-enhanced] .account:not(.is-current) small { opacity: .5; }
+.login-profiles[aria-busy="true"] { cursor: progress; }
+
+.login-profiles .rumahl-avatar { --avatar-foreground: var(--rumahl-ui-color-on-wallpaper); }
+.shell[data-material="solid"] .rumahl-avatar { --avatar-foreground: var(--rumahl-ui-color-text-primary); }
+
+@media (prefers-reduced-motion: no-preference) {
+  @view-transition {
+    navigation: auto;
+  }
+}
+::view-transition-group(root) { animation-duration: 240ms; }
+html[data-login-transition] .login-profiles, .login-profiles[data-transitioned] { animation: none; }
+.login-profiles form[aria-busy="true"] .password-row .btn > svg { display: none; }
+.login-profiles form[aria-busy="true"] .password-row .btn::after {
+  content: ""; width: 16px; height: 16px; border: 2px solid currentColor;
+  border-right-color: transparent; border-radius: 50%; animation: login-spin 700ms linear infinite;
+}
+@keyframes login-spin { to { transform: rotate(360deg); } }
+.login-status { min-height: 1.5em; margin: 12px 0 0; font-size: 12px; text-align: center; color: var(--rumahl-ui-color-on-wallpaper); }
+@media(prefers-reduced-motion:reduce) { ::view-transition-group(*) { animation-duration: 0s; } }
+
+.login-profiles form[aria-busy="true"] .btn:disabled { opacity: 1; cursor: progress; }

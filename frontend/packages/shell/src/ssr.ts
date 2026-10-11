@@ -1,7 +1,7 @@
 import type { ShellSnapshotV1 } from "@rumahl/contracts";
 import { TOKEN_IDS, tokenVariable } from "@rumahl/ui/tokens";
 import { parseWorkspace } from "./preferences/Workspace";
-import { applyTuning } from "./preferences/theme-tuning";
+import { applyThemeTuning } from "./preferences/theme-tuning";
 import { describeRoute } from "./routing/routes";
 import { buildSnapshotTheme, resolveTokens, tuningFromSnapshot } from "./theme";
 
@@ -10,7 +10,7 @@ import { buildSnapshotTheme, resolveTokens, tuningFromSnapshot } from "./theme";
  * the first paint already uses the tuned colours, dark mode and transparency.
  */
 export function appearanceCss(snapshot: ShellSnapshotV1): string {
-  const tokens = resolveTokens(applyTuning(buildSnapshotTheme(snapshot).tokens, tuningFromSnapshot(snapshot)));
+  const tokens = resolveTokens(applyThemeTuning(buildSnapshotTheme(snapshot), tuningFromSnapshot(snapshot)));
   return `:root{${TOKEN_IDS.map((id) => `${tokenVariable(id)}:${tokens[id]}`).join(";")}}`;
 }
 

@@ -53,6 +53,8 @@ struct Appearance {
     animations: Option<bool>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     performance_mode: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    ultra_performance: Option<bool>,
     #[serde(default)]
     seed: Option<String>,
     #[serde(default)]

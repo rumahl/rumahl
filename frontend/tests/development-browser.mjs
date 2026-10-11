@@ -35,7 +35,7 @@ const reducedMotion = { reducedMotion: "reduce" };
 try {
   const page = await browser.newPage(reducedMotion);
   const modeReady = () => {
-    const trigger = globalThis.document.querySelector('button[aria-label="Shell mode"]');
+    const trigger = globalThis.document.querySelector('.topbar__mode button');
     return Boolean(trigger) && !trigger.disabled;
   };
   async function choose(label, option, target = page) {
@@ -68,8 +68,17 @@ try {
     const revision = Number(await source.locator(".shell").getAttribute("data-preferences-revision"));
     await target.waitForFunction((revision) => Number(globalThis.document.querySelector(".shell")?.dataset.preferencesRevision) >= revision, revision);
   }
+  // The sign-in screen first lists account tiles; pick the test account to
+  // reveal its password form (the username is then carried in a hidden field).
+  async function chooseAccount(target) {
+    const tiles = target.locator("#login-accounts .account");
+    if ((await tiles.count()) === 0) return;
+    const match = tiles.filter({ hasText: `@${credentials.username}` });
+    await ((await match.count()) > 0 ? match.first() : tiles.first()).click();
+  }
   async function login(target, path = "/") {
     await target.goto(`${info.origin}${path}`);
+    await chooseAccount(target);
     await target.locator("form").evaluate((form, login) => {
       form.elements.username.value = login.username; form.elements.password.value = login.password;
     }, credentials);
@@ -89,6 +98,7 @@ try {
   page.on("pageerror", (error) => errors.push(error.message));
   page.on("console", (message) => { if (message.type() === "error" && !ignoredConsole.some((pattern) => pattern.test(message.text()))) errors.push(message.text()); });
   await page.goto(`${info.origin}/app/app-manager?mode=launcher`);
+  await chooseAccount(page);
   // Exercise a native form POST: the browser must supply its real Origin.
   await page.locator("form").evaluate((form, login) => {
     form.elements.username.value = login.username;
@@ -127,7 +137,7 @@ try {
   if (process.env.RUMAHL_SCREENSHOT_DIR) await page.screenshot({ path: join(process.env.RUMAHL_SCREENSHOT_DIR, "desktop.png") });
   await setMode("launcher");
   assert.equal(await page.locator(".shell").getAttribute("data-shell-mode"), "launcher");
-  assert.equal(await page.getByRole("button", { name: "Close App manager", exact: true }).count(), 0);
+  assert.equal(await page.getByRole("button", { name: "Close App manager", exact: true }).count(), 1);
   await page.getByRole("navigation", { name: "Main navigation" }).getByRole("link", { name: "Settings" }).click();
   await page.getByRole("navigation", { name: "Settings", exact: true }).getByRole("link", { name: "Personalization" }).click();
   assert.equal(new URL(page.url()).pathname, "/settings/display");
@@ -197,7 +207,7 @@ try {
   await page.goto(`${info.origin}/settings/display`);
   await choose("Save for", "This browser profile", page);
   const inherited = page.waitForResponse((response) => response.url().includes("/api/v1/shell/preferences?") && response.request().method() === "PUT");
-  await page.getByRole("group", { name: "Shell mode" }).getByRole("button", { name: "Use account setting", exact: true }).click();
+  await page.locator(".setting").getByRole("group", { name: "Shell mode" }).getByRole("button", { name: "Use account setting", exact: true }).click();
   assert.equal((await inherited).status(), 200);
   const secondContext = await browser.newContext(reducedMotion);
   try {
@@ -205,20 +215,20 @@ try {
     second.on("pageerror", (error) => errors.push(error.message));
     await login(second);
     await choose("Save for", "My account · all devices", page);
-    await page.getByRole("button", { name: "Launcher", exact: true }).click();
+    await page.locator(".setting").getByRole("group", { name: "Shell mode" }).getByRole("button", { name: "Launcher", exact: true }).click();
     await page.locator('.shell[data-shell-mode="launcher"]').waitFor();
     await second.locator('.shell[data-shell-mode="launcher"]').waitFor();
     await setMode("desktop", second);
     await synchronized(page, second);
-    await page.getByRole("button", { name: "Desktop", exact: true }).click();
+    await page.locator(".setting").getByRole("group", { name: "Shell mode" }).getByRole("button", { name: "Desktop", exact: true }).click();
     await page.locator('.shell[data-shell-mode="desktop"]').waitFor();
-    await page.getByRole("button", { name: "Launcher", exact: true }).click();
+    await page.locator(".setting").getByRole("group", { name: "Shell mode" }).getByRole("button", { name: "Launcher", exact: true }).click();
     await page.locator('.shell[data-shell-mode="launcher"]').waitFor();
     assert.equal(await second.locator(".shell").getAttribute("data-shell-mode"), "desktop");
     const sameProfileTab = await secondContext.newPage();
     await sameProfileTab.goto(`${info.origin}/`);
     await sameProfileTab.waitForFunction(() => {
-      const trigger = globalThis.document.querySelector('button[aria-label="Shell mode"]');
+      const trigger = globalThis.document.querySelector('.topbar__mode button');
       return Boolean(trigger) && !trigger.disabled;
     });
     assert.equal(await sameProfileTab.locator(".shell").getAttribute("data-shell-mode"), "desktop");
@@ -314,7 +324,7 @@ try {
     try {
       await workspacePage.reload();
       await workspacePage.locator(".shell").waitFor();
-      await workspacePage.getByRole("button", { name: "Launcher home", exact: true }).click();
+      await workspacePage.locator(".topbar__mode").getByRole("button", { name: "Launcher", exact: true }).click();
       await workspacePage.getByRole("button", { name: "Tools", exact: true }).waitFor({ timeout: 15000 });
       await workspacePage.getByRole("button", { name: "Tools", exact: true }).click();
       await workspacePage.getByRole("link", { name: "Files", exact: true }).waitFor({ timeout: 15000 });

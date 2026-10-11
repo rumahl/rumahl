@@ -1,4 +1,4 @@
-import { GridIcon, SettingsIcon } from "../icons";
+import { SettingsIcon } from "../icons";
 import { useI18n } from "../i18n";
 import { ShellLink } from "../routing/ShellLink";
 import { rememberRecent } from "./recents";
@@ -7,7 +7,11 @@ import type { ShellApp } from "./useShellApps";
 export function AppIcon({ app }: { app: ShellApp }) {
   if (app.icon) return <img className="icon" src={app.icon} alt="" />;
   if (app.kind === "settings") return <SettingsIcon />;
-  return <GridIcon />;
+  const label = app.title.trim().slice(0, 1).toLocaleUpperCase() || "?";
+  let hue = 0;
+  for (let index = 0; index < app.id.length; index += 1) hue = (hue * 31 + app.id.charCodeAt(index)) % 360;
+  return <span className="app-icon-glyph" aria-hidden="true"
+    ref={(element) => { if (element) element.style.backgroundImage = `linear-gradient(150deg, hsl(${hue} 58% 54%), hsl(${(hue + 34) % 360} 52% 36%))`; }}>{label}</span>;
 }
 
 export function AppTile({ app, onNavigate }: { app: ShellApp; onNavigate?: ((path: string) => void) | undefined }) {

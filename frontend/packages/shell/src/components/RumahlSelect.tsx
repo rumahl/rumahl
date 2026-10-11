@@ -21,6 +21,8 @@ export interface SelectOption {
   label: string;
   disabled?: boolean | undefined;
   warning?: string | undefined;
+  /** Optional font-family used to render this option as a live preview (CSSOM). */
+  font?: string | undefined;
 }
 
 /** Custom warning triangle with the rumahl tooltip (not the browser's). */
@@ -150,7 +152,9 @@ export function RumahlSelect({
         >
           <span className="rumahl-select__value">
             <span className="rumahl-select__label">
-              {renderValue ? renderValue(value) : current}
+              <span ref={(element) => { if (element) element.style.fontFamily = currentOption?.font ?? ""; }}>
+                {renderValue ? renderValue(value) : current}
+              </span>
             </span>
             {currentOption?.warning ? (
               <WarnMark text={currentOption.warning} />
@@ -194,7 +198,9 @@ export function RumahlSelect({
                   triggerRef.current?.focus();
                 }}
               >
-                {renderOption ? renderOption(option.value) : option.label}
+                {renderOption ? renderOption(option.value) : (
+                  <span ref={(element) => { if (element) element.style.fontFamily = option.font ?? ""; }}>{option.label}</span>
+                )}
                 {option.warning ? <WarnMark text={option.warning} /> : null}
               </button>
             ))}

@@ -1,3 +1,4 @@
+import { DeviceSettings } from "./DeviceSettings";
 import { themes } from "@rumahl/ui/themes";
 import { useTheme } from "@rumahl/ui";
 import type { ReactNode } from "react";
@@ -32,6 +33,7 @@ export function SettingsPage() {
   const { snapshot } = useShell();
   const content = useRoutes([
     { index: true, element: <SettingsOverview /> },
+    { path: "device", Component: DeviceSettings },
     { path: "display", Component: DisplaySettings },
     { path: "workspace", Component: WorkspaceSettings },
     { path: "accessibility", Component: AccessibilitySettings },
@@ -52,6 +54,7 @@ export function SettingsPage() {
       <ShellLink className="nav-item" to="/settings/workspace" aria-current={pathname.startsWith("/settings/workspace") ? "page" : undefined}><GridIcon /><span>{t("workspace.title")}</span></ShellLink>
       <ShellLink className="nav-item" to="/settings/accessibility" aria-current={pathname.startsWith("/settings/accessibility") ? "page" : undefined}><PulseIcon /><span>{t("settings.accessibility")}</span></ShellLink>
       <ShellLink className="nav-item" to="/settings/os" aria-current={pathname.startsWith("/settings/os") ? "page" : undefined}><ShieldIcon /><span>{t("settings.osMode")}</span></ShellLink>
+      <ShellLink className="nav-item" to="/settings/device" aria-current={pathname.startsWith("/settings/device") ? "page" : undefined}><DesktopIcon /><span>{t("device.title")}</span></ShellLink>
       <ShellLink className="nav-item" to="/settings/system" aria-current={pathname.startsWith("/settings/system") ? "page" : undefined}><ShieldIcon /><span>{t("settings.system")}</span></ShellLink>
       <ShellLink className="nav-item" to="/settings" aria-current={pathname === "/settings" ? "page" : undefined}><SettingsIcon /><span>{t("nav.settings")}</span></ShellLink>
     </nav>
@@ -70,6 +73,7 @@ function SettingsOverview() {
       <NavRow to="/settings/workspace" icon={<GridIcon />} title={t("workspace.title")} subtitle={t("settings.workspaceHelp")} />
       <NavRow to="/settings/accessibility" icon={<PulseIcon />} title={t("settings.accessibility")} subtitle={t("settings.accessibilityHelp")} />
       <NavRow to="/settings/os" icon={<ShieldIcon />} title={t("settings.osMode")} subtitle={t("settings.osModeHelp")} />
+      <NavRow to="/settings/device" icon={<DesktopIcon />} title={t("device.title")} subtitle={t("device.help")} />
       <NavRow to="/settings/system" icon={<ShieldIcon />} title={t("settings.system")} subtitle={t("settings.systemHelp")} />
     </div>
   </section>;

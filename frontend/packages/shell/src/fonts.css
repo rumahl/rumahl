@@ -1,0 +1,15 @@
+/*
+ * Bundled display faces for the launcher statement typography.
+ *
+ * Space Grotesk, Bricolage Grotesque and Instrument Serif come from
+ * `@fontsource*` (imported in bootstrap.tsx). Clash Display is vendored from
+ * Fontshare (see fonts/ClashDisplay-License.txt); everything is served
+ * from our own origin — no external requests.
+ */
+@font-face {
+  font-family: "Clash Display Variable";
+  font-style: normal;
+  font-weight: 200 700;
+  font-display: swap;
+  src: url("./fonts/ClashDisplay-Variable.woff2") format("woff2-variations");
+}

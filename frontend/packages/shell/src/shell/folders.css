@@ -1,0 +1,97 @@
+/*
+ * iOS-style glass app folders. `.folder-preview` is a frosted squircle holding a
+ * 3x3 grid of mini app icons; it is used on the launcher springboard, the
+ * desktop, and inside the opened folder overlay. Imported after launcher.css so
+ * it supersedes the legacy preview rules.
+ */
+:is(.launcher-home, .desktop-home, .launcher-folder) .folder-preview {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  grid-template-rows: repeat(3, 1fr);
+  place-items: stretch;
+  gap: 12%;
+  padding: 12%;
+  box-sizing: border-box;
+  background: rgba(255, 255, 255, 0.16);
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 255, 255, 0.14),
+    inset 0 1px 2px rgba(255, 255, 255, 0.28);
+  backdrop-filter: blur(22px) saturate(1.6);
+  -webkit-backdrop-filter: blur(22px) saturate(1.6);
+}
+:is(.launcher-home, .desktop-home, .launcher-folder) .folder-preview > span {
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  border-radius: 30%;
+  background: none;
+}
+:is(.launcher-home, .desktop-home, .launcher-folder) .folder-preview .app-icon-glyph {
+  font-size: 0.5rem;
+}
+:is(.launcher-home, .desktop-home, .launcher-folder) .folder-preview img.icon {
+  width: 100%;
+  height: 100%;
+  border-radius: inherit;
+}
+:is(.launcher-home, .desktop-home, .launcher-folder) .folder-preview svg {
+  width: 66%;
+  height: 66%;
+}
+
+/* Opened folder: the springboard behind blurs and scales (iOS-style depth) and
+   the panel adds a frosted tint. Blurring the launcher directly is robust: a
+   portaled overlay's `backdrop-filter` does not sample `.scene`'s backdrop. */
+.launcher-home.is-folder-open,
+.desktop-home.is-folder-open {
+  filter: blur(26px);
+  transform: scale(1.05);
+  transition: filter 0.35s ease, transform 0.35s ease;
+}
+.launcher-folder-overlay {
+  background: rgba(6, 8, 13, 0.5);
+  backdrop-filter: blur(40px) saturate(1.5);
+  -webkit-backdrop-filter: blur(40px) saturate(1.5);
+  justify-content: center;
+}
+/* A light glass card so the folder contents read as a single container. */
+.launcher-folder {
+  width: min(760px, 94vw);
+  padding: clamp(22px, 3.4vh, 36px) clamp(20px, 3.6vw, 44px) clamp(28px, 4.2vh, 46px);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 32px;
+  background: rgba(255, 255, 255, 0.07);
+  box-shadow:
+    0 30px 80px rgba(0, 0, 0, 0.45),
+    inset 0 1px 1px rgba(255, 255, 255, 0.16);
+}
+.launcher-folder .app-grid {
+  grid-template-columns: repeat(auto-fill, 112px);
+  gap: clamp(22px, 3.4vh, 34px) 20px;
+}
+
+/* Keep springboard tiles clean: the app settings shortcut only shows on hover
+   (in the folder overlay it otherwise looked like a notification badge). */
+.launcher-home .app-tile__settings,
+.launcher-folder .app-tile__settings {
+  opacity: 0;
+  transition: opacity 0.15s ease;
+}
+.launcher-home .app-tile-item:hover .app-tile__settings,
+.launcher-home .app-tile-item:focus-within .app-tile__settings,
+.launcher-folder .app-tile-item:hover .app-tile__settings,
+.launcher-folder .app-tile-item:focus-within .app-tile__settings {
+  opacity: 1;
+}
+
+/* Desktop file tiles (real files from the desktop store folder). */
+.desktop-icon__art.is-file {
+  background: rgba(255, 255, 255, 0.2);
+  color: var(--rumahl-ui-color-on-wallpaper, #fff);
+  backdrop-filter: blur(12px) saturate(1.4);
+  -webkit-backdrop-filter: blur(12px) saturate(1.4);
+}
+.desktop-icon__art.is-file svg {
+  width: 30px;
+  height: 30px;
+}

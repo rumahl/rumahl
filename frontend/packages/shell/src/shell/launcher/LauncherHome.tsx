@@ -1,157 +1,371 @@
-import { useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent } from "react";
+import { createPortal } from "react-dom";
 import { AppIcon, AppTile } from "../../apps/AppTile";
-import { resolveRecentApp, useRecents } from "../../apps/recents";
-import { useShellApps, type ShellApp } from "../../apps/useShellApps";
+import { useShellApps } from "../../apps/useShellApps";
 import { useI18n } from "../../i18n";
 import { useWorkspace } from "../../preferences/Workspace";
-import { ArrowIcon } from "../../icons";
-import { useTheme } from "@rumahl/ui";
 import { useShell } from "../ShellContext";
 import { useClock } from "../clock";
-import { useLauncherView, type LauncherView } from "./launcher-view";
+import { SearchIcon } from "../../icons";
+import { createCellStore, gridMetrics, nearestFreeCell, resolveCells, useGridSize, type GridCell } from "../desktop/free-grid";
+import { applyOrder, useLauncherOrder } from "./launcher-order";
+import { LauncherMenu, type LauncherMenuItem } from "./LauncherMenu";
 
-const PAGE_SIZE = 24;
-const VIEWS: readonly LauncherView[] = ["grid", "deck", "canvas"];
+/** Nominal springboard cell (content + gap) used by the free grid. */
+const CELL = { width: 92, height: 104 };
+const GAP = 12;
 
+/** Grid cells of every springboard item; the layout adapts to the container. */
+const launcherCells = createCellStore("rumahl.launcher.cells");
+
+interface DragState { id: string; x: number; y: number; moved: boolean; width: number }
+
+/**
+ * Mirrors the shell's material mode. Portaled overlays live outside `.shell`, so
+ * they cannot rely on the `.shell[data-material="solid"]` rules directly.
+ */
+function useShellMaterial(): "solid" | "translucent" {
+  const [mode, setMode] = useState<"solid" | "translucent">("translucent");
+  useEffect(() => {
+    const shell = document.querySelector<HTMLElement>(".shell");
+    if (!shell) return;
+    const sync = () => setMode(shell.dataset.material === "solid" ? "solid" : "translucent");
+    sync();
+    const observer = new MutationObserver(sync);
+    observer.observe(shell, { attributes: true, attributeFilter: ["data-material"] });
+    return () => observer.disconnect();
+  }, []);
+  return mode;
+}
+
+/**
+ * The launcher springboard: a single free grid of apps and folders. Items are
+ * laid out on responsive cells (never overlapping); rearranging happens only in
+ * edit mode (long-press to enter) — drag onto a cell to move, onto a folder to
+ * file the app in. Folders open in an overlay.
+ */
 export function LauncherHome() {
   const { t, locale } = useI18n();
-  const { snapshot, open } = useShell();
+  const { open, snapshot } = useShell();
   const apps = useShellApps();
-  const { effective } = useWorkspace();
-  const { variants } = useTheme();
-  const recents = useRecents();
-  const [view, setView] = useLauncherView(variants.launcherLayout === "drawer" ? "deck" : "grid");
+  const { effective, save } = useWorkspace();
+  const order = useLauncherOrder();
+  const storedCells = launcherCells.use();
   const [query, setQuery] = useState("");
   const [folder, setFolder] = useState<string | null>(null);
-  const [page, setPage] = useState(0);
+  const [editing, setEditing] = useState(false);
+  const [drag, setDrag] = useState<DragState | null>(null);
+  const [dropFolder, setDropFolder] = useState<string | null>(null);
+  const [renaming, setRenaming] = useState<string | null>(null);
+  const [outDrag, setOutDrag] = useState<null | { id: string; x: number; y: number; width: number }>(null);
+  const outGesture = useRef<null | { pointer: number; x: number; y: number; width: number }>(null);
+  const outDragRef = useRef<null | { folderId: string; appId: string }>(null);
+  const [menu, setMenu] = useState<null | { x: number; y: number; appId?: string; folderId?: string }>(null);
   const now = useClock();
-  const swipe = useRef<number | null>(null);
-  useEffect(() => { setPage(0); }, [query, view, folder]);
+  const press = useRef<null | { timer: number; x: number; y: number }>(null);
+  const material = useShellMaterial();
+  const board = useRef<HTMLDivElement>(null);
+  const suppressClick = useRef(false);
+  const gesture = useRef<null | { pointer: number; x: number; y: number; folder: string | null }>(null);
+  const size = useGridSize(board);
+  const cols = useMemo(() => gridMetrics(size.width, size.height, CELL.width, CELL.height, GAP).cols, [size.width, size.height]);
 
+  // A drag suppresses the click that follows its release; any *new* pointer
+  // gesture (even outside the board) must clear that flag so the next click
+  // is not swallowed.
+  useEffect(() => {
+    const clear = () => { suppressClick.current = false; };
+    window.addEventListener("pointerdown", clear, true);
+    return () => window.removeEventListener("pointerdown", clear, true);
+  }, []);
+
+  const byId = useMemo(() => new Map(apps.map((app) => [app.id, app])), [apps]);
+  const folderIds = useMemo(() => effective.folders.map((item) => item.id), [effective.folders]);
+  const orderedTokens = useMemo(() => applyOrder([...apps.map((app) => app.id), ...folderIds], order), [apps, folderIds, order]);
+  const filedAppIds = useMemo(() => new Set(effective.folders.flatMap((item) => item.apps)), [effective.folders]);
   const normalized = query.trim().toLocaleLowerCase();
   const currentFolder = effective.folders.find((item) => item.id === folder);
-  const visible = apps.filter((app) => {
-    if (normalized) return `${app.title} ${app.id}`.toLocaleLowerCase().includes(normalized);
-    if (currentFolder) return currentFolder.apps.includes(app.id);
-    return view !== "grid" || !effective.folders.some(item => item.apps.includes(app.id));
-  });
-  const pages = useMemo(() => {
-    const result: ShellApp[][] = [];
-    for (let index = 0; index < visible.length; index += PAGE_SIZE) result.push(visible.slice(index, index + PAGE_SIZE));
-    return result.length ? result : [[]];
-  }, [visible]);
-  const activePage = Math.min(page, pages.length - 1);
-  const recentApps = useMemo(() => {
-    const seen = new Set<string>();
-    const result: ShellApp[] = [];
-    for (const path of recents) {
-      const app = resolveRecentApp(path, apps);
-      if (app && !seen.has(app.id)) { seen.add(app.id); result.push(app); }
+
+  // The board mixes apps and folders: a folder is a token that renders its own
+  // tile, and the apps filed into it no longer appear on the board themselves.
+  const items = useMemo(
+    () => orderedTokens.filter((token) => byId.has(token) ? !filedAppIds.has(token) : true),
+    [orderedTokens, byId, filedAppIds]
+  );
+  const rows = useMemo(() => Math.max(gridMetrics(size.width, size.height, CELL.width, CELL.height, GAP).rows, Math.ceil(items.length / Math.max(1, cols))), [size.width, size.height, items.length, cols]);
+  const cellOf = useMemo(() => resolveCells(items, storedCells, cols, rows, "row"), [items, storedCells, cols, rows]);
+  const results = normalized ? apps.filter((app) => `${app.title} ${app.id}`.toLocaleLowerCase().includes(normalized)) : [];
+
+  // Position items with CSSOM (the strict style-src CSP blocks a `style` prop).
+  useLayoutEffect(() => {
+    const host = board.current;
+    if (!host) return;
+    const stepX = CELL.width + GAP, stepY = CELL.height + GAP;
+    for (const element of host.querySelectorAll<HTMLElement>("[data-grid-id]")) {
+      const id = element.dataset.gridId;
+      const cell: GridCell | undefined = id ? cellOf[id] : undefined;
+      if (!id || !cell) continue;
+      element.style.position = "absolute";
+      element.style.left = `${cell.col * stepX}px`;
+      element.style.top = `${cell.row * stepY}px`;
+      element.style.opacity = drag?.moved && drag.id === id ? "0" : "";
     }
-    return result.slice(0, 6);
-  }, [recents, apps]);
-  const groups = useMemo(() => {
-    const map = new Map<string, ShellApp[]>();
-    for (const app of visible) {
-      const letter = /^[a-z]/i.test(app.title) ? app.title[0]!.toUpperCase() : "#";
-      const list = map.get(letter) ?? [];
-      list.push(app);
-      map.set(letter, list);
-    }
-    return [...map.entries()].sort(([left], [right]) => left === "#" ? 1 : right === "#" ? -1 : left.localeCompare(right));
-  }, [visible]);
+  }, [items, cellOf, drag]);
 
   const clock = now ? new Intl.DateTimeFormat(locale, { hour: "2-digit", minute: "2-digit" }).format(now) : "";
   const date = now ? new Intl.DateTimeFormat(locale, { weekday: "long", day: "numeric", month: "long" }).format(now) : "";
-  const step = (delta: number) => setPage((value) => Math.min(Math.max(value + delta, 0), pages.length - 1));
+  const hour = now ? now.getHours() : null;
+  const greeting = hour === null ? "launcher.greetingHello"
+    : hour < 5 ? "launcher.greetingNight"
+    : hour < 12 ? "launcher.greetingMorning"
+    : hour < 18 ? "launcher.greetingAfternoon"
+    : "launcher.greetingEvening";
+
+  function persistFolders(folders: typeof effective.folders) {
+    void save("device", { ...effective, folders });
+  }
+  function newFolder() {
+    const id = `folder-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`;
+    persistFolders([...effective.folders, { id, name: t("launcher.newFolder"), apps: [] }]);
+    setFolder(id);
+  }
+  function removeFolder(id: string) {
+    persistFolders(effective.folders.filter((item) => item.id !== id));
+    if (folder === id) setFolder(null);
+  }
+  function fileIntoFolder(folderId: string, appId: string) {
+    persistFolders(effective.folders.map((item) => item.id === folderId
+      ? { ...item, apps: item.apps.includes(appId) ? item.apps : [...item.apps, appId] }
+      : item));
+  }
+  function removeFromFolder(folderId: string, appId: string) {
+    persistFolders(effective.folders.map((item) => item.id === folderId
+      ? { ...item, apps: item.apps.filter((id) => id !== appId) }
+      : item));
+  }
+  function renameFolder(folderId: string, name: string) {
+    const trimmed = name.trim();
+    if (trimmed) persistFolders(effective.folders.map((item) => item.id === folderId ? { ...item, name: trimmed } : item));
+    setRenaming(null);
+  }
+  function beginOutDrag(folderId: string, appId: string, event: ReactPointerEvent<HTMLElement>) {
+    if (event.button !== 0) return;
+    const width = event.currentTarget.getBoundingClientRect().width || CELL.width;
+    outGesture.current = { pointer: event.pointerId, x: event.clientX, y: event.clientY, width };
+    outDragRef.current = { folderId, appId };
+    setOutDrag({ id: appId, x: event.clientX, y: event.clientY, width });
+    event.currentTarget.setPointerCapture?.(event.pointerId);
+  }
+  function moveOutDrag(event: ReactPointerEvent) {
+    const entry = outGesture.current;
+    if (!entry || entry.pointer !== event.pointerId) return;
+    setOutDrag((previous) => previous ? { ...previous, x: event.clientX, y: event.clientY } : previous);
+  }
+  function endOutDrag(event: ReactPointerEvent) {
+    const entry = outGesture.current;
+    const target = outDragRef.current;
+    if (!entry || entry.pointer !== event.pointerId || !target) return;
+    const dx = event.clientX - entry.x, dy = event.clientY - entry.y;
+    outGesture.current = null;
+    outDragRef.current = null;
+    const inside = document.elementFromPoint(event.clientX, event.clientY)?.closest(".launcher-folder");
+    if (Math.abs(dx) + Math.abs(dy) > 6 && !inside) {
+      // Dropped into the background: place the app on the launcher grid and
+      // close the folder so it can be positioned freely.
+      suppressClick.current = true;
+      const box = board.current?.getBoundingClientRect();
+      const stepX = CELL.width + GAP, stepY = CELL.height + GAP;
+      const point = { col: Math.round((event.clientX - (box?.left ?? 0)) / stepX), row: Math.round((event.clientY - (box?.top ?? 0)) / stepY) };
+      const taken = items.map((token) => cellOf[token]).filter((value): value is GridCell => value !== undefined);
+      launcherCells.set(target.appId, nearestFreeCell(point, taken, cols, rows));
+      removeFromFolder(target.folderId, target.appId);
+      setFolder(null);
+    }
+    setOutDrag(null);
+  }
+  function menuItems(): LauncherMenuItem[] {
+    if (!menu) return [];
+    if (menu.appId) {
+      const app = byId.get(menu.appId);
+      if (!app) return [];
+      return [
+        { label: t("launcher.menu.open"), onSelect: () => open(app.path) },
+        ...(!app.system ? [{ label: t("launcher.menu.settings"), onSelect: () => open(`${app.path}/settings`) }] : []),
+        ...(currentFolder?.apps.includes(app.id) ? [{ label: t("launcher.menu.removeFromFolder"), danger: true, onSelect: () => removeFromFolder(currentFolder.id, app.id) }] : [])
+      ];
+    }
+    if (menu.folderId) {
+      const id = menu.folderId;
+      return [
+        { label: t("launcher.menu.openFolder"), onSelect: () => setFolder(id) },
+        { label: t("launcher.menu.renameFolder"), onSelect: () => setRenaming(id) },
+        { label: t("launcher.menu.removeFolder"), danger: true, onSelect: () => removeFolder(id) }
+      ];
+    }
+    return [{ label: t("launcher.menu.newFolder"), onSelect: newFolder }];
+  }
+  function openMenu(event: ReactMouseEvent, extra: { appId?: string; folderId?: string } = {}) {
+    event.preventDefault();
+    event.stopPropagation();
+    setMenu({ x: event.clientX, y: event.clientY, ...extra });
+  }
+  function folderPreview(folderItem: (typeof effective.folders)[number]) {
+    return <span className="app-tile__icon folder-preview" aria-hidden="true">{folderItem.apps.slice(0, 9).map((id) => { const app = byId.get(id); return app ? <span key={id}><AppIcon app={app} /></span> : null; })}</span>;
+  }
+  /** The tile shown for a dragged token (app or folder) in the floating preview. */
+  function dragTile(token: string) {
+    const app = byId.get(token);
+    if (app) return <AppTile app={app} />;
+    const folderItem = effective.folders.find((item) => item.id === token);
+    return folderItem ? <span className="app-tile">{folderPreview(folderItem)}<span>{folderItem.name}</span></span> : null;
+  }
 
   function onPointerDown(event: ReactPointerEvent) {
-    if (event.pointerType === "mouse") return;
-    swipe.current = event.clientX;
+    if (event.button !== 0) return;
+    if (editing) return;
+    // iOS-style: a long press enters the jiggle/edit mode.
+    const timer = window.setTimeout(() => { press.current = null; setEditing(true); }, 480);
+    press.current = { timer, x: event.clientX, y: event.clientY };
   }
-  function onPointerUp(event: ReactPointerEvent) {
-    const start = swipe.current;
-    swipe.current = null;
-    if (start === null) return;
-    const distance = event.clientX - start;
-    if (Math.abs(distance) >= 60) step(distance < 0 ? 1 : -1);
+  function onPointerMove(event: ReactPointerEvent) {
+    const active = press.current;
+    if (active && Math.abs(event.clientX - active.x) + Math.abs(event.clientY - active.y) > 8) {
+      window.clearTimeout(active.timer);
+      press.current = null;
+    }
+  }
+  function onPointerUp() {
+    if (press.current) { window.clearTimeout(press.current.timer); press.current = null; }
   }
   function onKeyDown(event: ReactKeyboardEvent) {
     if ((event.target as HTMLElement).closest("input, textarea, select")) return;
-    if (event.key === "ArrowRight") { event.preventDefault(); step(1); }
-    else if (event.key === "ArrowLeft") { event.preventDefault(); step(-1); }
+    if (event.key === "Escape" && currentFolder) { event.preventDefault(); setFolder(null); }
   }
 
-  const search = <label className="app-search launcher-search">
-    <span>{t("launcher.search")}</span>
-    <input type="search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder={t("launcher.searchPlaceholder")} />
-  </label>;
+  function beginDrag(token: string, event: ReactPointerEvent<HTMLElement>) {
+    if (!editing || event.button !== 0) return;
+    const width = event.currentTarget.closest<HTMLElement>(".springboard-cell")?.getBoundingClientRect().width ?? CELL.width;
+    gesture.current = { pointer: event.pointerId, x: event.clientX, y: event.clientY, folder: null };
+    setDrag({ id: token, x: event.clientX, y: event.clientY, moved: false, width });
+    event.currentTarget.setPointerCapture?.(event.pointerId);
+  }
+  function moveDrag(event: ReactPointerEvent) {
+    const entry = gesture.current;
+    if (!entry || entry.pointer !== event.pointerId) return;
+    const dx = event.clientX - entry.x, dy = event.clientY - entry.y;
+    if (Math.abs(dx) + Math.abs(dy) > 6) {
+      const element = document.elementFromPoint(event.clientX, event.clientY);
+      const folderEl = drag && byId.has(drag.id) ? element?.closest<HTMLElement>("[data-folder-id]") : null;
+      entry.folder = folderEl?.dataset.folderId ?? null;
+      setDropFolder(entry.folder);
+      setDrag((previous) => previous ? { ...previous, moved: true, x: event.clientX, y: event.clientY } : previous);
+    } else {
+      setDrag((previous) => previous ? { ...previous, x: event.clientX, y: event.clientY } : previous);
+    }
+  }
+  function endDrag(event: ReactPointerEvent) {
+    const entry = gesture.current;
+    if (!entry || entry.pointer !== event.pointerId) return;
+    gesture.current = null;
+    if (drag?.moved) {
+      suppressClick.current = true;
+      if (entry.folder && byId.has(drag.id)) fileIntoFolder(entry.folder, drag.id);
+      else {
+        const box = board.current?.getBoundingClientRect();
+        const stepX = CELL.width + GAP, stepY = CELL.height + GAP;
+        const target = { col: Math.round((event.clientX - (box?.left ?? 0)) / stepX), row: Math.round((event.clientY - (box?.top ?? 0)) / stepY) };
+        const taken = items.filter((token) => token !== drag.id).map((token) => cellOf[token]).filter((value): value is GridCell => value !== undefined);
+        launcherCells.set(drag.id, nearestFreeCell(target, taken, cols, rows));
+      }
+    }
+    setDrag(null);
+    setDropFolder(null);
+  }
 
-  return <main className="launcher-home">
-    <header className="launcher-header">
+  return <main className={`launcher-home${currentFolder ? " is-folder-open" : ""}`}>
+    <header className="launcher-top">
       <div className="launcher-heading">
-        <span className="launcher-wordmark">rumahl</span>
-        <p>{snapshot.user.displayName}</p>
-        <h1>{t("launcher.heading")}</h1>
-        {now ? <p className="launcher-clock"><strong>{clock}</strong><span>{date}</span></p> : null}
+        <h1 className="launcher-greeting">{t(greeting)}<span>{snapshot.user.displayName}</span></h1>
+        {now ? <div className="launcher-clock"><strong>{clock}</strong><span>{date}</span></div> : null}
       </div>
-      <div className="launcher-views" role="group" aria-label={t("launcher.view.label")}>
-        {VIEWS.map((candidate) => <button key={candidate} type="button" aria-pressed={view === candidate}
-          onClick={() => { setView(candidate); setFolder(null); }}>{t(`launcher.view.${candidate}`)}</button>)}
-      </div>
+      {editing && !normalized ? <button className="launcher-done" type="button" onClick={() => setEditing(false)}>{t("launcher.done")}</button> : null}
     </header>
 
-    {view === "grid" ? <div className="launcher-view launcher-view--grid" tabIndex={0} aria-label={t("launcher.pages")}
-      onPointerDown={onPointerDown} onPointerUp={onPointerUp} onPointerCancel={() => { swipe.current = null; }} onKeyDown={onKeyDown}>
-      {search}
-      {!normalized && !currentFolder && recentApps.length > 0 ? <section className="launcher-section launcher-section--recent">
-        <h2>{t("launcher.recent")}</h2>
-        <div className="app-grid">{recentApps.map((app) => <AppTile app={app} key={app.id} />)}</div>
-      </section> : null}
-      <section className="launcher-section">
-        <h2>{currentFolder ? currentFolder.name : t("launcher.allApps")}</h2>
-        {currentFolder ? <button className="launcher-back" type="button" onClick={() => setFolder(null)}>{t("workspace.back")}</button> : null}
+    {normalized ? <section className="launcher-section">
+      <h2>{t("launcher.searchResults")}</h2>
+      <div className="app-grid">{results.map((app) => <AppTile app={app} key={app.id} />)}</div>
+      {results.length === 0 ? <p role="status" className="launcher-empty">{t("launcher.noResults")}</p> : null}
+    </section> : <div className={`launcher-board${editing ? " is-editing" : ""}`} ref={board} onContextMenu={(event) => openMenu(event)}
+      onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={onPointerUp} onKeyDown={onKeyDown} tabIndex={0}>
+      <div className="springboard-grid">
+        {items.map((token) => {
+          const app = byId.get(token);
+          const folderItem = app ? undefined : effective.folders.find((item) => item.id === token);
+          if (!app && !folderItem) return null;
+          return <div key={token} data-grid-id={token} data-folder-id={folderItem?.id}
+            className="springboard-cell"
+            onPointerDown={(event) => beginDrag(token, event)} onPointerMove={moveDrag} onPointerUp={endDrag} onPointerCancel={endDrag}
+            onDragStart={(event) => event.preventDefault()}
+            onContextMenu={(event) => openMenu(event, app ? { appId: token } : { folderId: token })}
+            onClickCapture={(event) => { if (suppressClick.current || editing) { event.preventDefault(); event.stopPropagation(); suppressClick.current = false; } }}>
+            {app
+              ? <AppTile app={app} />
+              : renaming === token
+                ? <input className="launcher-rename" autoFocus defaultValue={folderItem!.name} maxLength={128}
+                    onClick={(event) => event.stopPropagation()}
+                    onBlur={(event) => renameFolder(token, event.target.value)}
+                    onKeyDown={(event) => { if (event.key === "Enter") event.currentTarget.blur(); if (event.key === "Escape") setRenaming(null); }} />
+                : <button className={`app-tile${dropFolder === token ? " is-drop-target" : ""}`} type="button"
+                    onClick={(event) => { if (editing) { event.preventDefault(); return; } setFolder(token); }}>
+                    {folderPreview(folderItem!)}<span>{folderItem!.name}</span>
+                  </button>}
+          </div>;
+        })}
+      </div>
+    </div>}
+
+    <footer className="launcher-footer">
+      {!currentFolder ? <label className="launcher-search">
+        <SearchIcon aria-hidden="true" />
+        <span>{t("launcher.search")}</span>
+        <input type="search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder={t("launcher.searchPlaceholder")} />
+      </label> : null}
+    </footer>
+
+    {currentFolder ? createPortal(<div className="launcher-folder-overlay" data-material={material} role="dialog" aria-label={currentFolder.name} onClick={(event) => { if (event.target === event.currentTarget) setFolder(null); }}>
+      <div className="launcher-folder">
+        <header className="launcher-folder__header">
+          {renaming === currentFolder.id
+            ? <input className="launcher-rename" autoFocus defaultValue={currentFolder.name} maxLength={128}
+                onBlur={(event) => renameFolder(currentFolder.id, event.target.value)}
+                onKeyDown={(event) => { if (event.key === "Enter") event.currentTarget.blur(); if (event.key === "Escape") setRenaming(null); }} />
+            : <h2>{currentFolder.name}</h2>}
+          <div className="launcher-folder__actions">
+            <button className="launcher-edit" type="button" aria-pressed={editing} onClick={() => setEditing((value) => !value)}>{t(editing ? "launcher.done" : "launcher.edit")}</button>
+            <button type="button" aria-label={t("launcher.closeFolder")} onClick={() => setFolder(null)}>×</button>
+          </div>
+        </header>
         <div className="app-grid">
-          {!normalized && !currentFolder ? effective.folders.map((item) => <button className="app-tile" key={item.id} type="button" onClick={() => setFolder(item.id)}>
-            <span className="app-tile__icon folder-preview" aria-hidden="true">{item.apps.slice(0,4).map(id => { const app = apps.find(a => a.id === id); return app ? <span key={id}><AppIcon app={app}/></span> : null; })}</span><span>{item.name}</span>
-          </button>) : null}
-          {pages[activePage]!.map((app) => <AppTile app={app} key={app.id} />)}
+          {currentFolder.apps.map((id) => { const app = byId.get(id); return app ? <div key={id}
+            onContextMenu={(event) => openMenu(event, { appId: id })}
+            onPointerDown={(event) => beginOutDrag(currentFolder.id, id, event)} onPointerMove={moveOutDrag} onPointerUp={endOutDrag} onPointerCancel={endOutDrag}
+            onDragStart={(event) => event.preventDefault()}
+            onClickCapture={(event) => { if (suppressClick.current) { event.preventDefault(); event.stopPropagation(); suppressClick.current = false; } }}>
+            <AppTile app={app} /></div> : null; })}
         </div>
-        {visible.length === 0 ? <p role="status" className="launcher-empty">{t("launcher.noResults")}</p> : null}
-      </section>
-      {pages.length > 1 ? <nav className="launcher-pages" aria-label={t("launcher.pages")}>
-        {pages.map((_, index) => <button key={index} type="button" aria-current={index === activePage ? "page" : undefined}
-          aria-label={t("launcher.page", { page: index + 1 })} onClick={() => setPage(index)} />)}
-      </nav> : null}
-    </div> : null}
-
-    {view === "deck" ? <div className="launcher-view launcher-view--drawer">
-      <div className="drawer-search">{search}</div>
-      <p className="drawer-count">{t("appManager.count", { count: visible.length })}</p>
-      <div className="drawer-list">
-        {groups.map(([letter, entries]) => <section className="drawer-group" key={letter}>
-          <h2 className="drawer-letter" aria-label={letter}>{letter}</h2>
-          {entries.map((app) => <button className="launcher-row" key={app.id} type="button" onClick={() => open(app.path)}>
-            <span className={`launcher-row__art${app.system ? " is-system" : ""}`} aria-hidden="true"><AppIcon app={app} /></span>
-            <span className="launcher-row__text"><strong>{app.title}</strong><small>{app.id}</small></span>
-            <ArrowIcon />
-          </button>)}
-        </section>)}
-        {visible.length === 0 ? <p role="status" className="launcher-empty">{t("launcher.noResults")}</p> : null}
+        {currentFolder.apps.length === 0 ? <p role="status" className="launcher-empty">{t("launcher.folderEmpty")}</p> : null}
       </div>
-    </div> : null}
+    </div>, document.body) : null}
 
-    {view === "canvas" ? <div className="launcher-view launcher-view--canvas">
-      {search}
-      <div className="launcher-canvas" role="list">
-        {visible.map((app) => <button className="launcher-card" key={app.id} type="button" role="listitem" onClick={() => open(app.path)}>
-          <span className={`launcher-card__art${app.system ? " is-system" : ""}`} aria-hidden="true"><AppIcon app={app} /></span>
-          <strong>{app.title}</strong>
-          <small>{app.id}</small>
-          <span className="launcher-card__cta">{t("launcher.openApp")}<ArrowIcon /></span>
-        </button>)}
-      </div>
-      {visible.length === 0 ? <p role="status" className="launcher-empty">{t("launcher.noResults")}</p> : null}
-    </div> : null}
+    {outDrag ? createPortal(
+      <div className="springboard-float" ref={(element) => { if (element) { element.style.left = `${outDrag.x}px`; element.style.top = `${outDrag.y}px`; element.style.width = `${outDrag.width}px`; } }} aria-hidden="true">
+        {byId.get(outDrag.id) ? <AppTile app={byId.get(outDrag.id)!} /> : null}
+      </div>, document.body) : null}
+
+    {drag?.moved ? createPortal(
+      <div className="springboard-float" ref={(element) => { if (element) { element.style.left = `${drag.x}px`; element.style.top = `${drag.y}px`; element.style.width = `${drag.width}px`; } }} aria-hidden="true">
+        {dragTile(drag.id)}
+      </div>, document.body) : null}
+    {menu ? <LauncherMenu x={menu.x} y={menu.y} items={menuItems()} onClose={() => setMenu(null)} /> : null}
   </main>;
 }

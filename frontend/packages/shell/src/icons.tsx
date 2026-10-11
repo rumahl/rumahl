@@ -63,6 +63,42 @@ export function SearchIcon(props: IconProps) {
   );
 }
 
+export function SlidersIcon(props: IconProps) {
+  return (
+    <IconBase {...props}>
+      <path d="M4 7h16M4 12h16M4 17h16" />
+      <circle cx="9" cy="7" r="2.2" />
+      <circle cx="15" cy="12" r="2.2" />
+      <circle cx="8" cy="17" r="2.2" />
+    </IconBase>
+  );
+}
+
+export function MoonIcon(props: IconProps) {
+  return (
+    <IconBase {...props}>
+      <path d="M19 14.5A7.5 7.5 0 0 1 9.5 5a7.5 7.5 0 1 0 9.5 9.5Z" />
+    </IconBase>
+  );
+}
+
+export function SparkIcon(props: IconProps) {
+  return (
+    <IconBase {...props}>
+      <path d="M12 3v4M12 17v4M5 12H1M23 12h-4M6.3 6.3 3.5 3.5M20.5 20.5l-2.8-2.8M17.7 6.3l2.8-2.8M3.5 20.5l2.8-2.8" />
+      <circle cx="12" cy="12" r="3.2" />
+    </IconBase>
+  );
+}
+
+export function BoltIcon(props: IconProps) {
+  return (
+    <IconBase {...props}>
+      <path d="M13 2 4.5 13.5H11l-1 8.5 8.5-11.5H12z" />
+    </IconBase>
+  );
+}
+
 export function ArrowIcon(props: IconProps) {
   return (
     <IconBase {...props}>
