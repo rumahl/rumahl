@@ -89,6 +89,7 @@ export const german = {
   "files.missing": "Diese Datei oder dieser Ordner ist nicht mehr verfügbar.",
   "files.unavailable": "Die Aktion ist fehlgeschlagen. Prüfe Namen und Ziel und versuche es erneut.",
   "files.system": "System",
+  "files.desktop": "Desktop",
   "files.applications": "Anwendungen",
   "files.grid": "Raster",
   "files.list": "Liste",

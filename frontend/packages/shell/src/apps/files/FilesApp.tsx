@@ -3,13 +3,14 @@ import { useI18n } from "../../i18n";
 import { useOsModePolicy } from "../../preferences/OsMode";
 import { browserProfile } from "../../preferences/storage";
 import { useShell } from "../../shell/ShellContext";
+import { ensureDesktopFolder } from "../../shell/desktop-files";
 import { Breadcrumb } from "./Breadcrumb";
 import { ContextMenu, type MenuItem } from "./ContextMenu";
 import { FileGrid, FileList, type ViewProps } from "./FileViews";
 import { Sidebar } from "./Sidebar";
 import { Toolbar } from "./Toolbar";
 import { AlertIcon, FilePlusIcon, MoveIcon, OpenIcon, PencilIcon, PlusIcon, TrashIcon, UploadIcon } from "./icons";
-import { type Item } from "./types";
+import { ROOT, type Item } from "./types";
 import { useExplorer } from "./useExplorer";
 import { useMarquee } from "./useMarquee";
 import { useSelection } from "./useSelection";
@@ -68,6 +69,13 @@ export function FilesApp() {
   }
   const newFolder = () => setDraft({ kind: "folder", name: "" });
   const newFile = () => setDraft({ kind: "file", name: "untitled.txt" });
+
+  async function openDesktop() {
+    const id = await ensureDesktopFolder(live ? live.request : null);
+    explorer.navigate(id
+      ? { place: { kind: "store" }, trail: [ROOT, { id, name: t("files.desktop") }], segments: [] }
+      : { place: { kind: "store" }, trail: [ROOT], segments: [] });
+  }
 
   const viewProps: ViewProps = {
     items: visible,
@@ -149,7 +157,7 @@ export function FilesApp() {
 
   return <section ref={root} className="files-app" tabIndex={-1} onKeyDown={handleKeys}
     onPointerDown={(event) => { if (!(event.target as HTMLElement).closest("input, textarea, button, label, .files-menu")) root.current?.focus(); }}>
-    <Sidebar nav={explorer.nav} advanced={advancedSettings} onNavigate={explorer.navigate} />
+    <Sidebar nav={explorer.nav} advanced={advancedSettings} onNavigate={explorer.navigate} onOpenDesktop={openDesktop} />
     <div className="files-app__main">
       <Toolbar
         isStore={explorer.isStore} busy={explorer.busy}

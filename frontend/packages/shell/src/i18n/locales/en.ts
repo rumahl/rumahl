@@ -94,6 +94,7 @@ export const english = {
   "files.missing": "This file or folder is no longer available.",
   "files.unavailable": "The action failed. Check the name and destination, then try again.",
   "files.system": "System",
+  "files.desktop": "Desktop",
   "files.applications": "Applications",
   "files.grid": "Grid",
   "files.list": "List",
