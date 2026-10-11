@@ -207,7 +207,7 @@ try {
   await page.goto(`${info.origin}/settings/display`);
   await choose("Save for", "This browser profile", page);
   const inherited = page.waitForResponse((response) => response.url().includes("/api/v1/shell/preferences?") && response.request().method() === "PUT");
-  await page.getByRole("group", { name: "Shell mode" }).getByRole("button", { name: "Use account setting", exact: true }).click();
+  await page.locator(".setting").getByRole("group", { name: "Shell mode" }).getByRole("button", { name: "Use account setting", exact: true }).click();
   assert.equal((await inherited).status(), 200);
   const secondContext = await browser.newContext(reducedMotion);
   try {
@@ -215,14 +215,14 @@ try {
     second.on("pageerror", (error) => errors.push(error.message));
     await login(second);
     await choose("Save for", "My account · all devices", page);
-    await page.locator(".topbar__mode").getByRole("button", { name: "Launcher", exact: true }).click();
+    await page.locator(".setting").getByRole("group", { name: "Shell mode" }).getByRole("button", { name: "Launcher", exact: true }).click();
     await page.locator('.shell[data-shell-mode="launcher"]').waitFor();
     await second.locator('.shell[data-shell-mode="launcher"]').waitFor();
     await setMode("desktop", second);
     await synchronized(page, second);
-    await page.locator(".topbar__mode").getByRole("button", { name: "Desktop", exact: true }).click();
+    await page.locator(".setting").getByRole("group", { name: "Shell mode" }).getByRole("button", { name: "Desktop", exact: true }).click();
     await page.locator('.shell[data-shell-mode="desktop"]').waitFor();
-    await page.locator(".topbar__mode").getByRole("button", { name: "Launcher", exact: true }).click();
+    await page.locator(".setting").getByRole("group", { name: "Shell mode" }).getByRole("button", { name: "Launcher", exact: true }).click();
     await page.locator('.shell[data-shell-mode="launcher"]').waitFor();
     assert.equal(await second.locator(".shell").getAttribute("data-shell-mode"), "desktop");
     const sameProfileTab = await secondContext.newPage();
