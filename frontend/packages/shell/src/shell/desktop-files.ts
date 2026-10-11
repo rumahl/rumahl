@@ -29,7 +29,7 @@ export async function ensureDesktopFolder(request: ShellRequest | null | undefin
   try {
     const existing = (await list(request, "root")).find((entry) => entry.directory && entry.name === DESKTOP_FOLDER_NAME);
     if (existing) return existing.id;
-    const created = await call(request, `/api/v1/files?parent=root&name=${encodeURIComponent(DESKTOP_FOLDER_NAME)}&directory=true`, { method: "POST" });
+    const created = await call(request, `/api/v1/files?parent=root&name=${encodeURIComponent(DESKTOP_FOLDER_NAME)}&directory=true`, { method: "POST", headers: { "Content-Type": "application/octet-stream" } });
     if (!created.ok) return null;
     return (await list(request, "root")).find((entry) => entry.directory && entry.name === DESKTOP_FOLDER_NAME)?.id ?? null;
   } catch { return null; }
