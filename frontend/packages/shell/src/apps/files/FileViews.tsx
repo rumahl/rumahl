@@ -55,7 +55,7 @@ export function FileGrid(props: ViewProps) {
     data-file-key={item.key}
     className={`files-tile ${classes(props, item)}`}
     {...rowHandlers(props, item)}>
-    <span className="files-tile__icon" aria-hidden="true">{item.directory ? <FolderIcon className="files-icon-folder" /> : <FileIcon className="files-icon-file" />}</span>
+    <span className="files-tile__icon" aria-hidden="true">{item.icon ? <span className="files-tile__app">{item.icon}</span> : item.directory ? <FolderIcon className="files-icon-folder" /> : <FileIcon className="files-icon-file" />}</span>
     {props.renameKey === item.key
       ? <RenameInput item={item} onCommit={props.onRenameCommit} onCancel={props.onRenameCancel} />
       : <span className="files-tile__name" title={item.name}>{item.name}</span>}
@@ -71,7 +71,7 @@ export function FileList(props: ViewProps) {
       className={`files-row ${classes(props, item)}`}
       {...rowHandlers(props, item)}>
       <span className="files-row__name">
-        {item.directory ? <FolderIcon className="files-icon-folder" /> : <FileIcon className="files-icon-file" />}
+        {item.icon ? <span className="files-row__app">{item.icon}</span> : item.directory ? <FolderIcon className="files-icon-folder" /> : <FileIcon className="files-icon-file" />}
         {props.renameKey === item.key
           ? <RenameInput item={item} onCommit={props.onRenameCommit} onCancel={props.onRenameCancel} />
           : <span title={item.name}>{item.name}</span>}

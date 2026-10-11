@@ -8,9 +8,11 @@ const state = vi.hoisted(() => ({
 }));
 
 vi.mock("../../i18n", () => ({ useI18n: () => ({ t: (key: string) => key }) }));
-vi.mock("../../shell/ShellContext", () => ({ useShell: () => ({ live: state.live }) }));
+vi.mock("../../shell/ShellContext", () => ({ useShell: () => ({ live: state.live, open: vi.fn() }) }));
 vi.mock("../../preferences/OsMode", () => ({ useOsModePolicy: () => ({ advancedSettings: state.advanced, browseSystemFiles: state.advanced, terminal: false, ssh: false, webConsole: false }) }));
 vi.mock("../../preferences/storage", () => ({ browserProfile: () => ({ id: "01990000-0000-7000-8000-000000000001", persistence: "memory" }) }));
+vi.mock("../../preferences/Workspace", () => ({ useWorkspace: () => ({ effective: { folders: [] } }) }));
+vi.mock("../useShellApps", () => ({ useShellApps: () => [] }));
 vi.mock("../fsClient", () => ({ fetchHostList: state.fetchHostList, hostContentUrl: () => "/content" }));
 
 import { FilesApp } from "./FilesApp";
