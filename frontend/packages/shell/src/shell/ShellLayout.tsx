@@ -21,8 +21,8 @@ import { ShellContext } from "./ShellContext";
 import { MenuBar } from "./MenuBar";
 import { CommandPalette } from "./CommandPalette";
 import { EmergencyShell } from "./EmergencyShell";
-import { HelpOverlay } from "./HelpOverlay";
-import { installShortcuts, useHelpOpen } from "./keyboard";
+import { KeyPalette } from "./KeyPalette";
+import { installShortcuts, useKeyPaletteOpen } from "./keyboard";
 import { useEmergencyOpen } from "./emergency";
 import { reportActivity } from "../apps/recovery-client";
 import { DesktopWindows } from "./DesktopWindows";
@@ -303,7 +303,7 @@ export function ShellLayout({ snapshot, live }: { snapshot: ShellSnapshotV1; liv
     return () => { document.adoptedStyleSheets = previous; };
   }, [theme.css]);
   const emergencyOpen = useEmergencyOpen();
-  const helpOpen = useHelpOpen();
+  const paletteOpen = useKeyPaletteOpen();
   // Hidden keyboard commands (leader `r`); the emergency chord goes to /recovery.
   useEffect(() => installShortcuts(), []);
   // Report shell activity (navigation, mode) into the central audit log.
@@ -331,7 +331,7 @@ export function ShellLayout({ snapshot, live }: { snapshot: ShellSnapshotV1; liv
       </div>
       {theme.slots?.dock ? <SlotRegion name="dock" /> : variants.shellLayout === "taskbar" ? <Taskbar /> : <OsDock />}
       {emergencyOpen ? <EmergencyShell /> : null}
-      {helpOpen ? <HelpOverlay /> : null}
+      {paletteOpen ? <KeyPalette /> : null}
     </div>
   </ShellContext>;
 }

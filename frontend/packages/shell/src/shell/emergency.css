@@ -194,6 +194,17 @@
 .keyhelp__card kbd { padding: 3px 8px; border-radius: 7px; background: #1a1a1e; border: 1px solid rgba(255, 255, 255, 0.16); font: 600 12px ui-monospace, SFMono-Regular, Menlo, monospace; }
 .keyhelp__label { color: #9aa3b8; font-size: 13px; text-align: right; }
 
+/* Keyboard command palette (leader r) */
+.keypalette { position: fixed; inset: 0; z-index: 190; display: flex; justify-content: center; align-items: flex-start; padding-top: 14vh; background: rgba(0, 0, 0, 0.55); backdrop-filter: blur(10px); }
+.keypalette__card { width: min(560px, 92vw); border-radius: 16px; background: #0a0a0b; border: 1px solid rgba(255, 255, 255, 0.12); box-shadow: 0 30px 80px rgba(0, 0, 0, 0.6); overflow: hidden; }
+.keypalette__lead { display: none; }
+.keypalette__input { width: 100%; box-sizing: border-box; padding: 16px 18px; border: 0; border-bottom: 1px solid rgba(255, 255, 255, 0.1); background: transparent; color: #f2f4fa; font: inherit; font-size: 16px; outline: none; }
+.keypalette__list { list-style: none; margin: 0; padding: 8px; max-height: 46vh; overflow: auto; }
+.keypalette__item { display: flex; align-items: center; justify-content: space-between; gap: 16px; width: 100%; text-align: left; padding: 11px 13px; border: 0; border-radius: 10px; background: transparent; color: #e6eaf5; font: inherit; font-size: 14px; cursor: pointer; }
+.keypalette__item.is-active { background: color-mix(in srgb, var(--rumahl-ui-color-accent, #5b8cff) 26%, transparent); }
+.keypalette__item kbd { flex: none; padding: 2px 8px; border-radius: 6px; background: rgba(255, 255, 255, 0.08); border: 1px solid rgba(255, 255, 255, 0.14); font: 600 11px ui-monospace, SFMono-Regular, Menlo, monospace; color: #cdd3e0; }
+.keypalette__empty { padding: 14px; color: #8a93a8; }
+
 @media (max-width: 720px) {
   .emergency__frame { flex-direction: column; }
   .emergency__nav { flex-direction: row; width: auto; overflow-x: auto; border-right: 0; border-bottom: 1px solid var(--emg-line); }

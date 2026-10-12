@@ -1,17 +1,25 @@
 import { useSyncExternalStore } from "react";
-import { openEmergency } from "./emergency";
 
 /**
  * rumahl OS keyboard commands.
  *
- * A hidden "leader" key (`r`) arms a short window; the next key is a command.
- * The handler ignores real text input (typing in a field) so a command never
- * fires while the user is entering text. The emergency chord works the same way
- * everywhere and goes straight to the standalone `/recovery` system.
+ * The leader key (`r`) opens a dynamic command palette that lists the available
+ * commands for the current context, filters them as you type and runs the top
+ * match. Real text input is never hijacked: the leader only arms outside input
+ * fields, and the emergency secure-attention chord always goes to `/recovery`.
  */
-const LEADER_TIMEOUT_MS = 1500;
-let leaderArmed = false;
-let leaderTimer: number | undefined;
+const paletteListeners = new Set<() => void>();
+let paletteOpen = false;
+function emitPalette() { for (const listener of paletteListeners) listener(); }
+export function openKeyPalette(): void { if (!paletteOpen) { paletteOpen = true; emitPalette(); } }
+export function closeKeyPalette(): void { if (paletteOpen) { paletteOpen = false; emitPalette(); } }
+export function useKeyPaletteOpen(): boolean {
+  return useSyncExternalStore(
+    (listener) => { paletteListeners.add(listener); return () => { paletteListeners.delete(listener); }; },
+    () => paletteOpen,
+    () => false
+  );
+}
 
 function isTextTarget(target: EventTarget | null): boolean {
   const element = target as HTMLElement | null;
@@ -19,25 +27,7 @@ function isTextTarget(target: EventTarget | null): boolean {
   return element.tagName === "INPUT" || element.tagName === "TEXTAREA" || element.tagName === "SELECT" || element.isContentEditable;
 }
 
-function go(path: string): void {
-  window.location.assign(path);
-}
-
-/** The help/overview overlay (`r` then `?`). */
-const helpListeners = new Set<() => void>();
-let helpOpen = false;
-function emitHelp() { for (const listener of helpListeners) listener(); }
-export function toggleHelp(): void { helpOpen = !helpOpen; emitHelp(); }
-export function closeHelp(): void { if (helpOpen) { helpOpen = false; emitHelp(); } }
-export function useHelpOpen(): boolean {
-  return useSyncExternalStore(
-    (listener) => { helpListeners.add(listener); return () => { helpListeners.delete(listener); }; },
-    () => helpOpen,
-    () => false
-  );
-}
-
-/** True when this is the emergency secure-attention chord. */
+/** The emergency secure-attention chord. */
 export function isEmergencyChord(event: KeyboardEvent): boolean {
   const ctrlAlt = event.ctrlKey && event.altKey;
   const deleteKey = event.key === "Delete" || event.key === "Backspace";
@@ -47,33 +37,20 @@ export function isEmergencyChord(event: KeyboardEvent): boolean {
 
 export function installShortcuts(): () => void {
   const onKey = (event: KeyboardEvent) => {
-    // Commands are never triggered while typing into a text field.
-    if (isTextTarget(event.target)) return;
-    // Emergency always goes to the standalone recovery system.
+    // The emergency chord always reaches the standalone recovery system.
     if (isEmergencyChord(event)) {
       event.preventDefault();
-      go("/recovery");
+      window.location.assign("/recovery");
       return;
     }
-    if (leaderArmed) {
-      leaderArmed = false;
-      clearTimeout(leaderTimer);
-      switch (event.key) {
-        case "?": event.preventDefault(); toggleHelp(); break;
-        case "e": case "E": event.preventDefault(); go("/recovery"); break;
-        case "a": case "A": event.preventDefault(); go("/activity"); break;
-        case "c": case "C": case "s": case "S": event.preventDefault(); openEmergency(); break;
-        case "h": case "H": event.preventDefault(); toggleHelp(); break;
-        default: break;
-      }
-      return;
-    }
+    if (paletteOpen) return; // the palette owns the keyboard while open
+    // Never hijack typing: the leader only arms outside text fields.
+    if (isTextTarget(event.target)) return;
     if (event.key === "r" && !event.ctrlKey && !event.altKey && !event.metaKey) {
-      leaderArmed = true;
-      clearTimeout(leaderTimer);
-      leaderTimer = window.setTimeout(() => { leaderArmed = false; }, LEADER_TIMEOUT_MS);
+      event.preventDefault();
+      openKeyPalette();
     }
   };
   window.addEventListener("keydown", onKey);
-  return () => { window.removeEventListener("keydown", onKey); clearTimeout(leaderTimer); };
+  return () => window.removeEventListener("keydown", onKey);
 }
