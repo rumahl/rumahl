@@ -2027,41 +2027,45 @@ async fn recovery(State(state): State<Arc<GatewayState>>, headers: HeaderMap) ->
 <meta name=\"viewport\" content=\"width=device-width,initial-scale=1\">\
 <title>rumahl OS · {title}</title><style>\
 :root{{color-scheme:dark}}*{{box-sizing:border-box}}\
-body{{margin:0;min-height:100vh;background:#000;border-top:3px solid #ff5a4d;color:#eef2ff;font:15px/1.5 ui-sans-serif,system-ui,\"Segoe UI\",Roboto,sans-serif}}\
-main{{max-width:960px;margin:0 auto;padding:clamp(28px,6vh,72px) 20px 56px}}\
-.badge{{display:inline-flex;align-items:center;gap:8px;padding:5px 12px;border-radius:999px;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.14);font-size:12.5px;letter-spacing:.02em}}\
-.dot{{width:8px;height:8px;border-radius:50%;background:#35d07f;box-shadow:0 0 10px #35d07f}}\
-h1{{margin:18px 0 6px;font-size:clamp(28px,4.4vw,40px);letter-spacing:-.01em}}\
-p.sub{{margin:0 0 26px;color:#9aa6c4}}\
-.grid{{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:14px;margin:0 0 30px}}\
-.card{{padding:16px 18px;border-radius:16px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1)}}\
-.card h2{{margin:0 0 8px;font-size:12px;text-transform:uppercase;letter-spacing:.08em;color:#8ea0c6}}\
-.card .val{{font-size:20px;font-weight:600}}\
-.muted{{color:#8ea0c6}}\
-.run{{display:flex;gap:10px;flex-wrap:wrap;margin:0 0 34px}}\
-a.btn{{display:inline-block;padding:10px 18px;border-radius:999px;text-decoration:none;font-weight:600;font-size:14px;background:#3b6ff0;color:#fff;border:1px solid #4b7cf3}}\
-a.btn.ghost{{background:rgba(255,255,255,.07);border-color:rgba(255,255,255,.16);color:#eef2ff}}\
-h2.section{{font-size:15px;letter-spacing:.02em;margin:0 0 12px}}\
-table{{width:100%;border-collapse:collapse;font-size:13.5px;border-radius:14px;overflow:hidden}}\
-thead th{{text-align:left;padding:9px 12px;background:rgba(255,255,255,.06);color:#9aa6c4;font-weight:600;text-transform:uppercase;letter-spacing:.05em;font-size:11px}}\
-tbody td{{padding:9px 12px;border-top:1px solid rgba(255,255,255,.07);vertical-align:top}}\
-td.seq,td.at{{white-space:nowrap;color:#8ea0c6;font-variant-numeric:tabular-nums}}\
-td.action{{font-weight:600}}\
-td.target{{color:#c7d0ea;word-break:break-all}}\
-.o-success{{color:#4fd08a}}.o-denied{{color:#f0b64b}}.o-failure{{color:#f07b6b}}\
-footer{{margin-top:34px;color:#66708c;font-size:12.5px}}\
-</style></head><body><main>\
-<span class=\"badge\"><span class=\"dot\"></span>rumahl OS</span>\
-<h1>{title}</h1><p class=\"sub\">{subtitle}</p><p id=\"recovery-reason\" class=\"muted\" hidden></p><p id=\"recovery-status\" class=\"muted\"></p>\
-<div class=\"grid\">\
-<div class=\"card\"><h2>{status_label}</h2><div class=\"val\">OK · platform</div><div class=\"muted\">renderer unknown · audit {audit_state}</div></div>\
-<div class=\"card\"><h2>now</h2><div class=\"val\">{now}</div></div>\
-<div class=\"card\"><h2>last event</h2><div class=\"val\">#{last}</div></div>\
-</div>\
+body{{margin:0;min-height:100vh;background:#050506;color:#d6e2d6;font:13px/1.55 ui-monospace,SFMono-Regular,Menlo,\"Cascadia Mono\",monospace;background-image:linear-gradient(rgba(120,220,160,.05) 1px,transparent 1px),linear-gradient(90deg,rgba(120,220,160,.05) 1px,transparent 1px);background-size:28px 28px}}\
+.scan{{position:fixed;inset:0;pointer-events:none;background:repeating-linear-gradient(0deg,rgba(255,255,255,.018) 0 1px,transparent 1px 3px)}}\
+header{{display:flex;align-items:center;gap:12px;padding:12px 20px;border-bottom:1px solid rgba(120,220,160,.22);background:rgba(6,10,8,.92)}}\
+header .brand{{color:#8ef0b6;font-weight:700;letter-spacing:.06em}}\
+header .tag{{color:#5b7a67;text-transform:uppercase;letter-spacing:.14em;font-size:11px}}\
+header .cur{{width:9px;height:16px;background:#8ef0b6;animation:blink 1.1s steps(2) infinite}}\
+@keyframes blink{{50%{{opacity:0}}}}\
+main{{max-width:980px;margin:0 auto;padding:clamp(24px,5vh,52px) 20px 64px}}\
+h1{{margin:8px 0 4px;font-size:clamp(26px,4vw,38px);letter-spacing:.02em;color:#eafff2}}\
+p.sub{{color:#6f8a79;margin:0 0 18px}}\
+.reason{{color:#ff8a6b;margin:0 0 6px}}\
+.statusline{{color:#8ef0b6;margin:0 0 22px}}\
+.kv{{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:10px;margin:0 0 26px}}\
+.kv>div{{border:1px solid rgba(120,220,160,.18);padding:10px 12px;border-radius:8px;background:rgba(9,16,12,.6)}}\
+.kv .k{{color:#5b7a67;text-transform:uppercase;letter-spacing:.1em;font-size:10.5px}}\
+.kv .v{{color:#eafff2;font-size:14px;margin-top:4px}}\
+.run{{display:flex;gap:10px;flex-wrap:wrap;margin:0 0 30px}}\
+a.btn{{padding:9px 16px;border:1px solid rgba(120,220,160,.45);border-radius:8px;text-decoration:none;color:#0a1410;background:#8ef0b6;font-weight:700;font-size:12.5px}}\
+a.btn.ghost{{background:transparent;color:#8ef0b6}}\
+h2.section{{font-size:11px;text-transform:uppercase;letter-spacing:.16em;color:#5b7a67;margin:0 0 10px}}\
+table{{width:100%;border-collapse:collapse;font-size:12.5px}}\
+thead th{{text-align:left;padding:7px 10px;color:#5b7a67;text-transform:uppercase;letter-spacing:.08em;font-size:10px;border-bottom:1px solid rgba(120,220,160,.2)}}\
+tbody td{{padding:6px 10px;border-bottom:1px solid rgba(120,220,160,.08);vertical-align:top}}\
+td.seq,td.at{{color:#5b7a67;white-space:nowrap}}\
+td.action{{color:#bfe9cf}}td.target{{color:#9fbfa9;word-break:break-all}}\
+.o-success{{color:#8ef0b6}}.o-denied{{color:#f0c46b}}.o-failure{{color:#ff8a6b}}\
+.muted{{color:#6f8a79}}a{{color:#8ef0b6}}\
+footer{{margin-top:34px;color:#3f5145;font-size:11px;letter-spacing:.04em}}\
+</style></head><body><div class=\"scan\" aria-hidden=\"true\"></div>\
+<header><span class=\"brand\">rumahl·os</span><span class=\"tag\">{title}</span><span class=\"cur\" aria-hidden=\"true\"></span></header>\
+<main><h1>{title}</h1><p class=\"sub\">{subtitle}</p>\
+<p id=\"recovery-reason\" class=\"reason\" hidden></p><p id=\"recovery-status\" class=\"statusline\"></p>\
+<div class=\"kv\"><div><div class=\"k\">{status_label}</div><div class=\"v\">platform ok · renderer unknown · audit {audit_state}</div></div>\
+<div><div class=\"k\">now</div><div class=\"v\">{now}</div></div>\
+<div><div class=\"k\">last event</div><div class=\"v\">#{last}</div></div></div>\
 <div class=\"run\"><a class=\"btn\" href=\"/\">{reload_label}</a><a class=\"btn ghost\" href=\"/login\">{signin_label}</a></div>\
 <h2 class=\"section\">{audit_heading}</h2>{audit_body}\
-<footer>rumahl OS recovery — works without app containers or the shell renderer.</footer>\
-</main><script src=\"/recovery.js\" defer></script></body></html>",
+<footer>rumahl os // recovery console — runs without the shell</footer></main>\
+<script src=\"/recovery.js\" defer></script></body></html>",
         lang = lang,
         title = title,
         subtitle = subtitle,
