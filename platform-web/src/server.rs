@@ -224,6 +224,7 @@ pub fn router(state: GatewayState) -> Router {
         .route("/api/v1/shell/streams/{id}/", get(stream_root))
         .route("/api/v1/shell/streams/{id}/{*tail}", get(stream_asset))
         .route("/recovery", get(recovery))
+        .route("/recovery.js", get(recovery_script))
         .route("/api/v1/recovery/status", get(recovery_status))
         .route("/api/v1/recovery/audit", get(recovery_audit))
         .route("/api/v1/recovery/components", get(recovery_components))
@@ -2051,7 +2052,7 @@ td.target{{color:#c7d0ea;word-break:break-all}}\
 footer{{margin-top:34px;color:#66708c;font-size:12.5px}}\
 </style></head><body><main>\
 <span class=\"badge\"><span class=\"dot\"></span>rumahl OS</span>\
-<h1>{title}</h1><p class=\"sub\">{subtitle}</p>\
+<h1>{title}</h1><p class=\"sub\">{subtitle}</p><p id=\"recovery-reason\" class=\"muted\" hidden></p><p id=\"recovery-status\" class=\"muted\"></p>\
 <div class=\"grid\">\
 <div class=\"card\"><h2>{status_label}</h2><div class=\"val\">OK · platform</div><div class=\"muted\">renderer unknown · audit {audit_state}</div></div>\
 <div class=\"card\"><h2>now</h2><div class=\"val\">{now}</div></div>\
@@ -2060,7 +2061,7 @@ footer{{margin-top:34px;color:#66708c;font-size:12.5px}}\
 <div class=\"run\"><a class=\"btn\" href=\"/\">{reload_label}</a><a class=\"btn ghost\" href=\"/login\">{signin_label}</a></div>\
 <h2 class=\"section\">{audit_heading}</h2>{audit_body}\
 <footer>rumahl OS recovery — works without app containers or the shell renderer.</footer>\
-</main></body></html>",
+</main><script src=\"/recovery.js\" defer></script></body></html>",
         lang = lang,
         title = title,
         subtitle = subtitle,
@@ -2086,13 +2087,63 @@ footer{{margin-top:34px;color:#66708c;font-size:12.5px}}\
     response.headers_mut().insert(
         CONTENT_SECURITY_POLICY,
         HeaderValue::from_static(
-            "default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'",
+            "default-src 'none'; style-src 'unsafe-inline'; script-src 'self'; connect-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'",
         ),
     );
     secure_headers(&mut response);
     response
 }
 
+/// The recovery page's script: shows why recovery opened and, once the shell is
+/// servable again, returns the user to it automatically.
+async fn recovery_script() -> Response {
+    let script = r#"(function () {
+  var params = new URLSearchParams(location.search);
+  var reason = params.get("reason");
+  var detail = params.get("detail");
+  var reasonEl = document.getElementById("recovery-reason");
+  var statusEl = document.getElementById("recovery-status");
+  var messages = {
+    boot: "The shell did not start.",
+    crash: "The shell stopped unexpectedly and is being restarted.",
+    "view-crash": "A view stopped unexpectedly and is being restarted.",
+    manual: "Manual recovery was requested."
+  };
+  if (reasonEl && reason) {
+    reasonEl.textContent = (messages[reason] || "The shell was interrupted and is being restarted.") + (detail ? "  (" + detail + ")" : "");
+    reasonEl.hidden = false;
+  }
+  function health(cb) {
+    fetch("/", { method: "GET", cache: "no-store", credentials: "same-origin" })
+      .then(function (response) { cb(response.ok); })
+      .catch(function () { cb(false); });
+  }
+  if (reason) {
+    var attempts = 0;
+    (function loop() {
+      attempts += 1;
+      health(function (up) {
+        if (up) { if (statusEl) statusEl.textContent = "The shell is running — returning…"; location.assign("/"); return; }
+        if (statusEl) statusEl.textContent = "Restarting the shell… (attempt " + attempts + ")";
+        setTimeout(loop, 1500);
+      });
+    })();
+  } else {
+    health(function (up) { if (statusEl) statusEl.textContent = up ? "The shell is running." : "The shell is not available right now."; });
+  }
+})();"#;
+    let mut response = Response::new(Body::from(script));
+    response.headers_mut().insert(
+        CONTENT_TYPE,
+        HeaderValue::from_static("application/javascript; charset=utf-8"),
+    );
+    response.headers_mut().insert(
+        CONTENT_SECURITY_POLICY,
+        HeaderValue::from_static("default-src 'none'; base-uri 'none'"),
+    );
+    secure_headers(&mut response);
+    response
+}
 pub(super) fn credential(headers: &HeaderMap) -> Result<Zeroizing<String>, ()> {
     if headers.get_all(COOKIE).iter().count() != 1 {
         return Err(());
