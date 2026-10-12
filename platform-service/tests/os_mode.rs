@@ -21,6 +21,10 @@ async fn raising_the_mode_requires_reauthentication() {
         .unwrap()
         .encode()
         .to_string();
+    let wrong_password = rumahl_account_auth::SessionToken::generate()
+        .unwrap()
+        .encode()
+        .to_string();
     provision(
         &accounts,
         "alice",
@@ -155,7 +159,7 @@ async fn raising_the_mode_requires_reauthentication() {
             .oneshot(request(
                 Some(&alice),
                 Some("https://rumahl.test"),
-                Some(put("developer".into(), 0, Some("wrong-password")))
+                Some(put("developer".into(), 0, Some(wrong_password.as_str())))
             ))
             .await
             .unwrap()
