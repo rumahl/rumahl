@@ -1,10 +1,9 @@
 import type { ReactNode } from "react";
 import { useTheme } from "@rumahl/ui";
-import { BoltIcon, MoonIcon, PulseIcon, SettingsIcon, ShieldIcon, SparkIcon } from "../icons";
+import { BoltIcon, MoonIcon, PulseIcon, SettingsIcon, SparkIcon } from "../icons";
 import { useI18n } from "../i18n";
 import type { MessageKey } from "../i18n/locales/en";
 import { useThemeTuning } from "../preferences/theme-tuning";
-import { openEmergency } from "./emergency";
 
 /** Quick settings popover (dark mode, transparency, motion, performance). */
 export function ControlCenter({ protection, state, error, onOpenSettings, onClose }: {
@@ -35,7 +34,6 @@ export function ControlCenter({ protection, state, error, onOpenSettings, onClos
       {tile(animations, () => tuning.setAnimations(!animations), <PulseIcon />, t("controlCenter.animations"))}
       {tile(performance, () => tuning.setPerformanceMode(!performance), <SettingsIcon />, t("controlCenter.performance"))}
       {tile(ultra, () => tuning.setUltraPerformance(!ultra), <BoltIcon />, t("controlCenter.ultra"))}
-      {tile(false, () => { onClose(); openEmergency(); }, <ShieldIcon />, t("controlCenter.emergency"))}
     </div>
     <div className="control-center__status" data-state={state}>
       <span className="menubar__dot" aria-hidden="true" />{protection}

@@ -21,26 +21,3 @@ export function useEmergencyOpen(): boolean {
     () => false
   );
 }
-
-/**
- * Secure attention sequence: Ctrl+Alt+Delete / Ctrl+Alt+E, or Ctrl+Shift+Escape
- * (the Windows task-manager shortcut). Escape closes the emergency shell.
- */
-export function emergencyShortcut(event: KeyboardEvent): boolean {
-  const ctrlAlt = event.ctrlKey && event.altKey;
-  const deleteKey = event.key === "Delete" || event.key === "Backspace";
-  if (ctrlAlt && (deleteKey || event.key.toLowerCase() === "e")) return true;
-  return event.ctrlKey && event.shiftKey && event.key === "Escape";
-}
-
-export function installEmergencyShortcut(): () => void {
-  const onKey = (event: KeyboardEvent) => {
-    if (event.key === "Escape") { closeEmergency(); return; }
-    if (emergencyShortcut(event)) {
-      event.preventDefault();
-      openEmergency();
-    }
-  };
-  window.addEventListener("keydown", onKey);
-  return () => window.removeEventListener("keydown", onKey);
-}

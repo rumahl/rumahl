@@ -21,7 +21,9 @@ import { ShellContext } from "./ShellContext";
 import { MenuBar } from "./MenuBar";
 import { CommandPalette } from "./CommandPalette";
 import { EmergencyShell } from "./EmergencyShell";
-import { installEmergencyShortcut, useEmergencyOpen } from "./emergency";
+import { HelpOverlay } from "./HelpOverlay";
+import { installShortcuts, useHelpOpen } from "./keyboard";
+import { useEmergencyOpen } from "./emergency";
 import { reportActivity } from "../apps/recovery-client";
 import { DesktopWindows } from "./DesktopWindows";
 import { useShellPreferences } from "../preferences/ShellPreferences";
@@ -301,8 +303,9 @@ export function ShellLayout({ snapshot, live }: { snapshot: ShellSnapshotV1; liv
     return () => { document.adoptedStyleSheets = previous; };
   }, [theme.css]);
   const emergencyOpen = useEmergencyOpen();
-  // The OS "secure attention sequence" opens the emergency shell.
-  useEffect(() => installEmergencyShortcut(), []);
+  const helpOpen = useHelpOpen();
+  // Hidden keyboard commands (leader `r`); the emergency chord goes to /recovery.
+  useEffect(() => installShortcuts(), []);
   // Report shell activity (navigation, mode) into the central audit log.
   useEffect(() => { if (live) reportActivity(live.request, `navigate ${path}`); }, [path, live]);
   useEffect(() => { if (live) reportActivity(live.request, `mode ${mode}`); }, [mode, live]);
@@ -328,6 +331,7 @@ export function ShellLayout({ snapshot, live }: { snapshot: ShellSnapshotV1; liv
       </div>
       {theme.slots?.dock ? <SlotRegion name="dock" /> : variants.shellLayout === "taskbar" ? <Taskbar /> : <OsDock />}
       {emergencyOpen ? <EmergencyShell /> : null}
+      {helpOpen ? <HelpOverlay /> : null}
     </div>
   </ShellContext>;
 }
