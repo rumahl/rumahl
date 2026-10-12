@@ -311,6 +311,7 @@ async fn unauthenticated_navigation_reaches_login_even_when_renderer_is_down() {
 async fn enhanced_login_preserves_csrf_password_and_session_boundaries() {
     let dir = tempfile::tempdir().unwrap();
     let password = test_password();
+    let wrong_password = test_password();
     provision(
         &dir.path().join("accounts.sqlite"),
         "alice",
@@ -328,7 +329,7 @@ async fn enhanced_login_preserves_csrf_password_and_session_boundaries() {
         ),
         (
             "https://rumahl.test",
-            "wrong-password",
+            wrong_password.as_str(),
             StatusCode::UNAUTHORIZED,
         ),
         ("https://rumahl.test", password.as_str(), StatusCode::OK),
