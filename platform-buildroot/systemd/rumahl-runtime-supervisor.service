@@ -1,8 +1,8 @@
 [Unit]
 Description=rumahl OS app runtime supervisor
 Documentation=file:/usr/share/doc/rumahl/platform-buildroot.md
-Wants=docker.service
-After=docker.service
+Wants=docker.service rumahl-app-network.service
+After=docker.service rumahl-app-network.service
 StartLimitIntervalSec=60
 StartLimitBurst=10
 
