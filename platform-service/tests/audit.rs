@@ -18,6 +18,10 @@ fn authentication_and_mode_changes_are_audited_without_secrets() {
         .unwrap()
         .encode()
         .to_string();
+    let wrong_password = rumahl_account_auth::SessionToken::generate()
+        .unwrap()
+        .encode()
+        .to_string();
     provision(
         &accounts,
         "alice",
@@ -39,17 +43,9 @@ fn authentication_and_mode_changes_are_audited_without_secrets() {
         .with_audit(audit.clone());
 
     assert!(sessions.login("alice", password.clone()).is_ok());
-    assert!(
-        sessions
-            .login("alice", "wrong-password".to_owned())
-            .is_err()
-    );
+    assert!(sessions.login("alice", wrong_password.clone()).is_err());
     assert!(sessions.reauthenticate(user, password).is_ok());
-    assert!(
-        sessions
-            .reauthenticate(user, "wrong-password".to_owned())
-            .is_err()
-    );
+    assert!(sessions.reauthenticate(user, wrong_password).is_err());
 
     let mode_repository = AuditedOsModeRepository::new(
         Arc::new(SqliteOsModeRepository::open(root.join("preferences.sqlite")).unwrap()),

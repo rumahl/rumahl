@@ -808,11 +808,15 @@ mod tests {
             .sign(package.path(), &manifest)
             .unwrap();
 
+        let password = rumahl_account_auth::SessionToken::generate()
+            .unwrap()
+            .encode()
+            .to_string();
         crate::provision(
             &state.path().join("accounts.sqlite"),
             "developer",
             "Developer",
-            "correct horse battery staple".to_owned(),
+            password,
             crate::LocalPasswordBlocklist::default(),
         )
         .unwrap();
