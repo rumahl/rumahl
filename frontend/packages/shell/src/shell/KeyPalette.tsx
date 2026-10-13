@@ -24,6 +24,11 @@ export function KeyPalette() {
   const commands = useMemo<KeyCommand[]>(() => {
     const list: KeyCommand[] = [
       { id: "recovery", title: t("keycmd.recovery"), hint: "Ctrl+Alt+E", keywords: "emergency notfall recovery crash wiederherstellung", run: () => window.location.assign("/recovery") },
+      { id: "recovery.handover", title: t("keycmd.recoveryHandover"), keywords: "recovery handover test crash testen vorschau", run: () => { closeKeyPalette(); window.location.assign("/recovery?reason=crash"); } },
+      { id: "recovery.reboot", title: t("keycmd.recoveryReboot"), keywords: "recovery reboot neustart test simulieren", run: () => { closeKeyPalette(); window.location.assign("/recovery?state=reboot"); } },
+      { id: "recovery.device", title: t("keycmd.recoveryDevice"), keywords: "recovery offline gerät client netz test simulieren", run: () => { closeKeyPalette(); window.location.assign("/offline?state=device"); } },
+      { id: "recovery.server", title: t("keycmd.recoveryServer"), keywords: "recovery offline rumahl os server nicht erreichbar test simulieren", run: () => { closeKeyPalette(); window.location.assign("/offline?state=server"); } },
+      { id: "recovery.poweroff", title: t("keycmd.recoveryPoweroff"), keywords: "recovery poweroff herunterfahren shutdown test simulieren", run: () => { closeKeyPalette(); window.location.assign("/offline?state=poweroff"); } },
       { id: "center", title: t("keycmd.center"), keywords: "center maintenance wartung", run: () => { closeKeyPalette(); openEmergency(); } },
       { id: "activity", title: t("keycmd.activity"), keywords: "log audit protokoll aktivitaet", run: () => { closeKeyPalette(); open("/activity"); } },
       { id: "home", title: t("keycmd.home"), keywords: "home desktop start", run: () => { closeKeyPalette(); open("/"); } },

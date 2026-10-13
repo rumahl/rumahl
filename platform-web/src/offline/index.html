@@ -1,4 +1,79 @@
-<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Offline · rumahl OS</title><style>
-@view-transition { navigation: auto; }
-*{box-sizing:border-box}body{margin:0;min-height:100svh;display:grid;place-items:center;padding:24px;font:15px/1.5 system-ui,sans-serif;color:#fff;background:linear-gradient(#0003,#0006),url('/offline/wallpaper.jpg') center/cover fixed #0c1619}main{text-align:center;max-width:420px}h1{font-size:28px;letter-spacing:-.03em}p{opacity:.85}a{display:inline-flex;border:1px solid #ffffff40;border-radius:999px;padding:10px 24px;margin-top:16px;background:#ffffff24;color:inherit;text-decoration:none;backdrop-filter:blur(24px)}a:focus-visible{outline:2px solid #fff;outline-offset:4px}.brand{font-weight:650;letter-spacing:-.05em}small{display:block;margin-top:24px;opacity:.65}@media(prefers-reduced-motion:reduce){::view-transition-group(*){animation-duration:0s}}
-</style><script src="/offline/client.js" defer></script></head><body><main><span class="brand">rumahl OS</span><h1 id="title">You’re offline</h1><p id="description">Your connection to rumahl OS is unavailable. Sign-in and your personal apps need a connection to this server.</p><a href="/" id="retry">Try again</a><small id="status" role="status">We’ll reconnect when the server is available.</small></main></body></html>
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>rumahl</title><style>
+:root{color-scheme:dark}*{box-sizing:border-box}html,body{height:100%}body{margin:0;background:#000;color:#fff;font:15px/1.6 ui-sans-serif,system-ui,"Segoe UI",Roboto,sans-serif;display:grid;place-items:center;padding:32px}
+.mark{position:fixed;top:24px;right:28px;width:24px;height:auto}
+.panel{max-width:440px;display:grid;gap:16px;justify-items:center;text-align:center}
+.spinner{width:30px;height:30px;border-radius:50%;border:2px solid rgba(255,255,255,.14);border-top-color:#fff;animation:s .8s linear infinite}
+.spinner[hidden]{display:none}
+@keyframes s{to{transform:rotate(360deg)}}
+h1{margin:0;font-size:21px;font-weight:600;letter-spacing:-.01em}
+p{margin:0;color:#9aa2ae;font-size:14px}
+.tips{list-style:none;margin:2px 0 0;padding:0;display:grid;gap:8px;width:100%;text-align:left}
+.tips li{padding:10px 12px;border:1px solid rgba(255,255,255,.1);border-radius:10px;background:rgba(255,255,255,.04);color:#c3cad6;font-size:13px}
+.tips[hidden]{display:none}
+.actions{display:flex;gap:10px;flex-wrap:wrap;justify-content:center;margin-top:4px}
+.actions a,.actions button{border:1px solid rgba(255,255,255,.15);background:rgba(255,255,255,.06);color:#fff;border-radius:10px;padding:9px 16px;font:inherit;cursor:pointer;text-decoration:none}
+.actions a.primary{background:#fff;color:#000;border-color:#fff}
+.status{color:#6f7887;font-size:12px}
+</style></head><body><svg class="mark" viewBox="0 0 251 472" fill="currentColor" aria-hidden="true"><path d="M 9.47163 471.21342 Q 0 471.21342 0 461.74179 V 203.63996 C 0 80.50881 80.50883 0 201.27207 0 H 241.52649 Q 250.99811 0 250.99811 9.47163 V 94.71626 Q 250.99811 104.18789 241.52649 104.18789 H 210.74370 C 144.44231 104.18789 101.81999 144.44230 101.81999 210.74369 V 461.74179 Q 101.81999 471.21342 92.34836 471.21342 Z"/></svg><main class="panel"><div class="spinner" id="spinner" aria-hidden="true"></div><h1 id="title">Connecting to rumahl…</h1><p id="description">One moment.</p><ul class="tips" id="tips" hidden></ul><div class="actions" id="actions"></div><small class="status" id="status" role="status" aria-live="polite"></small></main><script>window.RRE_I18N={{i18n}};</script><script>(function(){
+'use strict';
+var I18N=(window.RRE_I18N&&window.RRE_I18N.locales)||{};var lang=(navigator.language||'en').slice(0,2).toLowerCase();var t=function(key){return (I18N[lang]&&I18N[lang][key])||key;};
+var params=new URLSearchParams(location.search);var forced=params.get('state');
+var standalone=(location.pathname==='/offline'||location.pathname==='/recovery');var destination=standalone?'/':location.pathname+location.search;
+var start=Date.now();
+// A restart or power-off is only shown when the server said so (WebSocket
+// lifecycle event, remembered here). Never guessed from a timeout.
+var lifecycleState=null;
+try{var stored=JSON.parse(localStorage.getItem('rumahl.lifecycle')||'null');if(stored&&Date.now()-stored.at<600000)lifecycleState=stored.state;}catch(e){}
+var title=document.getElementById('title'),description=document.getElementById('description'),tips=document.getElementById('tips'),actions=document.getElementById('actions'),status=document.getElementById('status'),spinner=document.getElementById('spinner');
+var online=navigator.onLine!==false,checking=false,connectivity='unknown',last='';
+function classify(){
+  return new Promise(function(resolve){
+    if(!online)return resolve('device');
+    if(!navigator.serviceWorker||!navigator.serviceWorker.controller)return resolve('unknown');
+    var channel=new MessageChannel();var done=false;
+    channel.port1.onmessage=function(event){if(done)return;done=true;resolve((event.data&&event.data.connectivity)||'unknown');};
+    navigator.serviceWorker.controller.postMessage({type:'RUMAHL_CONNECTIVITY'},[channel.port2]);
+    setTimeout(function(){if(!done){done=true;resolve('unknown');}},4500);
+  });
+}
+function phase(){
+  if(forced)return forced==='offline'||forced==='device'?'device':forced==='error'||forced==='server'?'unreachable':forced==='reboot'||forced==='restart'?'restarting':forced==='poweroff'?'poweroff':forced;
+  if(!online||connectivity==='device')return 'device';
+  if(lifecycleState==='shutting-down')return 'poweroff';
+  if(lifecycleState==='restarting')return 'restarting';
+  var elapsed=Date.now()-start;
+  if(elapsed<15000)return 'connecting';
+  if(elapsed<60000)return 'slow';
+  return 'unreachable';
+}
+function copy(state){
+  if(state==='device')return[t('This device is offline'),t('There is no network connection. rumahl OS cannot be reached this way right now.')];
+  if(state==='connecting')return[t('Connecting…'),t('One moment while we connect you to rumahl OS.')];
+  if(state==='slow')return[t('This is taking a little longer…'),t('The system is not responding yet. We keep trying.')];
+  if(state==='restarting')return[t('rumahl is restarting…'),t('The device is restarting. This usually takes under a minute.')];
+  if(state==='poweroff')return[t('rumahl OS has shut down'),t('The device is powered off. Turn it back on to continue.')];
+  return[t('rumahl OS is not reachable'),connectivity==='server'?t('Your connection seems fine, but the device itself is not responding.'):t('The device is not responding even after a longer time.')];
+}
+function tipsFor(state){
+  if(state==='device')return[t('Check this device\'s Wi-Fi or the network cable.'),t('Check that your router or switch is powered on.'),t('Test another device or a mobile connection.')];
+  if(state==='connecting'||state==='slow')return[t('Please give it a moment.'),t('A restart can take up to a minute.')];
+  if(state==='restarting')return[t('A restart in progress can take up to a minute.'),t('Do not cut power while the indicator is still active.')];
+  if(state==='poweroff')return[t('Turn the device back on.'),t('Check the power supply.')];
+  return[t('Check that the rumahl device is powered on.'),t('Check the device\'s network connection (cable or Wi-Fi).'),t('Open the recovery tools to inspect the state.')];
+}
+function show(state){
+  if(state===last)return;last=state;
+  var c=copy(state);title.textContent=c[0];description.textContent=c[1];
+  spinner.hidden=(state==='device'||state==='unreachable'||state==='poweroff');
+  tips.replaceChildren();var list=tipsFor(state);for(var i=0;i<list.length;i++){var li=document.createElement('li');li.textContent=list[i];tips.appendChild(li);}tips.hidden=list.length===0;
+  actions.replaceChildren();
+  var retry=document.createElement('button');retry.type='button';retry.textContent=t('Try again');retry.addEventListener('click',function(){location.reload();});actions.appendChild(retry);
+  if(state!=='device'&&state!=='poweroff'){var link=document.createElement('a');link.href='/recovery';link.className='primary';link.textContent=t('Open recovery tools');actions.appendChild(link);}
+  status.textContent=state==='device'?t('We keep checking the connection automatically.'):t('We reconnect automatically once the system is ready.');
+}
+function probe(){if(checking||document.hidden||forced||lifecycleState==='shutting-down')return;checking=true;fetch(destination,{method:'GET',cache:'no-store',credentials:'same-origin',signal:AbortSignal.timeout(8000)}).then(function(r){var c=r.headers.get('content-type')||'';if(r.ok&&c.indexOf('text/html')===0){try{localStorage.removeItem('rumahl.lifecycle');}catch(e){}location.replace(destination);}}).catch(function(){}).finally(function(){checking=false;});}
+function refresh(){classify().then(function(value){connectivity=value;});}
+function tick(){show(phase());probe();}
+window.addEventListener('online',function(){online=true;refresh();tick();});window.addEventListener('offline',function(){online=false;connectivity='device';tick();});document.addEventListener('visibilitychange',function(){if(!document.hidden){refresh();tick();}});
+refresh();tick();setInterval(refresh,10000);setInterval(tick,5000);
+})();</script></body></html>

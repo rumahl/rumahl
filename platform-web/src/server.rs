@@ -30,7 +30,7 @@ use url::Url;
 use zeroize::Zeroizing;
 
 use crate::backend::{ShellBackend, ShellBackendError, ShellIdentity};
-use crate::events::ShellEventSource;
+use crate::events::{ShellEventMessage, ShellEventSource};
 use crate::oidc;
 use crate::ssr;
 use crate::streams::{StreamAccess, StreamEndpoint, StreamProviderError, frame_path};
@@ -107,6 +107,8 @@ pub struct GatewayState {
     pub login_slots: Arc<tokio::sync::Semaphore>,
     /// Central append-only audit log; None disables auditing without disabling the shell.
     pub audit: Option<Arc<dyn rumahl_core::AuditLog>>,
+    /// State directory for recovery settings/diagnostics; None disables them.
+    pub state_dir: Option<std::path::PathBuf>,
 }
 
 /// Current wall-clock time as an audit timestamp.
@@ -229,6 +231,25 @@ pub fn router(state: GatewayState) -> Router {
         .route("/api/v1/recovery/audit", get(recovery_audit))
         .route("/api/v1/recovery/components", get(recovery_components))
         .route("/api/v1/recovery/sensors", get(recovery_sensors))
+        .route("/api/v1/recovery/storage", get(recovery_storage))
+        .route("/api/v1/recovery/disks", get(recovery_disks))
+        .route("/api/v1/recovery/disk-test", post(recovery_disk_test))
+        .route("/api/v1/recovery/diagnostics", get(recovery_diagnostics))
+        .route("/api/v1/recovery/network", get(recovery_network))
+        .route("/api/v1/recovery/network-test", post(recovery_network_test))
+        .route("/api/v1/recovery/logs", get(recovery_logs))
+        .route("/api/v1/recovery/crashes", get(recovery_crashes))
+        .route("/api/v1/recovery/boot", get(recovery_boot))
+        .route("/api/v1/recovery/system", get(recovery_system))
+        .route("/api/v1/recovery/quarantine", post(recovery_quarantine))
+        .route(
+            "/api/v1/recovery/settings",
+            get(recovery_settings_get).put(recovery_settings_put),
+        )
+        .route(
+            "/api/v1/recovery/host",
+            get(recovery_host_status).post(recovery_host_action),
+        )
         .route("/api/v1/recovery/restart", post(recovery_restart))
         .route("/api/v1/recovery/self-heal", post(recovery_self_heal))
         .route(
@@ -365,6 +386,9 @@ async fn app_launch(
         Some(serde_json::Value::String(s)) if s.len() == 64 => Some(s.clone()),
         _ => return error(StatusCode::BAD_REQUEST),
     };
+    if crate::recovery_settings::load(state.state_dir.as_deref()).safe_mode {
+        return error(StatusCode::FORBIDDEN);
+    }
     let Some(apps) = state.apps.clone() else {
         return error(StatusCode::SERVICE_UNAVAILABLE);
     };
@@ -630,6 +654,9 @@ async fn app_runtime_action(
     };
     let user = identity.user_id;
     let starting = matches!(action, crate::RuntimeAction::Start);
+    if starting && crate::recovery_settings::load(state.state_dir.as_deref()).safe_mode {
+        return error(StatusCode::FORBIDDEN);
+    }
     let Some(apps) = state.apps.clone() else {
         return error(StatusCode::SERVICE_UNAVAILABLE);
     };
@@ -1402,7 +1429,7 @@ async fn drive_events(
     state: Arc<GatewayState>,
     credential: Zeroizing<String>,
     identity: ShellIdentity,
-    mut subscriber: broadcast::Receiver<(UserId, ShellEvent)>,
+    mut subscriber: broadcast::Receiver<ShellEventMessage>,
 ) {
     let mut recheck = tokio::time::interval(Duration::from_secs(30));
     recheck.tick().await;
@@ -1419,20 +1446,27 @@ async fn drive_events(
                 }
             }
             next = subscriber.recv() => match next {
-                Ok((user_id, event)) if user_id == identity.user_id => {
-                    match authenticate(&state, &credential).await {
-                    Ok(current) if current == identity => {},
-                    Err(ShellBackendError::Unauthorized) => {
-                        let _ = socket.send(Message::Text(ShellEvent::session_revoked().to_json().into())).await;
-                        break;
+                Ok(message) => {
+                    let (target, event) = match message {
+                        ShellEventMessage::ForUser(user_id, event) => (Some(user_id), event),
+                        ShellEventMessage::ForAll(event) => (None, event),
+                    };
+                    if target.is_some_and(|user_id| user_id != identity.user_id) {
+                        // Targeted at another account; not for this socket.
+                    } else {
+                        match authenticate(&state, &credential).await {
+                            Ok(current) if current == identity => {},
+                            Err(ShellBackendError::Unauthorized) => {
+                                let _ = socket.send(Message::Text(ShellEvent::session_revoked().to_json().into())).await;
+                                break;
+                            }
+                            _ => break,
+                        }
+                        let revoke = matches!(event, ShellEvent::SessionRevoked { .. });
+                        if socket.send(Message::Text(event.to_json().into())).await.is_err() { break; }
+                        if revoke { break; }
                     }
-                    _ => break,
                 }
-                    let revoke = matches!(event, ShellEvent::SessionRevoked { .. });
-                    if socket.send(Message::Text(event.to_json().into())).await.is_err() { break; }
-                    if revoke { break; }
-                }
-                Ok(_) => {},
                 Err(broadcast::error::RecvError::Lagged(_)) | Err(broadcast::error::RecvError::Closed) => break,
             },
             message = socket.recv() => {
@@ -1446,39 +1480,6 @@ async fn drive_events(
         }
     }
     let _ = socket.send(Message::Close(None)).await;
-}
-
-fn escape_html(value: &str) -> String {
-    let mut out = String::with_capacity(value.len());
-    for ch in value.chars() {
-        match ch {
-            '&' => out.push_str("&amp;"),
-            '<' => out.push_str("&lt;"),
-            '>' => out.push_str("&gt;"),
-            '"' => out.push_str("&quot;"),
-            '\'' => out.push_str("&#39;"),
-            _ => out.push(ch),
-        }
-    }
-    out
-}
-
-/// Formats a Unix timestamp as `YYYY-MM-DD HH:MM:SSZ` (UTC) without extra deps.
-fn format_utc(seconds: u64) -> String {
-    let days = (seconds / 86_400) as i64;
-    let secs = seconds % 86_400;
-    let (hour, minute, second) = (secs / 3_600, (secs % 3_600) / 60, secs % 60);
-    let z = days + 719_468;
-    let era = if z >= 0 { z } else { z - 146_096 } / 146_097;
-    let doe = z - era * 146_097;
-    let yoe = (doe - doe / 1_460 + doe / 36_524 - doe / 146_096) / 365;
-    let year = yoe + era * 400;
-    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
-    let mp = (5 * doy + 2) / 153;
-    let day = doy - (153 * mp + 2) / 5 + 1;
-    let month = if mp < 10 { mp + 3 } else { mp - 9 };
-    let year = if month <= 2 { year + 1 } else { year };
-    format!("{year:04}-{month:02}-{day:02} {hour:02}:{minute:02}:{second:02}Z")
 }
 
 fn audit_event_json(event: &rumahl_core::AuditEvent) -> serde_json::Value {
@@ -1631,7 +1632,7 @@ async fn recovery_components(
     let mut response = axum::Json(serde_json::json!({
         "recoveryVersion": 1,
         "components": [
-            {"id": "shell", "kind": "client", "state": "running", "restartable": true},
+            {"id": "shell", "kind": "client", "state": "unknown", "restartable": true},
             {"id": "platform", "kind": "service", "state": "running", "restartable": false},
             {"id": "renderer", "kind": "service", "state": "unknown", "restartable": false},
             {"id": "audit", "kind": "store", "state": if state.audit.is_some() { "running" } else { "disabled" }, "restartable": false},
@@ -1648,6 +1649,709 @@ async fn recovery_sensors(State(state): State<Arc<GatewayState>>, headers: Heade
         return response;
     }
     let mut response = axum::Json(crate::sensors::read_sensors()).into_response();
+    secure_headers(&mut response);
+    response
+}
+
+async fn recovery_storage(State(state): State<Arc<GatewayState>>, headers: HeaderMap) -> Response {
+    if let Err(response) = recovery_identity(&state, &headers).await {
+        return response;
+    }
+    let mut response = axum::Json(crate::sensors::read_storage()).into_response();
+    secure_headers(&mut response);
+    response
+}
+
+/// Detects concrete problems the recovery environment can help resolve.
+async fn recovery_diagnostics(
+    State(state): State<Arc<GatewayState>>,
+    headers: HeaderMap,
+) -> Response {
+    let identity = match recovery_identity(&state, &headers).await {
+        Ok(identity) => identity,
+        Err(response) => return response,
+    };
+    let mut problems: Vec<serde_json::Value> = Vec::new();
+    if state.audit.is_none() {
+        problems.push(serde_json::json!({
+            "id": "audit", "severity": "warning",
+            "title": "The activity log is disabled",
+            "detail": "The audit store is not available, so actions cannot be recorded.",
+            "fix": null
+        }));
+    }
+    if state.apps.is_none() {
+        problems.push(serde_json::json!({
+            "id": "apps", "severity": "warning",
+            "title": "The app runtime is unavailable",
+            "detail": "Installed applications cannot be started because the runtime supervisor is not connected.",
+            "fix": null
+        }));
+    }
+    if let Some(apps) = state.apps.clone() {
+        let checks = tokio::task::spawn_blocking(move || {
+            let catalog = apps.catalog(identity)?;
+            let mut checks = Vec::new();
+            for app in catalog
+                .into_iter()
+                .filter(|app| app.launchable && app.lifecycle == "always-on")
+            {
+                let status = apps.runtime(
+                    identity,
+                    &app.id,
+                    &app.installation_id.to_string(),
+                    crate::RuntimeAction::Status,
+                );
+                if !matches!(status, Ok(crate::RuntimeState::Running)) {
+                    checks.push(serde_json::json!({
+                        "id": "app-service", "severity": "warning",
+                        "title": app.title,
+                        "detail": if status.is_ok() { "Always-on service is stopped" } else { "Service status unavailable or denied" },
+                        "fix": if status.is_ok() { Some("self-heal") } else { None },
+                    }));
+                }
+            }
+            Ok::<_, crate::AppAccessError>(checks)
+        })
+        .await;
+        match checks {
+            Ok(Ok(checks)) => problems.extend(checks),
+            _ => problems.push(serde_json::json!({
+                "id": "app-check", "severity": "warning",
+                "title": "App services could not be checked",
+                "detail": "Catalog access is unavailable or denied.", "fix": null,
+            })),
+        }
+    }
+    let sensors = crate::sensors::read_sensors();
+    match sensors.level {
+        "error" => problems.push(serde_json::json!({
+            "id": "sensors", "severity": "error",
+            "title": "Critical resource pressure",
+            "detail": "CPU load, memory or temperature is at a critical level.",
+            "fix": null
+        })),
+        "warning" => problems.push(serde_json::json!({
+            "id": "sensors", "severity": "warning",
+            "title": "High resource pressure",
+            "detail": "A resource is running high and should be watched.",
+            "fix": null
+        })),
+        _ => {}
+    }
+    let storage = crate::sensors::read_storage();
+    if let (Some(level), Some(percent)) = (Some(storage.level), storage.percent)
+        && (storage.level == "error" || storage.level == "warning")
+    {
+        problems.push(serde_json::json!({
+            "id": "storage", "severity": level,
+            "title": if storage.level == "error" { "The disk is almost full" } else { "The disk is filling up" },
+            "detail": format!("The root filesystem is {percent:.0}% full."),
+            "fix": "open-storage"
+        }));
+    }
+    // Apps that crashed or became unresponsive recently (from the audit log).
+    if let Some(audit) = &state.audit
+        && let Ok(events) = audit.recent_system(200)
+    {
+        let mut crashed: Vec<String> = Vec::new();
+        for event in &events {
+            if matches!(
+                event.action,
+                rumahl_core::AuditAction::AppCrashed | rumahl_core::AuditAction::AppUnresponsive
+            ) && let Some(target) = event.target.as_ref()
+                && !crashed.contains(target)
+            {
+                crashed.push(target.clone());
+            }
+        }
+        if !crashed.is_empty() {
+            let severity = if crashed.len() >= 3 {
+                "error"
+            } else {
+                "warning"
+            };
+            problems.push(serde_json::json!({
+                "id": "app-crashes", "severity": severity,
+                "title": format!("{} app(s) stopped unexpectedly", crashed.len()),
+                "detail": crashed.join(", "),
+                "fix": "restart-apps"
+            }));
+            if crashed.len() >= 3 {
+                problems.push(serde_json::json!({
+                    "id": "safe-mode", "severity": "warning",
+                    "title": "Repeated app crashes",
+                    "detail": "Safe mode keeps third-party apps stopped so the system can stabilise.",
+                    "fix": "open-settings"
+                }));
+            }
+        }
+    }
+    let mut response = axum::Json(serde_json::json!({ "problems": problems })).into_response();
+    secure_headers(&mut response);
+    response
+}
+
+/// Network interfaces, addresses, default gateway and resolvers. Read-only.
+async fn recovery_network(State(state): State<Arc<GatewayState>>, headers: HeaderMap) -> Response {
+    if let Err(response) = recovery_identity(&state, &headers).await {
+        return response;
+    }
+    let data = tokio::task::spawn_blocking(crate::recovery_tools::read_network)
+        .await
+        .unwrap_or_else(|_| serde_json::json!({
+            "recoveryVersion": 1, "interfaces": [], "gateway": null, "dns": [], "level": "warning",
+        }));
+    let mut response = axum::Json(data).into_response();
+    secure_headers(&mut response);
+    response
+}
+
+/// Active connectivity probes (gateway, resolver, public internet). Read-only.
+async fn recovery_network_test(
+    State(state): State<Arc<GatewayState>>,
+    headers: HeaderMap,
+) -> Response {
+    if !valid_origin(&headers, &state.config.public_origin) {
+        return error(StatusCode::FORBIDDEN);
+    }
+    let identity = match recovery_identity(&state, &headers).await {
+        Ok(identity) => identity,
+        Err(response) => return response,
+    };
+    let data = tokio::task::spawn_blocking(crate::recovery_tools::run_network_test)
+        .await
+        .unwrap_or_else(|_| serde_json::json!({ "recoveryVersion": 1, "ok": false, "checks": [] }));
+    record_audit(
+        &state,
+        rumahl_core::AuditActor::User(identity.user_id),
+        rumahl_core::AuditAction::Maintenance,
+        rumahl_core::AuditOutcome::Success,
+        Some("network-test"),
+    );
+    let mut response = axum::Json(data).into_response();
+    secure_headers(&mut response);
+    response
+}
+
+/// Recent platform or whole-system log lines, newest first.
+async fn recovery_logs(
+    State(state): State<Arc<GatewayState>>,
+    Query(query): Query<BTreeMap<String, String>>,
+    headers: HeaderMap,
+) -> Response {
+    if let Err(response) = recovery_identity(&state, &headers).await {
+        return response;
+    }
+    let source = match query
+        .get("source")
+        .map(String::as_str)
+        .unwrap_or("platform")
+    {
+        "system" => "system",
+        "platform" => "platform",
+        _ => return error(StatusCode::BAD_REQUEST),
+    };
+    let level = match query.get("level").map(String::as_str) {
+        None | Some("") | Some("all") => None,
+        Some("error") => Some("error"),
+        Some("warning") => Some("warning"),
+        Some("critical") => Some("critical"),
+        _ => return error(StatusCode::BAD_REQUEST),
+    };
+    let limit = query
+        .get("limit")
+        .and_then(|value| value.parse::<usize>().ok())
+        .unwrap_or(150)
+        .clamp(1, 500);
+    let offset = query
+        .get("offset")
+        .and_then(|value| value.parse::<usize>().ok())
+        .unwrap_or(0)
+        .min(5000);
+    let data = tokio::task::spawn_blocking(move || {
+        crate::recovery_tools::read_logs(source, level, limit, offset)
+    })
+    .await
+    .unwrap_or_else(
+        |_| serde_json::json!({ "recoveryVersion": 1, "available": false, "entries": [] }),
+    );
+    let mut response = axum::Json(data).into_response();
+    secure_headers(&mut response);
+    response
+}
+
+/// App crash, unresponsiveness and launch-failure history from the audit log.
+async fn recovery_crashes(State(state): State<Arc<GatewayState>>, headers: HeaderMap) -> Response {
+    if let Err(response) = recovery_identity(&state, &headers).await {
+        return response;
+    }
+    let settings = crate::recovery_settings::load(state.state_dir.as_deref());
+    let mut apps: Vec<serde_json::Value> = Vec::new();
+    if let Some(audit) = &state.audit
+        && let Ok(events) = audit.recent_system(500)
+    {
+        let mut index: BTreeMap<String, (u64, u64, u64, u64, String)> = BTreeMap::new();
+        for event in &events {
+            let (bucket, action) = match event.action {
+                rumahl_core::AuditAction::AppCrashed => (0, "app-crashed"),
+                rumahl_core::AuditAction::AppUnresponsive => (1, "app-unresponsive"),
+                rumahl_core::AuditAction::AppLaunchFailed => (2, "app-launch-failed"),
+                _ => continue,
+            };
+            let Some(target) = event.target.clone() else {
+                continue;
+            };
+            let entry = index.entry(target).or_insert((0, 0, 0, 0, String::new()));
+            match bucket {
+                0 => entry.0 += 1,
+                1 => entry.1 += 1,
+                _ => entry.2 += 1,
+            }
+            entry.3 = entry.3.max(event.at.as_seconds());
+            if entry.4.is_empty() {
+                entry.4 = action.to_owned();
+            }
+        }
+        apps = index
+            .into_iter()
+            .map(
+                |(app_id, (crashes, unresponsive, launch_failed, last, _))| {
+                    serde_json::json!({
+                        "appId": app_id,
+                        "crashes": crashes,
+                        "unresponsive": unresponsive,
+                        "launchFailed": launch_failed,
+                        "last": last,
+                    })
+                },
+            )
+            .collect();
+        apps.sort_by(|a, b| b["last"].as_u64().cmp(&a["last"].as_u64()));
+    }
+    let mut response = axum::Json(serde_json::json!({
+        "recoveryVersion": 1,
+        "apps": apps,
+        "disabled": settings.disabled_apps,
+    }))
+    .into_response();
+    secure_headers(&mut response);
+    response
+}
+
+/// Failed units and boot errors explaining why recovery may be needed.
+async fn recovery_boot(State(state): State<Arc<GatewayState>>, headers: HeaderMap) -> Response {
+    if let Err(response) = recovery_identity(&state, &headers).await {
+        return response;
+    }
+    let data = tokio::task::spawn_blocking(crate::recovery_tools::read_boot)
+        .await
+        .unwrap_or_else(|_| {
+            serde_json::json!({
+                "recoveryVersion": 1, "failedUnits": [], "errors": [],
+            })
+        });
+    let mut response = axum::Json(data).into_response();
+    secure_headers(&mut response);
+    response
+}
+
+/// Build and system identification for the update/rollback lane. Read-only.
+async fn recovery_system(State(state): State<Arc<GatewayState>>, headers: HeaderMap) -> Response {
+    if let Err(response) = recovery_identity(&state, &headers).await {
+        return response;
+    }
+    let data = tokio::task::spawn_blocking(crate::recovery_tools::read_system)
+        .await
+        .unwrap_or_else(|_| serde_json::json!({ "recoveryVersion": 1 }));
+    let mut response = axum::Json(data).into_response();
+    secure_headers(&mut response);
+    response
+}
+
+/// Quarantines (or releases) an app after repeated crashes. A quarantined app is
+/// never auto-restarted; disabling also stops its runtime when possible.
+async fn recovery_quarantine(
+    State(state): State<Arc<GatewayState>>,
+    headers: HeaderMap,
+    body: axum::body::Bytes,
+) -> Response {
+    if !valid_origin(&headers, &state.config.public_origin) {
+        return error(StatusCode::FORBIDDEN);
+    }
+    if body.len() > 1024 {
+        return error(StatusCode::PAYLOAD_TOO_LARGE);
+    }
+    if headers
+        .get(CONTENT_TYPE)
+        .and_then(|value| value.to_str().ok())
+        != Some("application/json")
+    {
+        return error(StatusCode::UNSUPPORTED_MEDIA_TYPE);
+    }
+    let identity = match recovery_identity(&state, &headers).await {
+        Ok(identity) => identity,
+        Err(response) => return response,
+    };
+    let Ok(value) = serde_json::from_slice::<serde_json::Value>(&body) else {
+        return error(StatusCode::BAD_REQUEST);
+    };
+    let Some(object) = value.as_object() else {
+        return error(StatusCode::BAD_REQUEST);
+    };
+    if object
+        .keys()
+        .any(|key| !["appId", "installationId", "disabled"].contains(&key.as_str()))
+    {
+        return error(StatusCode::BAD_REQUEST);
+    }
+    let Some(app_id) = value
+        .get("appId")
+        .and_then(serde_json::Value::as_str)
+        .filter(|value| !value.is_empty() && value.len() <= 200)
+        .map(str::to_owned)
+    else {
+        return error(StatusCode::BAD_REQUEST);
+    };
+    let Some(disabled) = value.get("disabled").and_then(serde_json::Value::as_bool) else {
+        return error(StatusCode::BAD_REQUEST);
+    };
+    let mut settings = crate::recovery_settings::load(state.state_dir.as_deref());
+    settings.disabled_apps.retain(|entry| entry != &app_id);
+    if disabled {
+        settings.disabled_apps.push(app_id.clone());
+        if settings.disabled_apps.len() > 64 {
+            settings.disabled_apps.remove(0);
+        }
+    }
+    if !crate::recovery_settings::save(state.state_dir.as_deref(), &settings) {
+        return error(StatusCode::SERVICE_UNAVAILABLE);
+    }
+    if disabled
+        && let Some(installation_id) = value
+            .get("installationId")
+            .and_then(serde_json::Value::as_str)
+            .filter(|value| !value.is_empty() && value.len() <= 200)
+            .map(str::to_owned)
+        && let Some(apps) = state.apps.clone()
+    {
+        let audit_id = app_id.clone();
+        let _ = tokio::task::spawn_blocking(move || {
+            apps.runtime(
+                identity,
+                &app_id,
+                &installation_id,
+                crate::RuntimeAction::Stop,
+            )
+        })
+        .await;
+        record_audit(
+            &state,
+            rumahl_core::AuditActor::Os,
+            rumahl_core::AuditAction::AppRuntimeStopped,
+            rumahl_core::AuditOutcome::Success,
+            Some(audit_id.as_str()),
+        );
+    }
+    let user = identity.user_id;
+    record_audit(
+        &state,
+        rumahl_core::AuditActor::User(user),
+        rumahl_core::AuditAction::Maintenance,
+        rumahl_core::AuditOutcome::Success,
+        Some(if disabled {
+            "quarantine app"
+        } else {
+            "release app"
+        }),
+    );
+    let mut response = StatusCode::NO_CONTENT.into_response();
+    secure_headers(&mut response);
+    response
+}
+
+async fn recovery_disks(State(state): State<Arc<GatewayState>>, headers: HeaderMap) -> Response {
+    if let Err(response) = recovery_identity(&state, &headers).await {
+        return response;
+    }
+    let mut response =
+        axum::Json(serde_json::json!({ "devices": crate::sensors::read_disks() })).into_response();
+    secure_headers(&mut response);
+    response
+}
+
+async fn recovery_disk_test(
+    State(state): State<Arc<GatewayState>>,
+    headers: HeaderMap,
+    body: axum::body::Bytes,
+) -> Response {
+    if !valid_origin(&headers, &state.config.public_origin) {
+        return error(StatusCode::FORBIDDEN);
+    }
+    if body.len() > 1024 {
+        return error(StatusCode::PAYLOAD_TOO_LARGE);
+    }
+    if headers
+        .get("content-type")
+        .and_then(|value| value.to_str().ok())
+        != Some("application/json")
+    {
+        return error(StatusCode::UNSUPPORTED_MEDIA_TYPE);
+    }
+    let identity = match recovery_identity(&state, &headers).await {
+        Ok(identity) => identity,
+        Err(response) => return response,
+    };
+    let Ok(value) = serde_json::from_slice::<serde_json::Value>(&body) else {
+        return error(StatusCode::BAD_REQUEST);
+    };
+    let Some(name) = value
+        .get("name")
+        .and_then(|v| v.as_str())
+        .filter(|value| !value.is_empty() && value.len() <= 128)
+    else {
+        return error(StatusCode::BAD_REQUEST);
+    };
+    let test = value
+        .get("test")
+        .and_then(|v| v.as_str())
+        .unwrap_or("short");
+    let ok = crate::sensors::run_disk_test(name, test);
+    record_audit(
+        &state,
+        rumahl_core::AuditActor::User(identity.user_id),
+        rumahl_core::AuditAction::Maintenance,
+        if ok {
+            rumahl_core::AuditOutcome::Success
+        } else {
+            rumahl_core::AuditOutcome::Failure
+        },
+        Some("disk-test"),
+    );
+    let mut response = if ok {
+        StatusCode::NO_CONTENT.into_response()
+    } else {
+        error(StatusCode::SERVICE_UNAVAILABLE)
+    };
+    secure_headers(&mut response);
+    response
+}
+
+/// Reads the recovery environment settings (auto-repair, safe mode).
+async fn recovery_settings_get(
+    State(state): State<Arc<GatewayState>>,
+    headers: HeaderMap,
+) -> Response {
+    if let Err(response) = recovery_identity(&state, &headers).await {
+        return response;
+    }
+    let settings = crate::recovery_settings::load(state.state_dir.as_deref());
+    let mut response = axum::Json(settings).into_response();
+    secure_headers(&mut response);
+    response
+}
+
+async fn recovery_settings_put(
+    State(state): State<Arc<GatewayState>>,
+    headers: HeaderMap,
+    body: axum::body::Bytes,
+) -> Response {
+    if !valid_origin(&headers, &state.config.public_origin) {
+        return error(StatusCode::FORBIDDEN);
+    }
+    if body.len() > 1024 {
+        return error(StatusCode::PAYLOAD_TOO_LARGE);
+    }
+    if headers
+        .get("content-type")
+        .and_then(|value| value.to_str().ok())
+        != Some("application/json")
+    {
+        return error(StatusCode::UNSUPPORTED_MEDIA_TYPE);
+    }
+    let identity = match recovery_identity(&state, &headers).await {
+        Ok(identity) => identity,
+        Err(response) => return response,
+    };
+    let Ok(settings) = serde_json::from_slice::<crate::recovery_settings::RecoverySettings>(&body)
+    else {
+        return error(StatusCode::BAD_REQUEST);
+    };
+    if !crate::recovery_settings::save(state.state_dir.as_deref(), &settings) {
+        return error(StatusCode::SERVICE_UNAVAILABLE);
+    }
+    record_audit(
+        &state,
+        rumahl_core::AuditActor::User(identity.user_id),
+        rumahl_core::AuditAction::Maintenance,
+        rumahl_core::AuditOutcome::Success,
+        Some("recovery settings"),
+    );
+    let mut response = StatusCode::NO_CONTENT.into_response();
+    secure_headers(&mut response);
+    response
+}
+
+/// Host-wide maintenance is authorized independently by a root-owned operator
+/// allowlist in the broker. A valid browser session alone grants no host rights.
+async fn recovery_host_status(
+    State(state): State<Arc<GatewayState>>,
+    headers: HeaderMap,
+) -> Response {
+    let identity = match recovery_identity(&state, &headers).await {
+        Ok(identity) => identity,
+        Err(response) => return response,
+    };
+    recovery_host_call(serde_json::json!({
+        "action": "status", "userId": identity.user_id.to_string(),
+    }))
+    .await
+}
+
+async fn recovery_host_action(
+    State(state): State<Arc<GatewayState>>,
+    headers: HeaderMap,
+    body: axum::body::Bytes,
+) -> Response {
+    if !valid_origin(&headers, &state.config.public_origin) {
+        return error(StatusCode::FORBIDDEN);
+    }
+    let identity = match recovery_identity(&state, &headers).await {
+        Ok(identity) => identity,
+        Err(response) => return response,
+    };
+    if body.len() > 1024 {
+        return error(StatusCode::PAYLOAD_TOO_LARGE);
+    }
+    if headers
+        .get(CONTENT_TYPE)
+        .and_then(|value| value.to_str().ok())
+        != Some("application/json")
+    {
+        return error(StatusCode::UNSUPPORTED_MEDIA_TYPE);
+    }
+    let Ok(mut value) = serde_json::from_slice::<serde_json::Value>(&body) else {
+        return error(StatusCode::BAD_REQUEST);
+    };
+    let Some(object) = value.as_object_mut() else {
+        return error(StatusCode::BAD_REQUEST);
+    };
+    let keys: &[&str] = match object.get("action").and_then(|value| value.as_str()) {
+        Some("reboot")
+            if object
+                .get("safeMode")
+                .is_some_and(serde_json::Value::is_boolean) =>
+        {
+            &["action", "safeMode"]
+        }
+        Some("backup") => &["action"],
+        Some("restore")
+            if object
+                .get("backupId")
+                .and_then(|value| value.as_str())
+                .is_some_and(|id| {
+                    id.len() == 32
+                        && id
+                            .bytes()
+                            .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+                }) =>
+        {
+            &["action", "backupId"]
+        }
+        Some("fsck") | Some("reset") | Some("reinstall") | Some("rollback") | Some("poweroff") => {
+            &["action"]
+        }
+        Some("schedule")
+            if object
+                .get("enabled")
+                .is_some_and(serde_json::Value::is_boolean)
+                && object
+                    .get("intervalHours")
+                    .and_then(serde_json::Value::as_u64)
+                    .is_some()
+                && object
+                    .get("keep")
+                    .and_then(serde_json::Value::as_u64)
+                    .is_some() =>
+        {
+            &["action", "enabled", "intervalHours", "keep"]
+        }
+        _ => return error(StatusCode::BAD_REQUEST),
+    };
+    if object.len() != keys.len() || object.keys().any(|key| !keys.contains(&key.as_str())) {
+        return error(StatusCode::BAD_REQUEST);
+    }
+    let action = object
+        .get("action")
+        .and_then(|value| value.as_str())
+        .unwrap_or_default()
+        .to_owned();
+    object.insert(
+        "userId".into(),
+        serde_json::json!(identity.user_id.to_string()),
+    );
+    let response = recovery_host_call(value).await;
+    record_audit(
+        &state,
+        rumahl_core::AuditActor::User(identity.user_id),
+        rumahl_core::AuditAction::Maintenance,
+        if matches!(response.status(), StatusCode::ACCEPTED | StatusCode::OK) {
+            rumahl_core::AuditOutcome::Success
+        } else {
+            rumahl_core::AuditOutcome::Denied
+        },
+        Some(&format!("host request: {action}")),
+    );
+    response
+}
+
+async fn recovery_host_call(value: serde_json::Value) -> Response {
+    use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
+    let result = tokio::time::timeout(Duration::from_secs(5), async {
+        let mut stream = UnixStream::connect("/run/rumahl-recovery/control.sock").await?;
+        // A replaced socket must not let an unprivileged service impersonate root.
+        if stream.peer_cred()?.uid() != 0 {
+            return Err(std::io::Error::other("untrusted recovery peer"));
+        }
+        let mut request = serde_json::to_vec(&value).map_err(std::io::Error::other)?;
+        request.push(b'\n');
+        stream.write_all(&request).await?;
+        let mut reader = BufReader::new(stream);
+        let mut frame = Vec::new();
+        loop {
+            let available = reader.fill_buf().await?;
+            if available.is_empty() {
+                return Err(std::io::Error::other("incomplete recovery response"));
+            }
+            let length = available
+                .iter()
+                .position(|byte| *byte == b'\n')
+                .map_or(available.len(), |index| index + 1);
+            if frame.len() + length > 131_072 {
+                return Err(std::io::Error::other("recovery response too large"));
+            }
+            let complete = available[length - 1] == b'\n';
+            frame.extend_from_slice(&available[..length]);
+            reader.consume(length);
+            if complete {
+                break;
+            }
+        }
+        serde_json::from_slice::<serde_json::Value>(&frame).map_err(std::io::Error::other)
+    })
+    .await;
+    let Ok(Ok(value)) = result else {
+        return error(StatusCode::SERVICE_UNAVAILABLE);
+    };
+    let status = match value.get("status").and_then(|value| value.as_u64()) {
+        Some(200) => StatusCode::OK,
+        Some(202) => StatusCode::ACCEPTED,
+        Some(400) => StatusCode::BAD_REQUEST,
+        Some(403) => StatusCode::FORBIDDEN,
+        Some(409) => StatusCode::CONFLICT,
+        _ => StatusCode::SERVICE_UNAVAILABLE,
+    };
+    let mut response = (status, axum::Json(value)).into_response();
     secure_headers(&mut response);
     response
 }
@@ -1702,6 +2406,9 @@ async fn recovery_restart(
             response
         }
         Some("app") => {
+            if crate::recovery_settings::load(state.state_dir.as_deref()).safe_mode {
+                return error(StatusCode::FORBIDDEN);
+            }
             let (Some(app_id), Some(installation_id)) = (
                 value
                     .get("appId")
@@ -1786,17 +2493,93 @@ async fn recovery_self_heal(
         Ok(identity) => identity,
         Err(response) => return response,
     };
+    let Some(apps) = state.apps.clone() else {
+        return error(StatusCode::SERVICE_UNAVAILABLE);
+    };
+    let settings = crate::recovery_settings::load(state.state_dir.as_deref());
+    let user = identity.user_id;
+    let session = identity.session_id;
+    let result = tokio::task::spawn_blocking(move || {
+        let identity = || ShellIdentity {
+            user_id: user,
+            session_id: session,
+        };
+        let catalog = apps.catalog(identity())?;
+        let mut actions = Vec::new();
+        for app in catalog
+            .into_iter()
+            .filter(|app| app.launchable && app.lifecycle == "always-on")
+        {
+            if crate::recovery_settings::is_disabled(&settings, &app.id) {
+                actions.push(serde_json::json!({
+                    "appId": app.id, "outcome": "skipped", "detail": "app disabled",
+                }));
+                continue;
+            }
+            let installation = app.installation_id.to_string();
+            let status = apps.runtime(
+                identity(),
+                &app.id,
+                &installation,
+                crate::RuntimeAction::Status,
+            );
+            let (outcome, detail) = match status {
+                Ok(crate::RuntimeState::Running) => ("skipped", "already running"),
+                Ok(crate::RuntimeState::Stopped) if settings.safe_mode => {
+                    ("skipped", "safe mode enabled")
+                }
+                Ok(crate::RuntimeState::Stopped) => match apps.runtime(
+                    identity(),
+                    &app.id,
+                    &installation,
+                    crate::RuntimeAction::Start,
+                ) {
+                    Ok(crate::RuntimeState::Running) => ("success", "service started"),
+                    _ => ("failure", "service could not be started"),
+                },
+                Err(_) => ("failure", "runtime status unavailable or denied"),
+            };
+            actions
+                .push(serde_json::json!({ "appId": app.id, "outcome": outcome, "detail": detail }));
+        }
+        Ok::<_, crate::AppAccessError>(actions)
+    })
+    .await;
+    let actions = match result {
+        Ok(Ok(actions)) => actions,
+        Ok(Err(err)) => return crate::app_error(err),
+        Err(_) => return error(StatusCode::SERVICE_UNAVAILABLE),
+    };
+    for action in &actions {
+        if action["outcome"] == "skipped" {
+            continue;
+        }
+        record_audit(
+            &state,
+            rumahl_core::AuditActor::User(user),
+            rumahl_core::AuditAction::SelfHeal,
+            if action["outcome"] == "success" {
+                rumahl_core::AuditOutcome::Success
+            } else {
+                rumahl_core::AuditOutcome::Failure
+            },
+            action["appId"].as_str(),
+        );
+    }
+    let ok = !actions.iter().any(|action| action["outcome"] == "failure");
     record_audit(
         &state,
-        rumahl_core::AuditActor::User(identity.user_id),
+        rumahl_core::AuditActor::User(user),
         rumahl_core::AuditAction::SelfHeal,
-        rumahl_core::AuditOutcome::Success,
-        None,
+        if ok {
+            rumahl_core::AuditOutcome::Success
+        } else {
+            rumahl_core::AuditOutcome::Failure
+        },
+        Some("always-on services"),
     );
     let mut response = axum::Json(serde_json::json!({
-        "recoveryVersion": 1,
-        "ok": true,
-        "actions": ["maintenance run recorded"],
+        "recoveryVersion": 1, "ok": ok, "actions": actions,
     }))
     .into_response();
     secure_headers(&mut response);
@@ -1892,14 +2675,18 @@ async fn shell_report(
     );
     // Self-healing: a crashed or unresponsive app runtime is restarted for the
     // user, and the recovery is recorded as a rumahl OS action.
+    let auto_repair_settings = crate::recovery_settings::load(state.state_dir.as_deref());
     if matches!(
         action,
         rumahl_core::AuditAction::AppCrashed | rumahl_core::AuditAction::AppUnresponsive
-    ) && let Some(installation_id) = value
-        .get("installationId")
-        .and_then(|v| v.as_str())
-        .filter(|value| !value.is_empty() && value.len() <= 200)
-        .map(str::to_owned)
+    ) && auto_repair_settings.auto_repair
+        && !auto_repair_settings.safe_mode
+        && !crate::recovery_settings::is_disabled(&auto_repair_settings, &app_id)
+        && let Some(installation_id) = value
+            .get("installationId")
+            .and_then(|v| v.as_str())
+            .filter(|value| !value.is_empty() && value.len() <= 200)
+            .map(str::to_owned)
         && let Some(apps) = state.apps.clone()
     {
         let user = identity.user_id;
@@ -1949,140 +2736,12 @@ async fn shell_report(
 /// The central emergency & maintenance hub. Rendered without the shell renderer
 /// so it stays available when the shell is down. Shows system status and, when
 /// signed in, the recent activity log.
-async fn recovery(State(state): State<Arc<GatewayState>>, headers: HeaderMap) -> Response {
+async fn recovery(headers: HeaderMap) -> Response {
     let german = headers
         .get("accept-language")
         .and_then(|v| v.to_str().ok())
         .is_some_and(|value| value.trim_start().to_ascii_lowercase().starts_with("de"));
-    let authenticated = match credential(&headers) {
-        Ok(token) => authenticate(&state, &token).await.is_ok(),
-        Err(_) => false,
-    };
-    let events = if authenticated {
-        state
-            .audit
-            .as_ref()
-            .and_then(|audit| audit.recent_system(40).ok())
-            .unwrap_or_default()
-    } else {
-        Vec::new()
-    };
-    let rows = events
-        .iter()
-        .map(|event| {
-            format!(
-                "<tr><td class=\"seq\">{seq}</td><td class=\"at\">{at}</td><td class=\"actor\">{actor}</td><td class=\"action\">{action}</td><td class=\"outcome o-{outcome}\">{outcome}</td><td class=\"target\">{target}</td></tr>",
-                seq = event.sequence,
-                at = format_utc(event.at.as_seconds()),
-                actor = escape_html(&event.actor.encode()),
-                action = escape_html(event.action.as_str()),
-                outcome = event.outcome.as_str(),
-                target = escape_html(event.target.as_deref().unwrap_or("—")),
-            )
-        })
-        .collect::<String>();
-    let (
-        lang,
-        title,
-        subtitle,
-        status_label,
-        audit_heading,
-        empty_label,
-        signin_label,
-        reload_label,
-    ) = if german {
-        (
-            "de",
-            "Wiederherstellung",
-            "Notfall- und Wartungssystem von rumahl OS",
-            "Systemstatus",
-            "Aktivitätsprotokoll",
-            "Melde dich an, um das Protokoll zu sehen.",
-            "Anmelden",
-            "Shell erneut laden",
-        )
-    } else {
-        (
-            "en",
-            "Recovery",
-            "The rumahl OS emergency & maintenance system",
-            "System status",
-            "Activity log",
-            "Sign in to view the activity log.",
-            "Sign in",
-            "Reload shell",
-        )
-    };
-    let audit_body = if !authenticated {
-        format!("<p class=\"muted\">{empty_label} <a href=\"/login\">{signin_label}</a></p>")
-    } else if rows.is_empty() {
-        format!("<p class=\"muted\">{empty_label}</p>")
-    } else {
-        format!(
-            "<table><thead><tr><th>#</th><th>time</th><th>actor</th><th>action</th><th>result</th><th>target</th></tr></thead><tbody>{rows}</tbody></table>"
-        )
-    };
-    let body = format!(
-        "<!doctype html><html lang=\"{lang}\"><head><meta charset=\"utf-8\">\
-<meta name=\"viewport\" content=\"width=device-width,initial-scale=1\">\
-<title>rumahl OS · {title}</title><style>\
-:root{{color-scheme:dark}}*{{box-sizing:border-box}}\
-body{{margin:0;min-height:100vh;background:#050506;color:#d6e2d6;font:13px/1.55 ui-monospace,SFMono-Regular,Menlo,\"Cascadia Mono\",monospace;background-image:linear-gradient(rgba(120,220,160,.05) 1px,transparent 1px),linear-gradient(90deg,rgba(120,220,160,.05) 1px,transparent 1px);background-size:28px 28px}}\
-.scan{{position:fixed;inset:0;pointer-events:none;background:repeating-linear-gradient(0deg,rgba(255,255,255,.018) 0 1px,transparent 1px 3px)}}\
-header{{display:flex;align-items:center;gap:12px;padding:12px 20px;border-bottom:1px solid rgba(120,220,160,.22);background:rgba(6,10,8,.92)}}\
-header .brand{{color:#8ef0b6;font-weight:700;letter-spacing:.06em}}\
-header .tag{{color:#5b7a67;text-transform:uppercase;letter-spacing:.14em;font-size:11px}}\
-header .cur{{width:9px;height:16px;background:#8ef0b6;animation:blink 1.1s steps(2) infinite}}\
-@keyframes blink{{50%{{opacity:0}}}}\
-main{{max-width:980px;margin:0 auto;padding:clamp(24px,5vh,52px) 20px 64px}}\
-h1{{margin:8px 0 4px;font-size:clamp(26px,4vw,38px);letter-spacing:.02em;color:#eafff2}}\
-p.sub{{color:#6f8a79;margin:0 0 18px}}\
-.reason{{color:#ff8a6b;margin:0 0 6px}}\
-.statusline{{color:#8ef0b6;margin:0 0 22px}}\
-.kv{{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:10px;margin:0 0 26px}}\
-.kv>div{{border:1px solid rgba(120,220,160,.18);padding:10px 12px;border-radius:8px;background:rgba(9,16,12,.6)}}\
-.kv .k{{color:#5b7a67;text-transform:uppercase;letter-spacing:.1em;font-size:10.5px}}\
-.kv .v{{color:#eafff2;font-size:14px;margin-top:4px}}\
-.run{{display:flex;gap:10px;flex-wrap:wrap;margin:0 0 30px}}\
-a.btn{{padding:9px 16px;border:1px solid rgba(120,220,160,.45);border-radius:8px;text-decoration:none;color:#0a1410;background:#8ef0b6;font-weight:700;font-size:12.5px}}\
-a.btn.ghost{{background:transparent;color:#8ef0b6}}\
-h2.section{{font-size:11px;text-transform:uppercase;letter-spacing:.16em;color:#5b7a67;margin:0 0 10px}}\
-table{{width:100%;border-collapse:collapse;font-size:12.5px}}\
-thead th{{text-align:left;padding:7px 10px;color:#5b7a67;text-transform:uppercase;letter-spacing:.08em;font-size:10px;border-bottom:1px solid rgba(120,220,160,.2)}}\
-tbody td{{padding:6px 10px;border-bottom:1px solid rgba(120,220,160,.08);vertical-align:top}}\
-td.seq,td.at{{color:#5b7a67;white-space:nowrap}}\
-td.action{{color:#bfe9cf}}td.target{{color:#9fbfa9;word-break:break-all}}\
-.o-success{{color:#8ef0b6}}.o-denied{{color:#f0c46b}}.o-failure{{color:#ff8a6b}}\
-.muted{{color:#6f8a79}}a{{color:#8ef0b6}}\
-footer{{margin-top:34px;color:#3f5145;font-size:11px;letter-spacing:.04em}}\
-</style></head><body><div class=\"scan\" aria-hidden=\"true\"></div>\
-<header><span class=\"brand\">rumahl·os</span><span class=\"tag\">{title}</span><span class=\"cur\" aria-hidden=\"true\"></span></header>\
-<main><h1>{title}</h1><p class=\"sub\">{subtitle}</p>\
-<p id=\"recovery-reason\" class=\"reason\" hidden></p><p id=\"recovery-status\" class=\"statusline\"></p>\
-<div class=\"kv\"><div><div class=\"k\">{status_label}</div><div class=\"v\">platform ok · renderer unknown · audit {audit_state}</div></div>\
-<div><div class=\"k\">now</div><div class=\"v\">{now}</div></div>\
-<div><div class=\"k\">last event</div><div class=\"v\">#{last}</div></div></div>\
-<div class=\"run\"><a class=\"btn\" href=\"/\">{reload_label}</a><a class=\"btn ghost\" href=\"/login\">{signin_label}</a></div>\
-<h2 class=\"section\">{audit_heading}</h2>{audit_body}\
-<footer>rumahl os // recovery console — runs without the shell</footer></main>\
-<script src=\"/recovery.js\" defer></script></body></html>",
-        lang = lang,
-        title = title,
-        subtitle = subtitle,
-        status_label = status_label,
-        audit_heading = audit_heading,
-        now = format_utc(now_seconds()),
-        last = state
-            .audit
-            .as_ref()
-            .and_then(|audit| audit.recent_system(1).ok())
-            .and_then(|events| events.first().map(|event| event.sequence))
-            .unwrap_or(0),
-        audit_state = if state.audit.is_some() { "on" } else { "off" },
-        reload_label = reload_label,
-        signin_label = signin_label,
-        audit_body = audit_body,
-    );
+    let body = include_str!("recovery.html").replace("{{lang}}", if german { "de" } else { "en" });
     let mut response = Response::new(Body::from(body));
     response.headers_mut().insert(
         CONTENT_TYPE,
@@ -2098,44 +2757,9 @@ footer{{margin-top:34px;color:#3f5145;font-size:11px;letter-spacing:.04em}}\
     response
 }
 
-/// The recovery page's script: shows why recovery opened and, once the shell is
-/// servable again, returns the user to it automatically.
+/// Standalone recovery controller, independent of the shell renderer.
 async fn recovery_script() -> Response {
-    let script = r#"(function () {
-  var params = new URLSearchParams(location.search);
-  var reason = params.get("reason");
-  var detail = params.get("detail");
-  var reasonEl = document.getElementById("recovery-reason");
-  var statusEl = document.getElementById("recovery-status");
-  var messages = {
-    boot: "The shell did not start.",
-    crash: "The shell stopped unexpectedly and is being restarted.",
-    "view-crash": "A view stopped unexpectedly and is being restarted.",
-    manual: "Manual recovery was requested."
-  };
-  if (reasonEl && reason) {
-    reasonEl.textContent = (messages[reason] || "The shell was interrupted and is being restarted.") + (detail ? "  (" + detail + ")" : "");
-    reasonEl.hidden = false;
-  }
-  function health(cb) {
-    fetch("/", { method: "GET", cache: "no-store", credentials: "same-origin" })
-      .then(function (response) { cb(response.ok); })
-      .catch(function () { cb(false); });
-  }
-  if (reason) {
-    var attempts = 0;
-    (function loop() {
-      attempts += 1;
-      health(function (up) {
-        if (up) { if (statusEl) statusEl.textContent = "The shell is running — returning…"; location.assign("/"); return; }
-        if (statusEl) statusEl.textContent = "Restarting the shell… (attempt " + attempts + ")";
-        setTimeout(loop, 1500);
-      });
-    })();
-  } else {
-    health(function (up) { if (statusEl) statusEl.textContent = up ? "The shell is running." : "The shell is not available right now."; });
-  }
-})();"#;
+    let script = include_str!("recovery.js");
     let mut response = Response::new(Body::from(script));
     response.headers_mut().insert(
         CONTENT_TYPE,
@@ -2289,25 +2913,10 @@ fn error(status: StatusCode) -> Response {
 /// The shell could not be served. This stays dependency-free (no renderer, no
 /// assets) and points to the recovery hub, which runs in the same process.
 fn unavailable_page() -> Response {
-    let body = "<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\">\
-<meta name=\"viewport\" content=\"width=device-width,initial-scale=1\">\
-<title>rumahl OS · Unavailable</title><style>\
-:root{color-scheme:dark}*{box-sizing:border-box}\
-body{margin:0;min-height:100vh;display:grid;place-items:center;background:radial-gradient(900px 500px at 50% -10%,#20283a,#080b12 62%);color:#eef2ff;font:15px/1.55 ui-sans-serif,system-ui,\"Segoe UI\",Roboto,sans-serif;padding:24px}\
-.card{max-width:460px;text-align:center;padding:36px 30px;border-radius:22px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.12);box-shadow:0 24px 70px rgba(0,0,0,.5)}\
-svg{width:52px;height:52px;stroke:#f0b64b;fill:none;stroke-width:1.5}\
-h1{margin:16px 0 8px;font-size:26px;letter-spacing:-.01em}\
-p{margin:0 0 22px;color:#9aa6c4}\
-.actions{display:flex;gap:10px;justify-content:center;flex-wrap:wrap}\
-a{display:inline-block;padding:11px 20px;border-radius:999px;text-decoration:none;font-weight:600;font-size:14px}\
-a.primary{background:#3b6ff0;color:#fff}\
-a.ghost{background:rgba(255,255,255,.07);color:#eef2ff;border:1px solid rgba(255,255,255,.16)}\
-</style></head><body><div class=\"card\">\
-<svg viewBox=\"0 0 24 24\" aria-hidden=\"true\"><path d=\"M12 3 3 6v6c0 4.5 3.2 7.9 9 9 5.8-1.1 9-4.5 9-9V6z\"/><path d=\"M12 8v5M12 16.5h.01\"/></svg>\
-<h1>Shell unavailable</h1>\
-<p>The shell could not be started right now. Recovery and maintenance remain available.</p>\
-<div class=\"actions\"><a class=\"primary\" href=\"/recovery\">Open recovery</a><a class=\"ghost\" href=\"/\">Reload shell</a></div>\
-</div></body></html>";
+    // Calm diagnostic screen (shared with the offline kit): black, the white
+    // rumahl "r" top right, a spinner first and tips/next steps only after it
+    // keeps failing. Self-contained, so it renders with nothing else available.
+    let body = include_str!("offline/index.html");
     let mut response = Response::new(Body::from(body));
     *response.status_mut() = StatusCode::SERVICE_UNAVAILABLE;
     response.headers_mut().insert(
@@ -2317,7 +2926,7 @@ a.ghost{background:rgba(255,255,255,.07);color:#eef2ff;border:1px solid rgba(255
     response.headers_mut().insert(
         CONTENT_SECURITY_POLICY,
         HeaderValue::from_static(
-            "default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'",
+            "default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; connect-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'",
         ),
     );
     secure_headers(&mut response);
@@ -2413,6 +3022,7 @@ mod tests {
             browser_sessions: None,
             login_slots: Arc::new(tokio::sync::Semaphore::new(2)),
             audit: None,
+            state_dir: None,
         }
     }
 
@@ -2543,6 +3153,7 @@ mod tests {
             browser_sessions: None,
             login_slots: Arc::new(tokio::sync::Semaphore::new(2)),
             audit: None,
+            state_dir: None,
         });
         let list = app
             .clone()
@@ -2678,6 +3289,7 @@ mod tests {
             browser_sessions: None,
             login_slots: Arc::new(tokio::sync::Semaphore::new(2)),
             audit: None,
+            state_dir: None,
         });
         let grant = Request::builder()
             .method("POST")
@@ -2748,10 +3360,124 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(response.status(), StatusCode::OK);
-        let body = axum::body::to_bytes(response.into_body(), 4096)
+        let body = axum::body::to_bytes(response.into_body(), 65536)
             .await
             .unwrap();
         assert!(std::str::from_utf8(&body).unwrap().contains("lang=\"de\""));
+    }
+
+    #[tokio::test]
+    async fn host_maintenance_rejects_missing_auth_origin_and_unknown_commands() {
+        let app = router(state(true, "https://weather.apps.rumahl.dev/widget"));
+        for (cookie, origin, body, expected) in [
+            (
+                false,
+                "https://rumahl.dev",
+                r#"{"action":"backup"}"#,
+                StatusCode::UNAUTHORIZED,
+            ),
+            (
+                true,
+                "https://evil.example",
+                r#"{"action":"backup"}"#,
+                StatusCode::FORBIDDEN,
+            ),
+            (
+                true,
+                "https://rumahl.dev",
+                r#"{"action":"execute","command":"reboot"}"#,
+                StatusCode::BAD_REQUEST,
+            ),
+            (
+                true,
+                "https://rumahl.dev",
+                r#"{"action":"backup","userId":"other"}"#,
+                StatusCode::BAD_REQUEST,
+            ),
+            (
+                true,
+                "https://rumahl.dev",
+                r#"{"action":"restore","backupId":"../state"}"#,
+                StatusCode::BAD_REQUEST,
+            ),
+            (
+                true,
+                "https://rumahl.dev",
+                r#"{"action":"reboot","safeMode":"yes"}"#,
+                StatusCode::BAD_REQUEST,
+            ),
+        ] {
+            let mut request = Request::builder()
+                .method("POST")
+                .uri("/api/v1/recovery/host")
+                .header(ORIGIN, origin)
+                .header(CONTENT_TYPE, "application/json");
+            if cookie {
+                request = request.header(COOKIE, format!("{SESSION_COOKIE}={TOKEN}"));
+            }
+            let response = app
+                .clone()
+                .oneshot(request.body(Body::from(body)).unwrap())
+                .await
+                .unwrap();
+            assert_eq!(response.status(), expected);
+        }
+    }
+
+    #[tokio::test]
+    async fn recovery_mutations_require_session_origin_and_real_runtime() {
+        let app = router(state(true, "https://weather.apps.rumahl.dev/widget"));
+        for (authenticated, origin, expected) in [
+            (false, "https://rumahl.dev", StatusCode::UNAUTHORIZED),
+            (true, "https://attacker.example", StatusCode::FORBIDDEN),
+            (true, "https://rumahl.dev", StatusCode::SERVICE_UNAVAILABLE),
+        ] {
+            let mut request = Request::builder()
+                .method("POST")
+                .uri("/api/v1/recovery/self-heal")
+                .header(ORIGIN, origin);
+            if authenticated {
+                request = request.header(COOKIE, format!("{SESSION_COOKIE}={TOKEN}"));
+            }
+            let response = app
+                .clone()
+                .oneshot(request.body(Body::empty()).unwrap())
+                .await
+                .unwrap();
+            assert_eq!(response.status(), expected);
+        }
+    }
+
+    #[tokio::test]
+    async fn safe_mode_rejects_restarts_before_touching_runtime() {
+        let directory = tempfile::tempdir().unwrap();
+        assert!(crate::recovery_settings::save(
+            Some(directory.path()),
+            &crate::recovery_settings::RecoverySettings {
+                auto_repair: true,
+                safe_mode: true,
+                disabled_apps: Vec::new(),
+            },
+        ));
+        let mut gateway = state(true, "https://weather.apps.rumahl.dev/widget");
+        gateway.state_dir = Some(directory.path().to_path_buf());
+        let app = router(gateway);
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/v1/recovery/restart")
+                    .header(ORIGIN, "https://rumahl.dev")
+                    .header(COOKIE, format!("{SESSION_COOKIE}={TOKEN}"))
+                    .header(CONTENT_TYPE, "application/json")
+                    .body(Body::from(
+                        r#"{"target":"app","appId":"example.app","installationId":"unknown"}"#,
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::FORBIDDEN);
     }
 
     #[tokio::test]
@@ -2805,7 +3531,7 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(response.status(), StatusCode::OK);
-        let body = axum::body::to_bytes(response.into_body(), 4096)
+        let body = axum::body::to_bytes(response.into_body(), 65536)
             .await
             .unwrap();
         assert!(

@@ -32,7 +32,7 @@ for package in ["shell", "ssr"]:
 for module in ["server.js", "renderer-http.js"]:
     copy(frontend / "ssr" / module, f"usr/share/rumahl/frontend/packages/ssr/{module}")
 (root / "usr/share/rumahl/frontend/packages/ssr/package.json").write_text('{"type":"module"}\n')
-for name in ["rumahl-platform", "rumahl-shell"]:
+for name in ["rumahl-platform", "rumahl-shell", "rumahl-recovery"]:
     copy(repo / f"platform-buildroot/systemd/{name}.service", f"usr/lib/systemd/system/{name}.service")
     wants = root / "etc/systemd/system/multi-user.target.wants"
     wants.mkdir(parents=True, exist_ok=True)
@@ -45,4 +45,18 @@ dropin = root / "etc/systemd/system/nginx.service.d"
 dropin.mkdir(parents=True, exist_ok=True)
 (dropin / "rumahl.conf").write_text("[Unit]\nWants=rumahl-platform.service\nAfter=rumahl-platform.service\nRequiresMountsFor=/var/lib/rumahl-tls\n")
 copy(repo / "LICENSE", "usr/share/licenses/rumahl/LICENSE")
+
+copy(repo / "platform-buildroot/recovery/host.py", "usr/libexec/rumahl-recovery.py")
+copy(repo / "platform-buildroot/deployment/recovery.json.example", "etc/rumahl/recovery.json")
+# Interrupted restores must never start writers against mixed volume generations.
+for unit in ["rumahl-platform", "rumahl-shell", "rumahl-runtime-supervisor", "docker"]:
+    target = root / f"usr/lib/systemd/system/{unit}.service.d/20-recovery-guard.conf"
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text("[Unit]\nConditionPathExists=!/var/lib/rumahl-recovery/restore-pending.json\n")
+
+for unit in ["rumahl-runtime-supervisor.service", "docker.service", "docker.socket"]:
+    target = root / f"usr/lib/systemd/system/{unit}.d/30-safe-mode.conf"
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text("[Unit]\nConditionPathExists=!/var/lib/rumahl-recovery/safe-mode\nConditionPathExists=!/var/lib/rumahl-recovery/restore-pending.json\n")
+
 print("Staged", build["shellBuildId"], "into", root)
