@@ -4,8 +4,10 @@ This is a new, small `BR2_EXTERNAL` tree, informed by the prototype rather than
 copied from it. The first target is QEMU x86-64. It uses the Buildroot-maintained
 QEMU kernel configuration and hash files, systemd, Node with ICU and nginx.
 ICU supplies the `Intl` API required by the shell renderer; Node without ICU
-cannot load the SSR bundle. Docker, the
-old product-specific services, desktop packages and development bridges are not
+cannot load the SSR bundle. The image also ships the Docker engine, the runtime
+supervisor and `tpm2-tools` so installed app containers and the TPM-sealed
+secret store can run; local login does not depend on any of them. The old
+product-specific services, desktop packages and development bridges are not
 prerequisites for local login.
 
 The system disk is read-only. An explicitly created second ext4 disk supplies
@@ -20,6 +22,18 @@ release. A/B updates, boot verification, TPM provisioning, installer media and
 additional boards need their own acceptance work.
 
 ## Build
+
+`build.sh` automates the whole sequence below (fetch and verify Buildroot,
+configure the external tree, build the toolchain, cross-compile the Rust
+services, build the frontend, stage assets and build the image):
+
+```sh
+platform-buildroot/image/build.sh
+```
+
+It defaults to `<repo>/buildroot/{buildroot-<version>,output,artifacts}` and
+accepts `--source`, `--output`, `--artifacts`, `--download` and `--jobs`. The
+manual steps, and the variables they export, are:
 
 Use a Linux build host with the [Buildroot host prerequisites](https://buildroot.org/downloads/manual/manual.html#requirement-mandatory).
 Read the pinned version and hash from `buildroot-source.json`; fetch and verify
@@ -88,6 +102,21 @@ certificate in the test browser. TLS verification stays enabled.
 python3 platform-buildroot/image/create-data.py --seed "$RUMAHL_SEED" --output "$RUMAHL_DATA_IMAGE"
 platform-buildroot/image/run-qemu.sh "$BR_OUTPUT" "$RUMAHL_DATA_IMAGE"
 ```
+
+`boot.sh` is a convenience wrapper that creates the data disk from `--seed`
+when it is missing and starts QEMU:
+
+```sh
+platform-buildroot/image/boot.sh --output "$BR_OUTPUT" --seed "$RUMAHL_SEED"
+```
+
+Pass `--tpm` to `boot.sh` to start `swtpm` and attach a TPM 2.0 device. This
+only supplies the device: creating the sealed platform key object that
+`RUMAHL_SECRET_KEY_OBJECT` references remains device lifecycle work, and the
+secret store fails closed until it is provisioned. Container app installation
+needs the running Docker engine, the `rumahl-app-network` unit and the
+`rumahl-runtime-supervisor` service; the platform service never talks to
+Docker directly.
 
 The data disk also carries the stable `/home` and `/apps` trees; the image binds
 them to those paths at boot. The system state stays under `/var/lib/rumahl` and
