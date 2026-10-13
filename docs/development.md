@@ -235,3 +235,126 @@ physical device remain separate. This is local OS synchronization, not cloud
 synchronization between separate rumahl servers. See
 [shell preferences](architecture/shell-preferences.md) for the versioned API and
 extension rules. `shell.mode` is the first supported preference.
+
+### RRE — rumahl Recovery Environment (`/recovery`)
+
+The recovery surface is served directly by the Rust gateway. It needs neither the
+React desktop nor the SSR renderer. The HTML and controller live in
+`platform-web/src/recovery.html` and `platform-web/src/recovery.js` and are embedded
+at Rust build time, so a backend rebuild is required after changes.
+
+Opening the environment runs read-only checks for components, app services,
+resources, storage, network, logs, recent app crashes and boot errors. Checks that
+cannot run are reported as incomplete. A JSON report exports readings, findings and
+the last repair result; it contains no session tokens and no activity log.
+
+Repair only starts authorized, stopped `always-on` apps. Running services and normal
+`on-demand` apps are not restarted. Results are shown per service and changes are
+recorded in the audit log. Under **Apps & services** individual apps can be started,
+stopped and restarted, and apps that keep crashing can be quarantined; a quarantined
+app is never restarted automatically. Platform and renderer processes have no
+separate restart action. Device restarts and power-off go through the host broker
+described below. SMART starts a host test and is not a completed integrity check.
+The storage page offers a read-only filesystem check (`fsck`) of unmounted devices;
+mounted filesystems are reported as needing a maintenance reboot. The system page
+shows build and version information and, through the host broker, can roll back to
+the newest compatible snapshot, erase the device (factory reset / reinstall) or
+power it off.
+
+Safe mode blocks launch, start and recovery-restart requests as well as automatic
+app repair through the gateway. Already running processes are not stopped
+automatically. The setting does not replace host boot isolation.
+
+Manual verification after a build: open `/recovery` signed in and signed out, run
+diagnostics with the runtime supervisor unavailable, stop/start an authorized app,
+enable safe mode and attempt another start. Also check with a failed SSR and a
+narrow browser window. Rust regression checks:
+`cargo fmt --all -- --check`,
+`cargo clippy --workspace --all-targets --locked -- -D warnings`,
+`cargo test --workspace --locked`.
+
+RRE is a standalone mini desktop: a plain background, a system bar and a dock at the
+bottom. System status, diagnostics, apps & services, storage & disks, network, logs,
+app crashes, boot & errors, system & update, boot options, activity and backups open
+in separate windows. Several tools can stay visible at once. Windows can be moved by
+their title bar (also with the arrow keys when the title bar is focused), maximised,
+minimised and closed. The dock brings minimised windows back; dots mark open tools.
+On narrow screens the active window fills the workspace.
+
+Diagnostics run read-only in the background without opening a window. Window controls
+and the dock stay usable during API requests. Closing or minimising a tool window
+neither stops apps nor cancels an already submitted repair. "Refresh" reloads the
+tool data. The surface needs no shell assets; individual desktop themes are not
+applied.
+
+### RRE: host restart, power-off and full state backup
+
+"Activity" is its own app with live events, an outcome filter and paging. "System
+status" shows check states, "Diagnostics" shows findings and repairs, "Apps &
+services" controls runtimes. "Boot options" offers a normal and a safe **device
+restart** plus a **power off**, "Backups" creates and restores local state backups
+and can schedule automatic backups. Windows still open only from the dock.
+
+Host actions require the new `rumahl-recovery.service`. The Rust gateway talks only
+to its Unix socket. The broker checks the platform service's peer UID and the signed
+in user ID against the root-owned file `/etc/rumahl/recovery.json`. The shipped
+`operators` list is **empty**: at provisioning time add explicitly authorised
+accounts as UUIDs. The file must be owned by root and must not be writable by others.
+A session or an extended UI mode alone grants no maintenance rights. Adding it to the
+image requires a new image build, not only a rebuild of the Rust gateway. The normal
+frontend dev server has no host broker, so RRE shows those functions as unavailable.
+
+The broker accepts only `status`, `reboot`, `poweroff`, `backup`, `restore`, `fsck`,
+`reset`, `reinstall`, `rollback` and `schedule`. Paths and shell commands cannot be
+passed from the browser. The interface first confirms the **acceptance** of an
+operation. While services are stopped the connection is interrupted; reopen RRE
+afterwards and check the stored operation status. An HTTP 200 check is not treated as
+a successful boot.
+
+A restart or power-off is signalled by the server, never guessed by the client. The
+broker writes a lifecycle intent before stopping writers; on a clean stop the
+platform service broadcasts a `system_lifecycle` WebSocket event to every connected
+client, which then shows "restarting" or "shut down". Without that signal the
+offline screen only distinguishes "this device is offline" from "rumahl OS is
+unreachable" (via a service worker connectivity probe) and polls patiently. A plain
+`systemctl stop/restart` defaults to "restarting"; a crash sends no signal and is
+reported as unreachable.
+
+A full state backup covers `/var/lib/rumahl`, `/home`, `/apps`, `/var/lib/docker`
+and `/var/lib/rumahl-runtime-images`. All five directories must be present. Before
+the backup the rumahl services and all containers of this appliance host are stopped.
+The backup preserves owners, ACLs, extended attributes and Docker whiteouts.
+Additional mounts inside the volumes are rejected instead of silently producing
+incomplete backups. GNU tar with ACL/xattr support and Python with SQLite are added
+to the image (see
+[Buildroot tar configuration](https://github.com/buildroot/buildroot/blob/master/package/tar/tar.mk)).
+
+Backups are stored root-private in `/var/lib/rumahl-recovery/backups`. They are
+local restore points, not protection against loss of the disk. The OS image, TLS
+provisioning and host configuration are not replaced. Restoration is bound to the
+same device, platform build, platform configuration and, where present, the same TPM
+key object. Moving a device or importing foreign archives is not offered.
+
+Restore first checks the manifest, scope, SHA-256 and archive paths. After writers
+are stopped an additional backup of the current state is created. All volumes are
+extracted onto their target filesystem before replacement; state databases are
+checked for integrity. Session tokens and OIDC login transactions are discarded.
+After a successful restore the device reboots into safe mode, where Docker and the
+app supervisor stay stopped by systemd conditions until a normal device restart is
+requested.
+
+**Interrupted restore:** `/var/lib/rumahl-recovery/restore-pending.json` locks all
+affected services even after a power failure. The gateway also stays stopped; this
+needs local maintenance access. The previous state is noted as `safetyBackupId` in
+`/var/lib/rumahl-recovery/job.json`. After review, with the broker stopped, root can
+re-apply a verified restore point with
+`python3 /usr/libexec/rumahl-recovery.py --restore-offline BACKUP_ID`. The command
+leaves services stopped; reboot afterwards. Do not simply delete the lock marker. A
+restore needs room for the current state, the extra backup and the extracted data;
+lack of space leads to rejection or the locked maintenance state.
+
+Offline tests that leave the host untouched:
+`python3 -m unittest discover -s platform-buildroot/recovery -p 'test_*.py' -v`.
+Device restart, mount behaviour and the systemd flow must additionally be verified in
+a disposable QEMU instance before activating the broker on a device with important
+data.

@@ -6,7 +6,7 @@ RUMAHL_SHELL_SITE = $(call qstrip,$(BR2_PACKAGE_RUMAHL_SHELL_ARTIFACTS))
 RUMAHL_SHELL_SITE_METHOD = local
 RUMAHL_SHELL_LICENSE = Apache-2.0
 RUMAHL_SHELL_LICENSE_FILES = usr/share/licenses/rumahl/LICENSE
-RUMAHL_SHELL_DEPENDENCIES = nodejs nginx
+RUMAHL_SHELL_DEPENDENCIES = nodejs nginx python3 tar acl attr
 
 define RUMAHL_SHELL_USERS
     rumahl-platform -1 rumahl-web -1 * /var/lib/rumahl /sbin/nologin rumahl-ssr rumahl-platform

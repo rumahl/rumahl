@@ -16,7 +16,21 @@ import { setLaunching } from "./launching";
 import { showToast } from "../shell/toasts";
 import { Button } from "../components/Button";
 import { UnavailablePage } from "../pages/UnavailablePage";
+import type { ShellRequest } from "../snapshot-client";
 import "../routing/route-failure.css";
+
+/**
+ * Reports an app lifecycle event (launch failure, crash, unresponsiveness) to
+ * the OS so it lands in the central audit log. Best-effort: never blocks the UI.
+ */
+function postReport(request: ShellRequest, appId: string, event: "launched" | "crashed" | "unresponsive" | "launch-failed" | "stopped", installationId?: string): void {
+  void request("/api/v1/shell/report", {
+    method: "POST",
+    credentials: "same-origin",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ appId, event, ...(installationId ? { installationId } : {}) }),
+  }).catch(() => undefined);
+}
 
 export function InstalledAppHost() {
   const { appId = "" } = useParams();
@@ -42,6 +56,7 @@ function AppFrame({ app }: { app: InstalledApp }) {
   const [retry, setRetry] = useState(0);
   useEffect(() => {
     if (!live) return;
+    const request = live.request;
     const controller = new AbortController();
     let timer: ReturnType<typeof setTimeout>;
     let lease: string | undefined;
@@ -49,13 +64,13 @@ function AppFrame({ app }: { app: InstalledApp }) {
     setFrame(null); setFailed(false);
     async function renew() {
       try {
-        const launch = await launchApp(live!.request, app, window.location.origin, controller.signal, lease);
+        const launch = await launchApp(request, app, window.location.origin, controller.signal, lease);
         if (controller.signal.aborted) return;
         lease = launch.lease;
         setFrame(launch.frameUrl);
         timer = setTimeout(() => { void renew(); }, launch.renewAfterSeconds * 1000);
       } catch {
-        if (!controller.signal.aborted) { setFrame(null); setFailed(true); }
+        if (!controller.signal.aborted) { setFrame(null); setFailed(true); postReport(request, app.id, "launch-failed"); }
       }
     }
     void renew();
@@ -68,23 +83,25 @@ function AppFrame({ app }: { app: InstalledApp }) {
   // app's server is down) would otherwise leave the browser's own error page on
   // screen. Fall back to the shell's unavailable state instead.
   useEffect(() => {
-    if (!frame) return;
+    if (!frame || !live) return;
+    const request = live.request;
     loaded.current = false;
-    const timer = setTimeout(() => { if (!loaded.current) { setFrame(null); setFailed(true); } }, 15_000);
+    const timer = setTimeout(() => { if (!loaded.current) { setFrame(null); setFailed(true); postReport(request, app.id, "unresponsive", app.installationId); } }, 15_000);
     return () => clearTimeout(timer);
-  }, [frame]);
+  }, [frame, live, app.id]);
   // Reachability preflight: a network-level failure (the app's server is down)
   // rejects a no-cors fetch, so the shell shows its own unavailable state
   // instead of the browser's error page inside the iframe. HTTP error pages
   // still load as content; only connection/DNS failures are caught here.
   useEffect(() => {
-    if (!frame) return;
+    if (!frame || !live) return;
+    const request = live.request;
     const controller = new AbortController();
     fetch(frame, { mode: "no-cors", cache: "no-store", signal: controller.signal }).catch(() => {
-      if (!controller.signal.aborted) { cancel.current(); setFrame(null); setFailed(true); }
+      if (!controller.signal.aborted) { cancel.current(); setFrame(null); setFailed(true); postReport(request, app.id, "unresponsive", app.installationId); }
     });
     return () => controller.abort();
-  }, [frame]);
+  }, [frame, live, app.id]);
   const readTheme = useCallback((): BridgeTheme => readShellTheme(tokens as Record<string, string>), [tokens]);
   // App <-> OS bridge: a sandboxed, opaque-origin app can only reach the shell
   // through postMessage. Rebound only when the frame changes; the handlers are
@@ -159,5 +176,5 @@ function AppFrame({ app }: { app: InstalledApp }) {
   // App navigation is a fragment on the authorized entrypoint, never an asset path.
   url.hash = `/${params["*"] ?? ""}${query.size ? `?${query}` : ""}`;
   return <iframe ref={frameRef} className="installed-app-frame" sandbox="allow-scripts" referrerPolicy="no-referrer"
-    title={app.title} src={url.href} onLoad={() => { loaded.current = true; }} onError={() => { cancel.current(); setFrame(null); setFailed(true); }} />;
+    title={app.title} src={url.href} onLoad={() => { if (!loaded.current && live) postReport(live.request, app.id, "launched"); loaded.current = true; }} onError={() => { cancel.current(); setFrame(null); setFailed(true); if (live) postReport(live.request, app.id, "crashed", app.installationId); }} />;
 }

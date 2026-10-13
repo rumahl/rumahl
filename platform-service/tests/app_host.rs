@@ -184,6 +184,8 @@ async fn catalog_and_launch_require_session_origin_and_current_installation() {
         backend: shell_backend(&accounts, &platform, "test", "en").unwrap(),
         browser_sessions: Some(sessions.clone()),
         login_slots: Arc::new(tokio::sync::Semaphore::new(2)),
+        audit: None,
+        state_dir: None,
         events: Arc::new(InMemoryShellEvents::new(8)),
         widgets: Arc::new(NoWidgets),
         streams: None,

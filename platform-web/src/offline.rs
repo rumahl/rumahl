@@ -17,7 +17,7 @@ pub(crate) fn routes() -> Router<Arc<GatewayState>> {
         .route("/service-worker.js", get(worker))
         .route("/os-client.js", get(client))
         .route("/offline", get(page))
-        .route("/offline/client.js", get(offline_client))
+        .route("/rre-i18n.js", get(i18n))
         .route("/offline/wallpaper.jpg", get(wallpaper))
         .route(
             "/offline/ping",
@@ -45,11 +45,21 @@ fn public(body: impl Into<Body>, mime: &'static str, cache: bool) -> Response {
     response
 }
 async fn worker() -> Response {
-    public(
+    let mut response = public(
         include_str!("offline/service-worker.js"),
         "text/javascript; charset=utf-8",
         false,
-    )
+    );
+    // A service worker's fetches obey its script CSP. The neutral connectivity
+    // probes are the only off-origin requests allowed, so the worker can tell
+    // "this device is offline" apart from "rumahl OS is unreachable".
+    response.headers_mut().insert(
+        CONTENT_SECURITY_POLICY,
+        HeaderValue::from_static(
+            "default-src 'none'; connect-src 'self' https://connectivitycheck.gstatic.com https://cp.cloudflare.com;",
+        ),
+    );
+    response
 }
 async fn client() -> Response {
     public(
@@ -58,19 +68,28 @@ async fn client() -> Response {
         false,
     )
 }
-async fn page() -> Response {
+/// Extensible recovery locale bundle. English is the source language; other
+/// languages (currently German) are additional entries. Shared by the standalone
+/// recovery page and the offline kit so both stay in step.
+async fn i18n() -> Response {
     public(
-        include_str!("offline/index.html"),
-        "text/html; charset=utf-8",
-        true,
-    )
-}
-async fn offline_client() -> Response {
-    public(
-        include_str!("offline/client.js"),
+        format!("window.RRE_I18N={};", include_str!("rre-i18n.json")),
         "text/javascript; charset=utf-8",
         true,
     )
+}
+
+async fn page() -> Response {
+    // Self-contained (inline script): it must render even when the platform is
+    // unreachable and no other asset can be fetched.
+    let body =
+        include_str!("offline/index.html").replace("{{i18n}}", include_str!("rre-i18n.json"));
+    let mut response = public(body, "text/html; charset=utf-8", true);
+    response.headers_mut().insert(
+        CONTENT_SECURITY_POLICY,
+        HeaderValue::from_static("default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; connect-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'"),
+    );
+    response
 }
 async fn wallpaper() -> Response {
     public(

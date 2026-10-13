@@ -3,6 +3,15 @@ use serde::{Deserialize, Serialize};
 pub const SHELL_EVENT_VERSION: u16 = 1;
 pub const MAX_SHELL_EVENT_BYTES: usize = 1024;
 
+/// Server-pushed lifecycle signal. Only the server knows when it really
+/// restarts or powers off, so clients must never guess this from timeouts.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum SystemState {
+    Restarting,
+    ShuttingDown,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 pub enum ShellEvent {
@@ -14,6 +23,11 @@ pub enum ShellEvent {
     SessionRevoked {
         #[serde(rename = "eventVersion")]
         event_version: u16,
+    },
+    SystemLifecycle {
+        #[serde(rename = "eventVersion")]
+        event_version: u16,
+        state: SystemState,
     },
 }
 
@@ -41,6 +55,13 @@ impl ShellEvent {
         }
     }
 
+    pub fn system_lifecycle(state: SystemState) -> Self {
+        Self::SystemLifecycle {
+            event_version: SHELL_EVENT_VERSION,
+            state,
+        }
+    }
+
     pub fn parse(bytes: &[u8]) -> Result<Self, ShellEventError> {
         if bytes.len() > MAX_SHELL_EVENT_BYTES {
             return Err(ShellEventError::TooLarge);
@@ -52,6 +73,11 @@ impl ShellEvent {
                 revision,
             } if *event_version == SHELL_EVENT_VERSION && valid_revision(revision) => Ok(event),
             Self::SessionRevoked { event_version } if *event_version == SHELL_EVENT_VERSION => {
+                Ok(event)
+            }
+            Self::SystemLifecycle { event_version, .. }
+                if *event_version == SHELL_EVENT_VERSION =>
+            {
                 Ok(event)
             }
             _ => Err(ShellEventError::Invalid),

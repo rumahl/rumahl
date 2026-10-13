@@ -29,7 +29,8 @@ export function watchShellUpdates(
   initialRevision: string,
   source: ShellLiveSource,
   onSnapshot: (snapshot: ShellSnapshotV1) => void,
-  onSessionExpired: () => void
+  onSessionExpired: () => void,
+  onSystemState: (state: "restarting" | "shutting-down") => void = () => {}
 ): () => void {
   let stopped = false;
   let socket: EventSocket | null = null;
@@ -119,6 +120,8 @@ export function watchShellUpdates(
           const value = parseShellEvent(event.data);
           if (value.kind === "session_revoked") {
             expire();
+          } else if (value.kind === "system_lifecycle") {
+            onSystemState(value.state);
           } else if (value.revision !== currentRevision) {
             requestRefresh();
           }

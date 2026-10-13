@@ -9,6 +9,7 @@ import { useWorkspace } from "../../preferences/Workspace";
 import { ShellLink } from "../../routing/ShellLink";
 import { useShell } from "../ShellContext";
 import { useDesktopFiles, type DesktopFile } from "../desktop-files";
+import { useSafeMode } from "../../preferences/safe-mode";
 import { FileIcon, FolderIcon } from "../../apps/files/icons";
 import { DesktopContextMenu, type DesktopMenuState } from "./DesktopContextMenu";
 import { useDesktopLayout } from "./desktop-layout";
@@ -30,7 +31,9 @@ export function DesktopHome() {
   const { snapshot, state, dispatch, open, live } = useShell();
   const settings = useShellPreferences();
   const workspace = useWorkspace();
-  const apps = useShellApps();
+  const allApps = useShellApps();
+  const safeMode = useSafeMode();
+  const apps = useMemo(() => (safeMode ? allApps.filter((app) => app.system) : allApps), [allApps, safeMode]);
   const byId = useMemo(() => new Map(apps.map((app) => [app.id, app])), [apps]);
   const layout = useDesktopLayout(apps.map((app) => app.id));
   const storedCells = desktopCells.use();

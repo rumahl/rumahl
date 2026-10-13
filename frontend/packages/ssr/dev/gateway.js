@@ -15,8 +15,40 @@ const NONCE_PLACEHOLDER = "RUMAHL_DEV_NONCE_PLACEHOLDER";
 const assets = { script: "/assets/rumahl-dev.js", stylesheet: "/assets/rumahl-dev.css" };
 const frontendPath = /^\/(?:@vite\/|@react-refresh|@id\/|@fs\/|src\/|node_modules\/|assets\/rumahl-dev\.)/;
 
+/**
+ * Minimal, self-contained recovery environment served on the normal port while
+ * the platform is unreachable. It reconnects automatically once the platform is
+ * back, so the RRE is always reachable even when everything else is down.
+ */
+function recoveryFallback() {
+  // Plain, calm screen: black, the white rumahl "r" top right, a spinner first
+  // and an error only after the platform keeps failing. It reconnects itself.
+  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>rumahl · Recovery</title><style>
+:root{color-scheme:dark}*{box-sizing:border-box}html,body{height:100%}body{margin:0;background:#000;color:#fff;font:15px/1.6 ui-sans-serif,system-ui,"Segoe UI",Roboto,sans-serif;display:grid;place-items:center;padding:32px}
+.mark{position:fixed;top:24px;right:28px;width:24px;height:auto}
+.center{max-width:440px;display:grid;gap:16px;justify-items:center;text-align:center}
+.spinner{width:30px;height:30px;border-radius:50%;border:2px solid rgba(255,255,255,.14);border-top-color:#fff;animation:s .8s linear infinite}
+@keyframes s{to{transform:rotate(360deg)}}
+h1{margin:0;font-size:21px;font-weight:600;letter-spacing:-.01em}
+p{margin:0;color:#9aa2ae;font-size:14px}
+.actions{display:flex;gap:10px;flex-wrap:wrap;justify-content:center;margin-top:4px}
+.actions button{border:1px solid rgba(255,255,255,.15);background:rgba(255,255,255,.06);color:#fff;border-radius:10px;padding:9px 16px;font:inherit;cursor:pointer}
+[hidden]{display:none!important}
+</style></head><body><svg class="mark" viewBox="0 0 251 472" fill="currentColor" aria-hidden="true"><path d="M 9.47163 471.21342 Q 0 471.21342 0 461.74179 V 203.63996 C 0 80.50881 80.50883 0 201.27207 0 H 241.52649 Q 250.99811 0 250.99811 9.47163 V 94.71626 Q 250.99811 104.18789 241.52649 104.18789 H 210.74370 C 144.44231 104.18789 101.81999 144.44230 101.81999 210.74369 V 461.74179 Q 101.81999 471.21342 92.34836 471.21342 Z"/></svg><div class="center"><div class="spinner" id="sp"></div><h1 id="t">Recovering rumahl</h1><p id="d">One moment while the system is checked…</p><div class="actions" id="a"></div></div><script>(function(){var n=0,t=document.getElementById("t"),d=document.getElementById("d"),s=document.getElementById("sp"),a=document.getElementById("a");function fail(){s.hidden=true;t.textContent="rumahl is not reachable right now";d.textContent="A central component is not responding. The system keeps being monitored.";a.replaceChildren();var r=document.createElement("button");r.textContent="Try again";r.onclick=function(){n=0;s.hidden=false;t.textContent="Recovering rumahl";d.textContent="One moment while the system is checked…";a.replaceChildren();poll();};a.appendChild(r);}function poll(){fetch("/",{method:"GET",cache:"no-store",credentials:"same-origin"}).then(function(r){var c=r.headers.get("content-type")||"";if(r.status===200&&c.indexOf("text/html")===0){location.assign("/");return;}n++;if(n>=6)fail();setTimeout(poll,1500);}).catch(function(){n++;if(n>=6)fail();setTimeout(poll,1500);});}poll();})();</script></body></html>`;
+}
+
+function wantsHtml(request) {
+  if (request.method !== "GET") return false;
+  const accept = String(request.headers.accept || "");
+  return accept.includes("text/html") || accept === "" || accept.includes("*/*");
+}
+
 export async function startGateway({ repo, runtime, state, cert, key, port, buildId, polling }) {
   const platformSocket = join(runtime, "gateway.sock");
+  // The shared, self-contained offline/recovery status screen (black, white "r",
+  // spinner first, then tips). Serving the same file keeps dev and production in
+  // step; the inline fallback only covers a missing checkout.
+  const offlineHtml = await readFile(join(repo, "platform-web/src/offline/index.html"), "utf8").catch(() => recoveryFallback());
   let vite;
   let origin;
   const edge = createHttpsServer({ cert: await readFile(cert), key: await readFile(key) }, (request, response) => {
@@ -65,8 +97,22 @@ export async function startGateway({ repo, runtime, state, cert, key, port, buil
     });
     upstream.setTimeout(15_000, () => upstream.destroy());
     upstream.on("error", () => {
-      if (response.headersSent) response.destroy();
-      else response.writeHead(503, { "Cache-Control": "no-store", "Content-Type": "text/plain" }).end("Platform restarting. Please retry shortly.");
+      if (response.headersSent) {
+        response.destroy();
+      } else if (wantsHtml(request)) {
+        response
+          .writeHead(503, {
+            "Cache-Control": "no-store",
+            "Content-Type": "text/html; charset=utf-8",
+            "Content-Security-Policy":
+              "default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; connect-src 'self'; base-uri 'none'",
+          })
+          .end(offlineHtml);
+      } else {
+        response
+          .writeHead(503, { "Cache-Control": "no-store", "Content-Type": "text/plain" })
+          .end("Platform restarting. Please retry shortly.");
+      }
     });
     response.on("close", () => upstream.destroy());
     request.on("error", () => upstream.destroy());

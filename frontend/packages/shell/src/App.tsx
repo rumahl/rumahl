@@ -24,7 +24,12 @@ export function App({ snapshot, live, theme, ...routing }: ShellRouterOptions & 
   const [sessionExpired, setSessionExpired] = useState(false);
   useEffect(() => {
     if (!live) return;
-    return watchShellUpdates(snapshot.revision, live, setCurrent, () => setSessionExpired(true));
+    return watchShellUpdates(snapshot.revision, live, setCurrent, () => setSessionExpired(true), (state) => {
+      // The server only signals a real restart or power-off. Persist it so the
+      // offline/recovery screen shows the right message, then hand over.
+      try { localStorage.setItem("rumahl.lifecycle", JSON.stringify({ state, at: Date.now() })); } catch { /* ignore */ }
+      location.assign(`/recovery?reason=${state === "shutting-down" ? "poweroff" : "restart"}`);
+    });
   }, [live, snapshot.revision]);
   // The platform resolves the account theme and ships its tokens and variants.
   // Device overrides are resolved from the local theme registry.

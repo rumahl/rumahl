@@ -4,9 +4,20 @@
 mod backend;
 mod events;
 mod oidc;
+mod sensors;
 mod server;
 mod ssr;
 mod streams;
+
+pub use sensors::{
+    DiskDevice, Sensors, Storage, read_disks, read_sensors, read_storage, run_disk_test,
+};
+
+mod recovery_settings;
+pub use recovery_settings::RecoverySettings;
+
+mod recovery_tools;
+pub use recovery_tools::{read_boot, read_logs, read_network, read_system, run_network_test};
 
 pub use backend::{
     PlatformShellBackend, ShellAuthenticationError, ShellBackend, ShellBackendError, ShellIdentity,

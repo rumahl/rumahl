@@ -1,7 +1,33 @@
 /* Only this public, account-independent offline kit is ever persisted. */
-const VERSION = '1.1.0';
-const CACHE = 'rumahl-os-offline-v2';
-const RESOURCES = ['/offline', '/offline/client.js', '/offline/wallpaper.jpg'];
+const VERSION = '1.3.0';
+const CACHE = 'rumahl-os-offline-v4';
+// The offline page is fully self-contained, so it renders even when nothing
+// else can be fetched. Only this public, account-independent kit is persisted.
+const RESOURCES = ['/offline'];
+// Neutral, well-known connectivity endpoints. They answer with an empty 204 and
+// are the only external requests the offline kit ever makes. Replace or remove
+// them to match a deployment's policy.
+const CONNECTIVITY_PROBES = [
+  'https://connectivitycheck.gstatic.com/generate_204',
+  'https://cp.cloudflare.com/generate_204',
+];
+
+/**
+ * Distinguishes "this device has no network" from "rumahl OS is unreachable but
+ * this device is online". The page cannot make these probes (its CSP is
+ * `connect-src 'self'`); the worker can.
+ */
+async function classifyConnectivity() {
+  if (typeof self.navigator?.onLine === 'boolean' && self.navigator.onLine === false) return 'device';
+  for (const url of CONNECTIVITY_PROBES) {
+    try {
+      await fetch(new Request(url, { mode: 'no-cors', cache: 'no-store', signal: AbortSignal.timeout(4000) }));
+      return 'server';
+    } catch { /* try the next probe */ }
+  }
+  return 'device';
+}
+
 self.addEventListener('install', event => {
   event.waitUntil((async () => {
     const responses = await Promise.all(RESOURCES.map(async path => {
@@ -32,7 +58,9 @@ self.addEventListener('fetch', event => {
     return;
   }
   if (request.mode !== 'navigate' || request.destination !== 'document') return;
-  if (/^\/(api|oauth2|shell|recovery|logout)(\/|$)/.test(url.pathname)) return;
+  // Recovery and shell navigations fall back to the offline kit too, so a dead
+  // device never shows the browser's own error page.
+  if (/^\/(api|oauth2|logout)(\/|$)/.test(url.pathname)) return;
   event.respondWith((async () => {
     try { return await fetch(request); }
     catch {
@@ -47,7 +75,15 @@ self.addEventListener('fetch', event => {
 
 // Read-only diagnostics: never include account or session data.
 self.addEventListener('message', event => {
-  if (event.data?.type !== 'RUMAHL_STATUS' || !event.ports?.[0]) return;
+  const data = event.data || {};
+  if (data.type === 'RUMAHL_CONNECTIVITY' && event.ports?.[0]) {
+    event.waitUntil((async () => {
+      const connectivity = await classifyConnectivity();
+      event.ports[0].postMessage({ connectivity });
+    })());
+    return;
+  }
+  if (data.type !== 'RUMAHL_STATUS' || !event.ports?.[0]) return;
   event.waitUntil((async () => {
     const cache = await caches.open(CACHE);
     const resources = await Promise.all(RESOURCES.map(path => cache.match(path)));

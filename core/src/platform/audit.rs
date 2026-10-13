@@ -1,9 +1,14 @@
 //! Append-only security audit trail.
 //!
-//! The audit log records *what happened*, never secret material: no passwords,
-//! session tokens, credentials, authorization codes or database queries. Targets
-//! are bounded, non-secret identifiers. The persistence layer enforces append-only
-//! so a compromised process cannot rewrite history without leaving evidence.
+//! The audit log is the system's central record of *what happened*, never secret
+//! material: no passwords, session tokens, credentials, authorization codes or
+//! database queries. Targets are bounded, non-secret identifiers. The persistence
+//! layer enforces append-only so a compromised process cannot rewrite history
+//! without leaving evidence.
+//!
+//! Every actor in the system reports into this log: users, the system itself,
+//! background services and applications/programs. That makes it possible to
+//! answer *what* was triggered, *when*, *who* did it and *through what*.
 
 use std::error::Error;
 use std::fmt;
@@ -13,15 +18,40 @@ use crate::{UnixTimestamp, UserId};
 /// Longest accepted audit target, bounding what a caller can store.
 pub const MAX_TARGET_BYTES: usize = 256;
 
-/// A security-relevant action worth a durable record.
+/// A security- or health-relevant action worth a durable record.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AuditAction {
+    // Authentication / authorization.
     SignIn,
     SignInFailed,
     SignOut,
     Reauthenticate,
     ReauthenticateFailed,
     OsModeChanged,
+    // Application + runtime lifecycle.
+    AppLaunched,
+    AppLaunchFailed,
+    AppRuntimeStarted,
+    AppRuntimeStopped,
+    AppInstalled,
+    AppUninstalled,
+    AppImported,
+    // Capability use by sandboxed programs.
+    CapabilityInvoked,
+    CapabilityDenied,
+    // Health, crashes and self-healing.
+    AppCrashed,
+    AppUnresponsive,
+    ServiceStarted,
+    ServiceStopped,
+    ServiceStale,
+    ServiceRecovered,
+    SelfHeal,
+    Maintenance,
+    SystemStarted,
+    SystemStopped,
+    // Arbitrary, caller-supplied activity from a program/service.
+    Activity,
 }
 
 impl AuditAction {
@@ -33,19 +63,60 @@ impl AuditAction {
             Self::Reauthenticate => "reauthenticate",
             Self::ReauthenticateFailed => "reauthenticate-failed",
             Self::OsModeChanged => "os-mode-changed",
+            Self::AppLaunched => "app-launched",
+            Self::AppLaunchFailed => "app-launch-failed",
+            Self::AppRuntimeStarted => "app-runtime-started",
+            Self::AppRuntimeStopped => "app-runtime-stopped",
+            Self::AppInstalled => "app-installed",
+            Self::AppUninstalled => "app-uninstalled",
+            Self::AppImported => "app-imported",
+            Self::CapabilityInvoked => "capability-invoked",
+            Self::CapabilityDenied => "capability-denied",
+            Self::AppCrashed => "app-crashed",
+            Self::AppUnresponsive => "app-unresponsive",
+            Self::ServiceStarted => "service-started",
+            Self::ServiceStopped => "service-stopped",
+            Self::ServiceStale => "service-stale",
+            Self::ServiceRecovered => "service-recovered",
+            Self::SelfHeal => "self-heal",
+            Self::Maintenance => "maintenance",
+            Self::SystemStarted => "system-started",
+            Self::SystemStopped => "system-stopped",
+            Self::Activity => "activity",
         }
     }
 
     pub fn parse(value: &str) -> Result<Self, AuditError> {
-        match value {
-            "sign-in" => Ok(Self::SignIn),
-            "sign-in-failed" => Ok(Self::SignInFailed),
-            "sign-out" => Ok(Self::SignOut),
-            "reauthenticate" => Ok(Self::Reauthenticate),
-            "reauthenticate-failed" => Ok(Self::ReauthenticateFailed),
-            "os-mode-changed" => Ok(Self::OsModeChanged),
-            _ => Err(AuditError::InvalidAction),
-        }
+        let action = match value {
+            "sign-in" => Self::SignIn,
+            "sign-in-failed" => Self::SignInFailed,
+            "sign-out" => Self::SignOut,
+            "reauthenticate" => Self::Reauthenticate,
+            "reauthenticate-failed" => Self::ReauthenticateFailed,
+            "os-mode-changed" => Self::OsModeChanged,
+            "app-launched" => Self::AppLaunched,
+            "app-launch-failed" => Self::AppLaunchFailed,
+            "app-runtime-started" => Self::AppRuntimeStarted,
+            "app-runtime-stopped" => Self::AppRuntimeStopped,
+            "app-installed" => Self::AppInstalled,
+            "app-uninstalled" => Self::AppUninstalled,
+            "app-imported" => Self::AppImported,
+            "capability-invoked" => Self::CapabilityInvoked,
+            "capability-denied" => Self::CapabilityDenied,
+            "app-crashed" => Self::AppCrashed,
+            "app-unresponsive" => Self::AppUnresponsive,
+            "service-started" => Self::ServiceStarted,
+            "service-stopped" => Self::ServiceStopped,
+            "service-stale" => Self::ServiceStale,
+            "service-recovered" => Self::ServiceRecovered,
+            "self-heal" => Self::SelfHeal,
+            "maintenance" => Self::Maintenance,
+            "system-started" => Self::SystemStarted,
+            "system-stopped" => Self::SystemStopped,
+            "activity" => Self::Activity,
+            _ => return Err(AuditError::InvalidAction),
+        };
+        Ok(action)
     }
 }
 
@@ -75,11 +146,21 @@ impl AuditOutcome {
     }
 }
 
-/// Who triggered the event. A user is identified by ID, never by a secret.
+/// Who triggered the event. Users are identified by ID, never by a secret;
+/// services and programs by a bounded, non-secret identifier.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum AuditActor {
     User(UserId),
     System,
+    Service(String),
+    App(String),
+    /// The operating system layer itself (boot, services, supervisor, updates).
+    /// Always surfaced to users as "rumahl OS", never by an internal name.
+    Os,
+}
+
+fn valid_actor_name(name: &str) -> bool {
+    !name.is_empty() && name.len() <= MAX_TARGET_BYTES && !name.chars().any(char::is_control)
 }
 
 impl AuditActor {
@@ -87,6 +168,9 @@ impl AuditActor {
         match self {
             Self::User(user) => format!("user:{user}"),
             Self::System => "system".to_owned(),
+            Self::Service(name) => format!("service:{name}"),
+            Self::App(id) => format!("app:{id}"),
+            Self::Os => "os".to_owned(),
         }
     }
 
@@ -94,11 +178,25 @@ impl AuditActor {
         if value == "system" {
             return Ok(Self::System);
         }
-        value
-            .strip_prefix("user:")
-            .and_then(|raw| UserId::parse(raw).ok())
-            .map(Self::User)
-            .ok_or(AuditError::InvalidActor)
+        if value == "os" {
+            return Ok(Self::Os);
+        }
+        if let Some(raw) = value.strip_prefix("user:") {
+            return UserId::parse(raw)
+                .map(Self::User)
+                .map_err(|_| AuditError::InvalidActor);
+        }
+        if let Some(raw) = value.strip_prefix("service:") {
+            return valid_actor_name(raw)
+                .then(|| Self::Service(raw.to_owned()))
+                .ok_or(AuditError::InvalidActor);
+        }
+        if let Some(raw) = value.strip_prefix("app:") {
+            return valid_actor_name(raw)
+                .then(|| Self::App(raw.to_owned()))
+                .ok_or(AuditError::InvalidActor);
+        }
+        Err(AuditError::InvalidActor)
     }
 }
 
@@ -154,6 +252,20 @@ pub struct AuditEvent {
     pub target: Option<String>,
 }
 
+/// A filter for reading the system-wide audit log (the event monitor).
+#[derive(Debug, Clone, Default)]
+pub struct AuditQuery {
+    pub action: Option<AuditAction>,
+    pub actor: Option<AuditActor>,
+    pub outcome: Option<AuditOutcome>,
+    pub target: Option<String>,
+    /// Only events at or after this time.
+    pub since: Option<UnixTimestamp>,
+    /// Bounded by the adapter; newest first.
+    pub limit: usize,
+    pub offset: usize,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AuditError {
     Unavailable,
@@ -170,6 +282,16 @@ pub trait AuditLog: Send + Sync + 'static {
 
     /// Most recent events for one user, newest first, bounded by `limit`.
     fn recent(&self, actor: UserId, limit: usize) -> Result<Vec<AuditEvent>, AuditError>;
+
+    /// Most recent events across the whole system, newest first. This is what the
+    /// recovery / maintenance hub reads.
+    fn recent_system(&self, limit: usize) -> Result<Vec<AuditEvent>, AuditError>;
+
+    /// Most recent events whose target matches exactly, newest first.
+    fn recent_target(&self, target: &str, limit: usize) -> Result<Vec<AuditEvent>, AuditError>;
+
+    /// System-wide events matching a filter, newest first. Backs the event monitor.
+    fn query_system(&self, query: &AuditQuery) -> Result<Vec<AuditEvent>, AuditError>;
 }
 
 impl fmt::Display for AuditError {
@@ -199,6 +321,26 @@ mod tests {
             AuditAction::Reauthenticate,
             AuditAction::ReauthenticateFailed,
             AuditAction::OsModeChanged,
+            AuditAction::AppLaunched,
+            AuditAction::AppLaunchFailed,
+            AuditAction::AppRuntimeStarted,
+            AuditAction::AppRuntimeStopped,
+            AuditAction::AppInstalled,
+            AuditAction::AppUninstalled,
+            AuditAction::AppImported,
+            AuditAction::CapabilityInvoked,
+            AuditAction::CapabilityDenied,
+            AuditAction::AppCrashed,
+            AuditAction::AppUnresponsive,
+            AuditAction::ServiceStarted,
+            AuditAction::ServiceStopped,
+            AuditAction::ServiceStale,
+            AuditAction::ServiceRecovered,
+            AuditAction::SelfHeal,
+            AuditAction::Maintenance,
+            AuditAction::SystemStarted,
+            AuditAction::SystemStopped,
+            AuditAction::Activity,
         ] {
             assert_eq!(AuditAction::parse(action.as_str()).unwrap(), action);
         }
@@ -221,6 +363,23 @@ mod tests {
         );
         assert_eq!(
             AuditActor::decode("user:not-a-user").unwrap_err(),
+            AuditError::InvalidActor
+        );
+        assert_eq!(
+            AuditActor::decode("service:renderer").unwrap(),
+            AuditActor::Service("renderer".to_owned())
+        );
+        assert_eq!(
+            AuditActor::decode("app:com.example.notes").unwrap(),
+            AuditActor::App("com.example.notes".to_owned())
+        );
+        assert_eq!(AuditActor::decode("os").unwrap(), AuditActor::Os);
+        assert_eq!(
+            AuditActor::decode("service:").unwrap_err(),
+            AuditError::InvalidActor
+        );
+        assert_eq!(
+            AuditActor::decode("nonsense").unwrap_err(),
             AuditError::InvalidActor
         );
     }

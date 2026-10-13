@@ -20,11 +20,25 @@ import "@fontsource-variable/plus-jakarta-sans";
 import "./fonts.css";
 import "./styles.css";
 
+/**
+ * Install the offline kit. The worker can distinguish "this device is offline"
+ * from "rumahl OS is unreachable" and can serve the recovery screen for failed
+ * navigations. Best-effort: the OS works without it.
+ */
+function registerServiceWorker(): void {
+  if (typeof navigator === "undefined" || !("serviceWorker" in navigator)) return;
+  const host = location.hostname;
+  const secure = location.protocol === "https:" || host === "localhost" || host === "127.0.0.1";
+  if (!secure) return;
+  navigator.serviceWorker.register("/service-worker.js", { scope: "/" }).catch(() => { /* optional */ });
+}
+
 export function renderShell(snapshot: ShellSnapshotV1, live?: ShellLiveSource): void {
   const root = document.getElementById("root");
   if (!root) {
     throw new Error("rumahl shell root element is missing");
   }
+  registerServiceWorker();
   preloadAppearance(snapshot);
 
   createRoot(root).render(
@@ -39,6 +53,7 @@ export function hydrateShell(snapshot: ShellSnapshotV1, live?: ShellLiveSource):
   if (!root || root.dataset.shellSsr !== "1" || !root.hasChildNodes()) {
     throw new Error("server-rendered shell root is missing");
   }
+  registerServiceWorker();
   preloadAppearance(snapshot);
   return hydrateRoot(
     root,
@@ -49,11 +64,17 @@ export function hydrateShell(snapshot: ShellSnapshotV1, live?: ShellLiveSource):
 }
 
 export function renderStartupFailure(): void {
+  // The OS could not start: hand over to the standalone recovery system, which
+  // shows what happened and returns to the shell once it is healthy again.
+  if (typeof window !== "undefined") {
+    window.location.assign("/recovery?reason=boot");
+    return;
+  }
   const root = document.getElementById("root");
   if (!root) return;
   root.replaceChildren();
   const message = document.createElement("p");
   message.className = "startup-message startup-message--error";
-  message.textContent = "rumahl OS could not start. Please try again.";
+  message.textContent = "rumahl OS could not start. Recovery is at /recovery.";
   root.append(message);
 }

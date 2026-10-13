@@ -4,6 +4,7 @@ import { AppIcon, AppTile } from "../../apps/AppTile";
 import { useShellApps } from "../../apps/useShellApps";
 import { useI18n } from "../../i18n";
 import { useWorkspace } from "../../preferences/Workspace";
+import { useSafeMode } from "../../preferences/safe-mode";
 import { useShell } from "../ShellContext";
 import { useClock } from "../clock";
 import { SearchIcon } from "../../icons";
@@ -47,7 +48,10 @@ function useShellMaterial(): "solid" | "translucent" {
 export function LauncherHome() {
   const { t, locale } = useI18n();
   const { open, snapshot } = useShell();
-  const apps = useShellApps();
+  const allApps = useShellApps();
+  const safeMode = useSafeMode();
+  // Safe mode keeps third-party apps stopped.
+  const apps = useMemo(() => (safeMode ? allApps.filter((app) => app.system) : allApps), [allApps, safeMode]);
   const { effective, save } = useWorkspace();
   const order = useLauncherOrder();
   const storedCells = launcherCells.use();
