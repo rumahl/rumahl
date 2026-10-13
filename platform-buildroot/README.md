@@ -212,10 +212,13 @@ runtime/state directories, applies service sandboxing, and uses
 `Restart=always`. `systemd/docker.service.d/10-rumahl-restart.conf` gives the
 selected Docker engine the same bounded restart policy. A different OCI engine
 ships its own target and service/drop-in while leaving the platform service
-unchanged. The Buildroot image must create `rumahl-runtime`, `rumahl-platform`,
-and the `rumahl-runtime-control` group, add only those two accounts to that
-group, install both units, create the `rumahl-apps` network, and enable the
-supervisor.
+unchanged. The [image external tree](image/README.md) creates `rumahl-runtime`,
+`rumahl-platform`, and the `rumahl-runtime-control` group, adds only those two
+accounts to that group, installs both units plus
+`systemd/rumahl-app-network.service`, creates the `rumahl-apps` network, and
+enables the supervisor. The Docker engine and `tpm2-tools` are part of the
+`rumahl_qemu_x86_64_defconfig`; a different board supplies its own image
+configuration with the same service contract.
 
 ## Real-container end-to-end test
 
