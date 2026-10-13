@@ -7,6 +7,7 @@ import shutil
 
 parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument("--binary", type=Path, required=True)
+parser.add_argument("--supervisor-binary", type=Path)
 parser.add_argument("--output", type=Path, required=True)
 args = parser.parse_args()
 repo = Path(__file__).resolve().parents[2]
@@ -17,6 +18,8 @@ if build["shellBuildId"] not in renderer:
     parser.error("renderer and client build do not match; rebuild both")
 if not args.binary.is_file():
     parser.error("target platform binary is missing")
+if args.supervisor_binary is not None and not args.supervisor_binary.is_file():
+    parser.error("target runtime supervisor binary is missing")
 args.output.mkdir(parents=True, exist_ok=False)
 root = args.output
 
@@ -27,12 +30,17 @@ def copy(source, target):
 
 copy(args.binary, "usr/bin/rumahl-platform-service")
 (root / "usr/bin/rumahl-platform-service").chmod(0o755)
+supervisor_units = []
+if args.supervisor_binary is not None:
+    copy(args.supervisor_binary, "usr/bin/rumahl-runtime-supervisor")
+    (root / "usr/bin/rumahl-runtime-supervisor").chmod(0o755)
+    supervisor_units = ["rumahl-runtime-supervisor", "rumahl-app-network"]
 for package in ["shell", "ssr"]:
     shutil.copytree(frontend / package / "dist", root / f"usr/share/rumahl/frontend/packages/{package}/dist", ignore=shutil.ignore_patterns("*.map"))
 for module in ["server.js", "renderer-http.js"]:
     copy(frontend / "ssr" / module, f"usr/share/rumahl/frontend/packages/ssr/{module}")
 (root / "usr/share/rumahl/frontend/packages/ssr/package.json").write_text('{"type":"module"}\n')
-for name in ["rumahl-platform", "rumahl-shell", "rumahl-recovery"]:
+for name in ["rumahl-platform", "rumahl-shell", "rumahl-recovery", *supervisor_units]:
     copy(repo / f"platform-buildroot/systemd/{name}.service", f"usr/lib/systemd/system/{name}.service")
     wants = root / "etc/systemd/system/multi-user.target.wants"
     wants.mkdir(parents=True, exist_ok=True)
