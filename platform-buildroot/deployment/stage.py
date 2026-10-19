@@ -30,6 +30,8 @@ def copy(source, target):
 
 copy(args.binary, "usr/bin/rumahl-platform-service")
 (root / "usr/bin/rumahl-platform-service").chmod(0o755)
+copy(repo / "platform-buildroot/deployment/rumahl-hosts.sh", "usr/libexec/rumahl-hosts.sh")
+(root / "usr/libexec/rumahl-hosts.sh").chmod(0o755)
 supervisor_units = []
 if args.supervisor_binary is not None:
     copy(args.supervisor_binary, "usr/bin/rumahl-runtime-supervisor")
@@ -40,7 +42,7 @@ for package in ["shell", "ssr"]:
 for module in ["server.js", "renderer-http.js"]:
     copy(frontend / "ssr" / module, f"usr/share/rumahl/frontend/packages/ssr/{module}")
 (root / "usr/share/rumahl/frontend/packages/ssr/package.json").write_text('{"type":"module"}\n')
-for name in ["rumahl-platform", "rumahl-shell", "rumahl-recovery", *supervisor_units]:
+for name in ["rumahl-platform", "rumahl-shell", "rumahl-recovery", "rumahl-hosts", *supervisor_units]:
     copy(repo / f"platform-buildroot/systemd/{name}.service", f"usr/lib/systemd/system/{name}.service")
     wants = root / "etc/systemd/system/multi-user.target.wants"
     wants.mkdir(parents=True, exist_ok=True)

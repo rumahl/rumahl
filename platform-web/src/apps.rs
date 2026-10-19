@@ -226,8 +226,8 @@ struct Lease {
 }
 pub struct AppAccess {
     provider: Arc<dyn AppProvider>,
-    shell_origin: String,
-    suffix: String,
+    shell_origins: Vec<String>,
+    suffixes: Vec<String>,
     port: Option<u16>,
     leases: Mutex<HashMap<String, Lease>>,
 }
@@ -239,51 +239,81 @@ pub struct AppLaunch {
 impl AppAccess {
     pub fn new(
         provider: Arc<dyn AppProvider>,
-        shell_origin: &Url,
-        suffix: &str,
+        primary_origin: &Url,
+        shell_origins: &[Url],
+        suffixes: &[String],
     ) -> Result<Self, AppAccessError> {
-        let valid = suffix.len() <= 180
-            && suffix.contains('.')
-            && suffix.split('.').all(|label| {
-                !label.is_empty()
-                    && label.len() <= 63
-                    && !label.starts_with('-')
-                    && !label.ends_with('-')
-                    && label
-                        .bytes()
-                        .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-')
-            });
-        if !valid || shell_origin.host_str() == Some(suffix) || shell_origin.scheme() != "https" {
+        if primary_origin.scheme() != "https"
+            || suffixes.is_empty()
+            || suffixes.iter().any(|suffix| {
+                let valid = suffix.len() <= 180
+                    && suffix.contains('.')
+                    && suffix.split('.').all(|label| {
+                        !label.is_empty()
+                            && label.len() <= 63
+                            && !label.starts_with('-')
+                            && !label.ends_with('-')
+                            && label
+                                .bytes()
+                                .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-')
+                    });
+                !valid || primary_origin.host_str() == Some(suffix.as_str())
+            })
+        {
             return Err(AppAccessError::Unavailable);
+        }
+        let mut origins: Vec<String> = shell_origins
+            .iter()
+            .map(|origin| origin.origin().ascii_serialization())
+            .collect();
+        if origins.is_empty() {
+            origins.push(primary_origin.origin().ascii_serialization());
+        }
+        origins.sort();
+        origins.dedup();
+        let mut unique_suffixes: Vec<String> = Vec::new();
+        for suffix in suffixes {
+            if !unique_suffixes.contains(suffix) {
+                unique_suffixes.push(suffix.clone());
+            }
         }
         Ok(Self {
             provider,
-            shell_origin: shell_origin.origin().ascii_serialization(),
-            suffix: suffix.into(),
-            port: shell_origin.port(),
+            shell_origins: origins,
+            suffixes: unique_suffixes,
+            port: primary_origin.port(),
             leases: Mutex::new(HashMap::new()),
         })
     }
-    fn authority(&self, installation: InstallationId) -> String {
+    fn authority_for(&self, installation: InstallationId, suffix: &str) -> String {
         format!(
-            "{installation}.{}{}",
-            self.suffix,
+            "{installation}.{suffix}{}",
             self.port.map_or(String::new(), |port| format!(":{port}"))
         )
+    }
+    fn authority(&self, installation: InstallationId) -> String {
+        self.authority_for(installation, &self.suffixes[0])
     }
     pub fn accepts_host(&self, authority: &str) -> bool {
         let Some((id, _)) = authority.split_once('.') else {
             return false;
         };
-        InstallationId::parse(id)
-            .is_ok_and(|installation| self.authority(installation) == authority)
+        InstallationId::parse(id).is_ok_and(|installation| {
+            self.suffixes
+                .iter()
+                .any(|suffix| self.authority_for(installation, suffix) == authority)
+        })
     }
-    pub fn frame_source(&self) -> String {
-        format!(
-            "https://*.{}{}",
-            self.suffix,
-            self.port.map_or(String::new(), |port| format!(":{port}"))
-        )
+    pub fn frame_sources(&self) -> Vec<String> {
+        self.suffixes
+            .iter()
+            .map(|suffix| {
+                format!(
+                    "https://*.{suffix}{}",
+                    self.port.map_or(String::new(), |port| format!(":{port}"))
+                )
+            })
+            .collect()
     }
     pub fn catalog(&self, identity: ShellIdentity) -> Result<Vec<CatalogApp>, AppAccessError> {
         let apps = self.provider.catalog(identity)?;
@@ -437,7 +467,11 @@ impl AppAccess {
             .filter(|lease| lease.expires > Instant::now())
             .cloned()
             .ok_or(AppAccessError::Denied)?;
-        if host != self.authority(lease.installation) {
+        if !self
+            .suffixes
+            .iter()
+            .any(|suffix| self.authority_for(lease.installation, suffix) == host)
+        {
             return Err(AppAccessError::Denied);
         }
         self.provider
@@ -448,7 +482,7 @@ impl AppAccess {
         let origin = format!("https://{host}");
         let csp = format!(
             "sandbox allow-scripts; default-src 'none'; script-src {origin} 'unsafe-inline'; style-src {origin} 'unsafe-inline'; img-src {origin} data:; font-src {origin}; connect-src {origin}; frame-src 'none'; form-action 'none'; base-uri 'none'; object-src 'none'; frame-ancestors {}",
-            self.shell_origin
+            self.shell_origins.join(" ")
         );
         let headers = response.headers_mut();
         headers.insert("content-type", HeaderValue::from_static(asset.content_type));
@@ -632,7 +666,8 @@ mod tests {
                 installation,
             }),
             &Url::parse("https://localhost:8443").unwrap(),
-            "apps.localhost",
+            &[Url::parse("https://localhost:8443").unwrap()],
+            &["apps.localhost".to_owned()],
         )
         .unwrap();
         let imported = access
@@ -661,7 +696,8 @@ mod tests {
                 installation,
             }),
             &Url::parse("https://localhost:8443").unwrap(),
-            "apps.localhost",
+            &[Url::parse("https://localhost:8443").unwrap()],
+            &["apps.localhost".to_owned()],
         )
         .unwrap();
         assert_eq!(
@@ -709,7 +745,8 @@ mod tests {
                 installation,
             }),
             &Url::parse("https://localhost:8443").unwrap(),
-            "apps.localhost",
+            &[Url::parse("https://localhost:8443").unwrap()],
+            &["apps.localhost".to_owned()],
         )
         .unwrap();
         assert_eq!(
@@ -749,7 +786,8 @@ mod tests {
                 installation,
             }),
             &Url::parse("https://localhost:8443").unwrap(),
-            "apps.localhost",
+            &[Url::parse("https://localhost:8443").unwrap()],
+            &["apps.localhost".to_owned()],
         )
         .unwrap();
         let launch = access
@@ -854,7 +892,8 @@ mod tests {
                 installation,
             }),
             &Url::parse("https://localhost:8443").unwrap(),
-            "apps.localhost",
+            &[Url::parse("https://localhost:8443").unwrap()],
+            &["apps.localhost".to_owned()],
         )
         .unwrap();
 

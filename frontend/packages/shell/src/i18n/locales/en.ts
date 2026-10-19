@@ -8,6 +8,8 @@ export type Message = string | PluralMessage;
 export const english = {
   "device.title": "This device",
   "device.help": "Browser, kiosk and offline availability of this installation.",
+  "device.addresses": "Device addresses",
+  "device.addressesHelp": "Open rumahl OS from another device on the network. Each address is also a separate sign-in.",
   "device.browser": "Browser",
   "device.language": "Browser language",
   "device.screen": "Window size",

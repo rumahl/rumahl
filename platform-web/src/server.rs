@@ -50,7 +50,12 @@ pub trait WidgetFrameResolver: Send + Sync + 'static {
 }
 
 pub struct GatewayConfig {
+    /// Canonical origin used for generated URLs, CSP and OIDC redirects.
     pub public_origin: Url,
+    /// Every origin accepted for Host/Origin checks. The first entry is always
+    /// `public_origin`; deployment configuration and detected device addresses
+    /// add further entries.
+    pub allowed_origins: Vec<Url>,
     pub ssr_socket: PathBuf,
 }
 
@@ -63,27 +68,56 @@ pub enum GatewayError {
 
 impl GatewayConfig {
     pub fn new(public_origin: &str, ssr_socket: impl Into<PathBuf>) -> Result<Self, GatewayError> {
-        let origin = Url::parse(public_origin).map_err(|_| GatewayError::InvalidOrigin)?;
-        if origin.scheme() != "https"
-            || origin.host_str().is_none()
-            || origin.username() != ""
-            || origin.password().is_some()
-            || origin.path() != "/"
-            || origin.query().is_some()
-            || origin.fragment().is_some()
-            || origin.origin().ascii_serialization() != public_origin
-        {
-            return Err(GatewayError::InvalidOrigin);
-        }
+        let origin = parse_origin(public_origin)?;
         let ssr_socket = ssr_socket.into();
         if !ssr_socket.is_absolute() {
             return Err(GatewayError::InvalidSocketPath);
         }
         Ok(Self {
-            public_origin: origin,
+            public_origin: origin.clone(),
+            allowed_origins: vec![origin],
             ssr_socket,
         })
     }
+
+    /// Accepts additional canonical https origins (configured hosts and device
+    /// addresses). Duplicates are ignored.
+    pub fn add_allowed_origins(
+        &mut self,
+        origins: impl IntoIterator<Item = String>,
+    ) -> Result<(), GatewayError> {
+        for value in origins {
+            let origin = parse_origin(&value)?;
+            if !self.allowed_origins.contains(&origin) {
+                self.allowed_origins.push(origin);
+            }
+        }
+        Ok(())
+    }
+
+    /// True when the request carries exactly one Origin header and it is one of
+    /// the accepted origins.
+    pub fn accepts_origin(&self, headers: &HeaderMap) -> bool {
+        self.allowed_origins
+            .iter()
+            .any(|origin| valid_origin(headers, origin))
+    }
+}
+
+fn parse_origin(value: &str) -> Result<Url, GatewayError> {
+    let origin = Url::parse(value).map_err(|_| GatewayError::InvalidOrigin)?;
+    if origin.scheme() != "https"
+        || origin.host_str().is_none()
+        || origin.username() != ""
+        || origin.password().is_some()
+        || origin.path() != "/"
+        || origin.query().is_some()
+        || origin.fragment().is_some()
+        || origin.origin().ascii_serialization() != value
+    {
+        return Err(GatewayError::InvalidOrigin);
+    }
+    Ok(origin)
 }
 
 pub struct GatewayState {
@@ -196,6 +230,7 @@ pub fn router(state: GatewayState) -> Router {
         .route("/", get(shell))
         .fallback(shell_fallback)
         .route("/api/v1/shell/snapshot", get(snapshot))
+        .route("/api/v1/device/addresses", get(device_addresses))
         .route("/api/v1/shell/apps", get(app_catalog))
         .route(
             "/api/v1/shell/apps/{id}/launch",
@@ -346,7 +381,7 @@ async fn app_launch(
     headers: HeaderMap,
     body: axum::body::Bytes,
 ) -> Response {
-    if !valid_origin(&headers, &state.config.public_origin) {
+    if !state.config.accepts_origin(&headers) {
         return error(StatusCode::FORBIDDEN);
     }
     if body.len() > 1024 {
@@ -612,7 +647,7 @@ async fn app_runtime_action(
     headers: HeaderMap,
     body: axum::body::Bytes,
 ) -> Response {
-    if !valid_origin(&headers, &state.config.public_origin) {
+    if !state.config.accepts_origin(&headers) {
         return error(StatusCode::FORBIDDEN);
     }
     if body.len() > 1024 {
@@ -712,7 +747,7 @@ async fn capabilities_invoke(
     headers: HeaderMap,
     body: axum::body::Bytes,
 ) -> Response {
-    if !valid_origin(&headers, &state.config.public_origin) {
+    if !state.config.accepts_origin(&headers) {
         return error(StatusCode::FORBIDDEN);
     }
     if body.len() > 4096 {
@@ -838,7 +873,7 @@ async fn app_import(
     headers: HeaderMap,
     body: axum::body::Bytes,
 ) -> Response {
-    if !valid_origin(&headers, &state.config.public_origin) {
+    if !state.config.accepts_origin(&headers) {
         return error(StatusCode::FORBIDDEN);
     }
     if headers.get("content-type").and_then(|v| v.to_str().ok()) != Some("application/json") {
@@ -1020,6 +1055,18 @@ async fn shell(
     }
 }
 
+/// Configured shell hosts and detected device addresses. This is public like
+/// the sign-in page, which already displays the same information.
+async fn device_addresses(State(state): State<Arc<GatewayState>>) -> Response {
+    let addresses: Vec<String> = state
+        .config
+        .allowed_origins
+        .iter()
+        .map(|origin| origin.origin().ascii_serialization())
+        .collect();
+    axum::Json(serde_json::json!({ "addresses": addresses })).into_response()
+}
+
 async fn snapshot(State(state): State<Arc<GatewayState>>, headers: HeaderMap) -> Response {
     let Ok(credential) = credential(&headers) else {
         return error(StatusCode::UNAUTHORIZED);
@@ -1106,7 +1153,7 @@ async fn stream_grant(
     UrlPath(id): UrlPath<String>,
     headers: HeaderMap,
 ) -> Response {
-    if !valid_origin(&headers, &state.config.public_origin) {
+    if !state.config.accepts_origin(&headers) {
         return error(StatusCode::FORBIDDEN);
     }
     let Ok(credential) = credential(&headers) else {
@@ -1300,7 +1347,7 @@ async fn stream_socket(
     headers: HeaderMap,
     upgrade: WebSocketUpgrade,
 ) -> Response {
-    if !valid_origin(&headers, &state.config.public_origin) {
+    if !state.config.accepts_origin(&headers) {
         return error(StatusCode::FORBIDDEN);
     }
     let (endpoint, credential, identity) = match authorized_stream(&state, &headers, &id).await {
@@ -1406,7 +1453,7 @@ async fn events(
     headers: HeaderMap,
     upgrade: WebSocketUpgrade,
 ) -> Response {
-    if !valid_origin(&headers, &state.config.public_origin) {
+    if !state.config.accepts_origin(&headers) {
         return error(StatusCode::FORBIDDEN);
     }
     let Ok(credential) = credential(&headers) else {
@@ -1812,7 +1859,7 @@ async fn recovery_network_test(
     State(state): State<Arc<GatewayState>>,
     headers: HeaderMap,
 ) -> Response {
-    if !valid_origin(&headers, &state.config.public_origin) {
+    if !state.config.accepts_origin(&headers) {
         return error(StatusCode::FORBIDDEN);
     }
     let identity = match recovery_identity(&state, &headers).await {
@@ -1976,7 +2023,7 @@ async fn recovery_quarantine(
     headers: HeaderMap,
     body: axum::body::Bytes,
 ) -> Response {
-    if !valid_origin(&headers, &state.config.public_origin) {
+    if !state.config.accepts_origin(&headers) {
         return error(StatusCode::FORBIDDEN);
     }
     if body.len() > 1024 {
@@ -2085,7 +2132,7 @@ async fn recovery_disk_test(
     headers: HeaderMap,
     body: axum::body::Bytes,
 ) -> Response {
-    if !valid_origin(&headers, &state.config.public_origin) {
+    if !state.config.accepts_origin(&headers) {
         return error(StatusCode::FORBIDDEN);
     }
     if body.len() > 1024 {
@@ -2156,7 +2203,7 @@ async fn recovery_settings_put(
     headers: HeaderMap,
     body: axum::body::Bytes,
 ) -> Response {
-    if !valid_origin(&headers, &state.config.public_origin) {
+    if !state.config.accepts_origin(&headers) {
         return error(StatusCode::FORBIDDEN);
     }
     if body.len() > 1024 {
@@ -2213,7 +2260,7 @@ async fn recovery_host_action(
     headers: HeaderMap,
     body: axum::body::Bytes,
 ) -> Response {
-    if !valid_origin(&headers, &state.config.public_origin) {
+    if !state.config.accepts_origin(&headers) {
         return error(StatusCode::FORBIDDEN);
     }
     let identity = match recovery_identity(&state, &headers).await {
@@ -2363,7 +2410,7 @@ async fn recovery_restart(
     headers: HeaderMap,
     body: axum::body::Bytes,
 ) -> Response {
-    if !valid_origin(&headers, &state.config.public_origin) {
+    if !state.config.accepts_origin(&headers) {
         return error(StatusCode::FORBIDDEN);
     }
     if body.len() > 4096 {
@@ -2486,7 +2533,7 @@ async fn recovery_self_heal(
     State(state): State<Arc<GatewayState>>,
     headers: HeaderMap,
 ) -> Response {
-    if !valid_origin(&headers, &state.config.public_origin) {
+    if !state.config.accepts_origin(&headers) {
         return error(StatusCode::FORBIDDEN);
     }
     let identity = match recovery_identity(&state, &headers).await {
@@ -2593,7 +2640,7 @@ async fn shell_report(
     headers: HeaderMap,
     body: axum::body::Bytes,
 ) -> Response {
-    if !valid_origin(&headers, &state.config.public_origin) {
+    if !state.config.accepts_origin(&headers) {
         return error(StatusCode::FORBIDDEN);
     }
     if headers
@@ -2876,7 +2923,7 @@ fn frame_origins(
     }
     let mut result: Vec<_> = origins.into_iter().take(31).collect();
     if let Some(apps) = &state.apps {
-        result.push(apps.frame_source());
+        result.extend(apps.frame_sources());
     }
     result
 }

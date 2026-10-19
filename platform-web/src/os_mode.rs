@@ -7,7 +7,7 @@
 use crate::{
     GatewayState, ShellBackendError,
     preferences::{error, profile, user},
-    server::{secure_headers, valid_origin},
+    server::secure_headers,
 };
 use axum::{
     Router,
@@ -86,7 +86,7 @@ async fn save(
     headers: HeaderMap,
     body: Bytes,
 ) -> Response {
-    if !valid_origin(&headers, &state.config.public_origin) {
+    if !state.config.accepts_origin(&headers) {
         return error(StatusCode::FORBIDDEN);
     }
     let user = match user(&state, &headers).await {
