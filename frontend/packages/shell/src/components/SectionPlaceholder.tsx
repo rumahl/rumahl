@@ -1,3 +1,4 @@
+import { RumahlEmptyState } from "@rumahl/ui/components";
 import type { ShellSection } from "../shell-state";
 import { useI18n } from "../i18n";
 
@@ -8,11 +9,7 @@ export function SectionPlaceholder({ section }: { section: Exclude<ShellSection,
     title: t(`section.${section}.title`),
     body: t(`section.${section}.body`)
   };
-  return (
-    <main className="section-placeholder">
-      <p className="eyebrow">{content.eyebrow}</p>
-      <h1>{content.title}</h1>
-      <p>{content.body}</p>
-    </main>
-  );
+  return <RumahlEmptyState className="section-placeholder" eyebrow={content.eyebrow} title={content.title}>
+    {content.body}
+  </RumahlEmptyState>;
 }

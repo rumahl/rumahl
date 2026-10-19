@@ -1,0 +1,242 @@
+/*
+ * Theme base layer — `base: "clean"`.
+ *
+ * A complete, deliberately plain foundation (like a browser's default
+ * `html.css`) expressed through the recipe variables. A theme on this base needs
+ * **no CSS at all** — it only supplies colours (tokens). Everything is a simple,
+ * square, 1px-border, shadow-less control so it is easy to extend: override a
+ * recipe variable or add plain CSS, nothing is `!important`.
+ *
+ * (The native `rumahl` base is the default look; this is the blank slate.)
+ */
+[data-theme-base="clean"] {
+  /* Controls */
+  --control-fill: #efefef;
+  --control-hover: #e5e5e5;
+  --control-raised: #efefef;
+  --control-border: #767676;
+  --control-border-hover: #1a73e8;
+  --control-inset: none;
+  --control-button-shadow: none;
+  --control-pressed-shadow: none;
+  --control-popup-shadow: none;
+  --control-recess: none;
+  --control-filter: none;
+  --control-thumb: #ffffff;
+  --control-tint: #1a73e8;
+  --control-tint-ink: #ffffff;
+
+  /* Surfaces */
+  --surface-fill: #ffffff;
+  --surface-sheen: none;
+  --surface-rim: none;
+  --surface-filter: none;
+  --surface-edge: #767676;
+  --surface-elevation: none;
+
+  /* Window */
+  --window-background: #ffffff;
+  --window-background-solid: #ffffff;
+  --window-border: 1px solid #767676;
+  --window-radius: 0px;
+  --window-shadow: none;
+  --window-backdrop: none;
+  --window-sheen: none;
+  --window-titlebar-border: 1px solid #767676;
+
+  /* Menus / groups */
+  --menu-background: #ffffff;
+  --menu-border: 1px solid #767676;
+  --menu-radius: 0px;
+  --menu-shadow: none;
+  --menu-backdrop: none;
+  --menu-item-hover: #e8f0fe;
+  --group-background: #ffffff;
+  --group-border: 1px solid #767676;
+  --group-radius: 0px;
+  --group-shadow: none;
+
+  /* Islands */
+  --menubar-island-background: #f2f2f2;
+  --menubar-island-border: 1px solid #767676;
+  --menubar-island-shadow: none;
+  --menubar-island-backdrop: none;
+  --menubar-island-radius: 0px;
+  --topbar-island-background: #f2f2f2;
+  --topbar-island-border: 1px solid #767676;
+  --topbar-island-shadow: none;
+  --topbar-island-backdrop: none;
+  --topbar-island-radius: 0px;
+  --toolbar-background: #f2f2f2;
+  --toolbar-border: 1px solid #767676;
+  --toolbar-shadow: none;
+  --toolbar-backdrop: none;
+  --toolbar-radius: 0px;
+
+  /* Chips / badges / notices / trays */
+  --chip-background: #efefef;
+  --chip-border: 1px solid #767676;
+  --chip-radius: 2px;
+  --chip-shadow: none;
+  --chip-backdrop: none;
+  --badge-background: #efefef;
+  --badge-border: 1px solid #767676;
+  --badge-radius: 2px;
+  --badge-shadow: none;
+  --notice-background: #ffffff;
+  --notice-border: 1px solid #767676;
+  --notice-radius: 0px;
+  --notice-shadow: none;
+  --tray-background: #f2f2f2;
+  --tray-radius: 0px;
+  --tray-shadow: none;
+
+  /* Switch / choice */
+  --switch-border-width: 1px;
+  --switch-border-color: #767676;
+  --switch-background: #ffffff;
+  --switch-background-checked: #1a73e8;
+  --switch-border-checked: #1a73e8;
+  --switch-thumb: #767676;
+  --switch-thumb-checked: #ffffff;
+  --switch-thumb-radius: 0px;
+  --switch-radius: 2px;
+  --switch-thumb-shadow: none;
+  --choice-border: 1px solid #767676;
+  --choice-radius: 2px;
+  --choice-background: #ffffff;
+  --choice-shadow: none;
+  --choice-checked-background: #1a73e8;
+  --choice-checked-border: #1a73e8;
+  --choice-mark: #ffffff;
+
+  /* Command palette / phone / toast / skeleton */
+  --command-palette-background: #ffffff;
+  --command-palette-border: 1px solid #767676;
+  --command-palette-radius: 0px;
+  --command-palette-shadow: none;
+  --command-palette-backdrop: none;
+  --phone-radius: 0px;
+  --phone-border: 1px solid #767676;
+  --phone-shadow: none;
+  --toast-background: #ffffff;
+  --toast-border: 1px solid #767676;
+  --toast-radius: 0px;
+  --toast-shadow: none;
+  --skeleton-background: #f2f2f2;
+  --tipseen-shadow: none;
+
+  /* Icon tiles / indicators / range */
+  --icon-tile-size: 30px;
+  --icon-tile-radius: 0px;
+  --icon-tile-background: #efefef;
+  --icon-tile-color: #000000;
+  --indicator-track: #efefef;
+  --indicator-fill: #1a73e8;
+  --range-radius: 0px;
+  --range-track: #efefef;
+  --range-fill: #1a73e8;
+  --range-thumb-radius: 0px;
+  --range-thumb-border: 1px solid #767676;
+  --range-thumb-background: #ffffff;
+}
+
+/* Shell-owned chrome: plain and square, no theme CSS required. */
+[data-theme-base="clean"] .shell-window {
+  background: #ffffff;
+  border: 1px solid #767676;
+  border-radius: 0;
+  box-shadow: none;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+[data-theme-base="clean"] .shell-window__titlebar {
+  background: #f2f2f2;
+  border-bottom: 1px solid #767676;
+}
+[data-theme-base="clean"] .menubar,
+[data-theme-base="clean"] .topbar__island {
+  background: #f2f2f2;
+  border: 1px solid #767676;
+  border-radius: 0;
+  box-shadow: none;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+[data-theme-base="clean"] .os-dock,
+[data-theme-base="clean"] .taskbar {
+  background: #f2f2f2;
+  border: 1px solid #767676;
+  border-radius: 0;
+  box-shadow: none;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+[data-theme-base="clean"] a,
+[data-theme-base="clean"] .rumahl-link {
+  color: #0645ad;
+  text-decoration: underline;
+}
+[data-theme-base="clean"] :focus-visible {
+  outline: 2px solid #1a73e8;
+  outline-offset: 1px;
+}
+[data-theme-base="clean"] ::selection {
+  background: #b3d4fc;
+  color: #000;
+}
+
+/* Shell settings: plain in the code-free core base. */
+[data-theme-base="clean"] .settings-sidebar {
+  background: #ffffff;
+  border-right: 1px solid #767676;
+}
+[data-theme-base="clean"] .settings-sidebar :is(a, button) {
+  border-radius: 0;
+  box-shadow: none;
+}
+[data-theme-base="clean"] .settings-sidebar :is(a, button)[aria-current="page"] {
+  background: #1a73e8;
+  color: #ffffff;
+}
+[data-theme-base="clean"] .settings-content :is(button, select, input, textarea) {
+  border-radius: 0;
+  box-shadow: none;
+}
+[data-theme-base="clean"] .settings-content .segmented {
+  border-radius: 0;
+  box-shadow: none;
+}
+[data-theme-base="clean"] .settings-content .theme-swatch {
+  border-radius: 0;
+}
+
+/* Navigation items, segmented controls and app icons: plain in core. */
+[data-theme-base="clean"] :is(
+  .rumahl-sidenav__item,
+  .rumahl-group__link,
+  .rumahl-toggle-group,
+  .rumahl-segmented
+) {
+  border-radius: 0;
+  box-shadow: none;
+}
+[data-theme-base="clean"] .rumahl-app-tile__icon {
+  background: #efefef;
+  background-image: none;
+  color: #000000;
+  border-radius: 0;
+  box-shadow: none;
+}
+
+/* Core base is square: groups, segmented singles and settings contents. */
+[data-theme-base="clean"] .settings-content *,
+[data-theme-base="clean"] .rumahl-group,
+[data-theme-base="clean"] .rumahl-group *,
+[data-theme-base="clean"] .rumahl-toggle-group,
+[data-theme-base="clean"] .rumahl-toggle-group *,
+[data-theme-base="clean"] .rumahl-toggle-group::before,
+[data-theme-base="clean"] .rumahl-segmented,
+[data-theme-base="clean"] .rumahl-segmented * {
+  border-radius: 0;
+}

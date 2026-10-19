@@ -77,7 +77,11 @@ export const defaultTokens = {
   "texture.wallpaper": "default",
   "typography.family": FONT_STACKS.modern,
   "typography.display": FONT_STACKS.spaceGrotesk,
-  "typography.scale": "1"
+  "typography.scale": "1",
+  // Material of the rumahl/ui app input components: "glass" (recessed glass) or
+  // "solid" (flat). Independent of the shell material; driven by a theme
+  // parameter so a theme (and the user) can choose it.
+  "app.inputs": "glass"
 } as const satisfies Record<string, string>;
 
 export type TokenId = keyof typeof defaultTokens;

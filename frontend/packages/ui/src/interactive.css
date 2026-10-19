@@ -1,0 +1,591 @@
+/* Interactive component layer: accordion, list, menu, chips, counter, steps,
+   skeleton, toast, avatar group, split button, table, breadcrumbs, tipseen.
+   Everything reads the shared `--control-*` tokens and the `data-size` scale. */
+
+/* Accordion ---------------------------------------------------------------- */
+.rumahl-accordion { display: grid; }
+.rumahl-accordion__item { border-bottom: var(--accordion-divider); }
+.rumahl-accordion__item:last-child { border-bottom: 0; }
+.rumahl-accordion__trigger {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+  padding: calc(var(--control-h) * 0.33) 0;
+  background: none;
+  border: 0;
+  border-radius: var(--accordion-trigger-radius);
+  color: var(--rumahl-ui-color-text-primary);
+  font: inherit;
+  font-size: var(--control-font);
+  font-weight: 600;
+  text-align: start;
+  cursor: pointer;
+}
+.rumahl-accordion__trigger:focus-visible {
+  outline: 2px solid var(--rumahl-ui-color-accent);
+  outline-offset: -2px;
+}
+.rumahl-accordion__chevron {
+  width: var(--control-icon);
+  height: var(--control-icon);
+  flex: none;
+  transition: transform 180ms ease;
+}
+.rumahl-accordion__item[data-open="true"] .rumahl-accordion__chevron { transform: rotate(180deg); }
+.rumahl-accordion__panel {
+  padding: 0 0 calc(var(--control-h) * 0.4);
+  color: var(--rumahl-ui-color-text-muted);
+  font-size: var(--control-font);
+  line-height: 1.55;
+}
+
+/* List --------------------------------------------------------------------- */
+.rumahl-list { list-style: none; margin: 0; padding: 0; display: grid; }
+.rumahl-list-item {
+  display: flex;
+  align-items: center;
+  gap: var(--list-item-gap);
+  padding: var(--list-item-padding);
+  border-radius: var(--list-item-radius);
+}
+.rumahl-list-item + .rumahl-list-item {
+  border-top: 1px solid var(--control-border);
+  border-radius: 0;
+}
+.rumahl-list-item[data-interactive="true"] { cursor: pointer; }
+.rumahl-list-item[data-interactive="true"]:hover { background: var(--control-hover); }
+.rumahl-list-item:focus-visible {
+  outline: 2px solid var(--rumahl-ui-color-accent);
+  outline-offset: -2px;
+}
+.rumahl-list-item__leading,
+.rumahl-list-item__trailing {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+}
+.rumahl-list-item__main { flex: 1; min-width: 0; }
+.rumahl-list-item__title {
+  color: var(--rumahl-ui-color-text-primary);
+  font-size: var(--control-font);
+  font-weight: 600;
+}
+.rumahl-list-item__subtitle {
+  color: var(--rumahl-ui-color-text-muted);
+  font-size: calc(var(--control-font) * 0.92);
+}
+
+/* Menu --------------------------------------------------------------------- */
+/* Menus use root-scoped theme tokens so a portaled menu (context menu,
+   popover) keeps its panel background outside the `.shell` subtree. */
+/* Menu / popup surface — explicit typography from theme tokens so a portaled
+   menu (context menu, popover) matches the in-shell menu. */
+.rumahl-menu {
+  min-width: 200px;
+  padding: var(--menu-padding);
+  font-family: var(--rumahl-ui-typography-family, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif);
+  font-size: var(--menu-font-size);
+  line-height: 1.3;
+  color: var(--rumahl-ui-color-text-primary);
+  border: var(--menu-border);
+  border-radius: var(--menu-radius);
+  background: var(--menu-background);
+  box-shadow: var(--menu-shadow);
+  backdrop-filter: var(--menu-backdrop);
+  -webkit-backdrop-filter: var(--menu-backdrop);
+}
+.shell[data-material="solid"] .rumahl-menu {
+  background: var(--rumahl-ui-color-panel-background);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+@media (prefers-reduced-transparency: reduce) {
+  .rumahl-menu {
+    background: var(--rumahl-ui-color-panel-background);
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+  }
+}
+.rumahl-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-height: var(--menu-item-height);
+  margin: 0;
+  padding: 6px 9px;
+  border: 0;
+  border-radius: var(--menu-item-radius);
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: start;
+  cursor: pointer;
+}
+.rumahl-menu-item:hover:not(:disabled),
+.rumahl-menu-item[aria-checked="true"] {
+  background: var(--menu-item-hover);
+}
+.rumahl-menu-item:disabled { opacity: 0.45; cursor: not-allowed; }
+.rumahl-menu-item__icon {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  opacity: 0.8;
+}
+.rumahl-menu-item__icon svg { width: 100%; height: 100%; }
+.rumahl-menu-item__label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.rumahl-menu-item__shortcut {
+  flex: none;
+  margin-inline-start: 12px;
+  color: var(--rumahl-ui-color-text-muted);
+  font-size: 11px;
+  letter-spacing: 0.02em;
+}
+.rumahl-menu-divider { height: 1px; margin: 5px 6px; background: color-mix(in srgb, var(--rumahl-ui-color-text-primary) 10%, transparent); }
+
+/* Chip --------------------------------------------------------------------- */
+.rumahl-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: var(--chip-padding);
+  border: var(--chip-border);
+  border-radius: var(--chip-radius);
+  background: var(--chip-background);
+  box-shadow: var(--chip-shadow);
+  backdrop-filter: var(--chip-backdrop);
+  -webkit-backdrop-filter: var(--chip-backdrop);
+  color: var(--rumahl-ui-color-text-primary);
+  font: inherit;
+  font-size: var(--chip-font-size);
+}
+button.rumahl-chip { cursor: pointer; }
+.rumahl-chip[data-selected="true"] {
+  --control-tint: color-mix(in srgb, var(--rumahl-ui-color-accent) 24%, transparent);
+  background: var(--control-recess),
+    linear-gradient(var(--control-tint), var(--control-tint)), var(--control-fill);
+  border-color: color-mix(in srgb, var(--rumahl-ui-color-accent) 45%, var(--control-border));
+}
+.rumahl-chip:disabled { opacity: 0.5; cursor: not-allowed; }
+.rumahl-chip__label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  cursor: inherit;
+}
+button.rumahl-chip__label { cursor: pointer; }
+.rumahl-chip__remove {
+  display: inline-grid;
+  place-items: center;
+  width: 16px;
+  height: 16px;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+}
+.rumahl-chip__remove:hover { background: var(--control-hover); }
+
+/* Counter ------------------------------------------------------------------ */
+.rumahl-counter {
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid var(--control-border);
+  border-radius: 999px;
+  background: var(--control-recess), var(--control-fill);
+  box-shadow: var(--control-inset);
+  overflow: hidden;
+}
+.rumahl-counter__button {
+  display: inline-grid;
+  place-items: center;
+  width: var(--control-h);
+  height: var(--control-h);
+  border: 0;
+  background: transparent;
+  color: var(--rumahl-ui-color-text-primary);
+  cursor: pointer;
+}
+.rumahl-counter__button:hover:not(:disabled) { background: var(--control-hover); }
+.rumahl-counter__button:disabled { opacity: 0.4; cursor: not-allowed; }
+.rumahl-counter__value {
+  min-width: 44px;
+  text-align: center;
+  font-size: var(--control-font);
+  font-variant-numeric: tabular-nums;
+  color: var(--rumahl-ui-color-text-primary);
+}
+
+/* Steps -------------------------------------------------------------------- */
+.rumahl-steps {
+  display: flex;
+  align-items: flex-start;
+  width: 100%;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.rumahl-step {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--step-gap);
+  text-align: center;
+}
+/* Each step draws half a line on each side of its marker, so the lines always
+   meet between markers regardless of container width. */
+.rumahl-step::before,
+.rumahl-step::after {
+  content: "";
+  position: absolute;
+  top: 12px;
+  height: 2px;
+  border-radius: 2px;
+  background: var(--control-border);
+}
+.rumahl-step::before { left: 0; right: calc(50% + 15px); }
+.rumahl-step::after { right: 0; left: calc(50% + 15px); }
+.rumahl-step:first-child::before { display: none; }
+.rumahl-step:last-child::after { display: none; }
+/* The connector fills with accent up to the active step. */
+.rumahl-step[data-status="done"]::before,
+.rumahl-step[data-status="done"]::after,
+.rumahl-step[data-status="active"]::before { background: var(--rumahl-ui-color-accent); }
+.rumahl-step__marker {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  border: 1px solid var(--control-border);
+  background: var(--control-fill);
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--rumahl-ui-color-text-primary);
+}
+.rumahl-step[data-status="active"] .rumahl-step__marker {
+  background: var(--rumahl-ui-color-accent);
+  color: var(--rumahl-ui-color-on-accent);
+  border-color: transparent;
+}
+.rumahl-step[data-status="done"] .rumahl-step__marker {
+  background: color-mix(in srgb, var(--rumahl-ui-color-accent) 24%, transparent);
+  border-color: var(--rumahl-ui-color-accent);
+}
+.rumahl-step__label { font-size: var(--control-font); color: var(--rumahl-ui-color-text-muted); }
+.rumahl-step[data-status="active"] .rumahl-step__label {
+  color: var(--rumahl-ui-color-text-primary);
+  font-weight: 600;
+}
+
+/* Vertical: markers stacked; connectors run between them. */
+.rumahl-steps[data-orientation="vertical"] { flex-direction: column; }
+.rumahl-steps[data-orientation="vertical"] .rumahl-step {
+  flex: 0 0 auto;
+  flex-direction: row;
+  align-items: center;
+  text-align: start;
+  gap: 10px;
+  padding-bottom: 22px;
+}
+.rumahl-steps[data-orientation="vertical"] .rumahl-step:last-child { padding-bottom: 0; }
+.rumahl-steps[data-orientation="vertical"] .rumahl-step::before { display: none; }
+.rumahl-steps[data-orientation="vertical"] .rumahl-step::after {
+  top: 26px;
+  right: auto;
+  bottom: 0;
+  left: 12px;
+  width: 2px;
+  height: auto;
+}
+.rumahl-steps[data-orientation="vertical"] .rumahl-step:last-child::after { display: none; }
+
+/* Skeleton ----------------------------------------------------------------- */
+.rumahl-skeleton {
+  position: relative;
+  overflow: hidden;
+  border-radius: var(--skeleton-radius);
+  background: var(--skeleton-background);
+  box-shadow: var(--surface-rim);
+  backdrop-filter: var(--surface-filter);
+  -webkit-backdrop-filter: var(--surface-filter);
+}
+.rumahl-skeleton::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    color-mix(in srgb, var(--rumahl-ui-color-text-primary) 8%, transparent),
+    transparent
+  );
+  animation: rumahl-skeleton 1.4s ease-in-out infinite;
+}
+@keyframes rumahl-skeleton {
+  from { transform: translateX(-100%); }
+  to { transform: translateX(100%); }
+}
+.rumahl-skeleton[data-variant="circle"] { border-radius: 50%; }
+.rumahl-skeleton[data-variant="text"] { height: 12px; border-radius: 6px; }
+.rumahl-skeleton__lines { display: grid; gap: 8px; }
+
+/* Toast -------------------------------------------------------------------- */
+.rumahl-toast {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  min-width: 260px;
+  max-width: 380px;
+  padding: var(--toast-padding);
+  border: var(--toast-border);
+  border-radius: var(--toast-radius);
+  background: var(--toast-background);
+  box-shadow: var(--toast-shadow);
+  backdrop-filter: var(--control-filter);
+  -webkit-backdrop-filter: var(--control-filter);
+  color: var(--rumahl-ui-color-text-primary);
+}
+.rumahl-toast__icon {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  font-weight: 700;
+}
+.rumahl-toast[data-tone="success"] .rumahl-toast__icon {
+  background: color-mix(in srgb, #39a77b 25%, transparent);
+  color: #39a77b;
+}
+.rumahl-toast[data-tone="warning"] .rumahl-toast__icon {
+  background: color-mix(in srgb, #d5a347 25%, transparent);
+  color: #d5a347;
+}
+.rumahl-toast[data-tone="danger"] .rumahl-toast__icon {
+  background: color-mix(in srgb, var(--rumahl-ui-color-danger, #e5484d) 25%, transparent);
+  color: var(--rumahl-ui-color-danger, #e5484d);
+}
+.rumahl-toast[data-tone="info"] .rumahl-toast__icon {
+  background: color-mix(in srgb, var(--rumahl-ui-color-accent) 25%, transparent);
+  color: var(--rumahl-ui-color-accent);
+}
+.rumahl-toast__body { flex: 1; min-width: 0; }
+.rumahl-toast__title { font-size: var(--control-font); font-weight: 600; }
+.rumahl-toast__message {
+  font-size: calc(var(--control-font) * 0.92);
+  color: var(--rumahl-ui-color-text-muted);
+}
+.rumahl-toast__close {
+  flex: none;
+  border: 0;
+  background: transparent;
+  color: var(--rumahl-ui-color-text-muted);
+  cursor: pointer;
+}
+.rumahl-toast-stack {
+  position: fixed;
+  inset-block-end: 16px;
+  inset-inline-end: 16px;
+  display: grid;
+  gap: 10px;
+  z-index: 200;
+}
+
+/* AvatarGroup -------------------------------------------------------------- */
+.rumahl-avatar-group { display: inline-flex; }
+.rumahl-avatar-group > * {
+  margin-inline-start: -10px;
+  border: 2px solid var(--rumahl-ui-color-surface-strong);
+  border-radius: 50%;
+}
+.rumahl-avatar-group > *:first-child { margin-inline-start: 0; }
+.rumahl-avatar-group__more {
+  display: grid;
+  place-items: center;
+  width: calc(var(--control-h) * 1.111);
+  height: calc(var(--control-h) * 1.111);
+  border-radius: 50%;
+  background: var(--control-fill);
+  border: 2px solid var(--rumahl-ui-color-surface-strong);
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--rumahl-ui-color-text-primary);
+}
+
+/* SplitButton -------------------------------------------------------------- */
+.rumahl-split-button { display: inline-flex; }
+.rumahl-split-button > .btn:first-child {
+  border-top-right-radius: 0;
+  border-bottom-right-radius: 0;
+  border-right-width: 0;
+}
+/* Higher specificity than `.shell .btn` so the joining edge stays square. */
+.rumahl-split-button > .btn.rumahl-split-button__caret {
+  border-top-left-radius: 0;
+  border-bottom-left-radius: 0;
+  padding-inline: 10px;
+  border-left: 0;
+}
+
+/* Table -------------------------------------------------------------------- */
+.rumahl-table-wrap {
+  border: 1px solid var(--surface-edge);
+  border-radius: 14px;
+  overflow: hidden;
+  background: var(--surface-sheen), var(--surface-fill);
+  box-shadow: var(--surface-rim);
+  backdrop-filter: var(--surface-filter);
+  -webkit-backdrop-filter: var(--surface-filter);
+}
+.rumahl-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--table-font-size);
+  color: var(--rumahl-ui-color-text-primary);
+}
+.rumahl-table caption {
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--control-border);
+  text-align: start;
+  font-size: 12px;
+  color: var(--rumahl-ui-color-text-muted);
+}
+.rumahl-table th {
+  padding: 10px 16px;
+  text-align: start;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--rumahl-ui-color-text-muted);
+  background: color-mix(in srgb, var(--rumahl-ui-color-text-primary) 4%, transparent);
+}
+.rumahl-table td {
+  padding: 12px 16px;
+  border-top: 1px solid var(--control-border);
+  color: var(--rumahl-ui-color-text-primary);
+}
+.rumahl-table tbody tr:hover { background: var(--control-hover); }
+.rumahl-table[data-variant="striped"] tbody tr:nth-child(even) {
+  background: color-mix(in srgb, var(--rumahl-ui-color-text-primary) 3%, transparent);
+}
+.rumahl-table[data-variant="striped"] tbody tr:nth-child(even):hover {
+  background: var(--control-hover);
+}
+
+/* Breadcrumbs -------------------------------------------------------------- */
+.rumahl-breadcrumbs {
+  display: flex;
+  align-items: center;
+  gap: var(--breadcrumbs-gap);
+  flex-wrap: wrap;
+  font-size: var(--breadcrumbs-font-size);
+}
+.rumahl-breadcrumbs__item {
+  color: var(--rumahl-ui-color-text-muted);
+  text-decoration: none;
+}
+.rumahl-breadcrumbs__item:hover { color: var(--rumahl-ui-color-text-primary); }
+.rumahl-breadcrumbs__item[aria-current="page"] {
+  color: var(--rumahl-ui-color-text-primary);
+  font-weight: 600;
+}
+.rumahl-breadcrumbs__sep { color: var(--rumahl-ui-color-text-muted); opacity: 0.6; }
+
+/* Tipseen ------------------------------------------------------------------ */
+.rumahl-tipseen {
+  position: relative;
+  max-width: 280px;
+  padding: 14px;
+  border-radius: var(--tipseen-radius);
+  background: var(--tipseen-background);
+  color: var(--tipseen-color);
+  box-shadow: var(--tipseen-shadow);
+}
+.rumahl-tipseen__title { font-size: var(--control-font); font-weight: 700; }
+.rumahl-tipseen__body {
+  font-size: calc(var(--control-font) * 0.92);
+  opacity: 0.92;
+  margin-top: 4px;
+}
+.rumahl-tipseen__actions { display: flex; gap: 8px; margin-top: 10px; }
+.rumahl-tipseen__close {
+  position: absolute;
+  top: 8px;
+  inset-inline-end: 8px;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+}
+
+/* Shared press feedback: the same "pressed" scale as `.btn:active`. */
+.rumahl-menu-item,
+.rumahl-counter__button,
+.rumahl-chip__label,
+.rumahl-chip__remove,
+.rumahl-toast__close,
+.rumahl-tipseen__close,
+.rumahl-accordion__trigger,
+.rumahl-list-item[data-interactive="true"] {
+  transition: background 150ms ease, border-color 150ms ease, box-shadow 140ms ease, scale 140ms ease;
+}
+.rumahl-menu-item:active:not(:disabled),
+.rumahl-counter__button:active:not(:disabled),
+.rumahl-chip__label:active:not(:disabled),
+.rumahl-chip__remove:active:not(:disabled),
+.rumahl-toast__close:active,
+.rumahl-tipseen__close:active,
+.rumahl-list-item[data-interactive="true"]:active {
+  scale: 0.98;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .rumahl-skeleton::after { animation: none; }
+  .rumahl-accordion__chevron { transition: none; }
+  .rumahl-menu-item,
+  .rumahl-counter__button,
+  .rumahl-chip__label,
+  .rumahl-chip__remove,
+  .rumahl-toast__close,
+  .rumahl-tipseen__close,
+  .rumahl-accordion__trigger,
+  .rumahl-list-item[data-interactive="true"] { transition: none; }
+  .rumahl-menu-item:active,
+  .rumahl-counter__button:active,
+  .rumahl-chip__label:active,
+  .rumahl-chip__remove:active,
+  .rumahl-toast__close:active,
+  .rumahl-tipseen__close:active,
+  .rumahl-list-item[data-interactive="true"]:active { scale: none; }
+}
+
+/* Context menu (right-click) — a positioned Menu. */
+.rumahl-context-menu { min-width: 200px; }
+.rumahl-menu-item[data-danger="true"] { color: var(--rumahl-ui-color-danger, #e5484d); }

@@ -45,7 +45,9 @@ const ATTRS = new Set([
   "id", "title", "role", "href", "type", "alt", "src", "width", "height", "disabled",
   "hidden", "tabindex", "datetime", "for", "name", "value", "placeholder", "checked",
   "selected", "open", "controls", "autoplay", "muted", "loop", "playsinline", "poster",
-  "colspan", "rowspan", "download", "target", "rel", "spellcheck", "autocomplete"
+  "colspan", "rowspan", "download", "target", "rel", "spellcheck", "autocomplete",
+  // Slot component arguments (e.g. `<app-icon app="…">`).
+  "app"
 ]);
 const SAFE_URL = /^(?:https?:\/\/|\/|#|data:image\/|data:video\/|data:audio\/)/;
 const INPUT_TYPES = new Set(["text", "search", "number", "checkbox", "radio", "range", "color", "date", "time", "email", "url", "tel", "password"]);
@@ -169,7 +171,15 @@ function renderNodes(nodes: SlotTemplate, bindings: SlotBindings, scopes: Record
       const render = bindings.components?.[node.component];
       if (!render) return null;
       const children = node.children ? renderNodes(node.children, bindings, scopes, `${key}.`) : undefined;
-      return <Fragment key={key}>{render({ ...(node.attrs ?? {}), className: node.class, children })}</Fragment>;
+      const attrs = node.attrs
+        ? Object.fromEntries(
+            Object.entries(node.attrs).map(([name, value]) => [
+              name,
+              typeof value === "string" ? interpolate(value, scopes) : value
+            ])
+          )
+        : {};
+      return <Fragment key={key}>{render({ ...attrs, className: node.class, children })}</Fragment>;
     }
     const props: Record<string, unknown> = { key };
     if (node.class) props.className = node.class;

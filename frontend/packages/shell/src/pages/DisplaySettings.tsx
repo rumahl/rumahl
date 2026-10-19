@@ -1,8 +1,12 @@
 import { RumahlButtonGroup } from "../components/RumahlButtonGroup";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useTheme } from "@rumahl/ui";
-import { themes } from "@rumahl/ui/themes";
 import type { ColorParameter } from "@rumahl/ui/themes";
+import {
+  installThemeFile,
+  useThemeRegistry
+} from "../preferences/installed-themes";
+import { ThemeSafetyError } from "../preferences/theme-safety";
 import type { MessageKey } from "../i18n/locales/en";
 import { useShellPreferences } from "../preferences/ShellPreferences";
 import { useThemeTuning } from "../preferences/theme-tuning";
@@ -40,8 +44,24 @@ export function DisplaySettings() {
   const { scope, setScope } = settings;
   const selected = settings.preferences?.[scope].shellMode;
   const selectedTheme = settings.preferences?.[scope].shellTheme;
+  const themes = useThemeRegistry();
   const effectiveTheme = themes.find((item) => item.id === settings.theme);
   const { tokens, theme: activeTheme } = useTheme();
+  const installRef = useRef<HTMLInputElement>(null);
+  const [installError, setInstallError] = useState<string | null>(null);
+  const installTheme = async (file: File) => {
+    try {
+      const theme = await installThemeFile(file);
+      settings.saveTheme(scope, theme.id);
+      setInstallError(null);
+    } catch (error) {
+      setInstallError(
+        error instanceof ThemeSafetyError
+          ? error.message
+          : "This theme could not be installed."
+      );
+    }
+  };
   const {
     tuning,
     setSeed,
@@ -318,6 +338,33 @@ export function DisplaySettings() {
                 </button>
               ) : null}
             </div>
+          </div>
+        </div>
+        <div className="setting">
+          <div className="copy">
+            <strong>{t("theme.install")}</strong>
+            <p>{t("theme.installHelp")}</p>
+            {installError ? (
+              <p role="alert" style={{ color: "var(--rumahl-ui-color-danger, #e5484d)" }}>
+                {installError}
+              </p>
+            ) : null}
+          </div>
+          <div className="visual">
+            <input
+              ref={installRef}
+              type="file"
+              accept="application/json,.json"
+              hidden
+              onChange={(event) => {
+                const file = event.target.files?.[0];
+                event.target.value = "";
+                if (file) void installTheme(file);
+              }}
+            />
+            <Button onClick={() => installRef.current?.click()}>
+              {t("theme.installAction")}
+            </Button>
           </div>
         </div>
       </div>

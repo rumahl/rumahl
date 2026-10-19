@@ -1,4 +1,4 @@
-import { bestContrast, findShade, generateColorShades, hexToRgb, themeColorValues, withAlpha, type PaletteOptions } from "./color";
+import { DEFAULT_CONTRAST_TARGETS, bestContrast, ensureContrast, findShade, generateColorShades, hexToRgb, themeColorValues, withAlpha, type PaletteOptions } from "./color";
 import type { Tokens } from "./tokens";
 
 function channel(value: number): string {
@@ -39,6 +39,9 @@ export function surfaceContrast(surface: string, canvas: string, opacity: number
  */
 export function paletteTokens(seed: string, options: PaletteOptions = {}): Partial<Tokens> {
   const colors = themeColorValues(seed, options);
+  // Per-role contrast targets: existing colours are kept unless they miss the
+  // target, in which case only the failing colour is corrected.
+  const targets = { ...DEFAULT_CONTRAST_TARGETS, ...options.contrast };
   const accent = {
     "color.accent": colors.accent,
     "color.accent.strong": colors.accentStrong,
@@ -57,12 +60,12 @@ export function paletteTokens(seed: string, options: PaletteOptions = {}): Parti
       ...accent,
       "color.surface": withAlpha(strong, 0.86),
       "color.surface.strong": strong,
-      "color.text.primary": "#f5f7f6",
-      "color.text.muted": "#9aa5a0",
+      "color.text.primary": ensureContrast("#f5f7f6", strong, targets.onSurface),
+      "color.text.muted": ensureContrast("#9aa5a0", strong, targets.large),
       "color.canvas.background": canvas,
       "color.panel.background": panel,
       "color.window.titlebar.background": panel,
-      "color.window.titlebar.foreground": "#f5f7f6",
+      "color.window.titlebar.foreground": ensureContrast("#f5f7f6", panel, targets.onSurface),
       "color.on.wallpaper": "#f5f5f7",
       "color.outline": "rgba(255, 255, 255, 0.14)",
       "color.shadow": "rgba(0, 0, 0, 0.7)"
@@ -73,12 +76,12 @@ export function paletteTokens(seed: string, options: PaletteOptions = {}): Parti
     ...accent,
     "color.surface": "#ffffffd9",
     "color.surface.strong": "#ffffff",
-    "color.text.primary": "#1d1d1f",
-    "color.text.muted": "#6e6e73",
+    "color.text.primary": ensureContrast("#1d1d1f", "#ffffff", targets.onSurface),
+    "color.text.muted": ensureContrast("#6e6e73", "#ffffff", targets.large),
     "color.canvas.background": "#c9c9ce",
     "color.panel.background": "#f5f5f7",
     "color.window.titlebar.background": "#f5f5f7",
-    "color.window.titlebar.foreground": "#1d1d1f",
+    "color.window.titlebar.foreground": ensureContrast("#1d1d1f", "#f5f5f7", targets.onSurface),
     "color.on.wallpaper": "#ffffff",
     "color.outline": "rgba(0, 0, 0, 0.12)",
     "color.shadow": "rgba(0, 0, 0, 0.16)"

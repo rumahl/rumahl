@@ -8,6 +8,7 @@ import { useSafeMode } from "../../preferences/safe-mode";
 import { useShell } from "../ShellContext";
 import { useClock } from "../clock";
 import { SearchIcon } from "../../icons";
+import { Button, RumahlInputGroup } from "@rumahl/ui/components";
 import { createCellStore, gridMetrics, nearestFreeCell, resolveCells, useGridSize, type GridCell } from "../desktop/free-grid";
 import { applyOrder, useLauncherOrder } from "./launcher-order";
 import { LauncherMenu, type LauncherMenuItem } from "./LauncherMenu";
@@ -292,7 +293,7 @@ export function LauncherHome() {
         <h1 className="launcher-greeting">{t(greeting)}<span>{snapshot.user.displayName}</span></h1>
         {now ? <div className="launcher-clock"><strong>{clock}</strong><span>{date}</span></div> : null}
       </div>
-      {editing && !normalized ? <button className="launcher-done" type="button" onClick={() => setEditing(false)}>{t("launcher.done")}</button> : null}
+      {editing && !normalized ? <Button className="launcher-done" floating type="button" onClick={() => setEditing(false)}>{t("launcher.done")}</Button> : null}
     </header>
 
     {normalized ? <section className="launcher-section">
@@ -329,11 +330,18 @@ export function LauncherHome() {
     </div>}
 
     <footer className="launcher-footer">
-      {!currentFolder ? <label className="launcher-search">
-        <SearchIcon aria-hidden="true" />
-        <span>{t("launcher.search")}</span>
-        <input type="search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder={t("launcher.searchPlaceholder")} />
-      </label> : null}
+      {!currentFolder ? <div className="launcher-search">
+        <RumahlInputGroup
+          floating
+          type="search"
+          data-launcher-search="true"
+          aria-label={t("launcher.search")}
+          placeholder={t("launcher.searchPlaceholder")}
+          value={query}
+          onChange={(event) => setQuery(event.target.value)}
+          prefix={<SearchIcon aria-hidden="true" />}
+        />
+      </div> : null}
     </footer>
 
     {currentFolder ? createPortal(<div className="launcher-folder-overlay" data-material={material} role="dialog" aria-label={currentFolder.name} onClick={(event) => { if (event.target === event.currentTarget) setFolder(null); }}>
@@ -345,7 +353,7 @@ export function LauncherHome() {
                 onKeyDown={(event) => { if (event.key === "Enter") event.currentTarget.blur(); if (event.key === "Escape") setRenaming(null); }} />
             : <h2>{currentFolder.name}</h2>}
           <div className="launcher-folder__actions">
-            <button className="launcher-edit" type="button" aria-pressed={editing} onClick={() => setEditing((value) => !value)}>{t(editing ? "launcher.done" : "launcher.edit")}</button>
+            <Button className="launcher-edit" floating variant={editing ? "primary" : "secondary"} type="button" aria-pressed={editing} onClick={() => setEditing((value) => !value)}>{t(editing ? "launcher.done" : "launcher.edit")}</Button>
             <button type="button" aria-label={t("launcher.closeFolder")} onClick={() => setFolder(null)}>×</button>
           </div>
         </header>

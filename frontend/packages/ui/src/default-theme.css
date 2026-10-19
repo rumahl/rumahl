@@ -162,7 +162,7 @@
     .launcher-views button
   ):focus-visible {
   outline: 2px solid var(--rumahl-ui-color-accent);
-  outline-offset: 3px;
+  outline-offset: -2px;
 }
 
 /* Private presentation roles are derived from the existing public theme tokens. */
@@ -192,22 +192,13 @@
   );
   --material-overlay: color-mix(in srgb, var(--surface-base) 90%, transparent);
   --material-solid: var(--rumahl-ui-color-panel-background);
-  --material-sidebar: color-mix(
-    in srgb,
-    var(--rumahl-ui-color-canvas-background) 22%,
-    transparent
-  );
+  --material-sidebar: var(--rumahl-ui-color-side, rgb(12 15 29 / 55%));
   --material-shadow:
     0 24px 64px -22px var(--surface-shadow), 0 3px 10px #00000018;
   --material-rim: inset 0 1px var(--material-light), inset 0 -1px #0000000c;
 }
 .shell[data-theme="com.rumahl.default"][data-scheme="dark"] {
   --material-light: color-mix(in srgb, var(--surface-base) 75%, #ffffff20);
-  --material-sidebar: color-mix(
-    in srgb,
-    var(--rumahl-ui-color-canvas-background) 36%,
-    transparent
-  );
 }
 .shell[data-theme="com.rumahl.default"] .shell-window {
   border: 1px solid var(--material-line);

@@ -14,23 +14,26 @@ export function ControlCenter({ protection, state, error, onOpenSettings, onClos
   onClose: () => void;
 }) {
   const { t } = useI18n();
-  const { tokens } = useTheme();
+  const { theme, tokens } = useTheme();
   const tuning = useThemeTuning();
   const dark = tuning.tuning.mode === "dark";
+  const supportsDark = (theme.modes ?? []).includes("dark");
+  const supportsTransparency = Number(tokens["material.morphism"]) > 0;
   const transparency = Number(tokens["material.opacity"]) < 1 && Number(tokens["material.morphism"]) > 0;
   const animations = tuning.tuning.animations !== false;
   const performance = tuning.tuning.performanceMode === true;
   const ultra = tuning.tuning.ultraPerformance === true;
 
-  const tile = (active: boolean, onClick: () => void, icon: ReactNode, label: string) =>
-    <button type="button" className={`control-center__tile${active ? " is-on" : ""}`} aria-pressed={active} onClick={onClick}>
+  const tile = (active: boolean, onClick: () => void, icon: ReactNode, label: string, disabled = false) =>
+    <button type="button" className={`control-center__tile${active ? " is-on" : ""}`} aria-pressed={active}
+      disabled={disabled} aria-disabled={disabled || undefined} onClick={onClick}>
       {icon}<span>{label}</span>
     </button>;
 
   return <div className="control-center" role="dialog" aria-label={t("controlCenter.label")}>
     <div className="control-center__grid">
-      {tile(dark, () => tuning.setMode(dark ? "light" : "dark"), <MoonIcon />, t("controlCenter.darkMode"))}
-      {tile(transparency, () => tuning.setTransparency(!transparency), <SparkIcon />, t("controlCenter.transparency"))}
+      {tile(dark, () => tuning.setMode(dark ? "light" : "dark"), <MoonIcon />, t("controlCenter.darkMode"), !supportsDark)}
+      {tile(transparency, () => tuning.setTransparency(!transparency), <SparkIcon />, t("controlCenter.transparency"), !supportsTransparency)}
       {tile(animations, () => tuning.setAnimations(!animations), <PulseIcon />, t("controlCenter.animations"))}
       {tile(performance, () => tuning.setPerformanceMode(!performance), <SettingsIcon />, t("controlCenter.performance"))}
       {tile(ultra, () => tuning.setUltraPerformance(!ultra), <BoltIcon />, t("controlCenter.ultra"))}

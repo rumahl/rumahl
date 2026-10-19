@@ -4,6 +4,7 @@ import type { ShellSnapshotV1 } from "@rumahl/contracts";
 import { App } from "./App";
 import type { ShellLiveSource } from "./live-updates";
 import { preloadAppearance } from "./theme";
+import { loadInstalledThemes } from "./preferences/installed-themes";
 import "@fontsource-variable/space-grotesk";
 import "@fontsource-variable/bricolage-grotesque";
 import "@fontsource/instrument-serif/400.css";
@@ -39,6 +40,8 @@ export function renderShell(snapshot: ShellSnapshotV1, live?: ShellLiveSource): 
     throw new Error("rumahl shell root element is missing");
   }
   registerServiceWorker();
+  // Register installed custom themes before the first paint resolves the theme.
+  loadInstalledThemes();
   preloadAppearance(snapshot);
 
   createRoot(root).render(
@@ -54,6 +57,8 @@ export function hydrateShell(snapshot: ShellSnapshotV1, live?: ShellLiveSource):
     throw new Error("server-rendered shell root is missing");
   }
   registerServiceWorker();
+  // Register installed custom themes before the first paint resolves the theme.
+  loadInstalledThemes();
   preloadAppearance(snapshot);
   return hydrateRoot(
     root,

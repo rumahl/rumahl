@@ -44,6 +44,7 @@ function WallpaperVideo({ src }: { src: string }) {
 }
 import { resolveWallpaper } from "../wallpapers";
 import { configureGlass, svgRefractionSupported, subscribeGlassMetrics } from "../glass-engine/useGlassEngine";
+import { useGlassHosts } from "../glass-engine/useGlassHosts";
 import { useTestMedia } from "./test-media";
 import { isMobile } from "./device";
 import { isDebug, setDebug, useDebug } from "./debug";
@@ -54,6 +55,9 @@ export function ShellLayout({ snapshot, live }: { snapshot: ShellSnapshotV1; liv
   const location = useLocation();
   const navigate = useNavigate();
   const { theme, variants, tokens } = useTheme();
+  // Upgrade @rumahl/ui GlassSurface hosts (dock, floating surfaces) to the
+  // engine's real refraction glass. CSS in @rumahl/ui/glass.css is the fallback.
+  useGlassHosts();
   const { t } = useI18n();
   const path = shellLocation(location.pathname + location.search + location.hash);
   const preferences = useShellPreferences();
@@ -176,7 +180,13 @@ export function ShellLayout({ snapshot, live }: { snapshot: ShellSnapshotV1; liv
   const stressWindows = useRef(0);
   const effectiveGlass = glassEnabled && (!glassOff || appearance.glassEnabled === true) && !glassReduced;
   // A slow renderer may fall back to CSS, but must not override transparency.
+  // The shell itself is always the normal Glass design. Floating is an element
+  // state applied to individual elements that hover over a background (app
+  // icons in the launcher, floating buttons), not a mode.
   const material = transparencyOff ? "solid" : "translucent";
+  // Material of the rumahl/ui app input components, chosen by the theme. It is
+  // independent of the shell material above: "solid" renders them flat.
+  const appInputs = tokens["app.inputs"] === "solid" ? "solid" : "glass";
   // An animated (promoted) wallpaper is excluded from the SVG backdrop, so SVG
   // switches the wallpaper to a still layer.
   // Resolve the SVG backdrop after mount so the server and the first client
@@ -309,8 +319,19 @@ export function ShellLayout({ snapshot, live }: { snapshot: ShellSnapshotV1; liv
   // Report shell activity (navigation, mode) into the central audit log.
   useEffect(() => { if (live) reportActivity(live.request, `navigate ${path}`); }, [path, live]);
   useEffect(() => { if (live) reportActivity(live.request, `mode ${mode}`); }, [mode, live]);
+  // Mirror the base on <html> so portals (menus, context menus) can style themselves.
+  useEffect(() => {
+    const root = document.documentElement;
+    root.dataset.themeBase = theme.base ?? "rumahl";
+    root.dataset.theme = theme.id;
+    return () => {
+      delete root.dataset.themeBase;
+      delete root.dataset.theme;
+    };
+  }, [theme.base, theme.id]);
+
   return <ShellContext value={{ snapshot, live, state, dispatch, mode, setMode, open }}>
-    <div className={`scene shell${showVideo ? "" : " image-mode"}${appearance.wallpaperMotion === false || svgActive || performanceMode ? " no-motion" : ""}`} data-theme={theme.id} data-material={material} data-glass={glassEngine} data-scheme={scheme} data-perf={ultra ? "ultra" : undefined} data-maximized={windowMaximized ? "true" : undefined} data-launcher={launcherWindow ? "app" : undefined} data-inactive={inactive ? "true" : undefined} data-debug={debug ? "true" : undefined} data-animations={animations ? undefined : "off"} data-shell-build={snapshot.shellBuildId} data-shell-mode={mode} data-os-mode={osMode.mode} data-preferences-revision={preferences.preferences?.revision}>
+    <div className={`scene shell${showVideo ? "" : " image-mode"}${appearance.wallpaperMotion === false || svgActive || performanceMode ? " no-motion" : ""}`} data-theme={theme.id} data-theme-base={theme.base} data-material={material} data-app-inputs={appInputs} data-glass={glassEngine} data-scheme={scheme} data-perf={ultra ? "ultra" : undefined} data-maximized={windowMaximized ? "true" : undefined} data-launcher={launcherWindow ? "app" : undefined} data-inactive={inactive ? "true" : undefined} data-debug={debug ? "true" : undefined} data-animations={animations ? undefined : "off"} data-shell-build={snapshot.shellBuildId} data-shell-mode={mode} data-os-mode={osMode.mode} data-preferences-revision={preferences.preferences?.revision}>
       <div className="wallpaper media-wall" aria-hidden="true">
         {showVideo
           ? media.video ? <WallpaperVideo key={media.video} src={media.video} />
@@ -323,8 +344,13 @@ export function ShellLayout({ snapshot, live }: { snapshot: ShellSnapshotV1; liv
       <div className="shell__workspace">
         {theme.slots?.menubar ? <SlotRegion name="menubar" /> : <MenuBar />}
         <div className="workspace-surfaces">
-          {mode === "desktop" ? <DesktopLayout><RouteBoundary location={path}>{route.presentation === "window" ? <HomePage /> : <ShellRoutes />}</RouteBoundary></DesktopLayout>
-            : <LauncherLayout><RouteBoundary location={path}>{route.presentation === "window" ? null : <ShellRoutes />}</RouteBoundary></LauncherLayout>}
+          {mode === "desktop"
+            ? theme.slots?.desktop
+              ? <SlotRegion name="desktop" />
+              : <DesktopLayout><RouteBoundary location={path}>{route.presentation === "window" ? <HomePage /> : <ShellRoutes />}</RouteBoundary></DesktopLayout>
+            : theme.slots?.launcher
+              ? <SlotRegion name="launcher" />
+              : <LauncherLayout><RouteBoundary location={path}>{route.presentation === "window" ? null : <ShellRoutes />}</RouteBoundary></LauncherLayout>}
           <DesktopWindows animations={animations} />
         </div>
         <CommandPalette />

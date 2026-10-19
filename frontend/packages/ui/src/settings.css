@@ -1,0 +1,106 @@
+/* Settings/interface composition primitives. A two-pane layout (nav sidebar +
+   scrolling content) with page headings, grouped rows and drill-in nav rows. */
+
+/* The app window surface is the native window glass (`.rumahl-window-surface`);
+   this only owns the two-pane layout. */
+.rumahl-settings {
+  display: grid;
+  grid-template-columns: 184px minmax(0, 1fr);
+  width: 100%;
+  min-height: 0;
+  overflow: hidden;
+  color: var(--rumahl-ui-color-text-primary);
+}
+
+/* Content ------------------------------------------------------------------
+   Transparent: in the OS the `.shell-window__content` background is overridden
+   to `transparent` by `new-design.css` (inside the presentation layer), so the
+   window glass shows through the content — matching the app. */
+.rumahl-settings__content {
+  min-width: 0;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 28px 30px 36px;
+}
+.rumahl-settings__page-heading {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  margin-bottom: 24px;
+}
+.rumahl-settings__page-heading h1 {
+  margin: 6px 0 0;
+  font-size: 26px;
+  font-weight: 680;
+  letter-spacing: -0.03em;
+  color: var(--rumahl-ui-color-text-primary);
+}
+.rumahl-settings__eyebrow { font-size: 11px; color: var(--rumahl-ui-color-text-muted); }
+.rumahl-settings__page-heading p {
+  margin: 8px 0 0;
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--rumahl-ui-color-text-muted);
+}
+.rumahl-settings__back { display: inline-flex; }
+.rumahl-settings__section-title {
+  margin: 26px 0 13px 2px;
+  font-size: 11px;
+  font-weight: 750;
+  letter-spacing: 0.015em;
+  color: var(--rumahl-ui-color-text-primary);
+}
+.rumahl-settings__section:first-child .rumahl-settings__section-title { margin-top: 0; }
+.rumahl-settings__footnote {
+  margin: 10px 0 0;
+  font-size: 11.5px;
+  color: var(--rumahl-ui-color-text-muted);
+}
+
+/* Rail wrapper + collapsed (icon-only) variant for flexibility. */
+.rumahl-settings__rail { display: flex; min-height: 0; }
+.rumahl-settings__rail > * { flex: 1; min-width: 0; }
+.rumahl-settings[data-collapsed="true"] { grid-template-columns: 64px minmax(0, 1fr); }
+.rumahl-settings[data-collapsed="true"] .rumahl-sidenav { align-items: center; padding-inline: 6px; }
+.rumahl-settings[data-collapsed="true"] .rumahl-sidenav__label,
+.rumahl-settings[data-collapsed="true"] .rumahl-sidenav__heading,
+.rumahl-settings[data-collapsed="true"] .rumahl-sidenav__identity,
+.rumahl-settings[data-collapsed="true"] .rumahl-sidenav__footer { display: none; }
+.rumahl-settings[data-collapsed="true"] .rumahl-sidenav__item { justify-content: center; padding: 10px; }
+
+/* Sidebar collapse/expand button (pinned to the rail edge). */
+.rumahl-settings { position: relative; }
+.rumahl-settings__toggle {
+  position: absolute;
+  top: 14px;
+  left: 171px;
+  z-index: 5;
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border: 1px solid var(--control-border);
+  border-radius: 50%;
+  background: var(--control-recess), var(--control-fill);
+  box-shadow: var(--control-button-shadow);
+  color: var(--rumahl-ui-color-text-primary);
+  cursor: pointer;
+  transition: left 180ms ease, background 150ms ease, border-color 150ms ease, scale 140ms ease;
+}
+.rumahl-settings__toggle svg { width: 14px; height: 14px; transition: transform 180ms ease; }
+.rumahl-settings[data-collapsed="true"] .rumahl-settings__toggle { left: 51px; }
+.rumahl-settings__toggle[aria-expanded="false"] svg { transform: rotate(180deg); }
+.rumahl-settings__toggle:hover { border-color: var(--control-border-hover); background: var(--control-recess), var(--control-hover); }
+.rumahl-settings__toggle:active { scale: 0.98; }
+.rumahl-settings__toggle:focus-visible { outline: 2px solid var(--rumahl-ui-color-accent); outline-offset: -2px; }
+@media (prefers-reduced-motion: reduce) {
+  .rumahl-settings__toggle { transition: none; }
+  .rumahl-settings__toggle svg { transition: none; }
+  .rumahl-settings__toggle:active { scale: none; }
+}
+
+/* Content-only compositions occupy both columns of the shared app frame. */
+.rumahl-settings > .rumahl-settings__content:only-child {
+  grid-column: 1 / -1;
+}

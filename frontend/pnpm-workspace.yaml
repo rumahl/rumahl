@@ -1,5 +1,7 @@
 packages:
   - "packages/*"
+allowBuilds:
+  esbuild: false
 minimumReleaseAgeExclude:
   - jsdom@30.1.1
 overrides:

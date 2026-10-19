@@ -25,6 +25,15 @@ export interface ThemeInput {
   /** Optional theme stylesheet (applied CSP-safely). */
   css?: string | undefined;
   material?: "solid" | undefined;
+  /** Base look: the native `rumahl` UI (default) or a stripped `clean` slate. */
+  base?: "rumahl" | "clean" | undefined;
+  /**
+   * Declared capabilities for code themes. The shell enforces them; using an
+   * undeclared capability is rejected by the safety engine.
+   */
+  capabilities?: readonly string[] | undefined;
+  /** Custom code (module source). Only trusted/signed themes are executed. */
+  code?: string | undefined;
 }
 
 /** Merges partial tokens/variants over the rumahl defaults into a full theme. */
@@ -40,6 +49,9 @@ export function defineTheme(input: ThemeInput): Theme {
     modes: input.modes ?? ["light"],
     ...(input.slots ? { slots: sanitizeSlots(input.slots) } : {}),
     ...(input.material ? { material: input.material } : {}),
+    ...(input.base ? { base: input.base } : {}),
+    ...(input.capabilities?.length ? { capabilities: input.capabilities.slice(0, 32) } : {}),
+    ...(input.code ? { code: input.code.slice(0, 500_000) } : {}),
     ...(input.css ? { css: input.css.slice(0, 200_000) } : {}),
   };
 }

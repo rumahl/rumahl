@@ -377,7 +377,7 @@ fn render_page(
         } else {
             let username_field = if username.is_empty() || invalid {
                 format!(
-                    r#"<label><span class="visually-hidden">{user}</span><input placeholder="{user}" class="rumahl-input" data-material="glass" name="username" value="{}" autocomplete="username" maxlength="128" required {}></label>"#,
+                    r#"<label><span class="visually-hidden">{user}</span><input placeholder="{user}" class="rumahl-input" name="username" value="{}" autocomplete="username" maxlength="128" required {}></label>"#,
                     escape(username),
                     if username.is_empty() { "autofocus" } else { "" }
                 )
@@ -388,7 +388,7 @@ fn render_page(
                 )
             };
             format!(
-                r#"{username_field}<div class="password-row"><label><span class="visually-hidden">{password}</span><input class="rumahl-input" data-material="glass" name="password" type="password" placeholder="{password}" autocomplete="current-password" maxlength="1024" required {}></label><button class="btn btn--primary" type="submit" aria-label="{signin}" title="{signin}"><svg aria-hidden="true" focusable="false" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="m9 6 6 6-6 6" /></svg></button></div><p class="login-status" role="status"></p>"#,
+                r#"{username_field}<div class="password-row"><label><span class="visually-hidden">{password}</span><input class="rumahl-input" name="password" type="password" placeholder="{password}" autocomplete="current-password" maxlength="1024" required {}></label><button class="btn btn--primary" type="submit" aria-label="{signin}" title="{signin}"><svg aria-hidden="true" focusable="false" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="m9 6 6 6-6 6" /></svg></button></div><p class="login-status" role="status"></p>"#,
                 if username.is_empty() { "" } else { "autofocus" }
             )
         };
@@ -419,8 +419,10 @@ fn render_page(
         )
     };
     let tokens = rumahl_ui_contracts::ResolvedTheme::stock().compile_css();
+    // Never point at the shell re-export shims: they only contain an `@import`
+    // a browser cannot resolve. The real stylesheets live in `@rumahl/ui`.
     let materials = include_str!("../../frontend/packages/shell/src/shell/materials.css");
-    let controls = include_str!("../../frontend/packages/shell/src/components/controls.css");
+    let controls = include_str!("../../frontend/packages/ui/src/components/controls.css");
     let classic = include_str!("../../frontend/packages/ui/src/classic.css");
     let css = include_str!("login.css");
     let html = format!(

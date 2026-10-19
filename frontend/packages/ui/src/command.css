@@ -1,0 +1,171 @@
+/* Command palette — matches the rumahl OS system search surface. */
+.rumahl-command-palette {
+  --cp-ink: var(--rumahl-ui-color-text-primary);
+  --cp-muted: var(--rumahl-ui-color-text-muted);
+  --cp-base: var(--rumahl-ui-color-panel-background);
+  --cp-line: color-mix(in srgb, var(--cp-ink) 12%, transparent);
+  display: flex;
+  flex-direction: column;
+  box-sizing: border-box;
+  width: 100%;
+  max-height: min(60vh, 440px);
+  padding: var(--command-palette-padding);
+  border: var(--command-palette-border);
+  border-radius: var(--command-palette-radius);
+  background: var(--command-palette-background);
+  color: var(--cp-ink);
+  box-shadow: var(--command-palette-shadow);
+  backdrop-filter: var(--command-palette-backdrop);
+  -webkit-backdrop-filter: var(--command-palette-backdrop);
+}
+.shell[data-material="solid"] .rumahl-command-palette {
+  background: var(--cp-base);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+.rumahl-command-palette__input {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 44px;
+  padding: 4px 10px 8px;
+  border-bottom: 1px solid var(--cp-line);
+}
+.rumahl-command-palette__input > svg {
+  width: 17px;
+  height: 17px;
+  flex: none;
+  color: var(--cp-muted);
+}
+.rumahl-command-palette__input:focus-within {
+  border-bottom-color: color-mix(in srgb, var(--cp-ink) 30%, transparent);
+}
+.rumahl-command-palette__input input {
+  flex: 1;
+  min-width: 0;
+  padding: 6px 0;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: 14px;
+}
+.rumahl-command-palette__input input::placeholder {
+  color: var(--cp-muted);
+}
+.rumahl-command-palette__hint {
+  flex: none;
+  padding: 3px 5px;
+  border: 1px solid var(--cp-line);
+  border-radius: 4px;
+  color: var(--cp-muted);
+  font-size: 10px;
+  line-height: 1.2;
+}
+.rumahl-command-palette__body {
+  display: flex;
+  min-height: 0;
+  overflow: hidden;
+}
+.rumahl-command-palette__results {
+  flex: 1 1 55%;
+  min-height: 0;
+  overflow-y: auto;
+  padding-top: 4px;
+}
+.rumahl-command-palette__preview {
+  flex: 0 0 42%;
+  min-width: 0;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 9px;
+  padding: 20px 14px;
+  border-left: 1px solid var(--cp-line);
+  text-align: center;
+}
+.rumahl-command-palette__item {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 34px;
+  margin: 0;
+  padding: 7px 9px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+  font: inherit;
+  font-size: 13px;
+}
+.rumahl-command-palette__item:hover,
+.rumahl-command-palette__item[data-selected="true"] {
+  background: color-mix(in srgb, var(--cp-ink) 9%, transparent);
+}
+.rumahl-command-palette__item[data-selected="true"] {
+  box-shadow: inset 0 0 0 1px var(--cp-line);
+}
+.rumahl-command-palette__icon {
+  display: grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  flex: none;
+  color: var(--cp-muted);
+}
+.rumahl-command-palette__input svg,
+.rumahl-command-palette__icon svg {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.7;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.rumahl-command-palette__text {
+  flex: 1;
+  min-width: 0;
+}
+.rumahl-command-palette__text strong {
+  font-size: 12px;
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.rumahl-command-palette__shortcut {
+  flex: none;
+  color: var(--cp-muted);
+  font-size: 11px;
+}
+.rumahl-command-palette__section {
+  margin: 8px 10px 4px;
+  color: var(--cp-muted);
+  font-size: 11px;
+  font-weight: 500;
+}
+.rumahl-command-palette__separator {
+  height: 1px;
+  margin: 6px 9px;
+  background: var(--cp-line);
+}
+.rumahl-command-palette__empty {
+  margin: 0;
+  padding: 22px 12px;
+  color: var(--cp-muted);
+  text-align: center;
+  font-size: 12px;
+}
+@media (prefers-reduced-transparency: reduce) {
+  .rumahl-command-palette {
+    background: var(--cp-base);
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+  }
+}

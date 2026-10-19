@@ -1,0 +1,35 @@
+/*
+ * RumahlMark — brand logomark.
+ */
+
+/*
+ * `--glass`: the mark is made of the *glass control material* — the exact
+ * `--control-*` recipe a secondary button / glass input uses (recess, fill,
+ * backdrop blur), clipped to the glyph shape. It therefore matches the glass
+ * controls in every material (Glass / Solid / Floating).
+ */
+.rumahl-mark--glass {
+  display: inline-block;
+  flex: none;
+  aspect-ratio: 251 / 472;
+  background: var(--control-recess), var(--control-fill);
+  backdrop-filter: var(--control-filter);
+  -webkit-backdrop-filter: var(--control-filter);
+  /* The button's rim, as an outer edge around the glyph. */
+  filter: drop-shadow(0 1px 0 color-mix(in srgb, #ffffff 30%, transparent))
+    drop-shadow(0 -1px 0 color-mix(in srgb, #000000 26%, transparent));
+  -webkit-mask: url("data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%20251%20472'%3E%3Cpath%20fill='%23fff'%20d='M%209.47163%20471.21342%20Q%200%20471.21342%200%20461.74179%20V%20203.63996%20C%200%2080.50881%2080.50883%200%20201.27207%200%20H%20241.52649%20Q%20250.99811%200%20250.99811%209.47163%20V%2094.71626%20Q%20250.99811%20104.18789%20241.52649%20104.18789%20H%20210.74370%20C%20144.44231%20104.18789%20101.81999%20144.44230%20101.81999%20210.74369%20V%20461.74179%20Q%20101.81999%20471.21342%2092.34836%20471.21342%20Z'/%3E%3C/svg%3E")
+    center / contain no-repeat;
+  mask: url("data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%20251%20472'%3E%3Cpath%20fill='%23fff'%20d='M%209.47163%20471.21342%20Q%200%20471.21342%200%20461.74179%20V%20203.63996%20C%200%2080.50881%2080.50883%200%20201.27207%200%20H%20241.52649%20Q%20250.99811%200%20250.99811%209.47163%20V%2094.71626%20Q%20250.99811%20104.18789%20241.52649%20104.18789%20H%20210.74370%20C%20144.44231%20104.18789%20101.81999%20144.44230%20101.81999%20210.74369%20V%20461.74179%20Q%20101.81999%20471.21342%2092.34836%20471.21342%20Z'/%3E%3C/svg%3E")
+    center / contain no-repeat;
+}
+
+/*
+ * `--engraved`: no fill colour — only the cut edge, so the surface shows
+ * through the glyph. A faint fill keeps the shape so the rim reads.
+ */
+.rumahl-mark--engraved {
+  fill: color-mix(in srgb, currentColor 9%, transparent);
+  filter: drop-shadow(0 1px 0 color-mix(in srgb, #ffffff 34%, transparent))
+    drop-shadow(0 -1px 0 color-mix(in srgb, #000000 28%, transparent));
+}
