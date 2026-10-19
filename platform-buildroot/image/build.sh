@@ -138,6 +138,8 @@ export CC_x86_64_unknown_linux_gnu="$linker"
 cargo build --locked --release --target "$target" -p rumahl-platform-service
 cargo build --locked --release --target "$target" \
   -p rumahl-platform-buildroot --bin rumahl-runtime-supervisor
+cargo build --locked --release --target "$target" \
+  -p rumahl-platform-buildroot --bin rumahl-host-config
 
 # 5. Build the frontend bundle the image serves.
 echo "==> Building frontend"
@@ -149,6 +151,7 @@ rm -rf "$artifacts"
 python3 "$repo/platform-buildroot/deployment/stage.py" \
   --binary "$repo/target/buildroot/$target/release/rumahl-platform-service" \
   --supervisor-binary "$repo/target/buildroot/$target/release/rumahl-runtime-supervisor" \
+  --host-config-binary "$repo/target/buildroot/$target/release/rumahl-host-config" \
   --output "$artifacts"
 
 # 7. Build the image. A previously built local package must be cleaned so it

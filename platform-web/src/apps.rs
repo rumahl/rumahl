@@ -224,11 +224,21 @@ struct Lease {
     installation: InstallationId,
     expires: Instant,
 }
+/// Resolves the dynamic port a hosted app uses for IP-based access.
+pub trait AppPortProvider: Send + Sync + 'static {
+    fn ensure_port(&self, installation: &str) -> Option<u16>;
+    fn port_for(&self, installation: &str) -> Option<u16>;
+    fn installation_for_port(&self, port: u16) -> Option<String>;
+    fn all_ports(&self) -> Vec<u16>;
+}
+
 pub struct AppAccess {
     provider: Arc<dyn AppProvider>,
     shell_origins: Vec<String>,
+    device_hosts: Vec<String>,
     suffixes: Vec<String>,
     port: Option<u16>,
+    ports: Option<Arc<dyn AppPortProvider>>,
     leases: Mutex<HashMap<String, Lease>>,
 }
 pub struct AppLaunch {
@@ -242,6 +252,7 @@ impl AppAccess {
         primary_origin: &Url,
         shell_origins: &[Url],
         suffixes: &[String],
+        ports: Option<Arc<dyn AppPortProvider>>,
     ) -> Result<Self, AppAccessError> {
         if primary_origin.scheme() != "https"
             || suffixes.is_empty()
@@ -277,11 +288,18 @@ impl AppAccess {
                 unique_suffixes.push(suffix.clone());
             }
         }
+        let device_hosts: Vec<String> = shell_origins
+            .iter()
+            .filter(|origin| matches!(origin.host(), Some(url::Host::Ipv4(_) | url::Host::Ipv6(_))))
+            .filter_map(|origin| origin.host_str().map(str::to_owned))
+            .collect();
         Ok(Self {
             provider,
             shell_origins: origins,
+            device_hosts,
             suffixes: unique_suffixes,
             port: primary_origin.port(),
+            ports,
             leases: Mutex::new(HashMap::new()),
         })
     }
@@ -291,21 +309,74 @@ impl AppAccess {
             self.port.map_or(String::new(), |port| format!(":{port}"))
         )
     }
+    #[cfg(test)]
     fn authority(&self, installation: InstallationId) -> String {
         self.authority_for(installation, &self.suffixes[0])
     }
     pub fn accepts_host(&self, authority: &str) -> bool {
-        let Some((id, _)) = authority.split_once('.') else {
+        if let Some((id, _)) = authority.split_once('.')
+            && InstallationId::parse(id).is_ok_and(|installation| {
+                self.suffixes
+                    .iter()
+                    .any(|suffix| self.authority_for(installation, suffix) == authority)
+            })
+        {
+            return true;
+        }
+        let Some((host, port)) = split_ip_port(authority) else {
             return false;
         };
-        InstallationId::parse(id).is_ok_and(|installation| {
-            self.suffixes
-                .iter()
-                .any(|suffix| self.authority_for(installation, suffix) == authority)
-        })
+        self.device_hosts.iter().any(|candidate| candidate == host)
+            && self
+                .ports
+                .as_ref()
+                .is_some_and(|ports| ports.installation_for_port(port).is_some())
+    }
+    fn host_matches_installation(&self, authority: &str, installation: InstallationId) -> bool {
+        if self
+            .suffixes
+            .iter()
+            .any(|suffix| self.authority_for(installation, suffix) == authority)
+        {
+            return true;
+        }
+        let Some((host, port)) = split_ip_port(authority) else {
+            return false;
+        };
+        self.device_hosts.iter().any(|candidate| candidate == host)
+            && self
+                .ports
+                .as_ref()
+                .and_then(|ports| ports.port_for(&installation.to_string()))
+                == Some(port)
+    }
+    fn launch_authority(
+        &self,
+        installation: InstallationId,
+        shell_host: &str,
+    ) -> Result<String, AppAccessError> {
+        if let Some((host, _)) = split_ip_port(shell_host)
+            && self.device_hosts.iter().any(|candidate| candidate == host)
+        {
+            let port = self
+                .ports
+                .as_ref()
+                .and_then(|ports| ports.ensure_port(&installation.to_string()))
+                .ok_or(AppAccessError::Unavailable)?;
+            return Ok(format!("{host}:{port}"));
+        }
+        let host = shell_host
+            .rsplit_once(':')
+            .map_or(shell_host, |(host, _)| host);
+        let suffix = format!("apps.{host}");
+        if !self.suffixes.iter().any(|candidate| candidate == &suffix) {
+            return Err(AppAccessError::Unavailable);
+        }
+        Ok(self.authority_for(installation, &suffix))
     }
     pub fn frame_sources(&self) -> Vec<String> {
-        self.suffixes
+        let mut sources: Vec<String> = self
+            .suffixes
             .iter()
             .map(|suffix| {
                 format!(
@@ -313,7 +384,16 @@ impl AppAccess {
                     self.port.map_or(String::new(), |port| format!(":{port}"))
                 )
             })
-            .collect()
+            .collect();
+        if let Some(ports) = &self.ports {
+            let allocated = ports.all_ports();
+            for host in &self.device_hosts {
+                for port in &allocated {
+                    sources.push(format!("https://{host}:{port}"));
+                }
+            }
+        }
+        sources
     }
     pub fn catalog(&self, identity: ShellIdentity) -> Result<Vec<CatalogApp>, AppAccessError> {
         let apps = self.provider.catalog(identity)?;
@@ -393,6 +473,7 @@ impl AppAccess {
         id: &str,
         installation: &str,
         previous: Option<&str>,
+        shell_host: &str,
     ) -> Result<AppLaunch, AppAccessError> {
         AppId::parse(id).map_err(|_| AppAccessError::Denied)?;
         let app = self
@@ -440,10 +521,8 @@ impl AppAccess {
                 expires: now + Duration::from_secs(90),
             },
         );
-        let frame_url = format!(
-            "https://{}/launch/{token}/{entry}",
-            self.authority(app.installation_id)
-        );
+        let authority = self.launch_authority(app.installation_id, shell_host)?;
+        let frame_url = format!("https://{authority}/launch/{token}/{entry}");
         Ok(AppLaunch {
             app,
             lease: token,
@@ -467,11 +546,7 @@ impl AppAccess {
             .filter(|lease| lease.expires > Instant::now())
             .cloned()
             .ok_or(AppAccessError::Denied)?;
-        if !self
-            .suffixes
-            .iter()
-            .any(|suffix| self.authority_for(lease.installation, suffix) == host)
-        {
+        if !self.host_matches_installation(host, lease.installation) {
             return Err(AppAccessError::Denied);
         }
         self.provider
@@ -523,6 +598,12 @@ pub fn app_error(error: AppAccessError) -> Response {
         .headers_mut()
         .insert("cache-control", HeaderValue::from_static("no-store"));
     response
+}
+
+fn split_ip_port(authority: &str) -> Option<(&str, u16)> {
+    let (host, port) = authority.rsplit_once(':')?;
+    let port = port.parse().ok()?;
+    Some((host, port))
 }
 
 #[cfg(test)]
@@ -668,6 +749,7 @@ mod tests {
             &Url::parse("https://localhost:8443").unwrap(),
             &[Url::parse("https://localhost:8443").unwrap()],
             &["apps.localhost".to_owned()],
+            None,
         )
         .unwrap();
         let imported = access
@@ -698,6 +780,7 @@ mod tests {
             &Url::parse("https://localhost:8443").unwrap(),
             &[Url::parse("https://localhost:8443").unwrap()],
             &["apps.localhost".to_owned()],
+            None,
         )
         .unwrap();
         assert_eq!(
@@ -747,6 +830,7 @@ mod tests {
             &Url::parse("https://localhost:8443").unwrap(),
             &[Url::parse("https://localhost:8443").unwrap()],
             &["apps.localhost".to_owned()],
+            None,
         )
         .unwrap();
         assert_eq!(
@@ -788,10 +872,17 @@ mod tests {
             &Url::parse("https://localhost:8443").unwrap(),
             &[Url::parse("https://localhost:8443").unwrap()],
             &["apps.localhost".to_owned()],
+            None,
         )
         .unwrap();
         let launch = access
-            .launch(owner, "com.rumahl.test", &installation.to_string(), None)
+            .launch(
+                owner,
+                "com.rumahl.test",
+                &installation.to_string(),
+                None,
+                "localhost:8443",
+            )
             .unwrap();
         let url = Url::parse(&launch.frame_url).unwrap();
         let host = access.authority(installation);
@@ -820,7 +911,8 @@ mod tests {
                     other,
                     "com.rumahl.test",
                     &installation.to_string(),
-                    Some(&launch.lease)
+                    Some(&launch.lease),
+                    "localhost:8443",
                 )
                 .is_err()
         );
@@ -830,7 +922,8 @@ mod tests {
                     owner,
                     "com.rumahl.test",
                     &InstallationId::new().to_string(),
-                    Some(&launch.lease)
+                    Some(&launch.lease),
+                    "localhost:8443",
                 )
                 .is_err()
         );
@@ -840,7 +933,8 @@ mod tests {
                     owner,
                     "com.rumahl.test",
                     &installation.to_string(),
-                    Some(&launch.lease)
+                    Some(&launch.lease),
+                    "localhost:8443",
                 )
                 .unwrap()
                 .frame_url,
@@ -873,7 +967,8 @@ mod tests {
                     owner,
                     "com.rumahl.test",
                     &installation.to_string(),
-                    Some(&launch.lease)
+                    Some(&launch.lease),
+                    "localhost:8443",
                 )
                 .is_err()
         );
@@ -894,6 +989,7 @@ mod tests {
             &Url::parse("https://localhost:8443").unwrap(),
             &[Url::parse("https://localhost:8443").unwrap()],
             &["apps.localhost".to_owned()],
+            None,
         )
         .unwrap();
 

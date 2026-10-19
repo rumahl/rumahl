@@ -427,8 +427,13 @@ async fn app_launch(
     let Some(apps) = state.apps.clone() else {
         return error(StatusCode::SERVICE_UNAVAILABLE);
     };
+    let shell_host = headers
+        .get("host")
+        .and_then(|value| value.to_str().ok())
+        .unwrap_or_default()
+        .to_owned();
     match tokio::task::spawn_blocking(move || {
-        apps.launch(identity, &id, &installation, lease.as_deref())
+        apps.launch(identity, &id, &installation, lease.as_deref(), &shell_host)
     })
     .await
     {

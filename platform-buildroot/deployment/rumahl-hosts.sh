@@ -52,7 +52,15 @@ fi
 # Current global unicast addresses (IPv4 and IPv6).
 ips="$(ip -o addr show scope global 2>/dev/null | awk '{print $4}' | cut -d/ -f1 || true)"
 
-mkdir -p /run/nginx /run/rumahl
+mkdir -p /run/nginx /run/nginx/rumahl-apps /run/rumahl
+: > /run/rumahl/hosts
+for host in $hosts; do
+    printf '%s\n' "$host" >> /run/rumahl/hosts
+done
+: > /run/rumahl/ips
+for ip in $ips; do
+    printf '%s\n' "$ip" >> /run/rumahl/ips
+done
 
 {
     echo 'map $host $rumahl_shell_host_ok {'

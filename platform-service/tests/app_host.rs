@@ -176,6 +176,7 @@ async fn catalog_and_launch_require_session_origin_and_current_installation() {
             &config.public_origin,
             &config.allowed_origins,
             &["apps.rumahl.test".to_owned()],
+            None,
         )
         .unwrap(),
     );
@@ -259,6 +260,7 @@ async fn catalog_and_launch_require_session_origin_and_current_installation() {
             )
             .header("content-type", "application/json")
             .header("origin", "https://rumahl.test")
+            .header("host", "rumahl.test")
             .body(Body::from(body.clone()))
             .unwrap()
     };
