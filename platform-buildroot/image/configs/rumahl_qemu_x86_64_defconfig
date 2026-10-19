@@ -45,6 +45,9 @@ BR2_PACKAGE_E2FSPROGS=y
 # The runtime supervisor hosts app containers through the Docker engine and
 # reads TPM-sealed platform keys through the tpm2-tools CLI.
 BR2_PACKAGE_DOCKER_ENGINE=y
+# docker-engine ships only dockerd and docker-proxy; the supervisor and the
+# app-network unit invoke the separate Docker CLI.
+BR2_PACKAGE_DOCKER_CLI=y
 BR2_PACKAGE_TPM2_TOOLS=y
 BR2_PACKAGE_RUMAHL_SHELL=y
 BR2_ROOTFS_OVERLAY="$(BR2_EXTERNAL_RUMAHL_PATH)/board/qemu/overlay"
