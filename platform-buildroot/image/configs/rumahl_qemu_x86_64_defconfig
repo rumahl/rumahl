@@ -42,6 +42,7 @@ BR2_PACKAGE_NGINX_HTTP_REWRITE_MODULE=y
 BR2_PACKAGE_NGINX_HTTP_LIMIT_REQ_MODULE=y
 BR2_PACKAGE_CA_CERTIFICATES=y
 BR2_PACKAGE_E2FSPROGS=y
+BR2_PACKAGE_IPROUTE2=y
 # The runtime supervisor hosts app containers through the Docker engine and
 # reads TPM-sealed platform keys through the tpm2-tools CLI.
 BR2_PACKAGE_DOCKER_ENGINE=y

@@ -3,6 +3,8 @@ import type { Messages } from "./en";
 export const german = {
   "device.title": "Dieses Gerät",
   "device.help": "Browser, Kiosk und Offline-Verfügbarkeit dieser Installation.",
+  "device.addresses": "Geräteadressen",
+  "device.addressesHelp": "Öffne rumahl OS von einem anderen Gerät im Netzwerk. Jede Adresse ist eine eigene Anmeldung.",
   "device.browser": "Browser",
   "device.language": "Browsersprache",
   "device.screen": "Fenstergröße",

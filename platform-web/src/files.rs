@@ -2,7 +2,7 @@
 use crate::{
     GatewayState,
     preferences::{error, user},
-    server::{secure_headers, valid_origin},
+    server::secure_headers,
 };
 use axum::{
     Router,
@@ -77,7 +77,7 @@ async fn create(
     h: HeaderMap,
     b: Bytes,
 ) -> Response {
-    if !valid_origin(&h, &s.config.public_origin) {
+    if !s.config.accepts_origin(&h) {
         return error(StatusCode::FORBIDDEN);
     }
     let u = match user(&s, &h).await {
@@ -114,7 +114,7 @@ async fn relocate(
     h: HeaderMap,
     b: Bytes,
 ) -> Response {
-    if !valid_origin(&h, &s.config.public_origin) {
+    if !s.config.accepts_origin(&h) {
         return error(StatusCode::FORBIDDEN);
     }
     let u = match user(&s, &h).await {
@@ -138,7 +138,7 @@ async fn remove(
     Query(q): Query<HashMap<String, String>>,
     h: HeaderMap,
 ) -> Response {
-    if !valid_origin(&h, &s.config.public_origin) {
+    if !s.config.accepts_origin(&h) {
         return error(StatusCode::FORBIDDEN);
     }
     let u = match user(&s, &h).await {

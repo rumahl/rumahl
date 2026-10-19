@@ -23,7 +23,7 @@ use rumahl_oidc_provider::{
 use serde_json::{Value, json};
 use zeroize::Zeroizing;
 
-use crate::server::{GatewayState, authenticate, credential, secure_headers, valid_origin};
+use crate::server::{GatewayState, authenticate, credential, secure_headers};
 
 const MAX_FORM_BYTES: usize = 8192;
 
@@ -270,7 +270,7 @@ async fn approve(
     let Some(oidc) = state.oidc.as_ref() else {
         return unavailable();
     };
-    if !valid_origin(&headers, &state.config.public_origin) {
+    if !state.config.accepts_origin(&headers) {
         return oauth_error(StatusCode::FORBIDDEN, "invalid_request");
     }
     let Some(fields) = parse_form(&headers, &body) else {
