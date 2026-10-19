@@ -33,3 +33,9 @@ fi
 # The addresses are only known at boot, so /etc/issue points at a volatile file.
 rm -f "$target/etc/issue"
 ln -s /run/rumahl/issue "$target/etc/issue"
+# The host allowlist, TLS IP SANs and address display need the DHCP lease.
+if [ -e "$target/usr/lib/systemd/system/systemd-networkd-wait-online.service" ]; then
+    mkdir -p "$target/etc/systemd/system/network-online.target.wants"
+    ln -sf /usr/lib/systemd/system/systemd-networkd-wait-online.service \
+        "$target/etc/systemd/system/network-online.target.wants/systemd-networkd-wait-online.service"
+fi
