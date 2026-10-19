@@ -50,6 +50,15 @@ with open(sys.argv[1], encoding="utf-8") as stream:
 PY
 }
 
+# Fail before the long toolchain build if a required host tool is missing or if
+# the host install is the uutils coreutils that Buildroot rejects.
+for tool in cargo rustup node pnpm python3 curl make tar sha256sum realpath; do
+  command -v "$tool" >/dev/null 2>&1 || die "required tool not found in PATH: $tool"
+done
+if install --version 2>/dev/null | grep -q uutils; then
+  die "the host 'install' is uutils coreutils; Buildroot requires GNU install (see host-setup.sh)"
+fi
+
 version="$(json_field version)"
 url="$(json_field url)"
 sha256="$(json_field sha256)"
