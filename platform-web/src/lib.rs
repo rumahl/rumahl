@@ -38,10 +38,10 @@ pub use browser_auth::{BrowserSessions, LoginAccount, SESSION_SECONDS};
 
 mod apps;
 pub use apps::{
-    AppAccess, AppAccessError, AppAsset, AppData, AppDataEntry, AppProvider, AppSettingInfo,
-    AppSettingOptionInfo, AppSettingsInfo, BrowserDelivery, CapabilityOutcome, CapabilityResource,
-    CapabilityResult, CatalogApp, ImportedApp, PackageUploadFile, RuntimeAction, RuntimeState,
-    app_error,
+    AppAccess, AppAccessError, AppAsset, AppData, AppDataEntry, AppPortProvider, AppProvider,
+    AppSettingInfo, AppSettingOptionInfo, AppSettingsInfo, BrowserDelivery, CapabilityOutcome,
+    CapabilityResource, CapabilityResult, CatalogApp, ImportedApp, PackageUploadFile,
+    RuntimeAction, RuntimeState, app_error,
 };
 
 mod app_channel;

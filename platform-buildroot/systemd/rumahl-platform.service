@@ -1,7 +1,7 @@
 [Unit]
 Description=rumahl local platform and browser gateway
 Wants=rumahl-shell.service
-After=local-fs.target rumahl-hosts.service rumahl-shell.service
+After=local-fs.target rumahl-hosts.service rumahl-host-config.service rumahl-shell.service
 RequiresMountsFor=/var/lib/rumahl
 StartLimitIntervalSec=60
 StartLimitBurst=10

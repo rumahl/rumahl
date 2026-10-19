@@ -277,12 +277,30 @@ async fn run() -> Result<(), ServiceError> {
         Some(adapters) => apps_provider.with_runtime_adapters(adapters),
         None => apps_provider,
     };
+    let app_ports: Option<Arc<dyn rumahl_platform_web::AppPortProvider>> = match (
+        env::var("RUMAHL_HOST_CONFIG_SOCKET"),
+        env::var("RUMAHL_APP_PORTS_FILE"),
+    ) {
+        (Ok(socket), Ok(ports_file)) => {
+            let socket = PathBuf::from(socket);
+            let ports_file = PathBuf::from(ports_file);
+            if socket.is_absolute() && ports_file.is_absolute() {
+                Some(Arc::new(
+                    rumahl_platform_service::app_ports::BrokerAppPorts::new(socket, ports_file),
+                ))
+            } else {
+                None
+            }
+        }
+        _ => None,
+    };
     let apps = Arc::new(
         rumahl_platform_web::AppAccess::new(
             Arc::new(apps_provider),
             &config.public_origin,
             &config.allowed_origins,
             &app_suffixes,
+            app_ports,
         )
         .map_err(|_| std::io::Error::other("invalid app host configuration"))?,
     );
