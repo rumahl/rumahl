@@ -29,10 +29,6 @@ if [ -e "$target/usr/lib/systemd/system/docker.service" ]; then
         ln -sf /usr/lib/systemd/system/docker.socket "$target/etc/systemd/system/sockets.target.wants/docker.socket"
     fi
 fi
-# The login prompt shows the configured hosts and current device addresses.
-# The addresses are only known at boot, so /etc/issue points at a volatile file.
-rm -f "$target/etc/issue"
-ln -s /run/rumahl/issue "$target/etc/issue"
 # The host allowlist, TLS IP SANs and address display need the DHCP lease.
 if [ -e "$target/usr/lib/systemd/system/systemd-networkd-wait-online.service" ]; then
     mkdir -p "$target/etc/systemd/system/network-online.target.wants"

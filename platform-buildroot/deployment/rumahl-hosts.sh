@@ -90,3 +90,9 @@ done
     done
     echo
 } > /run/rumahl/issue
+
+# Also print the addresses on the serial console; /etc/issue is owned by
+# Buildroot and cannot be replaced with a symlink into /run.
+if [ -w /dev/console ]; then
+    cat /run/rumahl/issue > /dev/console 2>/dev/null || true
+fi
