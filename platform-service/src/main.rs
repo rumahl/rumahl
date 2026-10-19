@@ -48,6 +48,22 @@ fn private_directory(path: &std::path::Path) -> Result<(), ServiceError> {
     Ok(())
 }
 
+/// Device addresses published by rumahl-hosts.service. The platform sandbox
+/// blocks netlink, so interface enumeration is only a fallback for hosts that
+/// do not run that service.
+fn configured_device_ips() -> Vec<std::net::IpAddr> {
+    let path = env::var("RUMAHL_DEVICE_IPS_FILE").unwrap_or_else(|_| "/run/rumahl/ips".to_owned());
+    match std::fs::read_to_string(path) {
+        Ok(value) => value
+            .lines()
+            .map(str::trim)
+            .filter(|line| !line.is_empty())
+            .filter_map(|line| line.parse().ok())
+            .collect(),
+        Err(_) => local_unicast_addresses(),
+    }
+}
+
 /// Current non-loopback unicast IPv4/IPv6 addresses of this device.
 fn local_unicast_addresses() -> Vec<std::net::IpAddr> {
     use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
@@ -232,7 +248,7 @@ async fn run() -> Result<(), ServiceError> {
     if host_names.is_empty() {
         host_names.push(primary_host.clone());
     }
-    let device_ips = local_unicast_addresses();
+    let device_ips = configured_device_ips();
     let mut allowed_origins: Vec<String> = host_names
         .iter()
         .map(|host| format!("https://{host}{port_suffix}"))
