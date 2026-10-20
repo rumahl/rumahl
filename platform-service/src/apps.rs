@@ -524,8 +524,12 @@ impl AppProvider for PersistentApps {
                 .unwrap_or(0)
         ));
         let result = write_staging(&staging, &files).and_then(|()| {
-            crate::install::install_package_dir(state_dir, &staging)
-                .map_err(|_| AppAccessError::Unavailable)
+            crate::install::install_package_dir(state_dir, &staging).map_err(|error| {
+                // Keep the concrete failure available for local diagnosis; the
+                // API still fails closed with an empty service-unavailable body.
+                let _ = std::fs::write(state_dir.join("last-import-error"), format!("{error:?}"));
+                AppAccessError::Unavailable
+            })
         });
         let _ = std::fs::remove_dir_all(&staging);
         let info = result?;
