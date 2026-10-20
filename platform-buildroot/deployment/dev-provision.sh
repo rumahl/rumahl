@@ -93,6 +93,10 @@ chmod 600 "$ca_dir/ca-key.pem"
 
 python3 "$create_data" --seed "$seed" --output "$data"
 
+# The QEMU image ships the first-boot unit; a pre-provisioned seed must skip it.
+touch "$state/.provisioned"
+chmod 600 "$state/.provisioned"
+
 cat > "$seed/credentials.txt" <<CRED
 alice  $alice_password
 bob    $bob_password

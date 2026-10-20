@@ -78,6 +78,47 @@ groups. nginx's `www-data` user belongs only to `rumahl-web`, while only the
 platform and renderer share `rumahl-ssr`. The platform has no Docker membership.
 TLS is configured by the HTTPS edge; the renderer cannot access account SQLite.
 
+## Real x86-64 hardware (UEFI)
+
+`rumahl_x86_64_uefi_defconfig` builds a GPT disk image with an EFI system
+partition, a read-only `rumahl-root` ext4 partition and an empty
+`rumahl-data` partition. GRUB loads the kernel from the ESP; the data partition
+is mounted at `/var` and provides `/home` and `/apps` bind mounts.
+
+```sh
+platform-buildroot/image/build.sh \
+  --defconfig rumahl_x86_64_uefi_defconfig \
+  --output <repo>/buildroot/uefi-output \
+  --artifacts <repo>/buildroot/uefi-artifacts \
+  --trust-store <package-trust-store.json> \
+  --first-boot-env <first-boot.env>   # omit on a real device
+```
+
+Flash the whole disk image (this **erases** the target device):
+
+```sh
+sudo dd if=<repo>/buildroot/uefi-output/images/rumahl-disk.img \
+  of=/dev/sdX bs=4M conv=fsync status=progress
+```
+
+For a QEMU/OVMF check before using hardware:
+
+```sh
+platform-buildroot/image/boot-uefi.sh <repo>/buildroot/uefi-output
+```
+
+On a real device the first boot runs an interactive console setup on
+`/dev/console` (HDMI or serial) and asks for the admin account, display name,
+hostname and password. It creates the device CA, an initial TLS certificate and
+the first local account. The host-config broker then adds the current IP SANs.
+If `first-boot.env` was baked in, the setup runs unattended.
+
+The data partition is a fixed 8 GiB image. Grow it after flashing when the
+device has more space (`parted`/`growpart` plus `resize2fs`).
+
+Still open for this target: TPM key sealing, mDNS for `rumahl.local`, Wi-Fi
+setup, installer media, A/B updates and rollback.
+
 ## Provision the persistent disk
 
 Create a private seed directory representing `/var`:

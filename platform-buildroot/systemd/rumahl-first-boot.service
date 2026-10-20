@@ -1,0 +1,14 @@
+[Unit]
+Description=rumahl OS first-boot setup
+After=local-fs.target
+Before=rumahl-hosts.service rumahl-host-config.service rumahl-platform.service rumahl-shell.service nginx.service getty@tty1.service serial-getty@ttyS0.service
+ConditionPathExists=!/var/lib/rumahl/.provisioned
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/bin/sh -c 'exec /usr/libexec/rumahl-first-boot </dev/console >/dev/console 2>&1'
+TimeoutStartSec=0
+
+[Install]
+WantedBy=multi-user.target
