@@ -118,6 +118,11 @@ needs the running Docker engine, the `rumahl-app-network` unit and the
 `rumahl-runtime-supervisor` service; the platform service never talks to
 Docker directly.
 
+Dynamic app ports are allocated at runtime and persisted on the data disk.
+To reach an installed app from the host in the development VM, forward the port
+shown in its frame URL with `boot.sh --app-port N` (repeatable). Real hardware
+needs no forwarding because the app listens on the device itself.
+
 The data disk also carries the stable `/home` and `/apps` trees; the image binds
 them to those paths at boot. The system state stays under `/var/lib/rumahl` and
 is never mounted into the user- or app-visible path namespace. See
