@@ -9,7 +9,7 @@ set -eu
 state=/var/lib/rumahl
 marker="$state/.provisioned"
 log=/var/log/rumahl-first-boot.log
-console=/dev/console
+console="${RUMAHL_FIRST_BOOT_CONSOLE:-/dev/tty1}"
 
 [ -e "$marker" ] && exit 0
 
