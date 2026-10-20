@@ -27,6 +27,8 @@ CapabilityBoundingSet=
 PrivateTmp=yes
 PrivateDevices=yes
 ProtectSystem=strict
+# Installed apps get a private directory under the app data tree.
+ReadWritePaths=/apps
 ProtectHome=yes
 ProtectKernelTunables=yes
 ProtectKernelModules=yes
