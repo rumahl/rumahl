@@ -4,7 +4,7 @@ Requires=avahi-daemon.socket
 After=network.target
 
 [Service]
-Type=notify
+Type=simple
 ExecStart=/usr/sbin/avahi-daemon -s
 ExecReload=/usr/sbin/avahi-daemon -r
 Restart=on-failure
