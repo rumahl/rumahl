@@ -8,13 +8,16 @@ set -eu
 
 state=/var/lib/rumahl
 marker="$state/.provisioned"
-log="$state/first-boot.log"
+log=/var/log/rumahl-first-boot.log
 console=/dev/console
 
 [ -e "$marker" ] && exit 0
 
 mkdir -p "$state" /var/lib/rumahl-ca /var/lib/rumahl-tls /var/lib/rumahl-host /apps /home
-chmod 700 "$state" /var/lib/rumahl-ca /var/lib/rumahl-tls /var/lib/rumahl-host
+chmod 700 "$state" /var/lib/rumahl-tls /var/lib/rumahl-host
+chmod 755 /var/lib/rumahl-ca
+touch "$log"
+chmod 644 "$log"
 exec >>"$log" 2>&1
 echo "=== rumahl first boot $(date) ==="
 
