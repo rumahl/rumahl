@@ -25,7 +25,7 @@ BR2_LINUX_KERNEL_CONFIG_FRAGMENT_FILES="$(BR2_EXTERNAL_RUMAHL_PATH)/board/qemu/x
 BR2_LINUX_KERNEL_NEEDS_HOST_LIBELF=y
 BR2_TARGET_ROOTFS_EXT2=y
 BR2_TARGET_ROOTFS_EXT2_4=y
-BR2_TARGET_ROOTFS_EXT2_SIZE="512M"
+BR2_TARGET_ROOTFS_EXT2_SIZE="1024M"
 # BR2_TARGET_ROOTFS_TAR is not set
 # The SSR shell renders localized numbers, plurals and relative times with the
 # standard Intl API. Node must therefore be built with ICU (system-icu), which

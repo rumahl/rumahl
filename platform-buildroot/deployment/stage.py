@@ -9,6 +9,7 @@ parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument("--binary", type=Path, required=True)
 parser.add_argument("--supervisor-binary", type=Path)
 parser.add_argument("--host-config-binary", type=Path)
+parser.add_argument("--trust-store", type=Path)
 parser.add_argument("--output", type=Path, required=True)
 args = parser.parse_args()
 repo = Path(__file__).resolve().parents[2]
@@ -23,6 +24,8 @@ if args.supervisor_binary is not None and not args.supervisor_binary.is_file():
     parser.error("target runtime supervisor binary is missing")
 if args.host_config_binary is not None and not args.host_config_binary.is_file():
     parser.error("target host config binary is missing")
+if args.trust_store is not None and not args.trust_store.is_file():
+    parser.error("package trust store is missing")
 args.output.mkdir(parents=True, exist_ok=False)
 root = args.output
 
@@ -56,6 +59,9 @@ for name in ["rumahl-platform", "rumahl-shell", "rumahl-recovery", "rumahl-hosts
     wants.mkdir(parents=True, exist_ok=True)
     (wants / f"{name}.service").symlink_to(f"/usr/lib/systemd/system/{name}.service")
 copy(repo / "platform-buildroot/deployment/platform.env.example", "etc/rumahl/platform.env")
+if args.trust_store is not None:
+    copy(args.trust_store, "etc/rumahl/package-trust-store.json")
+    (root / "etc/rumahl/package-trust-store.json").chmod(0o644)
 copy(repo / "platform-buildroot/deployment/rumahl.sysusers", "usr/lib/sysusers.d/rumahl.conf")
 copy(repo / "platform-buildroot/nginx/rumahl.conf", "etc/nginx/rumahl.conf")
 copy(repo / "platform-buildroot/nginx/rumahl-proxy.inc", "etc/nginx/rumahl-proxy.inc")

@@ -33,6 +33,7 @@ Options:
   --download DIR    directory that caches the source archive
                     (default: the parent of --source)
   --jobs N          parallel build jobs (default: $RUMAHL_BUILDROOT_JOBS or nproc)
+  --trust-store FILE  bake a development package trust store into the image
   -h, --help        show this help
 EOF
 }
@@ -69,6 +70,7 @@ source="${RUMAHL_BUILDROOT_SOURCE:-$repo/buildroot/buildroot-$version}"
 output="${RUMAHL_BUILDROOT_OUTPUT:-$repo/buildroot/output}"
 artifacts="${RUMAHL_ARTIFACTS:-$repo/buildroot/artifacts}"
 jobs="${RUMAHL_BUILDROOT_JOBS:-$(nproc)}"
+trust_store=""
 
 while [ "$#" -gt 0 ]; do
   case "$1" in
@@ -77,6 +79,7 @@ while [ "$#" -gt 0 ]; do
     --artifacts) artifacts="$2"; shift 2 ;;
     --download) download="$2"; shift 2 ;;
     --jobs) jobs="$2"; shift 2 ;;
+    --trust-store) trust_store="$2"; shift 2 ;;
     -h|--help) usage; exit 0 ;;
     *) usage; die "unknown option: $1" ;;
   esac
@@ -148,11 +151,14 @@ echo "==> Building frontend"
 # 6. Stage target assets into a fresh directory. stage.py refuses to overwrite.
 echo "==> Staging target assets into $artifacts"
 rm -rf "$artifacts"
-python3 "$repo/platform-buildroot/deployment/stage.py" \
-  --binary "$repo/target/buildroot/$target/release/rumahl-platform-service" \
-  --supervisor-binary "$repo/target/buildroot/$target/release/rumahl-runtime-supervisor" \
-  --host-config-binary "$repo/target/buildroot/$target/release/rumahl-host-config" \
-  --output "$artifacts"
+stage_args=(--binary "$repo/target/buildroot/$target/release/rumahl-platform-service"
+  --supervisor-binary "$repo/target/buildroot/$target/release/rumahl-runtime-supervisor"
+  --host-config-binary "$repo/target/buildroot/$target/release/rumahl-host-config"
+  --output "$artifacts")
+if [ -n "$trust_store" ]; then
+  stage_args+=(--trust-store "$(realpath "$trust_store")")
+fi
+python3 "$repo/platform-buildroot/deployment/stage.py" "${stage_args[@]}"
 
 # 7. Build the image. A previously built local package must be cleaned so it
 #    picks up the freshly staged assets.
