@@ -69,6 +69,6 @@ pub use staged_docker_image_writer::{
     StagedDockerImageWriterError,
 };
 pub use tpm2_key_provider::{
-    Tpm2Authorization, Tpm2SealedKey, Tpm2SealedKeyError, Tpm2UnsealKeyProvider,
+    Tpm2Authorization, Tpm2Object, Tpm2SealedKey, Tpm2SealedKeyError, Tpm2UnsealKeyProvider,
     Tpm2UnsealKeyProviderError,
 };

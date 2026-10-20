@@ -28,6 +28,17 @@ if [ -e "$target/usr/lib/systemd/system/systemd-networkd-wait-online.service" ];
     mkdir -p "$target/etc/systemd/system/network-online.target.wants"
     ln -sf /usr/lib/systemd/system/systemd-networkd-wait-online.service "$target/etc/systemd/system/network-online.target.wants/systemd-networkd-wait-online.service"
 fi
+# mDNS and Wi-Fi management.
+for unit in avahi-daemon.service iwd.service; do
+    if [ -e "$target/usr/lib/systemd/system/$unit" ]; then
+        ln -sf "/usr/lib/systemd/system/$unit" "$target/etc/systemd/system/multi-user.target.wants/$unit"
+    fi
+done
+if [ -e "$target/usr/lib/systemd/system/avahi-daemon.socket" ]; then
+    mkdir -p "$target/etc/systemd/system/sockets.target.wants"
+    ln -sf /usr/lib/systemd/system/avahi-daemon.socket "$target/etc/systemd/system/sockets.target.wants/avahi-daemon.socket"
+fi
+
 # Headless installations need a serial login after first-boot setup.
 mkdir -p "$target/etc/systemd/system/getty.target.wants"
 ln -sf /usr/lib/systemd/system/serial-getty@.service "$target/etc/systemd/system/getty.target.wants/serial-getty@ttyS0.service"

@@ -122,7 +122,9 @@ fn optional_key_provider() -> Option<Arc<dyn rumahl_persistence_sqlite::FieldKey
         env::var("RUMAHL_SECRET_KEY_ID").ok()?,
     )
     .ok()?;
-    let object = PathBuf::from(env::var("RUMAHL_SECRET_KEY_OBJECT").ok()?);
+    let object =
+        rumahl_platform_buildroot::Tpm2Object::parse(&env::var("RUMAHL_SECRET_KEY_OBJECT").ok()?)
+            .ok()?;
     let authorization = match env::var("RUMAHL_SECRET_KEY_POLICY_SESSION") {
         Ok(value) if !value.is_empty() => {
             rumahl_platform_buildroot::Tpm2Authorization::PolicySession(PathBuf::from(value))

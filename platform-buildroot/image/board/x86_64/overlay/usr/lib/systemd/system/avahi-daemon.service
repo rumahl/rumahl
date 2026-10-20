@@ -1,0 +1,13 @@
+[Unit]
+Description=Avahi mDNS/DNS-SD Stack
+Requires=avahi-daemon.socket
+After=network.target
+
+[Service]
+Type=notify
+ExecStart=/usr/sbin/avahi-daemon -s
+ExecReload=/usr/sbin/avahi-daemon -r
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target

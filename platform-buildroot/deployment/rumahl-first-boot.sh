@@ -125,7 +125,43 @@ if [ -f /etc/rumahl/package-trust-store.json ]; then
 else
     echo "package trust store: missing; app installation stays disabled"
 fi
-echo "TPM sealing: not provisioned (secret store fails closed)"
+# TPM 2.0: seal a random 32-byte secret-store key and persist it at a handle.
+# The owner-hierarchy object survives reboots. PCR/measured-boot binding is a
+# later hardening step.
+secret_handle=0x81000001
+tpm_status="not provisioned; secret store stays disabled"
+if [ -e /dev/tpmrm0 ] || [ -e /dev/tpm0 ]; then
+    tpm_work="$(mktemp -d)"
+    if tpm2_createprimary -C o -c "$tpm_work/primary.ctx" >/dev/null 2>&1 \
+        && head -c 32 /dev/urandom > "$tpm_work/secret.bin" \
+        && tpm2_create -C "$tpm_work/primary.ctx" -u "$tpm_work/sealed.pub" \
+            -r "$tpm_work/sealed.priv" -i "$tpm_work/secret.bin" >/dev/null 2>&1 \
+        && tpm2_load -C "$tpm_work/primary.ctx" -u "$tpm_work/sealed.pub" \
+            -r "$tpm_work/sealed.priv" -c "$tpm_work/sealed.ctx" >/dev/null 2>&1 \
+        && tpm2_evictcontrol -C o -c "$tpm_work/sealed.ctx" "$secret_handle" >/dev/null 2>&1 \
+        && [ "$(tpm2_unseal --object-context "$secret_handle" 2>/dev/null | wc -c)" -eq 32 ]; then
+        tpm_status="provisioned at $secret_handle"
+    else
+        tpm_status="provisioning failed"
+    fi
+    rm -rf "$tpm_work"
+else
+    tpm_status="no TPM device; secret store stays disabled"
+fi
+echo "TPM sealing: $tpm_status"
+printf 'TPM sealing: %s\n' "$tpm_status" >"$console"
+
+# Optional Wi-Fi profile for the first boot; iwd owns the interface and its
+# built-in network configuration handles DHCP.
+if [ -n "${FIRST_BOOT_WIFI_SSID:-}" ] && [ -n "${FIRST_BOOT_WIFI_PASSWORD:-}" ]; then
+    mkdir -p /var/lib/iwd
+    printf '[Security]\nPassphrase=%s\n' "$FIRST_BOOT_WIFI_PASSWORD" \
+        > "/var/lib/iwd/${FIRST_BOOT_WIFI_SSID}.psk"
+    chmod 600 "/var/lib/iwd/${FIRST_BOOT_WIFI_SSID}.psk"
+    systemctl restart iwd 2>/dev/null || true
+    systemctl restart systemd-networkd 2>/dev/null || true
+    echo "Wi-Fi profile written for ${FIRST_BOOT_WIFI_SSID}"
+fi
 touch "$marker"
 chmod 600 "$marker"
 echo "=== first boot complete: user=$admin_user host=$hostname ==="
