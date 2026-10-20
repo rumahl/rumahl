@@ -174,6 +174,13 @@ if compgen -G "$output/build/rumahl-shell-*" >/dev/null; then
   echo "==> Cleaning previous rumahl-shell package build"
   make -C "$source" O="$output" rumahl-shell-dirclean
 fi
+# Stale development-only files must not survive an incremental target tree.
+if [ -z "$first_boot_env" ]; then
+  rm -f "$output/target/etc/rumahl/first-boot.env"
+fi
+if [ -z "$trust_store" ]; then
+  rm -f "$output/target/etc/rumahl/package-trust-store.json"
+fi
 echo "==> Building system image (-j$jobs)"
 make -C "$source" O="$output" -j"$jobs"
 
