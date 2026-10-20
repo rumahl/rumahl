@@ -101,23 +101,31 @@ sudo dd if=<repo>/buildroot/uefi-output/images/rumahl-disk.img \
   of=/dev/sdX bs=4M conv=fsync status=progress
 ```
 
-For a QEMU/OVMF check before using hardware:
+For a QEMU/OVMF check before using hardware (add `--tpm` to start swtpm and
+exercise the sealed secret-store key):
 
 ```sh
-platform-buildroot/image/boot-uefi.sh <repo>/buildroot/uefi-output
+platform-buildroot/image/boot-uefi.sh --output <repo>/buildroot/uefi-output --tpm
 ```
 
 On a real device the first boot runs an interactive console setup on
 `/dev/console` (HDMI or serial) and asks for the admin account, display name,
 hostname and password. It creates the device CA, an initial TLS certificate and
-the first local account. The host-config broker then adds the current IP SANs.
-If `first-boot.env` was baked in, the setup runs unattended.
+the first local account. If a TPM 2.0 device is present it seals a random
+32-byte secret-store key and persists it at handle `0x81000001` (no PCR policy
+yet). The host-config broker then adds the current IP SANs. If
+`first-boot.env` was baked in, the setup runs unattended; `FIRST_BOOT_WIFI_*`
+adds an iwd profile.
+
+Avahi publishes `rumahl.local` over mDNS; clients need mDNS support. Wi-Fi is
+managed by iwd (`iwctl`, and an optional first-boot profile).
 
 The data partition is a fixed 8 GiB image. Grow it after flashing when the
 device has more space (`parted`/`growpart` plus `resize2fs`).
 
-Still open for this target: TPM key sealing, mDNS for `rumahl.local`, Wi-Fi
-setup, installer media, A/B updates and rollback.
+Still open for this target: PCR/measured-boot binding of the TPM key,
+Secure Boot signing, installer media, A/B updates and rollback, and physical
+hardware acceptance.
 
 ## Provision the persistent disk
 
