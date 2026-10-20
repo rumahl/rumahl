@@ -1,0 +1,5 @@
+# Real-device layout: GPT disk with labelled partitions.
+LABEL=rumahl-root / ext4 ro,noatime 0 1
+LABEL=rumahl-data /var ext4 defaults,nodev,nosuid 0 2
+/var/home /home none bind,x-systemd.requires-mounts-for=/var 0 0
+/var/apps /apps none bind,x-systemd.requires-mounts-for=/var 0 0
