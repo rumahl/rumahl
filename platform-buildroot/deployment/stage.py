@@ -63,6 +63,7 @@ if args.trust_store is not None:
     copy(args.trust_store, "etc/rumahl/package-trust-store.json")
     (root / "etc/rumahl/package-trust-store.json").chmod(0o644)
 copy(repo / "platform-buildroot/deployment/rumahl.sysusers", "usr/lib/sysusers.d/rumahl.conf")
+copy(repo / "platform-buildroot/deployment/rumahl-tmpfiles.conf", "usr/lib/tmpfiles.d/rumahl.conf")
 copy(repo / "platform-buildroot/nginx/rumahl.conf", "etc/nginx/rumahl.conf")
 copy(repo / "platform-buildroot/nginx/rumahl-proxy.inc", "etc/nginx/rumahl-proxy.inc")
 dropin = root / "etc/systemd/system/nginx.service.d"
