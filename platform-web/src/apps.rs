@@ -355,9 +355,13 @@ impl AppAccess {
         installation: InstallationId,
         shell_host: &str,
     ) -> Result<String, AppAccessError> {
-        if let Some((host, _)) = split_ip_port(shell_host)
-            && self.device_hosts.iter().any(|candidate| candidate == host)
-        {
+        // On the default HTTPS port the Host header has no port, so detect a
+        // device IP before stripping an optional port.
+        let host = match split_ip_port(shell_host) {
+            Some((host, _)) => host,
+            None => shell_host,
+        };
+        if self.device_hosts.iter().any(|candidate| candidate == host) {
             let port = self
                 .ports
                 .as_ref()
@@ -365,9 +369,7 @@ impl AppAccess {
                 .ok_or(AppAccessError::Unavailable)?;
             return Ok(format!("{host}:{port}"));
         }
-        let host = shell_host
-            .rsplit_once(':')
-            .map_or(shell_host, |(host, _)| host);
+        let host = host.rsplit_once(':').map_or(host, |(host, _)| host);
         let suffix = format!("apps.{host}");
         if !self.suffixes.iter().any(|candidate| candidate == &suffix) {
             return Err(AppAccessError::Unavailable);
