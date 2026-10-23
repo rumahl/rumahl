@@ -40,7 +40,7 @@ export function RumahlAvatar({
   status?: "online" | "away" | "offline";
 }) {
   const [failed, setFailed] = useState<string>();
-  const safeSrc = safeAvatarSrc(src);
+  const safeSrc = safeAvatarSrc(src)?.replace(/[<>'"]/g, (char) => encodeURIComponent(char));
   const initials =
     name
       .trim()
@@ -59,7 +59,6 @@ export function RumahlAvatar({
       aria-label={name}
     >
       {safeSrc && failed !== safeSrc ? (
-        // codeql[js/xss-through-dom] safeAvatarSrc allows only image URLs, never HTML.
         <img src={safeSrc} alt="" onError={() => setFailed(safeSrc)} />
       ) : (
         <span aria-hidden="true">{initials}</span>
