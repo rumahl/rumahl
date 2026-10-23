@@ -22,6 +22,7 @@
 @import "./shell/topbar.css";
 @import "@rumahl/ui/base.css";
 @import "./shell/base-clean.css";
+@import "./shell/mobile.css";
 
 @layer foundation {
   :root {

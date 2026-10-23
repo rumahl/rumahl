@@ -46,7 +46,8 @@ import { resolveWallpaper } from "../wallpapers";
 import { configureGlass, svgRefractionSupported, subscribeGlassMetrics } from "../glass-engine/useGlassEngine";
 import { useGlassHosts } from "../glass-engine/useGlassHosts";
 import { useTestMedia } from "./test-media";
-import { isMobile } from "./device";
+import { mobileDesktopOptIn, resolveShellMode, setMobileDesktopOptIn, useDeviceViewport } from "./device";
+import { MobileOrientationHint } from "./MobileOrientationHint";
 import { isDebug, setDebug, useDebug } from "./debug";
 import { useSystemMode } from "./system-scheme";
 import { getToasts, installToastApi, setToastAnimations, showToast, ToastStack } from "./toasts";
@@ -62,7 +63,19 @@ export function ShellLayout({ snapshot, live }: { snapshot: ShellSnapshotV1; liv
   const path = shellLocation(location.pathname + location.search + location.hash);
   const preferences = useShellPreferences();
   const osMode = useOsMode();
-  const mode = preferences.mode;
+  const viewport = useDeviceViewport();
+  const [desktopOptIn, setDesktopOptIn] = useState(false);
+  const [desktopHint, setDesktopHint] = useState(false);
+  const [hintDismissed, setHintDismissed] = useState(false);
+  useEffect(() => { setDesktopOptIn(mobileDesktopOptIn()); }, []);
+  // Phones always start in the launcher. The desktop is only reachable in
+  // landscape *and* after the user opted in on this browser.
+  const mode: ShellMode = resolveShellMode(preferences.mode, viewport, desktopOptIn);
+  useEffect(() => {
+    if (viewport.landscape) { setDesktopHint(false); setHintDismissed(false); return; }
+    if (!viewport.mobile) { setDesktopHint(false); return; }
+    if (desktopOptIn && preferences.mode === "desktop" && !hintDismissed) setDesktopHint(true);
+  }, [viewport.mobile, viewport.landscape, desktopOptIn, preferences.mode, hintDismissed]);
   useEffect(() => {
     if (new URLSearchParams(location.search).has("mode")) void navigate(localPath(location.pathname + location.search + location.hash), { replace: true });
   }, [location.search, location.hash, path, navigate]);
@@ -137,8 +150,19 @@ export function ShellLayout({ snapshot, live }: { snapshot: ShellSnapshotV1; liv
   }, [workspace.ready, workspace.restore, workspace.effective, catalog.status, catalog.apps, route.presentation, routedWindow, t]);
   const open = (target: string) => { const next = localPath(target); if (!isInternalTarget(shellLocation(target))) rememberRecent(next); void navigate(next); };
   const setMode = (next: ShellMode) => {
+    if (viewport.mobile) {
+      setDesktopOptIn(next === "desktop");
+      setMobileDesktopOptIn(next === "desktop");
+    }
+    if (next === "desktop" && viewport.mobile && !viewport.landscape) {
+      // Keep the desktop preference: rotating to landscape opens it, while the
+      // portrait shell stays on the launcher and the hint explains why.
+      setHintDismissed(false);
+      setDesktopHint(true);
+    } else if (next === "launcher") {
+      setDesktopHint(false);
+    }
     preferences.save("device", next);
-    if (next === "desktop" && isMobile()) showToast({ message: t("perf.desktopMobile"), variant: "warning", duration: 6000 });
   };
   const glassEngine = workspace.effective.appearance.glassEngine ?? "canvas";
   const ultra = workspace.effective.appearance.ultraPerformance === true;
@@ -203,13 +227,13 @@ export function ShellLayout({ snapshot, live }: { snapshot: ShellSnapshotV1; liv
     setToastAnimations(animations);
     if (typeof document !== "undefined") document.body.classList.toggle("animations-off", !animations);
   }, [animations]);
-  // On phones the launcher is the sensible default; the desktop mode is not
-  // fully usable there (we warn if the user switches to it).
+  // The launcher is the mobile default. A desktop preference only survives on
+  // mobile after an explicit opt-in from the landscape view.
   useEffect(() => {
-    if (mobileChecked.current) return;
+    if (mobileChecked.current || !viewport.mobile || !preferences.ready) return;
     mobileChecked.current = true;
-    if (isMobile() && preferences.mode === "desktop") preferences.save("device", "launcher");
-  }, [preferences]);
+    if (preferences.mode === "desktop" && !mobileDesktopOptIn()) preferences.save("device", "launcher");
+  }, [viewport.mobile, preferences.ready, preferences.mode, preferences]);
   // One short startup benchmark: if the browser cannot keep up, glass is off
   // from the first paint instead of degrading later.
   useEffect(() => {
@@ -331,7 +355,7 @@ export function ShellLayout({ snapshot, live }: { snapshot: ShellSnapshotV1; liv
   }, [theme.base, theme.id]);
 
   return <ShellContext value={{ snapshot, live, state, dispatch, mode, setMode, open }}>
-    <div className={`scene shell${showVideo ? "" : " image-mode"}${appearance.wallpaperMotion === false || svgActive || performanceMode ? " no-motion" : ""}`} data-theme={theme.id} data-theme-base={theme.base} data-material={material} data-app-inputs={appInputs} data-glass={glassEngine} data-scheme={scheme} data-perf={ultra ? "ultra" : undefined} data-maximized={windowMaximized ? "true" : undefined} data-launcher={launcherWindow ? "app" : undefined} data-inactive={inactive ? "true" : undefined} data-debug={debug ? "true" : undefined} data-animations={animations ? undefined : "off"} data-shell-build={snapshot.shellBuildId} data-shell-mode={mode} data-os-mode={osMode.mode} data-preferences-revision={preferences.preferences?.revision}>
+    <div className={`scene shell${showVideo ? "" : " image-mode"}${appearance.wallpaperMotion === false || svgActive || performanceMode ? " no-motion" : ""}`} data-theme={theme.id} data-theme-base={theme.base} data-material={material} data-app-inputs={appInputs} data-glass={glassEngine} data-scheme={scheme} data-perf={ultra ? "ultra" : undefined} data-maximized={windowMaximized ? "true" : undefined} data-launcher={launcherWindow ? "app" : undefined} data-inactive={inactive ? "true" : undefined} data-debug={debug ? "true" : undefined} data-animations={animations ? undefined : "off"} data-shell-build={snapshot.shellBuildId} data-shell-mode={mode} data-os-mode={osMode.mode} data-mobile={viewport.mobile ? "true" : undefined} data-orientation={viewport.mobile ? (viewport.landscape ? "landscape" : "portrait") : undefined} data-preferences-revision={preferences.preferences?.revision}>
       <div className="wallpaper media-wall" aria-hidden="true">
         {showVideo
           ? media.video ? <WallpaperVideo key={media.video} src={media.video} />
@@ -341,6 +365,7 @@ export function ShellLayout({ snapshot, live }: { snapshot: ShellSnapshotV1; liv
       </div>
       {debug ? <div className="debug-badge" aria-hidden="true">debug · {glassBackend} · {glassQuality} · {glassOff ? "glass off" : "glass on"}</div> : null}
       <ToastStack />
+      <MobileOrientationHint open={desktopHint} onDismiss={() => { setDesktopHint(false); setHintDismissed(true); }} />
       <div className="shell__workspace">
         {theme.slots?.menubar ? <SlotRegion name="menubar" /> : <MenuBar />}
         <div className="workspace-surfaces">
