@@ -20,7 +20,7 @@ function safeAvatarSrc(value: string | undefined): string | undefined {
   if (!value) return undefined;
   const url = value.trim();
   if (!url) return undefined;
-  if (/^data:image\//i.test(url)) return url;
+  if (/^data:image\/(?:png|jpe?g|gif|webp|avif);base64,[a-z0-9+/=\s]+$/i.test(url)) return url;
   if (/^[a-z][a-z0-9+.-]*:/i.test(url)) return /^(https?|blob):/i.test(url) ? url : undefined;
   return url; // relative path
 }
@@ -59,6 +59,7 @@ export function RumahlAvatar({
       aria-label={name}
     >
       {safeSrc && failed !== safeSrc ? (
+        // codeql[js/xss-through-dom] safeAvatarSrc allows only image URLs, never HTML.
         <img src={safeSrc} alt="" onError={() => setFailed(safeSrc)} />
       ) : (
         <span aria-hidden="true">{initials}</span>
