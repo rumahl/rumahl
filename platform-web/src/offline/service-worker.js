@@ -1,6 +1,6 @@
 /* Only this public, account-independent offline kit is ever persisted. */
-const VERSION = '1.3.0';
-const CACHE = 'rumahl-os-offline-v4';
+const VERSION = '1.4.0';
+const CACHE = 'rumahl-os-offline-v5';
 // The offline page is fully self-contained, so it renders even when nothing
 // else can be fetched. Only this public, account-independent kit is persisted.
 const RESOURCES = ['/offline'];
@@ -76,6 +76,12 @@ self.addEventListener('fetch', event => {
 // Read-only diagnostics: never include account or session data.
 self.addEventListener('message', event => {
   const data = event.data || {};
+  // The page asks a waiting worker to take over after the user confirms the
+  // update. Nothing activates without that explicit reload request.
+  if (data.type === 'RUMAHL_SKIP_WAITING') {
+    event.waitUntil(self.skipWaiting());
+    return;
+  }
   if (data.type === 'RUMAHL_CONNECTIVITY' && event.ports?.[0]) {
     event.waitUntil((async () => {
       const connectivity = await classifyConnectivity();

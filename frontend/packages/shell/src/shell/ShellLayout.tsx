@@ -48,6 +48,7 @@ import { useGlassHosts } from "../glass-engine/useGlassHosts";
 import { useTestMedia } from "./test-media";
 import { mobileDesktopOptIn, resolveShellMode, setMobileDesktopOptIn, useDeviceViewport } from "./device";
 import { MobileOrientationHint } from "./MobileOrientationHint";
+import { FrontendUpdateNotice } from "./FrontendUpdateNotice";
 import { isDebug, setDebug, useDebug } from "./debug";
 import { useSystemMode } from "./system-scheme";
 import { getToasts, installToastApi, setToastAnimations, showToast, ToastStack } from "./toasts";
@@ -366,6 +367,7 @@ export function ShellLayout({ snapshot, live }: { snapshot: ShellSnapshotV1; liv
       {debug ? <div className="debug-badge" aria-hidden="true">debug · {glassBackend} · {glassQuality} · {glassOff ? "glass off" : "glass on"}</div> : null}
       <ToastStack />
       <MobileOrientationHint open={desktopHint} onDismiss={() => { setDesktopHint(false); setHintDismissed(true); }} />
+      <FrontendUpdateNotice />
       <div className="shell__workspace">
         {theme.slots?.menubar ? <SlotRegion name="menubar" /> : <MenuBar />}
         <div className="workspace-surfaces">

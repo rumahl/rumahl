@@ -16,6 +16,7 @@ import { RumahlSelect } from "../components/RumahlSelect";
 import { RumahlColorPicker } from "../components/RumahlColorPicker";
 import { Button } from "../components/Button";
 import { SettingsHeading } from "../components/SettingsHeading";
+import { dismissToast, showToast } from "../shell/toasts";
 import {
   setGlassAdjust,
   svgRefractionSupported,
@@ -49,10 +50,33 @@ export function DisplaySettings() {
   const { tokens, theme: activeTheme } = useTheme();
   const installRef = useRef<HTMLInputElement>(null);
   const [installError, setInstallError] = useState<string | null>(null);
+  const [pendingTheme, setPendingTheme] = useState<{ scope: "user" | "device"; value: string | null } | null>(null);
+  function chooseTheme(value: string | null) {
+    if (settings.preferences?.[scope].shellTheme === value) return;
+    settings.saveTheme(scope, value);
+    setPendingTheme({ scope, value });
+  }
+  // Ask only after the preference was persisted, so an immediate reload cannot
+  // discard the newly selected theme.
+  useEffect(() => {
+    if (!pendingTheme || settings.preferences?.[pendingTheme.scope].shellTheme !== pendingTheme.value) return;
+    setPendingTheme(null);
+    showToast({
+      id: "theme-reload",
+      title: t("theme.reloadTitle"),
+      message: t("theme.reloadBody"),
+      variant: "info",
+      duration: null,
+      buttons: [
+        { label: t("reload.now"), variant: "primary", onClick: () => window.location.reload() },
+        { label: t("reload.later"), onClick: () => dismissToast("theme-reload") }
+      ]
+    });
+  }, [pendingTheme, settings.preferences, t]);
   const installTheme = async (file: File) => {
     try {
       const theme = await installThemeFile(file);
-      settings.saveTheme(scope, theme.id);
+      chooseTheme(theme.id);
       setInstallError(null);
     } catch (error) {
       setInstallError(
@@ -322,7 +346,7 @@ export function DisplaySettings() {
                   className="segment"
                   type="button"
                   aria-pressed={selectedTheme === theme.id}
-                  onClick={() => settings.saveTheme(scope, theme.id)}
+                  onClick={() => chooseTheme(theme.id)}
                 >
                   {theme.name}
                 </button>
@@ -332,7 +356,7 @@ export function DisplaySettings() {
                   className="segment"
                   type="button"
                   aria-pressed={selectedTheme === null}
-                  onClick={() => settings.saveTheme("device", null)}
+                  onClick={() => chooseTheme(null)}
                 >
                   {t("preferences.inherit")}
                 </button>

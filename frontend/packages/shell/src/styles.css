@@ -23,6 +23,7 @@
 @import "@rumahl/ui/base.css";
 @import "./shell/base-clean.css";
 @import "./shell/mobile.css";
+@import "./shell/update-notice.css";
 
 @layer foundation {
   :root {
