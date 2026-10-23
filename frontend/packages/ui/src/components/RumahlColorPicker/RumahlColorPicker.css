@@ -504,7 +504,7 @@
 .rumahl-color-picker :where(button, input, select, [tabindex]):focus-visible {
   outline: 2px solid var(--rumahl-ui-color-accent, #71869f);
 
-  outline-offset: 2px;
+  outline-offset: -2px;
 }
 
 @media (prefers-reduced-motion: reduce) {

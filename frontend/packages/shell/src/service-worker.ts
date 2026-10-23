@@ -1,12 +1,18 @@
+import { watchFrontendUpdates } from "./frontend-updates";
+
 /** Registration is shared by shell startup and the device settings. */
 let pending: Promise<ServiceWorkerRegistration> | undefined;
+let activeRegistration: ServiceWorkerRegistration | undefined;
 export let serviceWorkerError = "";
 export function registerServiceWorker(): Promise<ServiceWorkerRegistration> {
+  if (activeRegistration) return Promise.resolve(activeRegistration);
   if (!pending) {
     pending = (async () => {
       if (!window.isSecureContext) throw new Error("HTTPS / localhost required");
       if (!("serviceWorker" in navigator)) throw new Error("Service Worker API unavailable");
       const registration = await navigator.serviceWorker.register("/service-worker.js", { scope: "/", updateViaCache: "none" });
+      activeRegistration = registration;
+      watchFrontendUpdates(registration);
       serviceWorkerError = "";
       window.dispatchEvent(new Event("rumahl:service-worker"));
       return registration;

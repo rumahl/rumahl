@@ -74,20 +74,11 @@
   font-size: 12px;
   font-weight: 500;
 }
+/* Only position here: the button is a Floating rumahl/ui Button. */
 .launcher-done {
   position: absolute;
   top: 0;
   right: 0;
-  padding: 7px 18px;
-  border-radius: 999px;
-  border: 1px solid rgba(255, 255, 255, 0.28);
-  background: rgba(255, 255, 255, 0.14);
-  color: #fff;
-  font-size: 13px;
-  font-weight: 600;
-}
-.launcher-done:hover {
-  background: rgba(255, 255, 255, 0.24);
 }
 .launcher-footer {
   display: flex;
@@ -97,50 +88,14 @@
   margin-top: auto;
   padding-bottom: 4px;
 }
+/* The launcher search is a Floating rumahl/ui input over the wallpaper; this
+   wrapper only centres and sizes it. */
 .launcher-search {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  width: min(100%, 300px);
+  width: min(100%, 320px);
   margin: 0 auto;
-  padding: 9px 16px;
-  border-radius: 999px;
-  color: #fff;
-  background: rgba(10, 22, 18, 0.5);
-  border: 1px solid rgba(255, 255, 255, 0.22);
-  backdrop-filter: blur(24px);
-  transition: border-color 0.15s ease, box-shadow 0.15s ease;
 }
-.launcher-search > svg {
-  width: 15px;
-  height: 15px;
-  flex: none;
-  opacity: 0.8;
-}
-.launcher-search > span {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  overflow: hidden;
-  clip-path: inset(50%);
-}
-.launcher-search input {
-  flex: 1;
-  min-width: 0;
-  border: 0;
-  background: transparent;
-  color: #fff;
-  font: inherit;
-  font-size: 13px;
-  text-align: left;
-  outline: none;
-}
-.launcher-search input::placeholder {
-  color: rgba(255, 255, 255, 0.7);
-}
-.launcher-search:focus-within {
-  border-color: rgba(255, 255, 255, 0.5);
-  box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.18);
+.launcher-search .rumahl-input-group {
+  width: 100%;
 }
 .launcher-board {
   flex: 1 1 auto;
@@ -312,25 +267,9 @@
   line-height: 1;
   text-shadow: 0 1px 3px rgba(0, 0, 0, 0.35);
 }
+/* Only layout here: the button is a Floating rumahl/ui Button. */
 .launcher-edit {
   align-self: center;
-  padding: 8px 18px;
-  border-radius: 999px;
-  border: 1px solid rgba(255, 255, 255, 0.24);
-  background: rgba(10, 22, 18, 0.5);
-  color: #fff;
-  font-size: 13px;
-  font-weight: 600;
-  backdrop-filter: blur(24px);
-  transition: background 0.15s ease, border-color 0.15s ease;
-}
-.launcher-edit:hover {
-  background: rgba(255, 255, 255, 0.14);
-}
-.launcher-edit[aria-pressed="true"] {
-  background: #fff;
-  color: #10161a;
-  border-color: transparent;
 }
 .launcher-board.is-editing .springboard-cell {
   animation: launcher-jiggle 2.6s ease-in-out infinite;
@@ -483,4 +422,43 @@
     transition: none !important;
     animation: none !important;
   }
+}
+
+/* Fit the workspace to the viewport: never scroll, always reserve dock room. */
+.shell[data-shell-mode="launcher"] .launcher-workspace {
+  overflow: hidden;
+  height: 100%;
+  padding-bottom: calc(
+    var(--rumahl-ui-layout-dock-offset, 12px) + 72px + env(safe-area-inset-bottom)
+  );
+}
+.shell[data-shell-mode="launcher"] .launcher-home {
+  min-height: 0;
+}
+
+/* Desktop: same contract; overflow becomes a second page (not a scrollbar). */
+.shell .desktop-workspace {
+  overflow: hidden;
+  max-height: 100%;
+}
+
+/* The dock must stay fully visible on every screen shape. */
+.shell .os-dock {
+  padding-bottom: max(8px, env(safe-area-inset-bottom));
+  max-height: calc(100% - 16px);
+}
+
+/* Desktop overflow: extra columns become swipeable pages, never a scrollbar. */
+.shell .desktop-workspace {
+  overflow-x: auto;
+  overflow-y: hidden;
+  scroll-snap-type: x mandatory;
+  overscroll-behavior-x: contain;
+  scrollbar-width: none;
+}
+.shell .desktop-workspace::-webkit-scrollbar {
+  display: none;
+}
+.shell .desktop-grid {
+  scroll-snap-align: start;
 }

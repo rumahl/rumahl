@@ -4,6 +4,7 @@ import type { ShellSnapshotV1 } from "@rumahl/contracts";
 import { App } from "./App";
 import type { ShellLiveSource } from "./live-updates";
 import { preloadAppearance } from "./theme";
+import { loadInstalledThemes } from "./preferences/installed-themes";
 import "@fontsource-variable/space-grotesk";
 import "@fontsource-variable/bricolage-grotesque";
 import "@fontsource/instrument-serif/400.css";
@@ -19,26 +20,16 @@ import "@fontsource-variable/manrope";
 import "@fontsource-variable/plus-jakarta-sans";
 import "./fonts.css";
 import "./styles.css";
-
-/**
- * Install the offline kit. The worker can distinguish "this device is offline"
- * from "rumahl OS is unreachable" and can serve the recovery screen for failed
- * navigations. Best-effort: the OS works without it.
- */
-function registerServiceWorker(): void {
-  if (typeof navigator === "undefined" || !("serviceWorker" in navigator)) return;
-  const host = location.hostname;
-  const secure = location.protocol === "https:" || host === "localhost" || host === "127.0.0.1";
-  if (!secure) return;
-  navigator.serviceWorker.register("/service-worker.js", { scope: "/" }).catch(() => { /* optional */ });
-}
+import { registerServiceWorker } from "./service-worker";
 
 export function renderShell(snapshot: ShellSnapshotV1, live?: ShellLiveSource): void {
   const root = document.getElementById("root");
   if (!root) {
     throw new Error("rumahl shell root element is missing");
   }
-  registerServiceWorker();
+  void registerServiceWorker().catch(() => { /* optional; Device settings shows the error. */ });
+  // Register installed custom themes before the first paint resolves the theme.
+  loadInstalledThemes();
   preloadAppearance(snapshot);
 
   createRoot(root).render(
@@ -53,7 +44,9 @@ export function hydrateShell(snapshot: ShellSnapshotV1, live?: ShellLiveSource):
   if (!root || root.dataset.shellSsr !== "1" || !root.hasChildNodes()) {
     throw new Error("server-rendered shell root is missing");
   }
-  registerServiceWorker();
+  void registerServiceWorker().catch(() => { /* optional; Device settings shows the error. */ });
+  // Register installed custom themes before the first paint resolves the theme.
+  loadInstalledThemes();
   preloadAppearance(snapshot);
   return hydrateRoot(
     root,

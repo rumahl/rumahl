@@ -1,0 +1,2938 @@
+/* Controls are cut into the parent glass; only inner actions sit above the recess. */
+.shell {
+  --control-base: var(--rumahl-ui-color-panel-background, #292d30);
+  --control-fill: #10182014;
+  --control-hover: #ffffff0c;
+  --control-popup: color-mix(in srgb, var(--control-base) 94%, transparent);
+  --control-border: color-mix(
+    in srgb,
+    var(--rumahl-ui-color-text-primary) 10%,
+    transparent
+  );
+  --control-border-hover: color-mix(
+    in srgb,
+    var(--rumahl-ui-color-text-primary) 18%,
+    transparent
+  );
+  --control-recess: linear-gradient(180deg, #0000000d, transparent 65%);
+  --control-button-shadow:
+    inset 0 1px 0 #ffffff24, 0 2px 4px #00000026, 0 5px 12px #0000000d;
+  --control-raised: #ffffff21;
+  --control-thumb: #f5f7fc;
+  --control-popup-shadow: 0 8px 24px #0000002e, inset 0 1px 0 #ffffff12;
+  --control-inset:
+    inset 0 1px 3px #00000038, inset 0 0 0 1px #0000000a, 0 1px 0 #ffffff12;
+  --control-filter: none;
+
+  /*
+   * Shared size scale (md = these defaults). Every control reads these instead
+   * of its own hard-coded height/padding/font, so one `data-size` step resizes
+   * the whole system and themes can retune a step centrally.
+   */
+  --control-h: 36px;
+  --control-pad-x: 14px;
+  --control-pad-y: 8px;
+  --control-font: 12px;
+  --control-icon: 14px;
+  --control-gap: 7px;
+}
+/* Size steps: set `data-size` on any control; `md` is the default above. */
+.shell [data-size="xs"] {
+  --control-h: 26px;
+  --control-pad-x: 10px;
+  --control-pad-y: 4px;
+  --control-font: 11px;
+  --control-icon: 12px;
+  --control-gap: 5px;
+}
+.shell [data-size="sm"] {
+  --control-h: 30px;
+  --control-pad-x: 12px;
+  --control-pad-y: 6px;
+  --control-font: 11px;
+  --control-icon: 13px;
+  --control-gap: 6px;
+}
+.shell [data-size="lg"] {
+  --control-h: 44px;
+  --control-pad-x: 18px;
+  --control-pad-y: 10px;
+  --control-font: 14px;
+  --control-icon: 16px;
+  --control-gap: 8px;
+}
+.shell [data-size="xl"] {
+  --control-h: 52px;
+  --control-pad-x: 22px;
+  --control-pad-y: 13px;
+  --control-font: 15px;
+  --control-icon: 18px;
+  --control-gap: 9px;
+}
+.shell[data-scheme="light"] {
+  --control-fill: #3345630b;
+  --control-hover: #33456310;
+  --control-raised: #ffffffa6;
+  --control-button-shadow:
+    inset 0 1px 0 #ffffffef, 0 2px 4px #53648024, 0 5px 12px #5364800d;
+  --control-border: #5364801c;
+  --control-border-hover: #91a0b655;
+  --control-popup-shadow: 0 8px 24px #677fa024, inset 0 1px 0 #ffffffbd;
+  --control-inset:
+    inset 0 1px 3px #53648026, inset 0 0 0 1px #53648006, 0 1px 0 #ffffffa6;
+}
+/* Solid keeps the capsule material opaque, without backdrop processing. */
+.shell[data-material="solid"] {
+  --control-fill: color-mix(
+    in srgb,
+    var(--control-base) 93%,
+    var(--rumahl-ui-color-text-primary)
+  );
+  --control-hover: color-mix(
+    in srgb,
+    var(--control-base) 96%,
+    var(--rumahl-ui-color-text-primary)
+  );
+  --control-popup: var(--control-base);
+  --control-filter: none;
+  --control-recess: linear-gradient(transparent, transparent);
+  /* Solid removes transparency/blur only: depth and the raised (active) state
+     stay visible, so selected items never disappear into the fill. */
+  --control-tint-strength: 100%;
+  --control-tint-sheen: linear-gradient(transparent, transparent);
+  --control-tint-ink: var(--rumahl-ui-color-on-accent);
+}
+
+/*
+ * Floating (liquid glass): for controls that hover over an image, the desktop or
+ * any coloured content. The specular highlight sits on top (`--control-recess`
+ * is reused as the light layer) and a translucent fill below, so a coloured
+ * `--control-tint` stays glassy instead of becoming a flat fill.
+ */
+.shell[data-material="floating"],
+/* Floating as an element state: a component with the `floating` prop marks
+   itself with `data-floating` and reuses this exact recipe. */
+.shell [data-floating] {
+  /* The OS top-bar island recipe (pure CSS): surface-strong at the theme's
+     material opacity, a fine rim, a lit top edge and a strong drop shadow —
+     material/theme aware, so Glass → Transparenz → Solid works the same way. */
+  --control-recess: linear-gradient(180deg, #ffffff1f, transparent 62%);
+  --control-fill: color-mix(
+    in srgb,
+    var(--rumahl-ui-color-surface-strong, var(--control-base))
+      calc(var(--rumahl-ui-material-opacity, 0.84) * 100%),
+    transparent
+  );
+  --control-hover: color-mix(
+    in srgb,
+    var(--rumahl-ui-color-surface-strong, var(--control-base))
+      calc(min(1, var(--rumahl-ui-material-opacity, 0.84) + 0.08) * 100%),
+    transparent
+  );
+  --control-raised: var(--control-fill);
+  --control-border: color-mix(in srgb, var(--rumahl-ui-color-text-primary) 12%, transparent);
+  --control-border-hover: color-mix(in srgb, var(--rumahl-ui-color-text-primary) 20%, transparent);
+  --control-inset: inset 0 1px 0 #ffffff2e, 0 10px 30px #0000004d;
+  --control-button-shadow: var(--control-inset);
+  --control-filter: blur(28px) saturate(1.5);
+  --control-tint-strength: 55%;
+  --control-tint-ink: var(--rumahl-ui-color-on-accent);
+  --control-tint-sheen: linear-gradient(transparent, transparent);
+}
+/* Solid / reduced transparency: floating islands go opaque, no blur — exactly
+   like the top-bar islands. */
+.shell[data-material="solid"] [data-floating],
+.shell[data-material="solid"][data-material="floating"],
+.shell[data-material="solid"] .rumahl-group[data-floating] {
+  --control-fill: var(--rumahl-ui-color-surface-strong, var(--control-base));
+  --control-hover: color-mix(in srgb, var(--rumahl-ui-color-surface-strong, var(--control-base)) 94%, var(--rumahl-ui-color-text-primary));
+  --control-recess: linear-gradient(transparent, transparent);
+  --control-filter: none;
+}
+@media (prefers-reduced-transparency: reduce) {
+  .shell [data-floating],
+  .shell .rumahl-group[data-floating] {
+    --control-fill: var(--rumahl-ui-color-surface-strong, var(--control-base));
+    --control-recess: linear-gradient(transparent, transparent);
+    --control-filter: none;
+  }
+}
+
+/* Standalone inputs over wallpaper use the same control geometry and states.
+   Only the material changes; both RumahlInput and server-rendered auth use it. */
+.shell .rumahl-input[data-material="glass"] {
+  --control-fill: color-mix(
+    in srgb,
+    var(--rumahl-ui-color-surface-strong) 58%,
+    transparent
+  );
+  --control-hover: color-mix(
+    in srgb,
+    var(--rumahl-ui-color-surface-strong) 68%,
+    transparent
+  );
+  --control-filter: blur(clamp(16px, var(--rumahl-ui-material-blur), 32px))
+    saturate(var(--rumahl-ui-material-saturation));
+}
+
+.shell
+  :is(
+    .rumahl-input,
+    .rumahl-textarea,
+    .rumahl-select__trigger,
+    .rumahl-color-picker__trigger,
+    .settings-content
+      input:where(
+        :not([type]),
+        [type="text"],
+        [type="number"],
+        [type="email"],
+        [type="password"],
+        [type="search"],
+        [type="url"],
+        [type="tel"],
+        [type="date"],
+        [type="time"]
+      ),
+    .settings-content textarea,
+    .settings-content select,
+    .rumahl-color-picker__input,
+    .rumahl-color-picker__rgb input
+  ) {
+  box-sizing: border-box;
+  min-width: 0;
+  min-height: var(--control-h);
+  max-width: 100%;
+  padding: var(--control-pad-y) var(--control-pad-x);
+  border: 1px solid var(--control-border);
+  border-radius: 999px;
+  background: var(--control-recess), var(--control-fill);
+  box-shadow: var(--control-inset);
+  backdrop-filter: var(--control-filter);
+  -webkit-backdrop-filter: var(--control-filter);
+  color: var(--rumahl-ui-color-text-primary);
+  font: inherit;
+  font-size: var(--control-font);
+  font-weight: 560;
+  transition:
+    background 150ms ease,
+    border-color 150ms ease;
+}
+.shell
+  :is(
+    .rumahl-input,
+    .rumahl-textarea,
+    .rumahl-select__trigger,
+    .rumahl-color-picker__trigger,
+    .settings-content
+      input:where(
+        :not([type]),
+        [type="text"],
+        [type="number"],
+        [type="email"],
+        [type="password"],
+        [type="search"],
+        [type="url"],
+        [type="tel"],
+        [type="date"],
+        [type="time"]
+      ),
+    .settings-content textarea,
+    .settings-content select,
+    .rumahl-color-picker__input,
+    .rumahl-color-picker__rgb input
+  ):hover:not(:disabled) {
+  border-color: var(--control-border-hover);
+  background: var(--control-recess), var(--control-hover);
+}
+.shell
+  :is(.rumahl-select, .rumahl-color-picker, .settings-content)
+  :is(button, input, select, textarea, [tabindex]):focus-visible {
+  outline: 2px solid var(--rumahl-ui-color-accent);
+  outline-offset: -2px;
+}
+.shell .settings-content :is(input, textarea)::placeholder {
+  color: var(--rumahl-ui-color-text-muted);
+  opacity: 0.8;
+}
+.shell
+  :is(
+    .rumahl-select__trigger,
+    .settings-content input,
+    .settings-content select,
+    .settings-content textarea
+  ):disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.shell .settings-content :is(input, textarea)[aria-invalid="true"] {
+  border-color: var(--rumahl-ui-color-danger, #d95d65);
+}
+
+.shell
+  :is(.settings-content, .rumahl-file)
+  input[type="file"]::file-selector-button {
+  padding: 8px 14px;
+  border: 1px solid var(--control-border);
+  border-radius: 999px;
+  background: var(--control-recess), var(--control-fill);
+  box-shadow: var(--control-inset);
+  backdrop-filter: var(--control-filter);
+  -webkit-backdrop-filter: var(--control-filter);
+  color: var(--rumahl-ui-color-text-primary);
+  cursor: pointer;
+}
+
+.shell .rumahl-select {
+  max-width: 100%;
+}
+.shell .rumahl-select__trigger {
+  width: 100%;
+  gap: 12px;
+  text-align: left;
+  display: flex;
+  align-items: center;
+}
+.shell .rumahl-select__chevron {
+  width: var(--control-icon);
+  height: var(--control-icon);
+  flex: none;
+  color: var(--rumahl-ui-color-text-muted);
+  transition: transform 150ms ease;
+}
+.shell .rumahl-select__trigger[aria-expanded="true"] .rumahl-select__chevron {
+  transform: rotate(180deg);
+}
+/* Shared popup surface (select menu, colour picker): the same panel style as
+   the menu — root-scoped theme tokens so it also survives being portaled. */
+.shell :is(.rumahl-select__menu, .rumahl-color-picker__popover) {
+  border: 1px solid color-mix(in srgb, var(--rumahl-ui-color-text-primary) 12%, transparent);
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--rumahl-ui-color-panel-background) 96%, transparent);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  color: var(--rumahl-ui-color-text-primary);
+  box-shadow: 0 12px 36px #00000026, 0 2px 6px #00000012;
+}
+.shell[data-material="solid"] :is(.rumahl-select__menu, .rumahl-color-picker__popover) {
+  background: var(--rumahl-ui-color-panel-background);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+.shell .rumahl-select__menu {
+  z-index: 110;
+  max-height: 240px;
+  overflow-y: auto;
+  min-width: 100%;
+  width: max-content;
+  max-width: min(320px, 80vw);
+  padding: 4px;
+  gap: 1px;
+}
+.shell .rumahl-select__option {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 28px;
+  padding: 5px 9px;
+  border: 0;
+  border-radius: 9px;
+  background: transparent;
+  color: inherit;
+  font-size: 12px;
+  box-shadow: none;
+}
+.shell .rumahl-select__option::after {
+  content: "";
+  width: 12px;
+  flex: none;
+  margin-left: auto;
+}
+.shell .rumahl-select__option.is-active::after {
+  content: "✓";
+  color: var(--rumahl-ui-color-accent);
+}
+.shell .rumahl-select__option:hover {
+  background: color-mix(
+    in srgb,
+    var(--rumahl-ui-color-text-primary) 7%,
+    transparent
+  );
+}
+.shell .rumahl-select__option.is-active {
+  background: var(--control-fill);
+  box-shadow: var(--control-inset);
+}
+.shell .rumahl-select__option[aria-disabled="true"] {
+  color: var(--rumahl-ui-color-text-muted);
+  cursor: not-allowed;
+}
+.shell .rumahl-select__option[aria-disabled="true"]:hover {
+  background: transparent;
+}
+.shell .rumahl-select__warn {
+  display: inline-flex;
+  align-items: center;
+  flex: none;
+  margin-left: 2px;
+  color: #e0a52e;
+  vertical-align: middle;
+}
+.shell .rumahl-select__warn svg {
+  width: 15px;
+  height: 15px;
+}
+.shell .rumahl-color-picker__trigger {
+  min-height: var(--control-h);
+  padding-block: 5px;
+}
+.shell .rumahl-color-picker__popover {
+  overflow: visible;
+  padding: 10px;
+}
+.shell .rumahl-color-picker__color-area {
+  height: 144px;
+  border: 1px solid var(--control-border);
+  border-radius: 13px;
+}
+.shell .rumahl-color-picker__body {
+  padding: 10px 0 0;
+  gap: 10px;
+}
+.shell .rumahl-color-picker__format-row {
+  align-items: end;
+}
+.shell .rumahl-color-picker__preset {
+  padding: 0;
+  border-radius: 7px;
+}
+.shell .rumahl-color-picker__hex {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .shell
+    :is(
+      .rumahl-select *,
+      .rumahl-color-picker *,
+      .settings-content input,
+      .settings-content textarea,
+      .settings-content select
+    ) {
+    transition: none;
+  }
+}
+
+/* The hue spectrum retains its dedicated color rendering. */
+.shell
+  :is(.settings-content input[type="range"], .rumahl-range input):not(
+    .rumahl-color-picker__hue
+  ) {
+  appearance: none;
+  background: transparent;
+  height: 36px;
+  padding: 0 12px;
+  border: 1px solid var(--control-border);
+  border-radius: 999px;
+  background: var(--control-fill);
+  box-shadow: var(--control-inset);
+  cursor: pointer;
+}
+.shell
+  :is(.settings-content input[type="range"], .rumahl-range input):not(
+    .rumahl-color-picker__hue
+  )::-webkit-slider-runnable-track {
+  height: 6px;
+  border: 1px solid var(--control-border);
+  border-radius: 999px;
+  background: var(--control-recess), var(--control-fill);
+  box-shadow: var(--control-inset);
+}
+.shell
+  :is(.settings-content input[type="range"], .rumahl-range input):not(
+    .rumahl-color-picker__hue
+  )::-moz-range-track {
+  height: 4px;
+  border: 1px solid var(--control-border);
+  border-radius: 999px;
+  background: var(--control-recess), var(--control-fill);
+  box-shadow: var(--control-inset);
+}
+.shell
+  :is(.settings-content input[type="range"], .rumahl-range input):not(
+    .rumahl-color-picker__hue
+  )::-webkit-slider-thumb {
+  appearance: none;
+  width: 16px;
+  height: 16px;
+  margin-top: -6px;
+  border: 2px solid var(--control-base);
+  border-radius: 50%;
+  background: var(--control-thumb);
+  box-shadow: 0 3px 7px #0000002e;
+}
+.shell
+  :is(.settings-content input[type="range"], .rumahl-range input):not(
+    .rumahl-color-picker__hue
+  )::-moz-range-thumb {
+  width: 12px;
+  height: 12px;
+  border: 2px solid var(--control-base);
+  border-radius: 50%;
+  background: var(--control-thumb);
+  box-shadow: 0 3px 7px #0000002e;
+}
+@media (prefers-reduced-transparency: reduce) {
+  .shell {
+    --control-fill: color-mix(
+      in srgb,
+      var(--control-base) 93%,
+      var(--rumahl-ui-color-text-primary)
+    );
+    --control-hover: color-mix(
+      in srgb,
+      var(--control-base) 96%,
+      var(--rumahl-ui-color-text-primary)
+    );
+    --control-popup: var(--control-base);
+    --control-filter: none;
+  }
+}
+@media (forced-colors: active) {
+  .shell
+    :is(.settings-content input[type="range"], .rumahl-range input):not(
+      .rumahl-color-picker__hue
+    ) {
+    appearance: auto;
+  }
+}
+
+/* Light scheme: the slider greys must not sink into the bright glass. */
+.shell[data-scheme="light"]
+  .settings-content
+  input[type="range"]:not(.rumahl-color-picker__hue) {
+  border-color: color-mix(
+    in srgb,
+    var(--rumahl-ui-color-text-primary) 18%,
+    transparent
+  );
+}
+.shell[data-scheme="light"]
+  .settings-content
+  input[type="range"]:not(
+    .rumahl-color-picker__hue
+  )::-webkit-slider-runnable-track,
+.shell[data-scheme="light"]
+  .settings-content
+  input[type="range"]:not(.rumahl-color-picker__hue)::-moz-range-track {
+  border-color: color-mix(
+    in srgb,
+    var(--rumahl-ui-color-text-primary) 26%,
+    transparent
+  );
+  background:
+    var(--control-recess),
+    color-mix(in srgb, var(--rumahl-ui-color-text-primary) 14%, transparent);
+}
+.shell[data-scheme="light"]
+  .settings-content
+  input[type="range"]:not(.rumahl-color-picker__hue)::-webkit-slider-thumb,
+.shell[data-scheme="light"]
+  .settings-content
+  input[type="range"]:not(.rumahl-color-picker__hue)::-moz-range-thumb {
+  border-color: color-mix(
+    in srgb,
+    var(--rumahl-ui-color-text-primary) 32%,
+    transparent
+  );
+  box-shadow: 0 2px 6px #00000040;
+}
+
+/* Glass adjustment rows: the range plus a percentage readout. */
+.shell .setting .visual--range {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.shell .setting .visual--range output {
+  min-width: 38px;
+  text-align: right;
+  font-size: 11px;
+  color: var(--nd-muted, var(--rumahl-ui-color-text-muted));
+  font-variant-numeric: tabular-nums;
+}
+
+/* The browser top layer escapes window overflow without changing window glass. */
+.shell :is(.rumahl-select__menu, .rumahl-color-picker__popover)[popover] {
+  position: fixed;
+  inset: auto;
+  margin: 0;
+  min-width: 0;
+  max-width: calc(100vw - 24px);
+  box-sizing: border-box;
+  overflow: auto;
+  overscroll-behavior: contain;
+  box-shadow: 0 12px 36px #00000026, 0 2px 6px #00000012;
+}
+.shell .rumahl-select__menu[popover]:not(:popover-open) {
+  display: none;
+}
+.shell .rumahl-color-picker__trigger-swatch {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+}
+.shell .rumahl-color-picker__label {
+  display: none;
+}
+.shell .rumahl-color-picker__value {
+  font-size: 12px;
+  font-weight: 500;
+}
+.shell .rumahl-color-picker__presets {
+  grid-template-columns: repeat(auto-fill, 24px);
+  gap: 7px;
+}
+.shell .rumahl-color-picker__preset {
+  width: 24px;
+  height: 24px;
+  max-width: 24px;
+  border-radius: 50%;
+}
+
+/* Multiline fields keep the capsule’s material with a practical corner radius. */
+.shell .settings-content textarea {
+  border-radius: 18px;
+  min-height: 88px;
+  line-height: 1.5;
+  resize: vertical;
+}
+.shell
+  :is(
+    .rumahl-select__trigger,
+    .rumahl-color-picker__trigger,
+    .rumahl-color-picker__input,
+    .rumahl-color-picker__rgb input,
+    .settings-content textarea,
+    .settings-content select
+  ):focus-visible {
+  border-color: color-mix(
+    in srgb,
+    var(--rumahl-ui-color-accent) 40%,
+    var(--control-border)
+  );
+  outline: 2px solid
+    color-mix(in srgb, var(--rumahl-ui-color-accent) 40%, transparent);
+  outline-offset: -2px;
+  box-shadow:
+    0 0 0 3px color-mix(in srgb, var(--rumahl-ui-color-accent) 10%, transparent),
+    var(--control-inset);
+}
+.shell
+  :is(
+    .rumahl-toggle-group,
+    .settings-content .segmented,
+    .settings-content .settings-tabs
+  ) {
+  padding: 3px;
+  gap: 3px;
+  border-radius: 999px;
+  border: 1px solid var(--control-border);
+  background: var(--control-fill);
+  box-shadow: var(--control-inset);
+}
+.shell
+  :is(
+    .rumahl-toggle-group,
+    .settings-content .segmented,
+    .settings-content .settings-tabs
+  )
+  button {
+  min-height: 28px;
+  padding: 5px 12px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--rumahl-ui-color-text-muted);
+  box-shadow: none;
+  font-size: 12px;
+  font-weight: 600;
+}
+.shell
+  :is(
+    .rumahl-toggle-group,
+    .settings-content .segmented,
+    .settings-content .settings-tabs
+  )
+  button[aria-pressed="true"] {
+  background: var(--control-raised);
+  color: var(--rumahl-ui-color-text-primary);
+  box-shadow:
+    inset 0 1px 0 #ffffff1a,
+    0 1px 3px #0000001f,
+    0 2px 5px #0000000a;
+}
+.shell :is(.appearance-switch input, input[role="switch"]) {
+  appearance: none;
+  position: relative;
+  flex: none;
+  width: var(--switch-width);
+  height: var(--switch-height);
+  margin: 0;
+  padding: 0;
+  border-radius: var(--switch-radius);
+  border: var(--switch-border-width) solid var(--switch-border-color);
+  background: var(--switch-background);
+  box-shadow: var(--control-inset);
+  backdrop-filter: var(--control-filter);
+  -webkit-backdrop-filter: var(--control-filter);
+}
+.shell :is(.appearance-switch input, input[role="switch"])::before {
+  content: "";
+  position: absolute;
+  left: var(--switch-pad);
+  top: var(--switch-pad);
+  width: var(--switch-thumb-size);
+  height: var(--switch-thumb-size);
+  border-radius: var(--switch-thumb-radius);
+  background: var(--switch-thumb);
+  box-shadow: var(--switch-thumb-shadow);
+  transform: none;
+  transition: var(--switch-thumb-transition);
+}
+.shell :is(.appearance-switch input, input[role="switch"]):checked {
+  /* Exactly the primary-button tint, so "on" and Primary match 1:1. */
+  background: var(--switch-background-checked);
+  border-color: var(--switch-border-checked);
+}
+.shell :is(.appearance-switch input, input[role="switch"]):checked::before {
+  background: var(--switch-thumb-checked);
+  transform: translateX(var(--switch-travel));
+}
+.shell :is(.appearance-switch input, input[role="switch"]):active::before {
+  scale: var(--switch-active-scale);
+}
+.shell
+  .settings-content
+  input[type="checkbox"]:not([role="switch"]):not(.appearance-switch input) {
+  accent-color: var(--rumahl-ui-color-accent);
+}
+@media (prefers-reduced-motion: reduce) {
+  .shell .settings-content input[role="switch"]::before {
+    transition: none;
+  }
+}
+@media (forced-colors: active) {
+  .shell :is(.appearance-switch input, input[role="switch"]) {
+    appearance: auto;
+  }
+  .shell :is(.appearance-switch input, input[role="switch"])::before {
+    display: none;
+  }
+}
+
+.shell .settings-content input[type="file"] {
+  max-width: 100%;
+  min-height: 36px;
+  padding: 3px;
+  border: 1px solid var(--control-border);
+  border-radius: 999px;
+  background: var(--control-fill);
+  box-shadow: var(--control-inset);
+  color: var(--rumahl-ui-color-text-muted);
+  font-size: 11px;
+}
+.shell
+  :is(.settings-content, .rumahl-file)
+  input[type="file"]::file-selector-button {
+  min-height: 28px;
+  padding: 4px 11px;
+  margin-right: 8px;
+  border: 0;
+  background: var(--control-raised);
+  font-weight: 600;
+}
+
+/* Compact triggers, with a fully themed popup in every context. */
+.shell .rumahl-select__value {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  flex: 1 1 auto;
+}
+.shell .rumahl-select__value > .rumahl-tooltip-anchor {
+  flex: none;
+}
+.shell .rumahl-select__label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.shell .rumahl-select__option {
+  width: 100%;
+  min-width: 0;
+  margin: 0;
+  box-sizing: border-box;
+  line-height: 1.4;
+}
+.shell .rumahl-select__option:focus-visible {
+  outline: none;
+  background: color-mix(
+    in srgb,
+    var(--rumahl-ui-color-accent) 18%,
+    transparent
+  );
+  box-shadow: inset 0 0 0 1px var(--rumahl-ui-color-accent);
+}
+.shell .rumahl-color-picker__format-row .rumahl-select__trigger {
+  padding-inline: 10px;
+  gap: 5px;
+}
+.shell .menubar__mode .rumahl-select__trigger {
+  min-height: 24px;
+  padding: 3px 9px;
+  font-size: 11px;
+}
+
+/* Popup fields use the same capsule proportions at a compact, secondary size. */
+.shell
+  .rumahl-color-picker__popover
+  :is(
+    .rumahl-select__trigger,
+    .rumahl-color-picker__input,
+    .rumahl-color-picker__rgb input
+  ) {
+  min-height: 30px;
+  padding-block: 5px;
+  font-size: 11px;
+}
+.shell .rumahl-color-picker__format-row {
+  grid-template-columns: 72px minmax(0, 1fr);
+}
+@media (pointer: coarse) {
+  .shell .rumahl-select__option {
+    min-height: 40px;
+  }
+}
+
+/* Light popup selections need a tint, not the white fill used by input fields. */
+.shell[data-scheme="light"] .rumahl-select__option.is-active {
+  background: color-mix(
+    in srgb,
+    var(--rumahl-ui-color-accent) 18%,
+    var(--control-base)
+  );
+  box-shadow: inset 0 0 0 1px
+    color-mix(in srgb, var(--rumahl-ui-color-accent) 32%, transparent);
+}
+.shell[data-scheme="light"] .rumahl-select__option:hover {
+  background: color-mix(
+    in srgb,
+    var(--rumahl-ui-color-text-primary) 9%,
+    var(--control-base)
+  );
+}
+.shell[data-scheme="light"] .rumahl-select__option.is-active:hover {
+  background: color-mix(
+    in srgb,
+    var(--rumahl-ui-color-accent) 24%,
+    var(--control-base)
+  );
+}
+.shell[data-scheme="light"] .rumahl-select__option:focus-visible {
+  box-shadow: inset 0 0 0 1px var(--rumahl-ui-color-accent);
+}
+
+/* Standalone buttons share the recessed glass surface of inputs. */
+.shell .btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--control-gap);
+  min-height: var(--control-h);
+  max-width: 100%;
+  padding: var(--control-pad-y) calc(var(--control-pad-x) + 2px);
+  border: 1px solid var(--control-border);
+  border-radius: 999px;
+  /* One control recipe: recess + colour tint + fill. A coloured variant only
+     sets --control-tint, so it is literally the same material as the others. */
+  --control-tint: transparent;
+  background: var(--control-recess),
+    linear-gradient(var(--control-tint), var(--control-tint)), var(--control-fill);
+  box-shadow: var(--control-inset);
+  backdrop-filter: var(--control-filter);
+  -webkit-backdrop-filter: var(--control-filter);
+  color: var(--rumahl-ui-color-text-primary);
+  font: inherit;
+  font-size: var(--control-font);
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+  text-decoration: none;
+  transition:
+    background 150ms ease,
+    border-color 150ms ease,
+    color 150ms ease,
+    transform 150ms ease;
+}
+.shell .btn svg {
+  width: var(--control-icon);
+  height: var(--control-icon);
+  flex: none;
+}
+.shell .btn:hover:not(:disabled) {
+  border-color: var(--control-border-hover);
+  background: var(--control-recess),
+    linear-gradient(var(--control-tint), var(--control-tint)), var(--control-hover);
+}
+.shell .btn:active:not(:disabled) {
+  transform: translateY(1px);
+  box-shadow: var(--control-inset);
+}
+.shell .btn:disabled,
+.shell .btn[aria-disabled="true"] {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+/* Size classes mirror the shared `data-size` steps (kept for compatibility). */
+.shell .btn--xs {
+  --control-h: 26px;
+  --control-pad-x: 10px;
+  --control-pad-y: 4px;
+  --control-font: 11px;
+  --control-icon: 12px;
+  --control-gap: 5px;
+}
+.shell .btn--sm {
+  --control-h: 30px;
+  --control-pad-x: 12px;
+  --control-pad-y: 6px;
+  --control-font: 11px;
+  --control-icon: 13px;
+  --control-gap: 6px;
+}
+.shell .btn--lg {
+  --control-h: 44px;
+  --control-pad-x: 18px;
+  --control-pad-y: 10px;
+  --control-font: 14px;
+  --control-icon: 16px;
+  --control-gap: 8px;
+}
+.shell .btn--xl {
+  --control-h: 52px;
+  --control-pad-x: 22px;
+  --control-pad-y: 13px;
+  --control-font: 15px;
+  --control-icon: 18px;
+  --control-gap: 9px;
+}
+
+/* Colour is suspended below the surface reflection. Glass keeps its recess;
+   floating keeps its rim; solid uses an opaque fill with no sheen. */
+.shell .btn--primary {
+  --control-tint: color-mix(
+    in srgb,
+    var(--rumahl-ui-color-accent) var(--button-fill-strength, var(--control-tint-strength, 72%)),
+    var(--inner-color-base, transparent)
+  );
+  color: var(--button-fill-ink, var(--control-tint-ink, var(--rumahl-ui-color-on-accent)));
+  border-color: color-mix(
+    in srgb,
+    var(--rumahl-ui-color-accent) 45%,
+    var(--control-border)
+  );
+}
+.shell .btn--primary:hover:not(:disabled) {
+  border-color: color-mix(
+    in srgb,
+    var(--rumahl-ui-color-accent) 55%,
+    var(--control-border-hover)
+  );
+}
+
+.shell .btn--ghost {
+  border-color: transparent;
+  background: transparent;
+  box-shadow: none;
+  color: var(--rumahl-ui-color-text-muted);
+}
+.shell .btn--ghost:hover:not(:disabled) {
+  background: var(--control-fill);
+  color: var(--rumahl-ui-color-text-primary);
+}
+
+.shell .btn--danger {
+  --control-tint: color-mix(
+    in srgb,
+    var(--rumahl-ui-color-danger, #e5484d) var(--button-fill-strength, var(--control-tint-strength, 24%)),
+    var(--inner-color-base, transparent)
+  );
+  color: var(--button-fill-ink, var(--control-tint-ink, var(--rumahl-ui-color-danger, #e5484d)));
+  border-color: color-mix(
+    in srgb,
+    var(--rumahl-ui-color-danger, #e5484d) 38%,
+    var(--control-border)
+  );
+}
+.shell .btn--danger:hover:not(:disabled) {
+  border-color: color-mix(
+    in srgb,
+    var(--rumahl-ui-color-danger, #e5484d) 52%,
+    var(--control-border-hover)
+  );
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .shell .btn {
+    transition: none;
+  }
+  .shell .btn:active:not(:disabled) {
+    transform: none;
+  }
+}
+
+/* Reusable form controls retain native validation, keyboard and form behavior. */
+.shell .rumahl-textarea {
+  width: 100%;
+  min-height: 88px;
+  border-radius: 18px;
+  resize: vertical;
+  line-height: 1.5;
+}
+.shell :is(.rumahl-input, .rumahl-textarea):focus-visible {
+  outline: 2px solid var(--rumahl-ui-color-accent);
+  outline-offset: -2px;
+}
+.shell :is(.rumahl-input, .rumahl-textarea):disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.shell :is(.rumahl-input, .rumahl-textarea)::placeholder {
+  color: var(--rumahl-ui-color-text-muted);
+}
+.shell .rumahl-choice {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--control-gap);
+  font-size: var(--control-font);
+  cursor: pointer;
+}
+.shell .rumahl-choice:has(input:disabled) {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.shell .rumahl-choice input:is(.rumahl-checkbox, .rumahl-radio) {
+  appearance: none;
+  display: grid;
+  place-content: center;
+  flex: none;
+  width: var(--choice-size);
+  height: var(--choice-size);
+  min-height: 0;
+  padding: 0;
+  margin: 0;
+  border: var(--choice-border);
+  border-radius: var(--choice-radius);
+  background: var(--choice-background);
+  box-shadow: var(--choice-shadow);
+  cursor: inherit;
+}
+.shell .rumahl-choice input.rumahl-radio {
+  border-radius: 50%;
+}
+.shell .rumahl-choice input:checked {
+  background: var(--choice-checked-background);
+  border-color: var(--choice-checked-border);
+}
+.shell .rumahl-choice input:focus-visible {
+  outline: 2px solid var(--rumahl-ui-color-accent);
+  outline-offset: -2px;
+}
+.shell .rumahl-checkbox:checked::before {
+  content: "";
+  width: 4px;
+  height: 8px;
+  border: solid var(--choice-mark);
+  border-width: 0 2px 2px 0;
+  transform: translateY(-1px) rotate(45deg);
+}
+.shell .rumahl-radio:checked::before {
+  content: "";
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--choice-mark);
+}
+@media (forced-colors: active) {
+  .shell .rumahl-choice input:is(.rumahl-checkbox, .rumahl-radio) {
+    appearance: auto;
+  }
+  .shell .rumahl-choice input::before {
+    display: none;
+  }
+}
+
+.design-lab {
+  height: 100%;
+  box-sizing: border-box;
+}
+.design-lab__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 230px), 1fr));
+  gap: 18px;
+}
+.design-lab__grid > label:not(.rumahl-choice) {
+  display: grid;
+  gap: 7px;
+  font-size: 12px;
+}
+.design-lab__buttons {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+/* Prevent grid stretch and inherited button dimensions from distorting controls. */
+.design-lab__grid {
+  align-items: start;
+}
+.shell .settings-content .segmented {
+  align-self: center;
+  align-items: center;
+  min-height: 36px;
+}
+.shell .settings-content .segmented button {
+  margin: 0;
+  flex: 1;
+}
+.shell .rumahl-color-picker__presets .rumahl-color-picker__preset {
+  box-sizing: border-box;
+  width: 24px;
+  height: 24px;
+  min-width: 24px;
+  min-height: 24px;
+  max-width: 24px;
+  max-height: 24px;
+  padding: 0;
+  margin: 0;
+  border-radius: 50%;
+  align-self: center;
+}
+.shell :is(.rumahl-calendar-popover, .rumahl-tooltip) {
+  position: fixed;
+  inset: auto;
+  margin: 0;
+  box-sizing: border-box;
+  border: 1px solid var(--control-border);
+  border-radius: 14px;
+  padding: 8px;
+  background: var(--control-popup);
+  color: var(--rumahl-ui-color-text-primary);
+  box-shadow: var(--control-popup-shadow);
+  backdrop-filter: var(--control-filter);
+  -webkit-backdrop-filter: var(--control-filter);
+  overflow: auto;
+}
+.rumahl-tooltip-anchor {
+  display: inline-flex;
+  align-items: center;
+  width: fit-content;
+  max-width: 100%;
+}
+.shell .rumahl-tooltip {
+  padding: 7px 10px;
+  border-radius: 8px;
+  font-size: 11px;
+  line-height: 1.45;
+  max-width: min(260px, calc(100vw - 24px));
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+.shell .rumahl-calendar {
+  width: 100%;
+  max-width: 280px;
+  min-width: 0;
+  padding: 8px;
+  box-sizing: border-box;
+}
+.rumahl-calendar__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+.rumahl-calendar__header strong {
+  font-size: 12px;
+  font-weight: 600;
+}
+.rumahl-calendar__week,
+.rumahl-calendar__days {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 3px;
+}
+.rumahl-calendar__week {
+  margin-bottom: 5px;
+  text-align: center;
+  font-size: 10px;
+  color: var(--rumahl-ui-color-text-muted);
+}
+.shell .rumahl-calendar button {
+  min-width: 0;
+  min-height: calc(var(--control-h) * 0.8333);
+  margin: 0;
+  padding: 4px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--rumahl-ui-color-text-primary);
+  font: inherit;
+  font-size: 11px;
+  box-shadow: none;
+  backdrop-filter: none;
+}
+.shell .rumahl-calendar button:hover:not(:disabled) {
+  background: var(--control-hover);
+  border-color: var(--control-border);
+}
+.shell .rumahl-calendar button[aria-pressed="true"] {
+  --control-tint: color-mix(
+    in srgb,
+    var(--rumahl-ui-color-accent) var(--button-fill-strength, var(--control-tint-strength, 72%)),
+    var(--inner-color-base, transparent)
+  );
+  background: var(--control-recess),
+    linear-gradient(var(--control-tint), var(--control-tint)), var(--control-fill);
+  border-color: color-mix(
+    in srgb,
+    var(--rumahl-ui-color-accent) 45%,
+    var(--control-border)
+  );
+  color: var(--button-fill-ink, var(--control-tint-ink, var(--rumahl-ui-color-on-accent)));
+  box-shadow: var(--control-inset);
+  backdrop-filter: var(--control-filter);
+  -webkit-backdrop-filter: var(--control-filter);
+}
+.shell .rumahl-calendar button[aria-current="date"] {
+  border-color: var(--rumahl-ui-color-accent);
+}
+.shell .rumahl-calendar button[data-outside] {
+  color: var(--rumahl-ui-color-text-muted);
+}
+.shell .rumahl-calendar button:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+.shell .rumahl-calendar button:focus-visible {
+  outline: 2px solid var(--rumahl-ui-color-accent);
+  outline-offset: -1px;
+}
+.shell .rumahl-calendar .rumahl-calendar__today {
+  width: 100%;
+  margin-top: 8px;
+  background: var(--control-fill);
+  border-radius: 999px;
+}
+.rumahl-progress {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: var(--control-gap);
+  font-size: var(--control-font);
+}
+.rumahl-progress progress {
+  grid-column: 1 / -1;
+  grid-row: 2;
+  appearance: none;
+  width: 100%;
+  height: 6px;
+  border: 0;
+  border-radius: 999px;
+  overflow: hidden;
+  background: var(--control-fill);
+  accent-color: var(--rumahl-ui-color-accent);
+}
+.rumahl-progress progress::-webkit-progress-bar {
+  background: var(--control-fill);
+  border-radius: 999px;
+}
+.rumahl-progress progress::-webkit-progress-value {
+  background: var(--rumahl-ui-color-accent);
+  border-radius: 999px;
+}
+.rumahl-progress progress::-moz-progress-bar {
+  background: var(--rumahl-ui-color-accent);
+  border-radius: 999px;
+}
+.rumahl-progress progress:indeterminate {
+  background: linear-gradient(
+    90deg,
+    transparent,
+    var(--rumahl-ui-color-accent),
+    transparent
+  );
+  background-size: 200% 100%;
+  animation: rumahl-progress 1.8s linear infinite;
+}
+.rumahl-progress progress:indeterminate::-webkit-progress-bar {
+  background: transparent;
+}
+@keyframes rumahl-progress {
+  to {
+    background-position: -200% 0;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .rumahl-progress progress:indeterminate {
+    animation: none;
+  }
+}
+
+/* Account controls share capsule materials and keep identity imagery circular. */
+.rumahl-avatar {
+  position: relative;
+  display: inline-grid;
+  place-items: center;
+  flex: none;
+  width: calc(var(--control-h) * 1.111);
+  height: calc(var(--control-h) * 1.111);
+  border-radius: 50%;
+  box-sizing: border-box;
+  background: color-mix(
+    in srgb,
+    var(--rumahl-ui-color-accent) 20%,
+    var(--control-base)
+  );
+  border: 1px solid var(--control-border);
+  color: var(--rumahl-ui-color-text-primary);
+  font:
+    600 calc(var(--control-h) * 0.361) / 1 Inter,
+    system-ui,
+    sans-serif;
+}
+/* Wallpaper avatars use the shared theme material, including solid themes. */
+.rumahl-avatar[data-material="theme"] {
+  background: var(--surface-sheen), var(--surface-fill);
+  border-color: var(--surface-edge);
+  box-shadow: var(--surface-rim), var(--surface-elevation);
+  backdrop-filter: var(--surface-filter);
+  -webkit-backdrop-filter: var(--surface-filter);
+  color: var(--avatar-foreground, var(--rumahl-ui-color-text-primary));
+}
+.rumahl-avatar img {
+  width: 100%;
+  height: 100%;
+  border-radius: inherit;
+  object-fit: cover;
+}
+.rumahl-avatar__status {
+  position: absolute;
+  width: 9px;
+  height: 9px;
+  bottom: 0;
+  right: 0;
+  border: 2px solid var(--control-base);
+  border-radius: 50%;
+  background: var(--rumahl-ui-color-text-muted);
+}
+.rumahl-avatar__status[data-status="online"] {
+  background: #39a77b;
+}
+.rumahl-avatar__status[data-status="away"] {
+  background: #d5a347;
+}
+.rumahl-profile-card {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  min-width: 0;
+  padding: 14px;
+  border: 1px solid var(--control-border);
+  border-radius: 18px;
+  background: var(--control-fill);
+  box-shadow: var(--control-inset);
+}
+.rumahl-profile-card > div {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+}
+.rumahl-profile-card strong,
+.rumahl-profile-option strong {
+  font-family: Inter, system-ui, sans-serif;
+  font-size: 12px;
+  font-weight: 600;
+}
+.rumahl-profile-card small,
+.rumahl-profile-option small,
+.rumahl-profile-card__status {
+  font-size: 10px;
+  color: var(--rumahl-ui-color-text-muted);
+}
+.shell .rumahl-select__trigger .rumahl-profile-option {
+  display: flex;
+}
+.rumahl-profile-option {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  min-width: 0;
+  text-align: left;
+}
+.rumahl-profile-option > span:last-child {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+.rumahl-profile-option strong,
+.rumahl-profile-option small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.rumahl-password {
+  display: grid;
+  gap: 7px;
+  font-size: 12px;
+  min-width: 0;
+}
+.rumahl-password__field {
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 6px;
+}
+.rumahl-password__field > .rumahl-input-feedback {
+  display: contents;
+}
+.rumahl-password__field > .rumahl-input,
+.rumahl-password__field .rumahl-input-feedback__control {
+  grid-area: 1 / 1;
+}
+.rumahl-password__field .rumahl-input-feedback__message {
+  grid-area: 2 / 1;
+}
+.shell .rumahl-password input {
+  width: 100%;
+  padding-right: 42px;
+}
+.shell .rumahl-password__toggle {
+  position: relative;
+  grid-area: 1 / 1;
+  justify-self: end;
+  align-self: center;
+  right: 4px;
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  min-height: 0;
+  margin: 0;
+  padding: 5px;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--rumahl-ui-color-text-muted);
+  box-shadow: none;
+}
+.shell .rumahl-password__toggle:hover:not(:disabled) {
+  background: var(--control-hover);
+}
+.rumahl-password__toggle svg {
+  width: 17px;
+  height: 17px;
+}
+.rumahl-avatar-change {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 16px;
+  margin-top: 18px;
+}
+.rumahl-avatar-change__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 7px;
+}
+.rumahl-avatar-change small,
+.rumahl-password small {
+  font-size: 11px;
+  color: var(--rumahl-ui-color-text-muted);
+}
+.rumahl-avatar-change [role="alert"] {
+  font-size: 12px;
+  color: var(--rumahl-ui-color-danger, #c84848);
+}
+
+/* Shared segmented controls: one connected track, buttons share their edges. */
+.shell .rumahl-button-group {
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0;
+  padding: calc(var(--control-h) * 0.08333);
+  max-width: 100%;
+  width: fit-content;
+  border: 1px solid var(--control-border);
+  border-radius: 20px;
+  background: var(--control-recess), var(--control-fill);
+  box-shadow: var(--control-inset);
+}
+.shell .rumahl-button-group > button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--control-gap);
+  flex: 1;
+  min-height: var(--control-h);
+  margin: 0;
+  padding: calc(var(--control-h) * 0.14) var(--control-pad-x);
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--rumahl-ui-color-text-muted);
+  box-shadow: none;
+  font: inherit;
+  font-size: var(--control-font);
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.shell .rumahl-button-group > button + button {
+  border-left: 1px solid var(--control-border);
+}
+.shell .rumahl-button-group > button:first-child {
+  border-top-left-radius: 16px;
+  border-bottom-left-radius: 16px;
+}
+.shell .rumahl-button-group > button:last-child {
+  border-top-right-radius: 16px;
+  border-bottom-right-radius: 16px;
+}
+.shell .rumahl-button-group > button:hover:not(:disabled) {
+  background: var(--control-hover);
+  color: var(--rumahl-ui-color-text-primary);
+}
+.shell .rumahl-button-group > button[aria-pressed="true"] {
+  background: var(--control-raised);
+  color: var(--rumahl-ui-color-text-primary);
+  box-shadow: var(--control-button-shadow);
+}
+.shell .rumahl-button-group > button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+.shell .rumahl-button-group > button:focus-visible,
+.shell .btn:focus-visible {
+  outline: 2px solid var(--rumahl-ui-color-accent);
+  outline-offset: -2px;
+}
+.rumahl-button-group svg {
+  display: block;
+  width: 16px;
+  height: 16px;
+}
+.shell .rumahl-input-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  max-width: 100%;
+  padding: 3px 10px;
+  border: 1px solid var(--control-border);
+  border-radius: 999px;
+  background: var(--control-recess), var(--control-fill);
+  box-shadow: var(--control-inset);
+  backdrop-filter: var(--control-filter);
+  -webkit-backdrop-filter: var(--control-filter);
+}
+.shell .rumahl-input-group:focus-within {
+  outline: 2px solid var(--rumahl-ui-color-accent);
+  outline-offset: -2px;
+}
+.shell .rumahl-input-group > .rumahl-input {
+  flex: 1;
+  width: 100%;
+  min-height: 28px;
+  padding: 4px 2px;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+  backdrop-filter: none;
+  outline: none;
+}
+.rumahl-input-group__affix {
+  display: inline-flex;
+  align-items: center;
+  flex: none;
+  color: var(--rumahl-ui-color-text-muted);
+  font-size: 12px;
+}
+.rumahl-input-group__affix svg {
+  width: 16px;
+  height: 16px;
+}
+.shell .rumahl-input-group:has(input:disabled) {
+  opacity: 0.5;
+}
+.shell
+  :is(.rumahl-input, .rumahl-textarea, .rumahl-input-group):is(
+    [aria-invalid="true"],
+    :has([aria-invalid="true"])
+  ) {
+  border-color: var(--rumahl-ui-color-danger, #e5484d);
+}
+
+/* Compound fields have one glass recess, with elevated controls inside it. */
+.shell .rumahl-input-group {
+  padding: 3px;
+}
+.shell .rumahl-input-group > .rumahl-input {
+  padding-inline: 10px;
+}
+.shell .rumahl-input-group__affix {
+  padding-inline: 8px;
+}
+.shell .rumahl-input-group__affix:has(.btn) {
+  padding: 0;
+}
+.shell .rumahl-input-group__affix .btn:not(.btn--primary):not(.btn--danger),
+.shell .rumahl-password__toggle {
+  background: var(--control-raised);
+  box-shadow: var(--control-button-shadow);
+  border: 1px solid var(--control-border);
+  color: var(--rumahl-ui-color-text-primary);
+}
+.shell
+  .rumahl-input-group__affix
+  .btn:hover:not(:disabled):not(.btn--primary):not(.btn--danger),
+.shell .rumahl-password__toggle:hover:not(:disabled) {
+  background: var(--control-raised);
+  border-color: var(--control-border-hover);
+}
+.shell .rumahl-input-group__affix .btn:active:not(:disabled) {
+  box-shadow: var(--control-inset);
+}
+
+.shell .rumahl-button-group > button[aria-selected="true"] {
+  background: var(--control-raised);
+  color: var(--rumahl-ui-color-text-primary);
+  box-shadow: var(--control-button-shadow);
+  border-color: var(--control-border);
+}
+.rumahl-tabs > [role="tabpanel"] {
+  margin-top: 14px;
+  padding: 14px;
+  border: 1px solid var(--control-border);
+  border-radius: 16px;
+  background: var(--control-fill);
+  box-shadow: var(--control-inset);
+}
+.rumahl-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: calc(var(--control-h) * 0.1667);
+  padding: calc(var(--control-h) * 0.14) calc(var(--control-h) * 0.25);
+  border: var(--badge-border);
+  border-radius: var(--badge-radius);
+  background: var(--badge-background);
+  box-shadow: var(--badge-shadow);
+  font-size: calc(var(--control-h) * 0.3056);
+}
+.rumahl-badge::before {
+  content: "";
+  width: calc(var(--control-h) * 0.1667);
+  height: calc(var(--control-h) * 0.1667);
+  border-radius: 50%;
+  background: var(--badge-color, currentColor);
+}
+.rumahl-badge--success {
+  --badge-color: #39a77b;
+}
+.rumahl-badge--warning {
+  --badge-color: #d5a347;
+}
+.rumahl-badge--danger {
+  --badge-color: var(--rumahl-ui-color-danger, #e5484d);
+}
+.rumahl-notice {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: calc(var(--control-h) * 0.333);
+  padding: calc(var(--control-h) * 0.39);
+  border: var(--notice-border);
+  border-radius: var(--notice-radius);
+  background: var(--notice-background);
+  box-shadow: var(--notice-shadow);
+}
+.rumahl-notice > div {
+  flex: 1;
+  min-width: min(100%, 150px);
+}
+.rumahl-notice strong {
+  font-size: var(--control-font);
+}
+.rumahl-notice p {
+  margin: 5px 0 0;
+  color: var(--rumahl-ui-color-text-muted);
+  font-size: var(--control-font);
+  line-height: 1.5;
+}
+.rumahl-notice__symbol {
+  display: grid;
+  place-items: center;
+  width: calc(var(--control-h) * 0.78);
+  height: calc(var(--control-h) * 0.78);
+  flex: none;
+  border-radius: 50%;
+  background: var(--control-raised);
+  box-shadow: var(--control-button-shadow);
+  color: var(--rumahl-ui-color-accent);
+  font-weight: 700;
+}
+.rumahl-notice--warning .rumahl-notice__symbol {
+  color: #d5a347;
+}
+.rumahl-notice--danger .rumahl-notice__symbol {
+  color: var(--rumahl-ui-color-danger, #e5484d);
+}
+
+/* One validation material for native inputs, compound controls and setting groups.
+   Success is explicit: an untouched required field never appears successful. */
+.shell {
+  --control-error: var(--rumahl-ui-color-danger, #e5484d);
+  --control-success: var(--rumahl-ui-color-success, #39a77b);
+  --status-fill-strength: 12%;
+  --status-hover-strength: 17%;
+  --status-fill-base: transparent;
+  --status-glow-strength: 48%;
+  /* A lit top edge keeps the field reading as glass even when tinted. */
+  --status-specular: inset 0 1px 0 #ffffff40;
+}
+.shell:where(
+  [data-material="glass"],
+  [data-material="translucent"],
+  :not([data-material])
+) {
+  --status-fill-strength: 26%;
+  --status-hover-strength: 32%;
+}
+.shell[data-material="floating"] {
+  --status-fill-strength: 16%;
+  --status-hover-strength: 21%;
+  --status-glow-strength: 0%;
+  --status-shadow-override: var(--control-inset);
+  --status-specular: inset 0 1px 0 #ffffff66;
+}
+.shell[data-material="solid"] {
+  --status-fill-strength: 10%;
+  --status-hover-strength: 14%;
+  --status-fill-base: var(--control-base);
+  --status-glow-strength: 0%;
+  --status-shadow-override: none;
+  --status-specular: none;
+}
+.shell :where([data-status="success"]) {
+  --control-status-color: var(--control-success);
+}
+.shell
+  :where(
+    [data-status="error"],
+    [aria-invalid="true"],
+    input:user-invalid,
+    textarea:user-invalid,
+    select:user-invalid
+  ) {
+  --control-status-color: var(--control-error);
+}
+.shell .rumahl-input-group:has(input:is([aria-invalid="true"], :user-invalid)) {
+  --control-status-color: var(--control-error);
+}
+.shell
+  .rumahl-choice
+  input:is(
+    [data-status="error"],
+    [data-status="success"],
+    [aria-invalid="true"]
+  ),
+.shell
+  :is(
+    input,
+    textarea,
+    select,
+    .rumahl-select__trigger,
+    .rumahl-color-picker__trigger,
+    .rumahl-input-group,
+    .rumahl-field-group,
+    .rumahl-range,
+    .rumahl-file
+  ):is(
+    [data-status="error"],
+    [data-status="success"],
+    [aria-invalid="true"],
+    :user-invalid
+  ),
+.shell .rumahl-input-group:has(input:is([aria-invalid="true"], :user-invalid)),
+.shell
+  .rumahl-field-group[data-status]:not([data-status="neutral"])
+  :is(
+    .rumahl-input,
+    .rumahl-textarea,
+    .rumahl-select__trigger,
+    .rumahl-input-group,
+    .rumahl-checkbox,
+    .rumahl-radio
+  ) {
+  /* Validation tints the surface while keeping the same recess + inset, so the
+     field stays a lit glass surface (depth preserved) instead of a flat dyed
+     block or a hard coloured outline. */
+  --control-tint: color-mix(
+    in srgb,
+    var(--control-status-color) var(--status-fill-strength),
+    transparent
+  );
+  --control-border: color-mix(in srgb, var(--control-status-color) 32%, transparent);
+  --control-border-hover: var(--control-status-color);
+  background: var(--control-recess),
+    linear-gradient(var(--control-tint), var(--control-tint)), var(--control-fill);
+  border-color: var(--control-border);
+  box-shadow:
+    var(--control-inset),
+    var(--status-specular),
+    0 0 0 3px color-mix(in srgb, var(--control-status-color) 16%, transparent);
+  accent-color: var(--control-status-color);
+}
+.shell
+  :is(
+    [data-status="error"],
+    [data-status="success"],
+    [aria-invalid="true"],
+    :user-invalid
+  ):focus-visible,
+.shell
+  .rumahl-input-group:is(
+    [data-status="error"],
+    [data-status="success"],
+    :has([aria-invalid="true"], :user-invalid)
+  ):focus-within {
+  outline-color: var(--control-status-color);
+}
+/* Keep affixes and the input on a single tinted glass surface. */
+.shell
+  .rumahl-input-group
+  > .rumahl-input:is([aria-invalid], [data-status], :user-invalid),
+.shell .rumahl-field-group[data-status] .rumahl-input-group > .rumahl-input {
+  background: transparent;
+  border: 0;
+  box-shadow: none;
+}
+.shell .rumahl-field-group {
+  min-width: 0;
+  margin: 0;
+  padding: 16px;
+  border: 1px solid var(--control-border);
+  border-radius: 18px;
+  background: var(--control-recess), var(--control-fill);
+  box-shadow: var(--control-status-shadow, var(--control-inset));
+}
+/* The legend is floated, so it reads as a heading inside the card instead of
+   sitting on the border line. */
+.shell .rumahl-field-group > legend {
+  float: left;
+  width: 100%;
+  padding: 0;
+  margin-bottom: 12px;
+  font-size: 13px;
+  font-weight: 650;
+}
+.rumahl-field-group__fields {
+  clear: both;
+  display: grid;
+  gap: 12px;
+}
+.rumahl-field-group__fields > label:not(.rumahl-choice) {
+  display: grid;
+  gap: 7px;
+  font-size: 12px;
+}
+.rumahl-field-group > small {
+  display: block;
+  margin-top: 12px;
+  color: var(--rumahl-ui-color-text-muted);
+  line-height: 1.5;
+}
+.rumahl-field-group:disabled {
+  opacity: 0.5;
+}
+.shell :is(.rumahl-switch, .rumahl-range, .rumahl-file) {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid var(--control-border);
+  border-radius: 18px;
+  font-size: 12px;
+}
+.shell .rumahl-switch {
+  display: flex;
+  justify-content: space-between;
+}
+.shell :is(.rumahl-range, .rumahl-file) input {
+  width: 100%;
+  min-width: 0;
+}
+.shell :is(.rumahl-switch, .rumahl-range, .rumahl-file):has(input:disabled) {
+  opacity: 0.5;
+}
+/* Selection controls use the same independent capsule thumbs as Appearance. */
+.shell .rumahl-toggle-group {
+  display: inline-flex;
+  align-items: center;
+  width: fit-content;
+  max-width: 100%;
+  box-sizing: border-box;
+  flex-wrap: nowrap;
+  overflow-x: auto;
+}
+.shell .rumahl-toggle-group > button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--control-gap);
+  margin: 0;
+  min-width: max-content;
+  min-height: var(--control-h);
+  padding-inline: calc(var(--control-pad-x) * 0.6);
+  white-space: nowrap;
+  font: inherit;
+  font-size: var(--control-font);
+  cursor: pointer;
+}
+.shell .rumahl-toggle-group > button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+.shell .rumahl-toggle-group > button:focus-visible {
+  outline: 2px solid var(--rumahl-ui-color-accent);
+  outline-offset: -2px;
+}
+.rumahl-toggle-group svg {
+  width: 16px;
+  height: 16px;
+}
+/* Action buttons share their edges and raised material, just like Files. */
+.shell .rumahl-button-group--actions {
+  box-sizing: border-box;
+  align-self: center;
+  flex-wrap: nowrap;
+  border-radius: 999px;
+  padding: 3px;
+}
+.shell .rumahl-button-group--actions > button {
+  box-sizing: border-box;
+  height: 28px;
+  line-height: 18px;
+}
+.shell .rumahl-button-group--actions > button {
+  background: var(--control-raised);
+  color: var(--rumahl-ui-color-text-primary);
+  box-shadow: var(--control-button-shadow);
+}
+.shell .rumahl-button-group--actions > button:disabled {
+  background: transparent;
+  box-shadow: none;
+}
+.shell .rumahl-button-group--actions > button:active:not(:disabled) {
+  box-shadow: var(--control-inset);
+}
+.shell .rumahl-switch {
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+}
+
+.rumahl-input-feedback {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+  max-width: 100%;
+}
+.rumahl-input-feedback__control {
+  position: relative;
+  display: flex;
+  min-width: 0;
+}
+.shell
+  .rumahl-input-feedback__control
+  > :is(.rumahl-input, .rumahl-textarea, .rumahl-input-group, .rumahl-select) {
+  width: 100%;
+}
+.shell
+  .rumahl-input-feedback__control:has(> .rumahl-input-feedback__icon)
+  > :is(.rumahl-input, .rumahl-textarea, .rumahl-input-group),
+.shell
+  .rumahl-input-feedback__control:has(> .rumahl-input-feedback__icon)
+  > .rumahl-select
+  .rumahl-select__trigger {
+  padding-right: 38px;
+}
+.rumahl-input-feedback__icon {
+  position: absolute;
+  right: 11px;
+  top: 50%;
+  transform: translateY(-50%);
+  display: grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--control-error);
+  color: white;
+  font: 750 12px/1 system-ui;
+  pointer-events: none;
+}
+.shell .rumahl-input-feedback__message {
+  color: var(--control-error);
+  font-size: 11px;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
+/* Compact native OS windows inherit shell material in the browser top layer. */
+.shell .rumahl-modal {
+  position: fixed;
+  inset: 0;
+  margin: auto;
+  box-sizing: border-box;
+  padding: 0;
+  width: min(520px, calc(100vw - 32px));
+  max-height: calc(100dvh - 48px);
+  overflow: auto;
+  color: var(--rumahl-ui-color-text-primary);
+  border: 1px solid var(--control-border-hover);
+  border-radius: var(--rumahl-ui-shape-radius-window, 18px);
+  background:
+    var(--surface-tint), var(--surface-sheen),
+    var(--material-overlay, var(--control-popup));
+  backdrop-filter: var(--surface-filter);
+  box-shadow:
+    var(--material-rim, inset 0 1px 0 #ffffff24),
+    var(--material-shadow, 0 24px 80px #00000055);
+  font: inherit;
+  text-align: left;
+}
+.shell .rumahl-modal::backdrop {
+  background: #07101c18;
+}
+.shell[data-material="solid"] .rumahl-modal {
+  background: var(--control-base);
+  backdrop-filter: none;
+}
+.rumahl-modal__titlebar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  min-height: 46px;
+  padding: 0 12px 0 20px;
+  border-bottom: 1px solid var(--material-line, var(--control-border));
+  font-size: 12px;
+  font-weight: 600;
+}
+.rumahl-modal__identity {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  font-size: 11px;
+  color: var(--rumahl-ui-color-text-muted);
+}
+.rumahl-modal__identity > svg {
+  width: 10px;
+  height: 19px;
+  color: var(--rumahl-ui-color-accent);
+  flex: none;
+}
+.rumahl-modal__identity > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.rumahl-modal__identity--alert {
+  padding: 20px 24px 0;
+}
+.shell .rumahl-modal__close {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+}
+.rumahl-modal__close svg {
+  width: 16px;
+  height: 16px;
+  stroke: currentColor;
+  stroke-width: 1.5;
+  fill: none;
+}
+.shell .rumahl-modal__close:hover {
+  background: var(--control-error);
+  color: white;
+}
+.rumahl-modal__body {
+  padding: 22px;
+}
+.shell .rumahl-modal__body h2 {
+  margin: 0 0 12px;
+  font-size: 17px;
+  line-height: 1.3;
+}
+.rumahl-modal__body > p {
+  margin: 0 0 18px;
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--rumahl-ui-color-text-muted);
+}
+.rumahl-modal__body > label {
+  display: grid;
+  gap: 8px;
+  font-size: 12px;
+}
+.rumahl-modal__actions {
+  display: flex;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 0 22px 22px;
+}
+.shell .rumahl-modal--alert {
+  width: min(440px, calc(100vw - 32px));
+  border-radius: 22px;
+}
+.rumahl-modal--alert .rumahl-modal__body {
+  position: relative;
+  padding-left: 78px;
+  min-height: 80px;
+}
+.rumahl-dialog__symbol {
+  position: absolute;
+  left: 22px;
+  top: 22px;
+  display: grid;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  border-radius: 12px;
+  background: var(--control-raised);
+  box-shadow: var(--control-button-shadow);
+  color: var(--rumahl-ui-color-accent);
+  font-size: 24px;
+  font-weight: 700;
+}
+.rumahl-dialog__symbol--danger {
+  color: var(--control-error);
+}
+.shell .rumahl-modal :is(button, input):focus-visible {
+  outline: 2px solid var(--rumahl-ui-color-accent);
+  outline-offset: -2px;
+}
+
+.shell .rumahl-password__field .rumahl-input-feedback__icon {
+  right: 48px;
+}
+.shell
+  .rumahl-password__field
+  .rumahl-input-feedback__control:has(> .rumahl-input-feedback__icon)
+  > .rumahl-input {
+  padding-right: 76px;
+}
+
+/* Multiline feedback sits alongside the first line, single-line feedback is centered. */
+.rumahl-input-feedback__control:has(> textarea) > .rumahl-input-feedback__icon {
+  top: 10px;
+  transform: none;
+}
+.shell .design-lab__grid > .rumahl-switch {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+/* Compound fields own one focus boundary in every app, including settings. */
+.shell .rumahl-input-group > input.rumahl-input:focus-visible {
+  outline: none;
+  box-shadow: none;
+  border: 0;
+  background: transparent;
+}
+.shell .rumahl-input-group > input[type="number"] {
+  appearance: textfield;
+  -moz-appearance: textfield;
+}
+.shell .rumahl-input-group > input[type="number"]::-webkit-inner-spin-button,
+.shell .rumahl-input-group > input[type="number"]::-webkit-outer-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+.shell .rumahl-input-group:focus-within {
+  outline-width: 2px;
+  outline-offset: -2px;
+}
+
+/* Shared motion belongs to controls, never to Design Lab or a particular app. */
+@keyframes rumahl-control-feedback-in {
+  from {
+    opacity: 0;
+    translate: 0 -3px;
+  }
+  to {
+    opacity: 1;
+    translate: 0 0;
+  }
+}
+@keyframes rumahl-dialog-in {
+  from {
+    opacity: 0;
+    translate: 0 8px;
+    scale: 0.97;
+  }
+  to {
+    opacity: 1;
+    translate: 0 0;
+    scale: 1;
+  }
+}
+@media (prefers-reduced-motion: no-preference) {
+  .shell:not([data-animations="off"])
+    :is(
+      .rumahl-input,
+      .rumahl-textarea,
+      .rumahl-input-group,
+      .rumahl-select__trigger,
+      .rumahl-checkbox,
+      .rumahl-radio,
+      .rumahl-toggle-group > button,
+      .rumahl-button-group > button
+    ) {
+    transition:
+      background-color 180ms ease,
+      border-color 180ms ease,
+      box-shadow 180ms ease,
+      color 180ms ease,
+      scale 120ms ease;
+  }
+  .shell:not([data-animations="off"])
+    :is(.rumahl-input, .rumahl-textarea, .rumahl-select__trigger):focus-visible,
+  .shell:not([data-animations="off"]) .rumahl-input-group:focus-within {
+    box-shadow: var(--control-status-shadow,
+      var(--control-inset),
+      0 0 0 4px color-mix(in srgb, var(--rumahl-ui-color-accent) 12%, transparent));
+  }
+  .shell:not([data-animations="off"])
+    :is(.rumahl-toggle-group, .rumahl-button-group)
+    > button:active:not(:disabled) {
+    scale: 0.96;
+  }
+  .shell:not([data-animations="off"]) .rumahl-input-feedback__message {
+    animation: rumahl-control-feedback-in 180ms ease both;
+  }
+  .shell:not([data-animations="off"]) .rumahl-modal[open] {
+    animation: rumahl-dialog-in 200ms cubic-bezier(0.2, 0.7, 0.2, 1) both;
+  }
+  .shell:not([data-animations="off"]) input[role="switch"]::before {
+    transition: transform 180ms cubic-bezier(0.2, 0.7, 0.2, 1);
+  }
+}
+/* These unlayered overrides also cover earlier control transitions. */
+.shell[data-animations="off"]
+  :is(
+    input,
+    textarea,
+    select,
+    button,
+    .rumahl-input-group,
+    .rumahl-input-feedback__message,
+    .rumahl-modal
+  ),
+.shell[data-animations="off"] input::before {
+  animation: none !important;
+  transition: none !important;
+}
+@media (prefers-reduced-motion: reduce) {
+  .shell
+    :is(
+      input,
+      textarea,
+      select,
+      button,
+      .rumahl-input-group,
+      .rumahl-input-feedback__message,
+      .rumahl-modal
+    ),
+  .shell input::before {
+    animation: none !important;
+    transition: none !important;
+  }
+}
+/* Do not reintroduce an inner focus glow through the animated focus rule. */
+.shell:not([data-animations="off"])
+  .rumahl-input-group
+  > input.rumahl-input:focus-visible {
+  outline: none;
+  box-shadow: none;
+}
+
+/* Material-specific behaviour must not alter the default Glass recipe. */
+.shell[data-material="solid"] .rumahl-input[data-material="glass"] {
+  --control-fill: var(--control-base);
+  --control-filter: none;
+}
+
+/* Coloured Glass retains the neutral recess, with a restrained coloured glow. */
+.shell:where([data-material="glass"], [data-material="translucent"], :not([data-material]))
+  :is(.btn--primary, .btn--danger) {
+  --control-tint-strength: 64%;
+  color: var(--button-fill-ink, var(--rumahl-ui-color-text-primary));
+  border-color: var(--control-border);
+  box-shadow: var(--control-inset);
+  background: var(--control-recess),
+    linear-gradient(var(--control-tint), var(--control-tint)), var(--control-fill);
+}
+.shell:where([data-material="glass"], [data-material="translucent"], :not([data-material]))
+  :is(.btn--primary, .btn--danger):hover:not(:disabled) {
+  border-color: var(--control-border-hover);
+  background: var(--control-recess),
+    linear-gradient(var(--control-tint), var(--control-tint)), var(--control-hover);
+}
+
+/* Local emission adds colour around the recess without a raised drop shadow.
+   Strengths are overridable for direct comparisons in Storybook. */
+.shell:where([data-material="glass"], [data-material="translucent"], :not([data-material])) .btn--primary {
+  --glass-glow-color: var(--rumahl-ui-color-accent);
+}
+.shell:where([data-material="glass"], [data-material="translucent"], :not([data-material])) .btn--danger {
+  --glass-glow-color: var(--rumahl-ui-color-danger, #e5484d);
+}
+.shell:where([data-material="glass"], [data-material="translucent"], :not([data-material]))
+  :is(.btn--primary, .btn--danger):not(:disabled):not([aria-disabled="true"]) {
+  box-shadow: var(--control-inset),
+    inset 0 -3px 7px -3px color-mix(in srgb, var(--glass-glow-color) var(--glass-inner-glow, 30%), transparent),
+    0 2px 8px -3px color-mix(in srgb, var(--glass-glow-color) var(--glass-outer-glow, 20%), transparent);
+}
+
+/* Floating tint is present at rest as well as on hover, below the reflection. */
+.shell[data-material="floating"] :is(.btn--primary, .btn--danger) {
+  background: var(--control-recess),
+    linear-gradient(var(--control-tint), var(--control-tint)), var(--control-fill);
+}
+.shell[data-material="floating"] :is(.btn--primary, .btn--danger):hover:not(:disabled) {
+  background: var(--control-recess),
+    linear-gradient(var(--control-tint), var(--control-tint)), var(--control-hover);
+}
+/* Small surfaces need backdrop processing too; otherwise their fill looks flat. */
+.shell[data-material="floating"]
+  :is(.rumahl-badge, .rumahl-notice, .rumahl-toggle-group, .rumahl-button-group) {
+  backdrop-filter: var(--control-filter);
+  -webkit-backdrop-filter: var(--control-filter);
+}
+.shell[data-material="floating"] .rumahl-badge {
+  background: var(--control-recess), var(--control-fill);
+}
+.shell[data-material="solid"] .rumahl-notice__symbol {
+  box-shadow: none;
+}
+
+/* Extracted OS page primitives. Existing OS wrappers retain their own layout. */
+.rumahl-page-heading {
+  color: var(--rumahl-ui-color-text-primary);
+}
+.rumahl-page-heading .settings-heading {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.rumahl-page-heading .pagetitle {
+  margin: 0;
+  font-size: clamp(22px, 4vw, 30px);
+  line-height: 1.2;
+  letter-spacing: -0.025em;
+  overflow-wrap: anywhere;
+}
+.rumahl-page-heading .pagedesc {
+  margin: 10px 0 0;
+  color: var(--rumahl-ui-color-text-muted);
+  font-size: 13px;
+  line-height: 1.6;
+  max-width: 60ch;
+}
+.rumahl-empty-state {
+  max-width: 620px;
+  padding: clamp(24px, 5vw, 48px);
+  color: var(--rumahl-ui-color-text-primary);
+}
+.rumahl-empty-state .eyebrow {
+  margin: 0 0 12px;
+  color: var(--rumahl-ui-color-accent);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+.rumahl-empty-state h1 {
+  margin: 0 0 16px;
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: clamp(32px, 6vw, 56px);
+  font-weight: 500;
+  line-height: 1.1;
+  letter-spacing: -0.04em;
+  overflow-wrap: anywhere;
+}
+.rumahl-empty-state > p:not(.eyebrow) {
+  margin: 0;
+  color: var(--rumahl-ui-color-text-muted);
+  font-size: 14px;
+  line-height: 1.7;
+}
+.rumahl-empty-state__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 24px;
+}
+
+/* Selection controls use the same tinted Floating material as action buttons. */
+.shell[data-material="floating"]
+  :is(.rumahl-choice input, input[role="switch"]) {
+  backdrop-filter: var(--control-filter);
+  -webkit-backdrop-filter: var(--control-filter);
+}
+.shell[data-material="floating"]
+  :is(.rumahl-choice input, input[role="switch"]):checked {
+  --selection-tint: color-mix(in srgb, var(--control-status-color, var(--rumahl-ui-color-accent)) 28%, transparent);
+  background: var(--control-recess),
+    linear-gradient(var(--selection-tint), var(--selection-tint)), var(--control-fill);
+  border-color: color-mix(in srgb, var(--rumahl-ui-color-accent) 45%, var(--control-border));
+}
+/* Solid coloured actions also retain their colour before hover. */
+.shell[data-material="solid"] :is(.btn--primary, .btn--danger) {
+  background: var(--control-tint);
+}
+.shell[data-material="solid"] :is(.btn--primary, .btn--danger):hover:not(:disabled) {
+  background: color-mix(in srgb, var(--control-tint) 92%, var(--rumahl-ui-color-text-primary));
+  box-shadow: none;
+}
+
+/* Press into the material without moving the button's layout. */
+.shell .btn {
+  transition: background 150ms ease, border-color 150ms ease, color 150ms ease,
+    box-shadow 140ms ease, scale 140ms ease;
+}
+.shell .btn:active:not(:disabled):not([aria-disabled="true"]) {
+  transform: none;
+  scale: 0.98;
+}
+.shell:where([data-material="glass"], [data-material="translucent"], :not([data-material]))
+  .btn:active:not(:disabled):not([aria-disabled="true"]) {
+  box-shadow: inset 0 3px 7px #00000030, inset 0 1px 2px #00000024,
+    inset 0 -1px 0 #ffffff28;
+}
+.shell[data-material="floating"] .btn:active:not(:disabled):not([aria-disabled="true"]) {
+  box-shadow: inset 0 1px 2px #00000018, inset 0 -1px 0 #ffffff24,
+    0 1px 3px #00000018;
+}
+.shell[data-material="solid"] .btn:active:not(:disabled) {
+  box-shadow: none;
+}
+.shell input[role="switch"] {
+  touch-action: pan-y;
+  cursor: grab;
+  transition: background 220ms ease, border-color 220ms ease;
+}
+.shell input[role="switch"]:disabled {
+  cursor: not-allowed;
+}
+.shell:not([data-animations="off"]) input[role="switch"]::before {
+  transition: var(--switch-thumb-transition);
+}
+.shell input[role="switch"][data-dragging="true"] {
+  cursor: grabbing;
+}
+.shell input[role="switch"][data-dragging="true"]::before {
+  transform: translateX(var(--switch-position));
+  transition: none;
+}
+.shell[data-animations="off"] .btn:active:not(:disabled) {
+  scale: none;
+}
+@media (prefers-reduced-motion: reduce) {
+  .shell .btn:active:not(:disabled) { scale: none; }
+  .shell input[role="switch"]::before { transition: none !important; }
+}
+
+/* A permanent channel remains visible even at zero or while loading. */
+.shell {
+  --indicator-track: color-mix(in srgb, var(--rumahl-ui-color-text-primary) 10%, var(--control-base));
+  --indicator-fill: color-mix(in srgb, var(--rumahl-ui-color-accent) 65%, transparent);
+  --indicator-shadow: inset 0 2px 4px #00000030, inset 0 -1px 0 #ffffff28;
+}
+.shell[data-material="solid"] {
+  --indicator-shadow: none;
+  --indicator-fill: var(--rumahl-ui-color-accent);
+}
+.rumahl-progress__track {
+  grid-column: 1 / -1;
+  grid-row: 2;
+  position: relative;
+  height: calc(var(--control-h) * 0.28);
+  overflow: hidden;
+  border: var(--range-thumb-border);
+  border-radius: var(--range-radius);
+  background: var(--range-track);
+  box-shadow: var(--indicator-shadow);
+}
+.rumahl-progress__fill {
+  display: block;
+  width: var(--progress-value);
+  height: 100%;
+  border-radius: inherit;
+  background: var(--control-recess), var(--indicator-fill);
+  box-shadow: var(--indicator-shadow);
+  transition: width 220ms ease;
+}
+.rumahl-progress__track[data-indeterminate="true"] .rumahl-progress__fill {
+  animation: rumahl-loading-channel 1.7s ease-in-out infinite alternate;
+}
+@keyframes rumahl-loading-channel {
+  from { transform: translateX(0); }
+  to { transform: translateX(185%); }
+}
+.rumahl-spinner {
+  /* Follows the shared size scale (36px at md). */
+  --spinner-size: var(--control-h);
+  display: inline-flex;
+  width: var(--spinner-size);
+  height: var(--spinner-size);
+  flex: none;
+}
+.rumahl-spinner__ring { width: 100%; height: 100%; overflow: visible; fill: none; }
+.rumahl-spinner__edge { stroke: var(--control-border); stroke-width: 5.5; }
+.rumahl-spinner__track { stroke: var(--indicator-track); stroke-width: 4; }
+.rumahl-spinner__arc {
+  stroke: var(--rumahl-ui-color-accent);
+  stroke-width: 3;
+  stroke-linecap: round;
+  stroke-dasharray: 25 75;
+  transform-origin: center;
+  animation: rumahl-spinner-turn 1.4s linear infinite;
+}
+@keyframes rumahl-spinner-turn { to { rotate: 360deg; } }
+.shell .rumahl-choice input:is(.rumahl-checkbox, .rumahl-radio) {
+  background: var(--control-recess), var(--control-fill);
+  transition: background 160ms ease, border-color 160ms ease, box-shadow 160ms ease;
+}
+.shell .rumahl-choice input:is(.rumahl-checkbox, .rumahl-radio):checked {
+  background: var(--control-recess), color-mix(in srgb, var(--control-status-color, var(--rumahl-ui-color-accent)) 28%, var(--control-fill));
+}
+.shell .rumahl-choice input:is(.rumahl-checkbox, .rumahl-radio):active:not(:disabled) {
+  box-shadow: var(--indicator-shadow);
+}
+.shell .rumahl-range input[type="range"]::-webkit-slider-runnable-track {
+  height: 8px;
+  background: var(--indicator-track);
+  box-shadow: var(--indicator-shadow);
+}
+.shell .rumahl-range input[type="range"]::-moz-range-track {
+  height: 6px;
+  background: var(--indicator-track);
+  box-shadow: var(--indicator-shadow);
+}
+.shell .rumahl-range input[type="range"]::-moz-range-progress {
+  height: 6px;
+  border-radius: 999px;
+  background: var(--indicator-fill);
+  box-shadow: var(--indicator-shadow);
+}
+.shell .rumahl-toggle-group[data-draggable="true"] { touch-action: pan-y; user-select: none; }
+.shell .rumahl-toggle-group[data-draggable="true"] > button { cursor: grab; }
+.shell .rumahl-toggle-group[data-dragging="true"] > button { cursor: grabbing; }
+.shell .rumahl-toggle-group[data-dragging="true"] > button[aria-pressed="true"] {
+  background: transparent;
+  box-shadow: none;
+}
+.shell .rumahl-toggle-group[data-dragging="true"] > button[data-drag-preview="true"] {
+  background: var(--control-raised);
+  box-shadow: var(--control-button-shadow);
+  color: var(--rumahl-ui-color-text-primary);
+}
+.shell[data-animations="off"] .rumahl-progress__fill,
+.shell[data-animations="off"] .rumahl-spinner__arc { animation: none; transition: none; }
+@media (prefers-reduced-motion: reduce) {
+  .rumahl-progress__fill, .rumahl-spinner__arc { animation: none !important; transition: none; }
+}
+
+/* Multiline fields use restrained corners, even inside settings forms. */
+.shell :is(textarea.rumahl-textarea, .settings-content textarea) {
+  border-radius: 10px;
+}
+/* Native range handles input and accessibility; the visible handle can interpolate. */
+.rumahl-range__slider { position: relative; display: block; height: calc(var(--control-h) * 0.89); margin-inline: 2px; }
+.rumahl-range__channel {
+  position: absolute; inset: calc(var(--control-h) * 0.333) calc(var(--control-h) * 0.222); border-radius: 999px;
+  background: var(--indicator-track); box-shadow: var(--indicator-shadow); overflow: hidden;
+}
+.rumahl-range__channel > span {
+  display: block; height: 100%; width: var(--range-position);
+  background: var(--range-fill); border-radius: inherit;
+  transition: width 90ms linear;
+}
+.rumahl-range__thumb {
+  position: absolute; top: calc(var(--control-h) * 0.194);
+  left: calc(var(--range-position) - var(--range-offset));
+  width: calc(var(--control-h) * 0.5); height: calc(var(--control-h) * 0.5); border-radius: var(--range-thumb-radius);
+  border: var(--range-thumb-border); background: var(--range-thumb-background);
+  box-shadow: var(--control-button-shadow); pointer-events: none;
+  transition: left 90ms linear, scale 120ms ease;
+}
+.shell .rumahl-range__slider input[type="range"] {
+  position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; padding: 0;
+  opacity: 0; cursor: grab;
+}
+.rumahl-range__slider:has(input:active) .rumahl-range__thumb { scale: 1.12; }
+.rumahl-range__slider:has(input:focus-visible) { outline: 2px solid var(--rumahl-ui-color-accent); outline-offset: -2px; border-radius: 999px; }
+.shell .rumahl-range__slider input:active { cursor: grabbing; }
+.shell .rumahl-range__slider input:disabled { cursor: not-allowed; }
+/* A single shared thumb slides between exclusive choices. Multiple choices are separate chips. */
+.shell .rumahl-toggle-group[data-selection="single"] { position: relative; isolation: isolate; }
+.shell .rumahl-toggle-group[data-selection="single"][data-has-selection="true"]::before {
+  content: ""; position: absolute; left: var(--selection-left); width: var(--selection-width);
+  top: calc(var(--control-h) * 0.08333); bottom: calc(var(--control-h) * 0.08333); border-radius: 999px;
+  background: var(--control-raised); box-shadow: var(--control-button-shadow);
+  pointer-events: none; transition: left 180ms cubic-bezier(.2,.8,.2,1), width 180ms ease;
+}
+.shell .rumahl-toggle-group[data-selection="single"] > button {
+  position: relative; z-index: 1;
+}
+/* While dragging, the shared thumb tracks the finger pixel-perfectly (no
+   transition); on release it settles into place with the snap animation above. */
+.shell .rumahl-toggle-group[data-selection="single"][data-dragging="true"]::before {
+  transition: none;
+}
+.shell .rumahl-toggle-group[data-selection="single"] > button:is([aria-pressed="true"], [data-drag-preview="true"]) {
+  background: transparent; box-shadow: none;
+}
+.shell .rumahl-toggle-group[data-selection="multiple"] {
+  gap: 8px; padding: 0; border: 0; border-radius: 0;
+  background: transparent; box-shadow: none; flex-wrap: wrap;
+}
+.shell .rumahl-toggle-group[data-selection="multiple"] > button {
+  gap: 7px; border: 1px solid var(--control-border); border-radius: 9px;
+  background: var(--control-fill); box-shadow: var(--control-inset);
+}
+.shell .rumahl-toggle-group[data-selection="multiple"] > button::before {
+  content: ""; width: 12px; height: 12px; border: 1px solid currentColor; border-radius: 3px;
+}
+.shell .rumahl-toggle-group[data-selection="multiple"] > button[aria-pressed="true"]::before {
+  content: "✓"; display: grid; place-items: center; font-size: 10px; line-height: 1;
+}
+.shell .rumahl-toggle-group[data-selection="multiple"] > button[aria-pressed="true"] {
+  /* The same coloured tint as the buttons and the switch, over the shared
+     recipe, so the multiple chips match the rest of the controls. */
+  --control-tint: color-mix(
+    in srgb,
+    var(--rumahl-ui-color-accent)
+      var(--button-fill-strength, var(--control-tint-strength, 72%)),
+    var(--inner-color-base, transparent)
+  );
+  border-color: color-mix(
+    in srgb,
+    var(--rumahl-ui-color-accent) 45%,
+    var(--control-border)
+  );
+  color: var(--rumahl-ui-color-text-primary);
+  background: var(--control-recess),
+    linear-gradient(var(--control-tint), var(--control-tint)), var(--control-fill);
+}
+.shell[data-animations="off"] .rumahl-range__thumb,
+.shell[data-animations="off"] .rumahl-range__channel > span,
+.shell[data-animations="off"] .rumahl-toggle-group::before { transition: none; }
+@media (prefers-reduced-motion: reduce) {
+  .rumahl-range__thumb, .rumahl-range__channel > span, .shell .rumahl-toggle-group::before { transition: none !important; }
+}
+
+/* Glass pigment is diluted with transparency only, never white. Dark surfaces
+   need more pigment to retain the same visible saturation and inner light. */
+.shell:where([data-material="glass"], [data-material="translucent"], :not([data-material])) {
+  --glass-tint-strength: 40%;
+  --glass-pool-strength: 72%;
+  --status-fill-strength: 18%;
+  --status-hover-strength: 23%;
+  --status-glow-strength: 78%;
+  --indicator-fill: color-mix(in srgb, var(--rumahl-ui-color-accent) 88%, transparent);
+}
+.shell[data-scheme="dark"]:where([data-material="glass"], [data-material="translucent"], :not([data-material])) {
+  --glass-tint-strength: 48%;
+  --glass-pool-strength: 92%;
+  --status-fill-strength: 26%;
+  --status-hover-strength: 31%;
+  --status-glow-strength: 100%;
+  --indicator-fill: var(--rumahl-ui-color-accent);
+}
+.shell:where([data-material="glass"], [data-material="translucent"], :not([data-material]))
+  :is(.rumahl-choice input, input[role="switch"]):checked {
+  --glass-selection-color: var(--control-status-color, var(--rumahl-ui-color-accent));
+  background: var(--control-recess),
+    radial-gradient(ellipse at 50% 110%, color-mix(in srgb, var(--glass-selection-color) var(--glass-pool-strength), transparent), transparent 82%),
+    linear-gradient(color-mix(in srgb, var(--glass-selection-color) var(--glass-tint-strength), transparent), color-mix(in srgb, var(--glass-selection-color) var(--glass-tint-strength), transparent)),
+    var(--control-fill);
+}
+
+/* Reset emission at material boundaries, including nested comparison previews. */
+.shell {
+  --glass-inner-glow: 30%;
+  --glass-outer-glow: 20%;
+}
+.shell:is([data-material="solid"], [data-material="floating"]) {
+  --glass-inner-glow: 0%;
+  --glass-outer-glow: 0%;
+}
+
+/* Fill only chooses what lies behind the pigment. Its concentration, text,
+   reflections and depth still come from the selected material. */
+.shell[data-fill="solid"] {
+  --inner-color-base: var(--control-base);
+}
+.shell[data-fill="fluid"] {
+  --inner-color-base: transparent;
+}
+
+/* Per-element override: `glass={false}` renders a flat control without glass. */
+.shell
+  :is(
+    .btn,
+    .rumahl-input,
+    .rumahl-textarea,
+    .rumahl-select__trigger,
+    .rumahl-input-group
+  )[data-glass="false"] {
+  --control-recess: linear-gradient(transparent, transparent);
+  --control-filter: none;
+  --control-fill: color-mix(
+    in srgb,
+    var(--control-base) 93%,
+    var(--rumahl-ui-color-text-primary)
+  );
+  --control-inset: none;
+  box-shadow: none;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+
+/*
+ * App input material (theme parameter, independent of the shell material).
+ * "solid" renders the rumahl/ui input components flat, using exactly the same
+ * values as the shell's Solid material, so it matches Storybook 1:1.
+ */
+.shell[data-app-inputs="solid"]
+  :is(
+    .btn,
+    .rumahl-input,
+    .rumahl-textarea,
+    .rumahl-select__trigger,
+    .rumahl-color-picker__trigger,
+    .rumahl-color-picker__input,
+    .rumahl-input-group,
+    .rumahl-button-group,
+    .rumahl-toggle-group,
+    .rumahl-range,
+    .rumahl-file,
+    .rumahl-checkbox,
+    .rumahl-radio,
+    input[role="switch"]
+  ) {
+  --control-recess: linear-gradient(transparent, transparent);
+  --control-filter: none;
+  --control-fill: color-mix(
+    in srgb,
+    var(--control-base) 93%,
+    var(--rumahl-ui-color-text-primary)
+  );
+  --control-hover: color-mix(
+    in srgb,
+    var(--control-base) 96%,
+    var(--rumahl-ui-color-text-primary)
+  );
+  /* Truly flat: no inset depth and no backdrop processing at all. */
+  --control-inset: none;
+  --control-button-shadow: none;
+  box-shadow: none;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+
+/* Custom-coloured (tinted) fields: `color` re-points the accent locally. */
+.shell :is(.rumahl-input, .rumahl-textarea)[data-tinted="true"],
+.shell .rumahl-select[data-tinted="true"] .rumahl-select__trigger {
+  --control-tint: color-mix(in srgb, var(--rumahl-ui-color-accent) 18%, transparent);
+  /* Same recess + inset as a neutral field: colour is a tint over the lit
+     surface, not a hard border that flattens the depth. */
+  background: var(--control-recess),
+    linear-gradient(var(--control-tint), var(--control-tint)), var(--control-fill);
+  border-color: color-mix(in srgb, var(--rumahl-ui-color-accent) 30%, var(--control-border));
+}
+
+/* Coloured buttons: `color` recolours any variant, including secondary/ghost. */
+.shell .btn[data-colored="true"].btn--secondary {
+  --control-tint: color-mix(in srgb, var(--btn-color) 22%, transparent);
+  border-color: color-mix(in srgb, var(--btn-color) 32%, var(--control-border));
+}
+.shell .btn[data-colored="true"].btn--secondary:hover:not(:disabled) {
+  border-color: color-mix(in srgb, var(--btn-color) 46%, var(--control-border-hover));
+}
+.shell .btn[data-colored="true"].btn--ghost { color: var(--btn-color); }
+.shell .btn[data-colored="true"].btn--ghost:hover:not(:disabled) {
+  color: var(--btn-color);
+  background: color-mix(in srgb, var(--btn-color) 14%, transparent);
+}
+.shell .btn[data-colored="true"].btn--danger {
+  --control-tint: color-mix(
+    in srgb,
+    var(--btn-color) var(--button-fill-strength, var(--control-tint-strength, 24%)),
+    transparent
+  );
+  border-color: color-mix(in srgb, var(--btn-color) 38%, var(--control-border));
+}
+
+/* Button extras: icons, loading, success, active, flat corners, focus. */
+.shell .btn__icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+}
+.shell .btn__icon svg { width: var(--control-icon); height: var(--control-icon); }
+.shell .btn[data-loading="true"] { pointer-events: none; }
+.shell .btn__loader {
+  width: var(--control-icon);
+  height: var(--control-icon);
+  flex: none;
+  border-radius: 50%;
+  border: 2px solid color-mix(in srgb, currentColor 30%, transparent);
+  border-top-color: currentColor;
+  animation: rumahl-btn-spin 0.7s linear infinite;
+}
+@keyframes rumahl-btn-spin { to { transform: rotate(360deg); } }
+.shell .btn[data-success="true"] {
+  --control-tint: color-mix(
+    in srgb,
+    #39a77b var(--button-fill-strength, var(--control-tint-strength, 72%)),
+    transparent
+  );
+  color: var(--rumahl-ui-color-on-accent);
+  border-color: color-mix(in srgb, #39a77b 45%, var(--control-border));
+}
+.shell .btn[data-active="true"] {
+  border-color: var(--control-border-hover);
+  box-shadow: var(--control-button-shadow);
+}
+.shell .btn[data-left-flat="true"] { border-top-left-radius: 0; border-bottom-left-radius: 0; }
+.shell .btn[data-right-flat="true"] { border-top-right-radius: 0; border-bottom-right-radius: 0; }
+.shell .btn[data-no-side-padding="true"] { padding-inline: 0; }
+.shell .btn[data-inset-focus="true"]:focus-visible { outline-offset: -3px; }
+.shell .btn[data-no-press="true"]:active:not(:disabled) { scale: none; }
+@media (prefers-reduced-motion: reduce) {
+  .shell .btn__loader { animation: none; }
+}
+
+/* Loading spinner in the field feedback slot. */
+.rumahl-input-feedback__icon--loading {
+  background: transparent;
+  color: var(--rumahl-ui-color-text-muted);
+}
+.rumahl-input-feedback__icon--loading::after {
+  content: "";
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  border: 2px solid color-mix(in srgb, currentColor 30%, transparent);
+  border-top-color: currentColor;
+  animation: rumahl-btn-spin 0.7s linear infinite;
+}
+
+/* Explicit fill colour that keeps the recess + inset depth intact. */
+.shell .btn[data-bg="true"] {
+  --control-tint: color-mix(
+    in srgb,
+    var(--btn-bg) var(--button-fill-strength, var(--control-tint-strength, 86%)),
+    transparent
+  );
+  color: var(--btn-bg-ink, var(--rumahl-ui-color-on-accent));
+  border-color: color-mix(in srgb, var(--btn-bg) 34%, var(--control-border));
+}
+.shell .btn[data-bg="true"]:hover:not(:disabled) {
+  border-color: color-mix(in srgb, var(--btn-bg) 46%, var(--control-border-hover));
+}
+
+/* Explicit fill colour (independent of the accent `color`). */
+.shell :is(.rumahl-input, .rumahl-textarea)[data-bg="true"],
+.shell .rumahl-select[data-bg="true"] .rumahl-select__trigger {
+  --control-tint: color-mix(in srgb, var(--field-bg) 30%, transparent);
+  background: var(--control-recess),
+    linear-gradient(var(--control-tint), var(--control-tint)), var(--control-fill);
+  border-color: color-mix(in srgb, var(--field-bg) 30%, var(--control-border));
+}
+
+/* Use the Button press recipe on the complete painted surface. */
+.shell {
+  --control-pressed-shadow: inset 0 3px 7px #00000030,
+    inset 0 1px 2px #00000024, inset 0 -1px 0 #ffffff28;
+}
+.shell[data-material="solid"] { --control-pressed-shadow: none; }
+.shell[data-material="floating"], .shell [data-floating] {
+  --control-pressed-shadow: inset 0 1px 2px #00000018, inset 0 -1px 0 #ffffff24, 0 1px 3px #00000018;
+}
+.shell :is(
+  .btn, .rumahl-icon-button, .rumahl-menu-item, .rumahl-counter__button,
+  .rumahl-toast__close, .rumahl-tipseen__close, .rumahl-list-item[data-interactive="true"],
+  .rumahl-group__link, .rumahl-sidenav__item, .rumahl-navbar__item,
+  .rumahl-tray__item, .rumahl-toggle-tile, .rumahl-window__control, .rumahl-app-tile,
+  .rumahl-toggle-group > button, .rumahl-button-group > button
+):active:not(:disabled):not([aria-disabled="true"]):not([data-no-press="true"]) {
+  scale: .98;
+  box-shadow: var(--control-pressed-shadow);
+}
+/* The chip shell owns the paint; its child label must not move separately. */
+.shell .rumahl-chip:has(> button:active:not(:disabled)) {
+  scale: .98;
+  box-shadow: var(--control-pressed-shadow);
+}
+.shell .rumahl-chip > button:active { scale: none; }
+/* The shared segmented thumb is a sibling of the labels, so depress it too. */
+.shell .rumahl-toggle-group[data-selection="single"]:has(> button:is([aria-pressed="true"], [data-drag-preview="true"]):active:not(:disabled))::before {
+  scale: .98;
+  box-shadow: var(--control-pressed-shadow);
+}
+.shell .rumahl-toggle-group[data-selection="single"] > button:is([aria-pressed="true"], [data-drag-preview="true"]):active:not(:disabled) {
+  scale: .98;
+  box-shadow: none;
+}
+.shell .rumahl-chip { transition: scale 140ms ease, box-shadow 140ms ease; }
+.shell .rumahl-toggle-group[data-selection="single"]::before {
+  transition: left 180ms cubic-bezier(.2,.8,.2,1), width 180ms ease, scale 140ms ease, box-shadow 140ms ease;
+}
+.shell .rumahl-toggle-group[data-selection="single"][data-dragging="true"]::before { transition: none; }
+.shell[data-animations="off"] :is(button, a, .rumahl-chip, .rumahl-app-tile, .rumahl-list-item):active,
+.shell[data-animations="off"] .rumahl-toggle-group::before { scale: none !important; transition: none; }
+@media (prefers-reduced-motion: reduce) {
+  .shell :is(button, a, .rumahl-chip, .rumahl-app-tile, .rumahl-list-item):active { scale: none !important; }
+  .shell .rumahl-toggle-group::before { scale: none !important; transition: none !important; }
+}

@@ -8,13 +8,19 @@ import { useSafeMode } from "../../preferences/safe-mode";
 import { useShell } from "../ShellContext";
 import { useClock } from "../clock";
 import { SearchIcon } from "../../icons";
+import { Button, RumahlInputGroup } from "@rumahl/ui/components";
 import { createCellStore, gridMetrics, nearestFreeCell, resolveCells, useGridSize, type GridCell } from "../desktop/free-grid";
 import { applyOrder, useLauncherOrder } from "./launcher-order";
 import { LauncherMenu, type LauncherMenuItem } from "./LauncherMenu";
 
 /** Nominal springboard cell (content + gap) used by the free grid. */
 const CELL = { width: 92, height: 104 };
+const MOBILE_CELL = { width: 78, height: 92 };
 const GAP = 12;
+const MOBILE_GAP = 10;
+
+/** Fallback page grid until the board has been measured (also used in tests). */
+const UNMEASURED = { cols: 6, rows: 5 };
 
 /** Grid cells of every springboard item; the layout adapts to the container. */
 const launcherCells = createCellStore("rumahl.launcher.cells");
@@ -40,10 +46,11 @@ function useShellMaterial(): "solid" | "translucent" {
 }
 
 /**
- * The launcher springboard: a single free grid of apps and folders. Items are
- * laid out on responsive cells (never overlapping); rearranging happens only in
- * edit mode (long-press to enter) — drag onto a cell to move, onto a folder to
- * file the app in. Folders open in an overlay.
+ * The launcher springboard: a free grid of apps and folders across pages.
+ * Items are laid out on responsive cells (never overlapping); pages are the
+ * rows that fit the board, so overflow continues on the next page. Rearranging
+ * happens only in edit mode (long-press to enter) — drag onto a cell to move,
+ * onto a folder to file the app in. Folders open in an overlay.
  */
 export function LauncherHome() {
   const { t, locale } = useI18n();
@@ -58,6 +65,7 @@ export function LauncherHome() {
   const [query, setQuery] = useState("");
   const [folder, setFolder] = useState<string | null>(null);
   const [editing, setEditing] = useState(false);
+  const [page, setPage] = useState(0);
   const [drag, setDrag] = useState<DragState | null>(null);
   const [dropFolder, setDropFolder] = useState<string | null>(null);
   const [renaming, setRenaming] = useState<string | null>(null);
@@ -67,12 +75,22 @@ export function LauncherHome() {
   const [menu, setMenu] = useState<null | { x: number; y: number; appId?: string; folderId?: string }>(null);
   const now = useClock();
   const press = useRef<null | { timer: number; x: number; y: number }>(null);
+  const swipe = useRef<null | { pointer: number; x: number; y: number }>(null);
   const material = useShellMaterial();
   const board = useRef<HTMLDivElement>(null);
   const suppressClick = useRef(false);
   const gesture = useRef<null | { pointer: number; x: number; y: number; folder: string | null }>(null);
   const size = useGridSize(board);
-  const cols = useMemo(() => gridMetrics(size.width, size.height, CELL.width, CELL.height, GAP).cols, [size.width, size.height]);
+  const measured = size.width > 0 && size.height > 0;
+  const compact = measured && size.width <= 560;
+  const unit = compact ? MOBILE_CELL : CELL;
+  const unitGap = compact ? MOBILE_GAP : GAP;
+  const metrics = useMemo(
+    () => (measured ? gridMetrics(size.width, size.height, unit.width, unit.height, unitGap) : UNMEASURED),
+    [measured, size.width, size.height, unit.width, unit.height, unitGap]
+  );
+  const cols = metrics.cols;
+  const pageRows = Math.max(1, metrics.rows);
 
   // A drag suppresses the click that follows its release; any *new* pointer
   // gesture (even outside the board) must clear that flag so the next click
@@ -96,25 +114,40 @@ export function LauncherHome() {
     () => orderedTokens.filter((token) => byId.has(token) ? !filedAppIds.has(token) : true),
     [orderedTokens, byId, filedAppIds]
   );
-  const rows = useMemo(() => Math.max(gridMetrics(size.width, size.height, CELL.width, CELL.height, GAP).rows, Math.ceil(items.length / Math.max(1, cols))), [size.width, size.height, items.length, cols]);
+  const pageSize = cols * pageRows;
+  const pageCount = useMemo(() => Math.max(1, Math.ceil(items.length / Math.max(1, pageSize))), [items.length, pageSize]);
+  const rows = pageCount * pageRows;
+  const activePage = Math.min(page, pageCount - 1);
   const cellOf = useMemo(() => resolveCells(items, storedCells, cols, rows, "row"), [items, storedCells, cols, rows]);
+  const pageItems = useMemo(
+    () => items.filter((token) => {
+      const cell = cellOf[token];
+      return cell ? Math.floor(cell.row / pageRows) === activePage : false;
+    }),
+    [items, cellOf, pageRows, activePage]
+  );
   const results = normalized ? apps.filter((app) => `${app.title} ${app.id}`.toLocaleLowerCase().includes(normalized)) : [];
+
+  // Keep the page in range when the grid grows/shrinks (resize, new apps).
+  useEffect(() => {
+    if (page > pageCount - 1) setPage(Math.max(0, pageCount - 1));
+  }, [page, pageCount]);
 
   // Position items with CSSOM (the strict style-src CSP blocks a `style` prop).
   useLayoutEffect(() => {
     const host = board.current;
     if (!host) return;
-    const stepX = CELL.width + GAP, stepY = CELL.height + GAP;
+    const stepX = unit.width + unitGap, stepY = unit.height + unitGap;
     for (const element of host.querySelectorAll<HTMLElement>("[data-grid-id]")) {
       const id = element.dataset.gridId;
       const cell: GridCell | undefined = id ? cellOf[id] : undefined;
       if (!id || !cell) continue;
       element.style.position = "absolute";
       element.style.left = `${cell.col * stepX}px`;
-      element.style.top = `${cell.row * stepY}px`;
+      element.style.top = `${(cell.row - activePage * pageRows) * stepY}px`;
       element.style.opacity = drag?.moved && drag.id === id ? "0" : "";
     }
-  }, [items, cellOf, drag]);
+  }, [pageItems, cellOf, activePage, pageRows, drag, unit.width, unit.height, unitGap]);
 
   const clock = now ? new Intl.DateTimeFormat(locale, { hour: "2-digit", minute: "2-digit" }).format(now) : "";
   const date = now ? new Intl.DateTimeFormat(locale, { weekday: "long", day: "numeric", month: "long" }).format(now) : "";
@@ -124,6 +157,10 @@ export function LauncherHome() {
     : hour < 12 ? "launcher.greetingMorning"
     : hour < 18 ? "launcher.greetingAfternoon"
     : "launcher.greetingEvening";
+
+  function step(delta: number) {
+    setPage((value) => Math.min(Math.max(value + delta, 0), pageCount - 1));
+  }
 
   function persistFolders(folders: typeof effective.folders) {
     void save("device", { ...effective, folders });
@@ -154,7 +191,7 @@ export function LauncherHome() {
   }
   function beginOutDrag(folderId: string, appId: string, event: ReactPointerEvent<HTMLElement>) {
     if (event.button !== 0) return;
-    const width = event.currentTarget.getBoundingClientRect().width || CELL.width;
+    const width = event.currentTarget.getBoundingClientRect().width || unit.width;
     outGesture.current = { pointer: event.pointerId, x: event.clientX, y: event.clientY, width };
     outDragRef.current = { folderId, appId };
     setOutDrag({ id: appId, x: event.clientX, y: event.clientY, width });
@@ -178,8 +215,8 @@ export function LauncherHome() {
       // close the folder so it can be positioned freely.
       suppressClick.current = true;
       const box = board.current?.getBoundingClientRect();
-      const stepX = CELL.width + GAP, stepY = CELL.height + GAP;
-      const point = { col: Math.round((event.clientX - (box?.left ?? 0)) / stepX), row: Math.round((event.clientY - (box?.top ?? 0)) / stepY) };
+      const stepX = unit.width + unitGap, stepY = unit.height + unitGap;
+      const point = { col: Math.round((event.clientX - (box?.left ?? 0)) / stepX), row: Math.round((event.clientY - (box?.top ?? 0)) / stepY) + activePage * pageRows };
       const taken = items.map((token) => cellOf[token]).filter((value): value is GridCell => value !== undefined);
       launcherCells.set(target.appId, nearestFreeCell(point, taken, cols, rows));
       removeFromFolder(target.folderId, target.appId);
@@ -227,6 +264,7 @@ export function LauncherHome() {
   function onPointerDown(event: ReactPointerEvent) {
     if (event.button !== 0) return;
     if (editing) return;
+    swipe.current = { pointer: event.pointerId, x: event.clientX, y: event.clientY };
     // iOS-style: a long press enters the jiggle/edit mode.
     const timer = window.setTimeout(() => { press.current = null; setEditing(true); }, 480);
     press.current = { timer, x: event.clientX, y: event.clientY };
@@ -238,17 +276,31 @@ export function LauncherHome() {
       press.current = null;
     }
   }
-  function onPointerUp() {
+  function onPointerUp(event: ReactPointerEvent) {
     if (press.current) { window.clearTimeout(press.current.timer); press.current = null; }
+    const start = swipe.current;
+    swipe.current = null;
+    if (!start || start.pointer !== event.pointerId || editing) return;
+    const dx = event.clientX - start.x, dy = event.clientY - start.y;
+    if (Math.abs(dx) >= 60 && Math.abs(dx) > Math.abs(dy)) {
+      suppressClick.current = true;
+      step(dx < 0 ? 1 : -1);
+    }
+  }
+  function onPointerCancel() {
+    if (press.current) { window.clearTimeout(press.current.timer); press.current = null; }
+    swipe.current = null;
   }
   function onKeyDown(event: ReactKeyboardEvent) {
     if ((event.target as HTMLElement).closest("input, textarea, select")) return;
     if (event.key === "Escape" && currentFolder) { event.preventDefault(); setFolder(null); }
+    else if (event.key === "ArrowRight") { event.preventDefault(); step(1); }
+    else if (event.key === "ArrowLeft") { event.preventDefault(); step(-1); }
   }
 
   function beginDrag(token: string, event: ReactPointerEvent<HTMLElement>) {
     if (!editing || event.button !== 0) return;
-    const width = event.currentTarget.closest<HTMLElement>(".springboard-cell")?.getBoundingClientRect().width ?? CELL.width;
+    const width = event.currentTarget.closest<HTMLElement>(".springboard-cell")?.getBoundingClientRect().width ?? unit.width;
     gesture.current = { pointer: event.pointerId, x: event.clientX, y: event.clientY, folder: null };
     setDrag({ id: token, x: event.clientX, y: event.clientY, moved: false, width });
     event.currentTarget.setPointerCapture?.(event.pointerId);
@@ -276,8 +328,8 @@ export function LauncherHome() {
       if (entry.folder && byId.has(drag.id)) fileIntoFolder(entry.folder, drag.id);
       else {
         const box = board.current?.getBoundingClientRect();
-        const stepX = CELL.width + GAP, stepY = CELL.height + GAP;
-        const target = { col: Math.round((event.clientX - (box?.left ?? 0)) / stepX), row: Math.round((event.clientY - (box?.top ?? 0)) / stepY) };
+        const stepX = unit.width + unitGap, stepY = unit.height + unitGap;
+        const target = { col: Math.round((event.clientX - (box?.left ?? 0)) / stepX), row: Math.round((event.clientY - (box?.top ?? 0)) / stepY) + activePage * pageRows };
         const taken = items.filter((token) => token !== drag.id).map((token) => cellOf[token]).filter((value): value is GridCell => value !== undefined);
         launcherCells.set(drag.id, nearestFreeCell(target, taken, cols, rows));
       }
@@ -292,7 +344,7 @@ export function LauncherHome() {
         <h1 className="launcher-greeting">{t(greeting)}<span>{snapshot.user.displayName}</span></h1>
         {now ? <div className="launcher-clock"><strong>{clock}</strong><span>{date}</span></div> : null}
       </div>
-      {editing && !normalized ? <button className="launcher-done" type="button" onClick={() => setEditing(false)}>{t("launcher.done")}</button> : null}
+      {editing && !normalized ? <Button className="launcher-done" floating type="button" onClick={() => setEditing(false)}>{t("launcher.done")}</Button> : null}
     </header>
 
     {normalized ? <section className="launcher-section">
@@ -300,9 +352,9 @@ export function LauncherHome() {
       <div className="app-grid">{results.map((app) => <AppTile app={app} key={app.id} />)}</div>
       {results.length === 0 ? <p role="status" className="launcher-empty">{t("launcher.noResults")}</p> : null}
     </section> : <div className={`launcher-board${editing ? " is-editing" : ""}`} ref={board} onContextMenu={(event) => openMenu(event)}
-      onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={onPointerUp} onKeyDown={onKeyDown} tabIndex={0}>
-      <div className="springboard-grid">
-        {items.map((token) => {
+      onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={onPointerUp} onPointerCancel={onPointerCancel} onKeyDown={onKeyDown} tabIndex={0}>
+      <div className="springboard-grid" data-compact={compact || undefined}>
+        {pageItems.map((token) => {
           const app = byId.get(token);
           const folderItem = app ? undefined : effective.folders.find((item) => item.id === token);
           if (!app && !folderItem) return null;
@@ -328,12 +380,26 @@ export function LauncherHome() {
       </div>
     </div>}
 
+    {!normalized && pageCount > 1 ? <nav className="launcher-pages" aria-label={t("launcher.pages")}>
+      {Array.from({ length: pageCount }, (_, index) => <button key={index} type="button"
+        aria-current={index === activePage ? "page" : undefined}
+        aria-label={t("launcher.page", { page: index + 1 })}
+        onClick={() => setPage(index)} />)}
+    </nav> : null}
+
     <footer className="launcher-footer">
-      {!currentFolder ? <label className="launcher-search">
-        <SearchIcon aria-hidden="true" />
-        <span>{t("launcher.search")}</span>
-        <input type="search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder={t("launcher.searchPlaceholder")} />
-      </label> : null}
+      {!currentFolder ? <div className="launcher-search">
+        <RumahlInputGroup
+          floating
+          type="search"
+          data-launcher-search="true"
+          aria-label={t("launcher.search")}
+          placeholder={t("launcher.searchPlaceholder")}
+          value={query}
+          onChange={(event) => setQuery(event.target.value)}
+          prefix={<SearchIcon aria-hidden="true" />}
+        />
+      </div> : null}
     </footer>
 
     {currentFolder ? createPortal(<div className="launcher-folder-overlay" data-material={material} role="dialog" aria-label={currentFolder.name} onClick={(event) => { if (event.target === event.currentTarget) setFolder(null); }}>
@@ -345,7 +411,7 @@ export function LauncherHome() {
                 onKeyDown={(event) => { if (event.key === "Enter") event.currentTarget.blur(); if (event.key === "Escape") setRenaming(null); }} />
             : <h2>{currentFolder.name}</h2>}
           <div className="launcher-folder__actions">
-            <button className="launcher-edit" type="button" aria-pressed={editing} onClick={() => setEditing((value) => !value)}>{t(editing ? "launcher.done" : "launcher.edit")}</button>
+            <Button className="launcher-edit" floating variant={editing ? "primary" : "secondary"} type="button" aria-pressed={editing} onClick={() => setEditing((value) => !value)}>{t(editing ? "launcher.done" : "launcher.edit")}</Button>
             <button type="button" aria-label={t("launcher.closeFolder")} onClick={() => setFolder(null)}>×</button>
           </div>
         </header>

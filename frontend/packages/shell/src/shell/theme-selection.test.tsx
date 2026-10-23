@@ -9,7 +9,7 @@ import { demoSnapshot } from "../demo/snapshot";
 describe("theme selection", () => {
   test("resolves built-in themes by id", () => {
     expect(getTheme("com.rumahl.classic")?.name).toBe("Classic");
-    expect(getTheme("com.rumahl.default")?.name).toBe("rumahl");
+    expect(getTheme("com.rumahl.default")?.name).toBe("Aura");
   });
 
   test("applies the classic theme from the settings UI", async () => {

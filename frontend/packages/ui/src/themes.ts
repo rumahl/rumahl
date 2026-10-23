@@ -49,6 +49,14 @@ export type ThemeParameter = RangeParameter | ColorParameter | ChoiceParameter;
  * A resolved theme is plain data: token values plus the variant selection and
  * the theme's own customization parameters.
  */
+/**
+ * Base look a theme builds on. `rumahl` is the native OS look; `clean` strips
+ * the component chrome (via the recipe variables) so a theme can build its own
+ * presentation — a terminal, a dashboard, anything — without fighting the
+ * defaults.
+ */
+export type ThemeBase = "rumahl" | "clean";
+
 export interface Theme {
   id: string;
   name: string;
@@ -63,6 +71,12 @@ export interface Theme {
   css?: string | undefined;
   /** Fixed opaque material, even when device settings request transparency. */
   material?: "solid" | undefined;
+  /** Base look (defaults to `rumahl`). */
+  base?: ThemeBase | undefined;
+  /** Declared capabilities for code themes (`network`, `storage`, …). */
+  capabilities?: readonly string[] | undefined;
+  /** Custom code (module source) the shell applies for a trusted theme. */
+  code?: string | undefined;
 }
 
 function px(
@@ -193,6 +207,16 @@ const officialParameters: readonly ThemeParameter[] = [
     options: DISPLAY_FONTS,
   },
   {
+    kind: "choice",
+    id: "appInputs",
+    token: "app.inputs",
+    labelKey: "theme.parameter.appInputs",
+    options: [
+      { value: "glass", labelKey: "theme.parameter.appInputs.glass" },
+      { value: "solid", labelKey: "theme.parameter.appInputs.solid" },
+    ],
+  },
+  {
     kind: "range",
     id: "morphism",
     token: "material.morphism",
@@ -256,7 +280,7 @@ const classicParameters: readonly ThemeParameter[] = [
 /** The rumahl brand default: green accent, glass materials, dock + springboard. */
 export const rumahlTheme: Theme = {
   id: "com.rumahl.default",
-  name: "rumahl",
+  name: "Aura",
   tokens: { ...defaultTokens, ...paletteTokens(defaultTokens["color.accent"]) },
   variants: defaultVariants,
   parameters: officialParameters,

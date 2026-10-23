@@ -91,11 +91,11 @@ function ShellDocument({
     <html lang={resolveLocale(snapshot.user.locale)}>
       <head>
         <meta charSet="utf-8" />
-        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
         <title>rumahl OS</title>
         <link href={assets.stylesheet} rel="stylesheet" />
         <link href={snapshot.theme.stylesheetUrl} rel="stylesheet" />
-        <style nonce={nonce} dangerouslySetInnerHTML={{ __html: appearanceCss(snapshot) + windowPositionCss(snapshot) }} />
+        <style nonce={nonce}>{appearanceCss(snapshot) + windowPositionCss(snapshot)}</style>
       </head>
       <body>
         <div data-shell-ssr="1" id="root">

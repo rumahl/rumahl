@@ -63,21 +63,14 @@
   display: flex;
   align-items: center;
   gap: 4px;
-  height: 38px;
+  height: var(--topbar-island-height);
   padding: 0 8px;
-  border-radius: 999px;
-  background: color-mix(
-    in srgb,
-    var(--rumahl-ui-color-surface-strong, var(--rumahl-ui-color-panel-background, #26292c))
-      calc(var(--rumahl-ui-material-opacity, 0.84) * 100%),
-    transparent
-  );
-  border: 1px solid color-mix(in srgb, var(--rumahl-ui-color-text-primary, #fff) 12%, transparent);
-  box-shadow:
-    0 10px 30px rgba(0, 0, 0, 0.3),
-    inset 0 1px 0 rgba(255, 255, 255, 0.18);
-  backdrop-filter: blur(28px) saturate(1.5);
-  -webkit-backdrop-filter: blur(28px) saturate(1.5);
+  border-radius: var(--topbar-island-radius);
+  background: var(--topbar-island-background);
+  border: var(--topbar-island-border);
+  box-shadow: var(--topbar-island-shadow);
+  backdrop-filter: var(--topbar-island-backdrop);
+  -webkit-backdrop-filter: var(--topbar-island-backdrop);
   color: var(--rumahl-ui-color-text-primary, #f5f7f8);
 }
 .topbar__island--left {
@@ -104,17 +97,17 @@
 .topbar__mode {
   gap: 2px;
   padding: 2px;
-  border-radius: 999px;
+  border-radius: var(--topbar-mode-radius);
   background: color-mix(in srgb, currentColor 10%, transparent);
 }
 .topbar__button {
   display: grid;
   place-items: center;
-  width: 30px;
-  height: 30px;
+  width: var(--topbar-button-size);
+  height: var(--topbar-button-size);
   padding: 0;
   border: 0;
-  border-radius: 50%;
+  border-radius: var(--topbar-button-radius);
   color: inherit;
   background: transparent;
 }

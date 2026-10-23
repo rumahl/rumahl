@@ -9,8 +9,9 @@ RUMAHL_SHELL_LICENSE_FILES = usr/share/licenses/rumahl/LICENSE
 RUMAHL_SHELL_DEPENDENCIES = nodejs nginx python3 tar acl attr
 
 define RUMAHL_SHELL_USERS
-    rumahl-platform -1 rumahl-web -1 * /var/lib/rumahl /sbin/nologin rumahl-ssr rumahl-platform
+    rumahl-platform -1 rumahl-web -1 * /var/lib/rumahl /sbin/nologin rumahl-ssr,rumahl-runtime-control rumahl-platform
     rumahl-shell -1 rumahl-ssr -1 * /nonexistent /sbin/nologin - rumahl-shell
+    rumahl-runtime 990 rumahl-runtime-control 990 * /nonexistent /sbin/nologin docker rumahl-runtime
     www-data 33 www-data 33 * - /sbin/nologin rumahl-web nginx
 endef
 

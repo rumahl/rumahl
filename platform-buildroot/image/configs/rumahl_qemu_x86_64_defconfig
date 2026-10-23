@@ -20,6 +20,8 @@ BR2_LINUX_KERNEL_CUSTOM_VERSION=y
 BR2_LINUX_KERNEL_CUSTOM_VERSION_VALUE="6.18.7"
 BR2_LINUX_KERNEL_USE_CUSTOM_CONFIG=y
 BR2_LINUX_KERNEL_CUSTOM_CONFIG_FILE="board/qemu/x86_64/linux.config"
+# Container hosting and TPM access are not in the upstream QEMU board config.
+BR2_LINUX_KERNEL_CONFIG_FRAGMENT_FILES="$(BR2_EXTERNAL_RUMAHL_PATH)/board/qemu/x86_64/linux-rumahl.config"
 BR2_LINUX_KERNEL_NEEDS_HOST_LIBELF=y
 BR2_TARGET_ROOTFS_EXT2=y
 BR2_TARGET_ROOTFS_EXT2_4=y
@@ -40,6 +42,13 @@ BR2_PACKAGE_NGINX_HTTP_REWRITE_MODULE=y
 BR2_PACKAGE_NGINX_HTTP_LIMIT_REQ_MODULE=y
 BR2_PACKAGE_CA_CERTIFICATES=y
 BR2_PACKAGE_E2FSPROGS=y
+# The runtime supervisor hosts app containers through the Docker engine and
+# reads TPM-sealed platform keys through the tpm2-tools CLI.
+BR2_PACKAGE_DOCKER_ENGINE=y
+# docker-engine ships only dockerd and docker-proxy; the supervisor and the
+# app-network unit invoke the separate Docker CLI.
+BR2_PACKAGE_DOCKER_CLI=y
+BR2_PACKAGE_TPM2_TOOLS=y
 BR2_PACKAGE_RUMAHL_SHELL=y
 BR2_ROOTFS_OVERLAY="$(BR2_EXTERNAL_RUMAHL_PATH)/board/qemu/overlay"
 BR2_ROOTFS_POST_BUILD_SCRIPT="$(BR2_EXTERNAL_RUMAHL_PATH)/board/qemu/post-build.sh"

@@ -1,3 +1,6 @@
+export * from "./size";
+export * from "./tint";
+export * from "./hooks";
 export * from "./color";
 export * from "./palette";
 export * from "./tokens";

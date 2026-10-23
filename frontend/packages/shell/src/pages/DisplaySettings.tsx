@@ -1,8 +1,12 @@
 import { RumahlButtonGroup } from "../components/RumahlButtonGroup";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useTheme } from "@rumahl/ui";
-import { themes } from "@rumahl/ui/themes";
 import type { ColorParameter } from "@rumahl/ui/themes";
+import {
+  installThemeFile,
+  useThemeRegistry
+} from "../preferences/installed-themes";
+import { ThemeSafetyError } from "../preferences/theme-safety";
 import type { MessageKey } from "../i18n/locales/en";
 import { useShellPreferences } from "../preferences/ShellPreferences";
 import { useThemeTuning } from "../preferences/theme-tuning";
@@ -12,6 +16,7 @@ import { RumahlSelect } from "../components/RumahlSelect";
 import { RumahlColorPicker } from "../components/RumahlColorPicker";
 import { Button } from "../components/Button";
 import { SettingsHeading } from "../components/SettingsHeading";
+import { dismissToast, showToast } from "../shell/toasts";
 import {
   setGlassAdjust,
   svgRefractionSupported,
@@ -40,8 +45,47 @@ export function DisplaySettings() {
   const { scope, setScope } = settings;
   const selected = settings.preferences?.[scope].shellMode;
   const selectedTheme = settings.preferences?.[scope].shellTheme;
+  const themes = useThemeRegistry();
   const effectiveTheme = themes.find((item) => item.id === settings.theme);
   const { tokens, theme: activeTheme } = useTheme();
+  const installRef = useRef<HTMLInputElement>(null);
+  const [installError, setInstallError] = useState<string | null>(null);
+  const [pendingTheme, setPendingTheme] = useState<{ scope: "user" | "device"; value: string | null } | null>(null);
+  function chooseTheme(value: string | null) {
+    if (settings.preferences?.[scope].shellTheme === value) return;
+    settings.saveTheme(scope, value);
+    setPendingTheme({ scope, value });
+  }
+  // Ask only after the preference was persisted, so an immediate reload cannot
+  // discard the newly selected theme.
+  useEffect(() => {
+    if (!pendingTheme || settings.preferences?.[pendingTheme.scope].shellTheme !== pendingTheme.value) return;
+    setPendingTheme(null);
+    showToast({
+      id: "theme-reload",
+      title: t("theme.reloadTitle"),
+      message: t("theme.reloadBody"),
+      variant: "info",
+      duration: null,
+      buttons: [
+        { label: t("reload.now"), variant: "primary", onClick: () => window.location.reload() },
+        { label: t("reload.later"), onClick: () => dismissToast("theme-reload") }
+      ]
+    });
+  }, [pendingTheme, settings.preferences, t]);
+  const installTheme = async (file: File) => {
+    try {
+      const theme = await installThemeFile(file);
+      chooseTheme(theme.id);
+      setInstallError(null);
+    } catch (error) {
+      setInstallError(
+        error instanceof ThemeSafetyError
+          ? error.message
+          : "This theme could not be installed."
+      );
+    }
+  };
   const {
     tuning,
     setSeed,
@@ -302,7 +346,7 @@ export function DisplaySettings() {
                   className="segment"
                   type="button"
                   aria-pressed={selectedTheme === theme.id}
-                  onClick={() => settings.saveTheme(scope, theme.id)}
+                  onClick={() => chooseTheme(theme.id)}
                 >
                   {theme.name}
                 </button>
@@ -312,12 +356,39 @@ export function DisplaySettings() {
                   className="segment"
                   type="button"
                   aria-pressed={selectedTheme === null}
-                  onClick={() => settings.saveTheme("device", null)}
+                  onClick={() => chooseTheme(null)}
                 >
                   {t("preferences.inherit")}
                 </button>
               ) : null}
             </div>
+          </div>
+        </div>
+        <div className="setting">
+          <div className="copy">
+            <strong>{t("theme.install")}</strong>
+            <p>{t("theme.installHelp")}</p>
+            {installError ? (
+              <p role="alert" style={{ color: "var(--rumahl-ui-color-danger, #e5484d)" }}>
+                {installError}
+              </p>
+            ) : null}
+          </div>
+          <div className="visual">
+            <input
+              ref={installRef}
+              type="file"
+              accept="application/json,.json"
+              hidden
+              onChange={(event) => {
+                const file = event.target.files?.[0];
+                event.target.value = "";
+                if (file) void installTheme(file);
+              }}
+            />
+            <Button onClick={() => installRef.current?.click()}>
+              {t("theme.installAction")}
+            </Button>
           </div>
         </div>
       </div>

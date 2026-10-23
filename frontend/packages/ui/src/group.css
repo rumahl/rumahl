@@ -1,0 +1,125 @@
+/* Group containers and their rows/links. Used by settings screens, app
+   preference panes and any grouped content list. */
+
+/* Matches the OS settings group (`reference.css` `.settings-group`): a subtle
+   row surface with a hairline, not the material glass. */
+.rumahl-group {
+  background: var(--group-background);
+  border: var(--group-border);
+  border-radius: var(--group-radius);
+  box-shadow: var(--group-shadow);
+  overflow: hidden;
+  margin-bottom: 28px;
+}
+
+/* Floating group: the OS top-bar island recipe (material/theme aware). */
+.rumahl-group[data-floating] {
+  background: linear-gradient(180deg, #ffffff1f, transparent 62%),
+    color-mix(
+      in srgb,
+      var(--rumahl-ui-color-surface-strong, var(--rumahl-ui-color-panel-background))
+        calc(var(--rumahl-ui-material-opacity, 0.84) * 100%),
+      transparent
+    );
+  border-color: color-mix(in srgb, var(--rumahl-ui-color-text-primary) 12%, transparent);
+  box-shadow: inset 0 1px 0 #ffffff2e, 0 10px 30px #0000004d;
+  backdrop-filter: blur(28px) saturate(1.5);
+  -webkit-backdrop-filter: blur(28px) saturate(1.5);
+}
+.shell[data-material="solid"] .rumahl-group[data-floating] {
+  background: var(--rumahl-ui-color-surface-strong, var(--rumahl-ui-color-panel-background));
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+@media (prefers-reduced-transparency: reduce) {
+  .rumahl-group[data-floating] {
+    background: var(--rumahl-ui-color-surface-strong, var(--rumahl-ui-color-panel-background));
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+  }
+}
+
+/* Content rows ------------------------------------------------------------- */
+/* One setting row — the OS `.setting` (copy + visual), 65px min height. */
+.rumahl-group__row {
+  display: flex;
+  align-items: center;
+  gap: var(--group-row-gap);
+  min-height: var(--group-row-height);
+  padding: var(--group-row-padding);
+  font-size: 12px;
+}
+.rumahl-group__row + .rumahl-group__row {
+  border-top: var(--group-divider);
+}
+.rumahl-group__copy { flex: 1; min-width: 0; }
+.rumahl-group__copy strong {
+  display: block;
+  font-weight: 620;
+  font-size: 12px;
+  color: var(--rumahl-ui-color-text-primary);
+}
+.rumahl-group__copy p {
+  margin: 5px 0 0;
+  font-size: 10.5px;
+  line-height: 1.35;
+  color: var(--rumahl-ui-color-text-muted);
+}
+.rumahl-group__visual {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  color: var(--rumahl-ui-color-text-muted);
+}
+
+/* Link rows ---------------------------------------------------------------- */
+.rumahl-group__link {
+  display: flex;
+  align-items: center;
+  gap: 15px;
+  padding: 15px 18px;
+  color: inherit;
+  text-decoration: none;
+  cursor: pointer;
+  transition: background 150ms ease, box-shadow 140ms ease, scale 140ms ease;
+}
+.rumahl-group__link + .rumahl-group__link { border-top: 1px solid var(--control-border); }
+.rumahl-group__link:hover { background: color-mix(in srgb, var(--rumahl-ui-color-accent) 10%, transparent); }
+.rumahl-group__link:active { scale: 0.98; }
+.rumahl-group__link:focus-visible {
+  outline: 2px solid var(--rumahl-ui-color-accent);
+  outline-offset: -2px;
+}
+.rumahl-group__link-icon {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: var(--icon-tile-size);
+  height: var(--icon-tile-size);
+  border-radius: var(--icon-tile-radius);
+  color: var(--icon-tile-color);
+  background: var(--icon-tile-background);
+}
+.rumahl-group__link-icon svg { width: 18px; height: 18px; }
+.rumahl-group__link-text { flex: 1; min-width: 0; display: grid; gap: 4px; }
+.rumahl-group__link-text strong {
+  font-size: 13px;
+  font-weight: 620;
+  color: var(--rumahl-ui-color-text-primary);
+}
+.rumahl-group__link-text small {
+  font-size: 11.5px;
+  color: var(--rumahl-ui-color-text-muted);
+}
+.rumahl-group__link-chevron { color: var(--rumahl-ui-color-text-muted); font-size: 17px; line-height: 1; }
+.rumahl-group__link-ext {
+  width: 15px;
+  height: 15px;
+  flex: none;
+  color: var(--rumahl-ui-color-text-muted);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .rumahl-group__link:active { scale: none; }
+  .rumahl-group__link { transition: none; }
+}

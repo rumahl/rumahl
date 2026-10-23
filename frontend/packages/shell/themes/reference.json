@@ -1,0 +1,45 @@
+{
+  "id": "com.example.reference",
+  "name": "Reference (Maximal)",
+  "modes": [
+    "light"
+  ],
+  "variants": {
+    "shellLayout": "taskbar",
+    "launcherLayout": "drawer",
+    "windowChrome": "compact"
+  },
+  "tokens": {
+    "color.accent": "#e5432d",
+    "color.accent.strong": "#ff7a4d",
+    "color.on.accent": "#fffaf5",
+    "color.canvas.background": "#efe7d8",
+    "color.panel.background": "#fbf6ec",
+    "color.surface": "#e7ddca",
+    "color.surface.strong": "#fffaf2",
+    "color.text.primary": "#1c1a17",
+    "color.text.muted": "#726a5c",
+    "color.outline": "#1c1a1724",
+    "color.shadow": "rgba(28, 26, 23, 0.22)",
+    "color.window.titlebar.background": "#fffaf2",
+    "color.window.titlebar.foreground": "#1c1a17",
+    "color.on.wallpaper": "#fffaf5",
+    "icon.gradient": "linear-gradient(150deg, #ff8a4c, #e5432d)",
+    "shape.radius.window": "26px",
+    "shape.radius.dock": "999px",
+    "shape.radius.icon": "20px",
+    "shape.icon.size": "18px",
+    "shape.icon.size.large": "22px",
+    "material.blur": "0px",
+    "material.saturation": 1,
+    "material.opacity": 1,
+    "material.morphism": 0,
+    "motion.duration": "260ms",
+    "motion.duration.fast": "140ms",
+    "motion.easing.spring": "cubic-bezier(0.34, 1.56, 0.64, 1)",
+    "typography.family": "'Sora Variable', system-ui, -apple-system, sans-serif",
+    "typography.display": "'Unbounded Variable', system-ui, -apple-system, sans-serif",
+    "layout.dock.offset": "18px"
+  },
+  "css": "/* Reference theme — mostly recipe variables now (simple), plus typography + shell-specific chrome. */\n.shell {\n  --morphism: 0;\n  --surface-base: #fffaf2;\n  --surface-fill: #fffaf2;\n  --surface-sheen: linear-gradient(transparent, transparent);\n  --surface-rim: none;\n  --surface-filter: none;\n  --surface-edge: #1c1a17;\n  --control-base: #fffaf2;\n  --control-fill: #fffaf2;\n  --control-hover: #ffe0d3;\n  --control-raised: #fffaf2;\n  --control-border: #1c1a17;\n  --control-border-hover: #e5432d;\n  --control-inset: none;\n  --control-button-shadow: 3px 3px 0 #1c1a17;\n  --control-pressed-shadow: 1px 1px 0 #1c1a17;\n  --control-popup-shadow: 6px 6px 0 #1c1a17;\n  --control-recess: linear-gradient(transparent, transparent);\n  --control-filter: none;\n  --control-thumb: #1c1a17;\n  --control-tint: #e5432d;\n  --control-tint-ink: #fffaf5;\n  /* Menubar / top bar */\n  --menubar-island-height: 40px;\n  --menubar-island-radius: 10px;\n  --menubar-island-background: #1c1a17;\n  --menubar-island-border: 2px solid #1c1a17;\n  --menubar-island-shadow: 4px 4px 0 #e5432d;\n  --menubar-island-backdrop: none;\n  --menubar-item-radius: 6px;\n  --menubar-item-hover: #e5432d;\n  --menubar-font-size: 11px;\n  /* Menus */\n  --menu-background: #fffaf2;\n  --menu-border: 2px solid #1c1a17;\n  --menu-radius: 10px;\n  --menu-shadow: 5px 5px 0 #1c1a17;\n  --menu-backdrop: none;\n  --menu-item-height: 32px;\n  --menu-item-radius: 4px;\n  --menu-item-hover: #ffe0d3;\n  /* Groups */\n  --group-background: #fffaf2;\n  --group-border: 2px solid #1c1a17;\n  --group-radius: 14px;\n  --group-shadow: 4px 4px 0 #1c1a17;\n  --group-row-height: 62px;\n  --group-row-padding: 14px 18px;\n  /* Window chrome */\n  --window-titlebar-height: 46px;\n  --window-titlebar-padding: 0 14px 0 18px;\n  --window-titlebar-border: 2px solid #1c1a17;\n  --window-control-radius: 4px;\n  /* Topbar islands + toolbar */\n  --topbar-island-height: 40px;\n  --topbar-island-radius: 10px;\n  --topbar-island-background: #1c1a17;\n  --topbar-island-border: 2px solid #1c1a17;\n  --topbar-island-shadow: 4px 4px 0 #e5432d;\n  --topbar-island-backdrop: none;\n  --topbar-mode-radius: 6px;\n  --topbar-button-radius: 4px;\n  --toolbar-radius: 10px;\n  --toolbar-background: #fffaf2;\n  --toolbar-border: 2px solid #1c1a17;\n  --toolbar-shadow: 3px 3px 0 #1c1a17;\n  --toolbar-backdrop: none;\n  /* Chips, badges, notices, trays */\n  --chip-radius: 6px;\n  --chip-border: 2px solid #1c1a17;\n  --chip-background: #fffaf2;\n  --chip-shadow: 2px 2px 0 #1c1a17;\n  --badge-radius: 6px;\n  --badge-border: 2px solid #1c1a17;\n  --badge-background: #fffaf2;\n  --notice-radius: 10px;\n  --notice-border: 2px solid #1c1a17;\n  --notice-background: #fffaf2;\n  --tray-radius: 10px;\n  --tray-background: #fffaf2;\n  /* Switch + choice */\n  --switch-width: 46px;\n  --switch-height: 26px;\n  --switch-thumb-size: 18px;\n  --switch-pad: 3px;\n  --switch-border-width: 2px;\n  --switch-border-color: #1c1a17;\n  --switch-radius: 5px;\n  --switch-background: #fffaf2;\n  --switch-background-checked: #1c1a17;\n  --switch-border-checked: #1c1a17;\n  --switch-thumb: #1c1a17;\n  --switch-thumb-checked: #fffaf2;\n  --switch-thumb-radius: 3px;\n  --switch-thumb-shadow: 1px 1px 0 #1c1a17;\n  --switch-thumb-transition: transform 90ms steps(2, end);\n  --switch-active-scale: 1.15;\n  --choice-radius: 4px;\n  --choice-border: 2px solid #1c1a17;\n  --choice-background: #fffaf2;\n  --choice-checked-background: #e5432d;\n  --choice-checked-border: #1c1a17;\n  --choice-mark: #fffaf5;\n}\n/* Typography */\n.shell :is(h1, h2, h3, .titlebar-title) { font-family: var(--rumahl-ui-typography-display), system-ui, sans-serif; font-weight: 700; letter-spacing: -0.02em; }\n.shell :is(.section-title, .rumahl-settings__section-title, .rumahl-settings__eyebrow, .settings-page-heading > span) { text-transform: uppercase; letter-spacing: 0.14em; color: #e5432d; font-weight: 700; }\n/* Shell-specific chrome (topbar + taskbar) */\n.shell .topbar__island, .shell .menubar { background: #1c1a17 !important; color: #fffaf2 !important; border: 2px solid #1c1a17 !important; border-radius: 10px !important; box-shadow: 4px 4px 0 #e5432d !important; }\n.shell :is(.menubar__item, .menubar__menu, .topbar__button) { color: #fffaf2 !important; text-transform: uppercase; letter-spacing: 0.08em; font-size: 11px; }\n.shell :is(.menubar__item, .topbar__button):hover { background: #e5432d !important; color: #fffaf5 !important; }\n.shell .taskbar { background: #1c1a17 !important; color: #fffaf2 !important; border-radius: 12px !important; border: 2px solid #1c1a17 !important; box-shadow: 5px 5px 0 #e5432d !important; }\n.shell .taskbar :is(button, a) { color: #fffaf2 !important; }\n/* Controls that still need direct shaping */\n.shell :is(.btn, button, input, select, textarea) { border-radius: 6px !important; }\n.shell :is(.btn, button, input, select, textarea, .rumahl-button-group, .rumahl-input, .rumahl-select) { border: 2px solid #1c1a17 !important; background: #fffaf2 !important; box-shadow: 3px 3px 0 #1c1a17 !important; color: #1c1a17 !important; }\n.shell :is(.btn, button):hover { background: #ffe0d3 !important; }\n.shell .display-settings :is(button:not(.theme-swatch), select) { border-radius: 6px !important; border: 2px solid #1c1a17 !important; box-shadow: 3px 3px 0 #1c1a17 !important; background: #fffaf2 !important; color: #1c1a17 !important; }\n.shell .segmented { background: #fffaf2 !important; border: 2px solid #1c1a17 !important; box-shadow: 3px 3px 0 #1c1a17 !important; border-radius: 6px !important; overflow: hidden; }\n.shell .segmented button { border: 0 !important; border-radius: 0 !important; box-shadow: none !important; background: transparent !important; }\n.shell .segmented button[aria-pressed='true'] { background: #1c1a17 !important; color: #fffaf2 !important; }\n.shell :is(.appearance-switch input, input[role='switch']) { width: var(--switch-width) !important; height: var(--switch-height) !important; border: var(--switch-border-width) solid var(--switch-border-color) !important; border-radius: var(--switch-radius) !important; background: var(--switch-background) !important; box-shadow: none !important; backdrop-filter: none !important; }\n.shell :is(.appearance-switch input, input[role='switch']):checked { background: var(--switch-background-checked) !important; border-color: var(--switch-border-checked) !important; }\n.shell :is(.appearance-switch input, input[role='switch'])::before { background: var(--switch-thumb) !important; border-radius: var(--switch-thumb-radius) !important; box-shadow: var(--switch-thumb-shadow) !important; transition: var(--switch-thumb-transition) !important; }\n.shell :is(.appearance-switch input, input[role='switch']):checked::before { background: var(--switch-thumb-checked) !important; }\n.shell :is(.appearance-switch input, input[role='switch']):active::before { scale: var(--switch-active-scale) !important; }\n.shell :focus-visible { outline: 3px solid #e5432d !important; outline-offset: 2px; }\n.shell ::selection { background: #e5432d; color: #fffaf5; }"
+}
