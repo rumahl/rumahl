@@ -95,7 +95,7 @@ function ShellDocument({
         <title>rumahl OS</title>
         <link href={assets.stylesheet} rel="stylesheet" />
         <link href={snapshot.theme.stylesheetUrl} rel="stylesheet" />
-        <style nonce={nonce} dangerouslySetInnerHTML={{ __html: appearanceCss(snapshot) + windowPositionCss(snapshot) }} />
+        <style nonce={nonce}>{appearanceCss(snapshot) + windowPositionCss(snapshot)}</style>
       </head>
       <body>
         <div data-shell-ssr="1" id="root">
