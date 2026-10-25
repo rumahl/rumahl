@@ -157,3 +157,27 @@ isolation, deep routes and revocation. The staged production HTTPS test exercise
 the shipped nginx configuration, wildcard TLS and persistent sessions. A booted
 Buildroot VM/device test is still required; process-level checks do not establish
 image acceptance.
+
+## Planned hosting modes
+
+The current implementation binds every installation to a subdomain. The agreed
+direction is to make hostnames optional and treat path-based routing as the
+default:
+
+```text
+https://<app-gateway>/<installation-uuid>/<lease>/<asset-path>
+```
+
+- **Default: path.** One app-gateway origin, no DNS or certificate per app. The
+  gateway validates the installation and lease, forwards only published assets
+  and strips shell cookies/Authorization.
+- **Optional: subdomain.** Deployments with wildcard DNS/TLS may keep
+  `<installation-uuid>.apps.<host>` for a stronger origin boundary.
+- **Optional: IP and port.** Development and small self-hosted installations may
+  use an address such as `127.0.0.1:<port>` with an explicit loopback allowance.
+
+The shell should select the mode from configuration (frame origin/pattern) plus
+the launch descriptor instead of assuming an installation subdomain. The iframe
+must keep `sandbox="allow-scripts"` without `allow-same-origin`; paths are not an
+isolation boundary on their own. Production should prefer a dedicated app-gateway
+origin over serving app documents under the shell origin.

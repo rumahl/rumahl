@@ -17,6 +17,9 @@ describe("desktop windows", () => {
     expect(constrainRect({ x: -30, y: -20, width: 1, height: 1 }, { width: 1000, height: 700 })).toEqual({ x: -30, y: -20, width: 280, height: 220 });
     expect(placedRect({ x: 10, y: 10, width: 400, height: 300 }, "maximized", { width: 800, height: 600 })).toEqual({ x: 0, y: 0, width: 800, height: 600 });
     expect(placedRect({ x: 10, y: 10, width: 400, height: 300 }, "maximized", { width: 800, height: 600 }, 38)).toEqual({ x: 0, y: 38, width: 800, height: 562 });
+    expect(placedRect({ x: 10, y: 10, width: 400, height: 300 }, "maximized", { width: 800, height: 600 }, 38, 12)).toEqual({ x: 0, y: 38, width: 800, height: 550 });
+    expect(placedRect({ x: 10, y: 10, width: 400, height: 300 }, "left", { width: 800, height: 600 }, 38, 12)).toEqual({ x: 0, y: 38, width: 400, height: 550 });
+    expect(placedRect({ x: 10, y: 10, width: 400, height: 300 }, "right", { width: 800, height: 600 }, 38, 12)).toEqual({ x: 400, y: 38, width: 400, height: 550 });
   });
   it("retains geometry and window identity when minimizing, focusing and restoring", () => {
     let state = shellReducer(initialShellState, { type: "open-window", window: { id: "one", title: "One", subtitle: "", location: "/app/one" } });

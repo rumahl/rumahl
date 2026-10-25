@@ -8,7 +8,8 @@ export function parseWidgetFrameDescriptor(
   value: unknown,
   contributionId: string,
   shellOrigin: string,
-  allowDevelopmentLoopback = false
+  allowDevelopmentLoopback = false,
+  demoFrameOrigin?: string | undefined
 ): WidgetFrameDescriptorV1 {
   if (!isRecord(value) || Object.keys(value).length !== 3 ||
       value.frameVersion !== 1 || value.contributionId !== contributionId ||
@@ -24,8 +25,10 @@ export function parseWidgetFrameDescriptor(
   const secure = frameUrl.protocol === "https:";
   const developmentLoopback = allowDevelopmentLoopback && frameUrl.protocol === "http:" &&
     frameUrl.hostname === "127.0.0.1";
+  const demo = demoFrameOrigin !== undefined && frameUrl.origin === demoFrameOrigin &&
+    /^\/(widgets|apps)\//.test(frameUrl.pathname);
   const shell = new URL(shellOrigin);
-  if ((!secure && !developmentLoopback) || frameUrl.hostname === shell.hostname ||
+  if ((!secure && !developmentLoopback && !demo) || (!demo && frameUrl.hostname === shell.hostname) ||
       frameUrl.username || frameUrl.password || frameUrl.search || frameUrl.hash) {
     throw new Error("unsafe widget frame URL");
   }

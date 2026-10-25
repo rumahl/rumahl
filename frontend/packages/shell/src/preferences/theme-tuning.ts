@@ -1,4 +1,5 @@
 import type { Theme } from "@rumahl/ui/themes";
+import { applyLook } from "./appearance-presets";
 import { useCallback } from "react";
 import { photoTone } from "../wallpapers";
 import { withAlpha } from "@rumahl/ui/color";
@@ -141,6 +142,15 @@ export function useThemeTuning() {
       persist(glassEnabled ? enableGlass(tuning) : { ...tuning, glassEnabled }),
     [tuning, persist],
   );
+  const setGlassColor = useCallback(
+    (glassColor: boolean) => persist({ ...tuning, glassColor }),
+    [tuning, persist],
+  );
+  const setGlassTint = useCallback(
+    (glassTint: string | null) =>
+      persist({ ...tuning, glassTint, ...(glassTint !== null ? { glassColor: true } : {}) }),
+    [tuning, persist],
+  );
   const setGlassBackend = useCallback(
     (glassBackend: "auto" | "svg" | "webgl" | "css") =>
       persist({ ...tuning, glassBackend }),
@@ -189,8 +199,13 @@ export function useThemeTuning() {
     [tuning, persist],
   );
   const reset = useCallback(() => persist(emptyAppearance), [persist]);
+  const applyPreset = useCallback(
+    (preset: AppearanceSettings) => persist(applyLook(tuning, preset)),
+    [persist, tuning],
+  );
   return {
     tuning,
+    applyPreset,
     setSeed,
     setMode,
     setToken,
@@ -202,6 +217,8 @@ export function useThemeTuning() {
     setWallpaperMotion,
     setGlassEngine,
     setGlassEnabled,
+    setGlassColor,
+    setGlassTint,
     setGlassBackend,
     setGlassQuality,
     setGlassReduced,
@@ -230,7 +247,11 @@ export function applyTuning(
     ? wallpaperSeed(wallpaper, tokens["color.canvas.background"])
     : tuning.seed;
   const mode = tuning.mode ?? systemMode;
-  const customized = seed !== null || tuning.mode !== null;
+  // "Auto" means follow the OS. Without an explicit mode and without a custom
+  // seed the palette was previously left untouched, so system dark mode never
+  // reached glass themes. Treat system-dark as a customization.
+  const followsSystemDark = tuning.mode === null && systemMode === "dark";
+  const customized = seed !== null || tuning.mode !== null || followsSystemDark;
   const base = customized
     ? { ...tokens, ...paletteTokens(seed ?? tokens["color.accent"], { mode }) }
     : tokens;
@@ -299,12 +320,14 @@ export function applyThemeTuning(
   tuning: AppearanceSettings,
   systemMode: AppearanceMode = "light",
 ): Tokens {
+  // Themes that do not declare dark support keep their own palette in auto mode.
+  const effectiveSystemMode = theme.modes.includes("dark") ? systemMode : "light";
   if (theme.material !== "solid")
-    return applyTuning(theme.tokens, tuning, systemMode);
+    return applyTuning(theme.tokens, tuning, effectiveSystemMode);
   const tuned = applyTuning(
     theme.tokens,
-    { ...tuning, mode: tuning.mode ?? systemMode },
-    systemMode,
+    { ...tuning, mode: tuning.mode ?? effectiveSystemMode },
+    effectiveSystemMode,
   );
   return {
     ...tuned,

@@ -21,7 +21,7 @@ export interface AppBridgeHandlers {
   appTitle: string;
   version: string;
   accountName: string;
-  mode: "desktop" | "launcher";
+  mode: "desktop" | "launcher" | "mobile";
   /** Permission ids the app declared. A method is refused unless its capability is listed. */
   capabilities: readonly string[];
   theme(): BridgeTheme;

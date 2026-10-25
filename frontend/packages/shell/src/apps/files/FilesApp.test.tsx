@@ -3,7 +3,7 @@ import { beforeEach, expect, test, vi } from "vitest";
 
 const state = vi.hoisted(() => ({
   advanced: false,
-  live: { request: vi.fn(async (url: string) => { void url; return { ok: true, json: async () => [] }; }) },
+  live: { request: vi.fn(async (url: string): Promise<{ ok: boolean; json: () => Promise<unknown> }> => { void url; return { ok: true, json: async () => [] }; }) },
   fetchHostList: vi.fn(async () => []),
 }));
 
@@ -20,6 +20,8 @@ import { FilesApp } from "./FilesApp";
 beforeEach(() => {
   state.advanced = false;
   state.fetchHostList.mockClear();
+  state.live.request.mockReset();
+  state.live.request.mockImplementation(async () => ({ ok: true, json: async () => [] }));
 });
 
 test("browses personal files and hides host roots below advanced mode", async () => {
@@ -44,7 +46,9 @@ test("opens a context menu on empty space and creates an empty file", async () =
   await screen.findByText("files.empty");
   const surface = document.querySelector(".files-surface") as HTMLElement;
   fireEvent.contextMenu(surface, { clientX: 12, clientY: 12 });
-  fireEvent.click(await screen.findByRole("menuitem", { name: "files.newFile" }));
+  const menu = await screen.findByRole("menu");
+  expect(menu).toHaveStyle({ left: "12px", top: "12px" });
+  fireEvent.click(within(menu).getByRole("menuitem", { name: "files.newFile" }));
   const input = (await screen.findByPlaceholderText("files.newFile")) as HTMLInputElement;
   fireEvent.change(input, { target: { value: "notes.txt" } });
   fireEvent.submit(input.closest("form")!);
@@ -53,4 +57,30 @@ test("opens a context menu on empty space and creates an empty file", async () =
     expect(call).toBeTruthy();
     expect(String(call?.[0])).toContain("name=notes.txt");
   });
+});
+
+test("does not download a file without a registered program", async () => {
+  state.live.request.mockImplementation(async (url: string) => {
+    if (String(url).startsWith("/api/v1/files?")) {
+      return { ok: true, json: async () => [{ id: "file-1", name: "mystery.xyz", directory: false, size: 12 }] };
+    }
+    return { ok: true, json: async () => [] };
+  });
+  render(<FilesApp />);
+  const file = await screen.findByText("mystery.xyz");
+  fireEvent.doubleClick(file);
+  expect(await screen.findByText("files.noAssociation")).toBeInTheDocument();
+});
+
+test("does not download a file whose program is not installed", async () => {
+  state.live.request.mockImplementation(async (url: string) => {
+    if (String(url).startsWith("/api/v1/files?")) {
+      return { ok: true, json: async () => [{ id: "file-2", name: "notes.txt", directory: false, size: 12 }] };
+    }
+    return { ok: true, json: async () => [] };
+  });
+  render(<FilesApp />);
+  const file = await screen.findByText("notes.txt");
+  fireEvent.doubleClick(file);
+  expect(await screen.findByText("files.programMissing")).toBeInTheDocument();
 });

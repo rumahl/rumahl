@@ -10,7 +10,9 @@ import { ThemeSafetyError } from "../preferences/theme-safety";
 import type { MessageKey } from "../i18n/locales/en";
 import { useShellPreferences } from "../preferences/ShellPreferences";
 import { useThemeTuning } from "../preferences/theme-tuning";
+import { appearancePresets, isLookActive } from "../preferences/appearance-presets";
 import { useI18n } from "../i18n";
+import { useDeviceViewport } from "../shell/device";
 import { setTestMedia } from "../shell/test-media";
 import { RumahlSelect } from "../components/RumahlSelect";
 import { RumahlColorPicker } from "../components/RumahlColorPicker";
@@ -26,11 +28,6 @@ import {
 /** Resting/middle value of the glass adjustment sliders (a soft detent). */
 const REFRACTION_DEFAULT = 50;
 const CHROMA_DEFAULT = 30;
-const TINT_DEFAULT = 50;
-/** Tint is a milky rgba overlay; the slider scales its alpha around the default. */
-const TINT_MAX_ALPHA = 0.1;
-const tintColor = (percent: number): string =>
-  `rgba(30,37,66,${((percent / 100) * TINT_MAX_ALPHA).toFixed(3)})`;
 /** Saturation is a multiplier where 100% is neutral (no background tint). */
 const SATURATION_DEFAULT = 100;
 
@@ -42,8 +39,10 @@ function withSnap(value: number, target: number, threshold: number): number {
 export function DisplaySettings() {
   const { t } = useI18n();
   const settings = useShellPreferences();
+  const viewport = useDeviceViewport();
   const { scope, setScope } = settings;
   const selected = settings.preferences?.[scope].shellMode;
+  const selectedMode = selected === "mobile" ? "launcher" : selected;
   const selectedTheme = settings.preferences?.[scope].shellTheme;
   const themes = useThemeRegistry();
   const effectiveTheme = themes.find((item) => item.id === settings.theme);
@@ -88,6 +87,7 @@ export function DisplaySettings() {
   };
   const {
     tuning,
+    applyPreset,
     setSeed,
     setMode,
     setToken,
@@ -98,6 +98,8 @@ export function DisplaySettings() {
     setWallpaperTint,
     setWallpaperMotion,
     setGlassEnabled,
+    setGlassColor,
+    setGlassTint,
     setGlassBackend,
     setGlassQuality,
     setGlassReduced,
@@ -108,13 +110,23 @@ export function DisplaySettings() {
   } = useThemeTuning();
   const [refraction, setRefraction] = useState(REFRACTION_DEFAULT);
   const [chromaPercent, setChromaPercent] = useState(CHROMA_DEFAULT);
-  const [tintPercent, setTintPercent] = useState(TINT_DEFAULT);
   const [saturationPercent, setSaturationPercent] = useState(SATURATION_DEFAULT);
+  const [glassColorDraft, setGlassColorDraft] = useState<string | null>(null);
   // Capabilities are browser-only, so resolve them after mount (hydration-safe).
   const [capabilities, setCapabilities] = useState({ svg: true, webgl: true });
   useEffect(() => {
     setCapabilities({ svg: svgRefractionSupported(), webgl: webglSupported() });
   }, []);
+  // The colour picker emits continuously while dragging. Persist once the
+  // value settles instead of dropping writes while the workspace is busy.
+  useEffect(() => {
+    if (glassColorDraft === null) return;
+    const timer = window.setTimeout(() => setGlassTint(glassColorDraft), 300);
+    return () => window.clearTimeout(timer);
+  }, [glassColorDraft, setGlassTint]);
+  useEffect(() => {
+    if (glassColorDraft !== null && tuning.glassTint === glassColorDraft) setGlassColorDraft(null);
+  }, [glassColorDraft, tuning.glassTint]);
   const backendWarning: Partial<Record<"svg" | "webgl", string>> = {
     ...(capabilities.svg
       ? {}
@@ -273,6 +285,9 @@ export function DisplaySettings() {
       </div>
     );
   };
+  const activeLookPreset = appearancePresets.find((preset) => isLookActive(tuning, preset.appearance));
+  const supportsLookPresets = activeTheme.presets?.look === true;
+  const supportsMaterialPresets = activeTheme.presets?.material === true;
   return (
     <section className="display-settings">
       <SettingsHeading
@@ -305,28 +320,30 @@ export function DisplaySettings() {
         <div className="setting">
           <div className="copy">
             <strong>{t("mode.label")}</strong>
-            <p>{t("settings.displayHelp")}</p>
+            <p>{t("settings.shellModeHelp")}</p>
           </div>
           <div className="visual">
-            <RumahlButtonGroup<"desktop" | "launcher" | "inherit">
-              label={t("mode.label")}
-              value={selected ?? "inherit"}
-              onChange={(value) =>
-                settings.save(scope, value === "inherit" ? null : value)
-              }
-              options={[
-                { value: "desktop", label: t("mode.desktop") },
-                { value: "launcher", label: t("mode.launcher") },
-                ...(scope === "device"
-                  ? [
-                      {
-                        value: "inherit" as const,
-                        label: t("preferences.inherit"),
-                      },
-                    ]
-                  : []),
-              ]}
-            />
+            {viewport.phone
+              ? <span>{t("mode.mobile")}</span>
+              : <RumahlButtonGroup<"desktop" | "launcher" | "inherit">
+                  label={t("mode.label")}
+                  value={selectedMode ?? "inherit"}
+                  onChange={(value) =>
+                    settings.save(scope, value === "inherit" ? null : value)
+                  }
+                  options={[
+                    { value: "desktop", label: t("mode.desktop") },
+                    { value: "launcher", label: t("mode.launcher") },
+                    ...(scope === "device"
+                      ? [
+                          {
+                            value: "inherit" as const,
+                            label: t("preferences.inherit"),
+                          },
+                        ]
+                      : []),
+                  ]}
+                />}
           </div>
         </div>
         <div className="setting">
@@ -362,6 +379,12 @@ export function DisplaySettings() {
                 </button>
               ) : null}
             </div>
+            <div className="theme-preview" aria-hidden="true">
+              <div className="theme-preview__window">
+                <i /><i /><i />
+              </div>
+              <div className="theme-preview__dock"><span /><span /><span /></div>
+            </div>
           </div>
         </div>
         <div className="setting">
@@ -393,40 +416,80 @@ export function DisplaySettings() {
         </div>
       </div>
 
+      {supportsLookPresets || supportsMaterialPresets ? (
+        <>
+          <h3 className="section-title">{t("theme.auraPresets")}</h3>
+          <p className="settings-section-help">{t("theme.auraPresetsHelp")}</p>
+          <div className="settings-group">
+            {supportsLookPresets ? (
+              <div className="setting aura-preset-row">
+                <div className="copy">
+                  <strong>{t("theme.lookPresets")}</strong>
+                  <p>{t("theme.lookPresetsHelp")}</p>
+                </div>
+                <div className="visual">
+                  <div className="look-preset-picker">
+                    <div className="segmented" role="group" aria-label={t("theme.lookPresets")}>
+                      {appearancePresets.map((preset) => (
+                        <button
+                          key={preset.id}
+                          className="segment"
+                          type="button"
+                          aria-pressed={isLookActive(tuning, preset.appearance)}
+                          onClick={() => applyPreset(preset.appearance)}
+                        >
+                          {t(preset.labelKey)}
+                        </button>
+                      ))}
+                    </div>
+                    <select
+                      className="look-preset-select"
+                      aria-label={t("theme.lookPresets")}
+                      value={activeLookPreset?.id ?? ""}
+                      onChange={(event) => {
+                        const preset = appearancePresets.find((item) => item.id === event.target.value);
+                        if (preset) applyPreset(preset.appearance);
+                      }}
+                    >
+                      {!activeLookPreset ? <option value="">{t("theme.lookCustom")}</option> : null}
+                      {appearancePresets.map((preset) => <option key={preset.id} value={preset.id}>{t(preset.labelKey)}</option>)}
+                    </select>
+                  </div>
+                </div>
+              </div>
+            ) : null}
+            {supportsMaterialPresets && activeTheme.material !== "solid" ? (
+              <div className="setting aura-preset-row">
+                <div className="copy">
+                  <strong>{t("theme.presets")}</strong>
+                  <p>{t("theme.presetsHelp")}</p>
+                </div>
+                <div className="visual aura-material-presets">
+                  <div className="material-presets" role="group" aria-label={t("theme.presets")}>
+                    {(["clear", "soft", "bold", "solid"] as const).map((preset) => (
+                      <button
+                        type="button"
+                        key={preset}
+                        className={`material-card material-card--${preset}`}
+                        aria-pressed={activePreset === preset}
+                        onClick={() => setMaterialPreset(preset)}
+                      >
+                        <span className="material-card__preview" aria-hidden="true" />
+                        <span className="material-card__label">
+                          {t(`theme.preset.${preset}`)}
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            ) : null}
+          </div>
+        </>
+      ) : null}
+
       <h3 className="section-title">{t("theme.materials")}</h3>
       <div className="settings-group">
-        {activeTheme.material !== "solid" ? (
-          <>
-            <div className="setting">
-              <div className="copy">
-                <strong>{t("theme.presets")}</strong>
-              </div>
-              <div
-                className="visual material-presets"
-                role="group"
-                aria-label={t("theme.presets")}
-              >
-                {(["clear", "soft", "bold", "solid"] as const).map((preset) => (
-                  <button
-                    type="button"
-                    key={preset}
-                    className={`material-card material-card--${preset}`}
-                    aria-pressed={activePreset === preset}
-                    onClick={() => setMaterialPreset(preset)}
-                  >
-                    <span
-                      className="material-card__preview"
-                      aria-hidden="true"
-                    />
-                    <span className="material-card__label">
-                      {t(`theme.preset.${preset}`)}
-                    </span>
-                  </button>
-                ))}
-              </div>
-            </div>
-          </>
-        ) : null}
         <div className="setting">
           <div className="copy">
             <strong>{t("theme.autoColor")}</strong>
@@ -540,6 +603,42 @@ export function DisplaySettings() {
             </div>
             <div className="setting">
               <div className="copy">
+                <strong>{t("theme.glass.colorEnabled")}</strong>
+                <p>{t("theme.glass.colorEnabledHelp")}</p>
+              </div>
+              <div className="visual">
+                <input
+                  type="checkbox"
+                  role="switch"
+                  aria-label={t("theme.glass.colorEnabled")}
+                  disabled={reduced || transparencyOff}
+                  checked={tuning.glassColor !== false}
+                  onChange={(event) => {
+                    if (!event.target.checked) setGlassColorDraft(null);
+                    setGlassColor(event.target.checked);
+                  }}
+                />
+              </div>
+            </div>
+            <div className="setting">
+              <div className="copy">
+                <strong>{t("theme.glass.color")}</strong>
+                <p>{t("theme.glass.colorHelp")}</p>
+              </div>
+              <div className="visual">
+                <input
+                  className="glass-color-input"
+                  type="color"
+                  aria-label={t("theme.glass.color")}
+                  disabled={reduced || transparencyOff || tuning.glassColor === false}
+                  value={glassColorDraft ?? tuning.glassTint ?? tokens["color.accent"] ?? "#beff2d"}
+                  onChange={(event) => setGlassColorDraft(event.target.value)}
+                  onBlur={() => { if (glassColorDraft !== null) setGlassTint(glassColorDraft); }}
+                />
+              </div>
+            </div>
+            <div className="setting">
+              <div className="copy">
                 <strong>{t("theme.glass.backend")}</strong>
                 <p>{t("theme.glass.backendHelp")}</p>
               </div>
@@ -644,33 +743,6 @@ export function DisplaySettings() {
                   }}
                 />
                 <output>{chromaPercent}%</output>
-              </div>
-            </div>
-            <div className="setting">
-              <div className="copy">
-                <strong>{t("theme.glass.tint")}</strong>
-                <p>{t("theme.glass.tintHelp")}</p>
-              </div>
-              <div className="visual visual--range">
-                <input
-                  className="range"
-                  type="range"
-                  aria-label={t("theme.glass.tint")}
-                  disabled={reduced || transparencyOff}
-                  min={0}
-                  max={100}
-                  value={tintPercent}
-                  onChange={(event) => {
-                    const value = withSnap(
-                      Number(event.target.value),
-                      TINT_DEFAULT,
-                      4,
-                    );
-                    setTintPercent(value);
-                    setGlassAdjust({ tint: tintColor(value) });
-                  }}
-                />
-                <output>{tintPercent}%</output>
               </div>
             </div>
             <div className="setting">

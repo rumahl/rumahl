@@ -2,6 +2,7 @@ import { useWorkspace } from "../preferences/Workspace";
 import { useState } from "react";
 import { useI18n } from "../i18n";
 import { AppTile } from "./AppTile";
+import { SearchIcon } from "../icons";
 import { useAppCatalog } from "./AppCatalog";
 import { useShellApps } from "./useShellApps";
 export function AppGrid({ searchable = true, onOpen }: { searchable?: boolean; onOpen?: () => void }) {
@@ -14,7 +15,10 @@ export function AppGrid({ searchable = true, onOpen }: { searchable?: boolean; o
   const apps = useShellApps();
   const results = apps.filter(app => query.trim() ? true : currentFolder ? currentFolder.apps.includes(app.id) : !effective.folders.some(f => f.apps.includes(app.id))).filter((app) => `${app.title} ${app.id}`.toLocaleLowerCase().includes(query.trim().toLocaleLowerCase()));
   return <div className="app-browser">
-    {searchable ? <label className="app-search"><span>{t("launcher.search")}</span><input type="search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder={t("launcher.searchPlaceholder")} /></label> : null}
+    {searchable ? <label className="app-search">
+      <SearchIcon aria-hidden="true" />
+      <input type="search" aria-label={t("launcher.search")} value={query} onChange={(event) => setQuery(event.target.value)} placeholder={t("launcher.searchPlaceholder")} />
+    </label> : null}
     {currentFolder ? <button onClick={() => setFolder(null)}>{t("workspace.back")} · {currentFolder.name}</button> : null}
     <div className="app-grid">{!query.trim() && !currentFolder ? effective.folders.map(f => <button className="app-tile" key={f.id} onClick={() => setFolder(f.id)}><span className="app-tile__icon" aria-hidden="true">▤</span><span>{f.name}</span></button>) : null}{results.map((app) => <AppTile app={app} key={app.id} onNavigate={onOpen} />)}</div>
     {results.length === 0 && (query.trim() || currentFolder || effective.folders.length === 0) ? <p role="status">{t("launcher.noResults")}</p> : null}

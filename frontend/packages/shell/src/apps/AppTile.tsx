@@ -1,3 +1,4 @@
+import { useEffect, useState } from "react";
 import { SettingsIcon } from "../icons";
 import { useI18n } from "../i18n";
 import { ShellLink } from "../routing/ShellLink";
@@ -5,7 +6,9 @@ import { rememberRecent } from "./recents";
 import type { ShellApp } from "./useShellApps";
 
 export function AppIcon({ app }: { app: ShellApp }) {
-  if (app.icon) return <img className="icon" src={app.icon} alt="" />;
+  const [failed, setFailed] = useState(false);
+  useEffect(() => { setFailed(false); }, [app.icon]);
+  if (app.icon && !failed) return <img className="icon" src={app.icon} alt="" onError={() => setFailed(true)} />;
   if (app.kind === "settings") return <SettingsIcon />;
   const label = app.title.trim().slice(0, 1).toLocaleUpperCase() || "?";
   let hue = 0;

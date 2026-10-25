@@ -1,19 +1,34 @@
-import type { ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { useTheme } from "@rumahl/ui";
-import { BoltIcon, MoonIcon, PulseIcon, SettingsIcon, SparkIcon } from "../icons";
+import { BoltIcon, MoonIcon, PulseIcon, SettingsIcon, SparkIcon, WindowStackIcon } from "../icons";
 import { useI18n } from "../i18n";
 import type { MessageKey } from "../i18n/locales/en";
 import { useThemeTuning } from "../preferences/theme-tuning";
 
 /** Quick settings popover (dark mode, transparency, motion, performance). */
-export function ControlCenter({ protection, state, error, onOpenSettings, onClose }: {
+export function ControlCenter({ protection, state, error, userName, windowCount, onOpenSettings, onOpenSwitcher, onOpenTour, onClose }: {
   protection: string;
   state: string;
   error?: string | null | undefined;
+  userName: string;
+  windowCount: number;
   onOpenSettings: () => void;
+  onOpenSwitcher?: (() => void) | undefined;
+  onOpenTour?: (() => void) | undefined;
   onClose: () => void;
 }) {
   const { t } = useI18n();
+  const [online, setOnline] = useState(true);
+  useEffect(() => {
+    const sync = () => setOnline(typeof navigator === "undefined" ? true : navigator.onLine);
+    sync();
+    window.addEventListener("online", sync);
+    window.addEventListener("offline", sync);
+    return () => {
+      window.removeEventListener("online", sync);
+      window.removeEventListener("offline", sync);
+    };
+  }, []);
   const { theme, tokens } = useTheme();
   const tuning = useThemeTuning();
   const dark = tuning.tuning.mode === "dark";
@@ -31,6 +46,16 @@ export function ControlCenter({ protection, state, error, onOpenSettings, onClos
     </button>;
 
   return <div className="control-center" role="dialog" aria-label={t("controlCenter.label")}>
+    <div className="control-center__profile">
+      <span className="control-center__avatar" aria-hidden="true">{userName.slice(0, 1).toUpperCase()}</span>
+      <div className="control-center__identity">
+        <strong>{userName}</strong>
+        <small data-online={online ? "true" : "false"}>{t(online ? "controlCenter.online" : "controlCenter.offline")}</small>
+      </div>
+    </div>
+    {onOpenSwitcher ? <button type="button" className="control-center__windows" onClick={() => { onOpenSwitcher(); onClose(); }}>
+      <WindowStackIcon aria-hidden="true" /><span>{t("controlCenter.windows")}</span><b>{windowCount}</b>
+    </button> : null}
     <div className="control-center__grid">
       {tile(dark, () => tuning.setMode(dark ? "light" : "dark"), <MoonIcon />, t("controlCenter.darkMode"), !supportsDark)}
       {tile(transparency, () => tuning.setTransparency(!transparency), <SparkIcon />, t("controlCenter.transparency"), !supportsTransparency)}
@@ -42,6 +67,9 @@ export function ControlCenter({ protection, state, error, onOpenSettings, onClos
       <span className="menubar__dot" aria-hidden="true" />{protection}
     </div>
     {error ? <p className="control-center__error" role="status">{t(`preferences.${error}` as MessageKey)}</p> : null}
-    <button type="button" className="control-center__settings" onClick={() => { onOpenSettings(); onClose(); }}>{t("nav.settings")}</button>
+    <div className="control-center__links">
+      <button type="button" className="control-center__settings" onClick={() => { onOpenSettings(); onClose(); }}>{t("nav.settings")}</button>
+      {onOpenTour ? <button type="button" className="control-center__settings" onClick={() => { onOpenTour(); onClose(); }}>{t("tour.replay")}</button> : null}
+    </div>
   </div>;
 }

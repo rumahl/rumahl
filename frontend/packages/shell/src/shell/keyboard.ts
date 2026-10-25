@@ -35,10 +35,11 @@ export function isEmergencyChord(event: KeyboardEvent): boolean {
   return event.ctrlKey && event.shiftKey && event.key === "Escape";
 }
 
-export function installShortcuts(): () => void {
+export function installShortcuts({ recovery = true }: { recovery?: boolean | undefined } = {}): () => void {
   const onKey = (event: KeyboardEvent) => {
     // The emergency chord always reaches the standalone recovery system.
     if (isEmergencyChord(event)) {
+      if (!recovery) return;
       event.preventDefault();
       window.location.assign("/recovery");
       return;

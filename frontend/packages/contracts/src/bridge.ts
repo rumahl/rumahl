@@ -76,7 +76,7 @@ export type BridgeToastVariant = "success" | "warning" | "info" | "error";
 export interface BridgeAppInfo {
   app: { id: string; title: string; version: string };
   account: { displayName: string };
-  mode: "desktop" | "launcher";
+  mode: "desktop" | "launcher" | "mobile";
 }
 
 /** Semantic colours an app can adopt, mirrored from the shell palette. */

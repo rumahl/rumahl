@@ -5,6 +5,8 @@ import { useTheme } from "@rumahl/ui";
 import { ProtectedWindow } from "../components/ProtectedWindow";
 import { findFirstPartyApp } from "../apps/registry";
 import { describeRoute, ShellRoutes } from "../routing/routes";
+import { useI18n } from "../i18n";
+import { HomeIcon, WindowExitFullscreenIcon, WindowStackIcon } from "../icons";
 import { RouteBoundary } from "../routing/RouteBoundary";
 import { useShell } from "./ShellContext";
 import type { ShellWindow } from "../shell-state";
@@ -14,6 +16,8 @@ import { readWindowRect, writeWindowRect } from "./window-positions";
 
 /** Height of the flush top bar maximized/snapped windows sit below. */
 const TOPBAR_HEIGHT = 38;
+/** Desktop windows keep a small breathing room from the screen edges. */
+const WINDOW_GAP = 12;
 
 /**
  * True for an installed (sandboxed iframe) app window. First-party React apps,
@@ -53,6 +57,7 @@ export function DesktopWindows({ animations = true }: { animations?: boolean } =
     history.current = ordered;
     const map: { [id: string]: number } = {};
     ordered.forEach((id, index) => { map[id] = ordered.length - index; });
+    for (const item of state.windows) if (item.fullscreen && !item.minimized) map[item.id] = 1000;
     return map;
   }, [state.windows, state.focusedWindowId]);
   return <div ref={layer} className="window-layer">
@@ -63,11 +68,13 @@ export function DesktopWindows({ animations = true }: { animations?: boolean } =
 }
 function HostedWindow({ item, area, zIndex, animations: motionEnabled = true }: { item: ShellWindow; area: WorkArea | null; zIndex: number; animations?: boolean }) {
   const { state, dispatch, open, mode } = useShell();
+  const { t } = useI18n();
   const { variants } = useTheme();
   const location = useLocation();
   const active = describeRoute(location.pathname + location.search + location.hash).id;
-  const isLauncher = mode === "launcher";
+  const isLauncher = mode === "launcher" || mode === "mobile";
   const flush = isInstalledAppWindow(item.id);
+  const isFullscreen = item.fullscreen === true;
   const hidden = item.minimized || (isLauncher && active !== item.id);
   const stored = item.rect ?? centeredRect(area ?? { width: 760, height: 540 });
   const positionReady = useRef(false);
@@ -85,7 +92,19 @@ function HostedWindow({ item, area, zIndex, animations: motionEnabled = true }: 
     if (item.rect) writeWindowRect(item.id, item.rect);
   }, [area, item.id, item.rect, dispatch]);
   const placement = item.placement ?? "floating";
-  const rect = area ? placedRect(stored, isLauncher ? "maximized" : placement, area, TOPBAR_HEIGHT) : stored;
+  const rect = area
+    ? isFullscreen
+      ? { x: 0, y: 0, width: area.width, height: area.height }
+      : placedRect(stored, isLauncher ? "maximized" : placement, area, TOPBAR_HEIGHT, isLauncher ? 0 : WINDOW_GAP)
+    : stored;
+  useEffect(() => {
+    if (!isFullscreen) return;
+    const onKey = (event: globalThis.KeyboardEvent) => {
+      if (event.key === "Escape") dispatch({ type: "set-window-fullscreen", id: item.id, fullscreen: false });
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [dispatch, isFullscreen, item.id]);
   const gesture = useRef<null | { pointer: number; x: number; y: number; rect: typeof rect; resize: boolean; pending: null | { stored: typeof stored; ratio: number; offsetY: number }; element: HTMLElement | null; live: typeof rect; snap: WindowPlacement | null; moved: boolean }>(null);
   const [moving, setMoving] = useState(false);
   const [snap, setSnap] = useState<WindowPlacement | null>(null);
@@ -190,6 +209,7 @@ function HostedWindow({ item, area, zIndex, animations: motionEnabled = true }: 
   return <motion.div
     aria-hidden={hidden ? true : undefined}
     className={`window-position${moving ? " is-moving is-dragging" : ""}${hidden ? " is-hidden" : ""}`}
+    data-fullscreen={isFullscreen ? "true" : undefined}
     style={{ zIndex }}
     {...(animate ? { initial: enter, exit: enter } : { initial: false })}
     animate={{ opacity: 1, y: 0 }}
@@ -201,11 +221,24 @@ function HostedWindow({ item, area, zIndex, animations: motionEnabled = true }: 
       onClose={() => { dispatch({ type: "close-window", id: item.id }); if (active === item.id) open("/"); }}
       onFocus={focus} onMinimize={() => { dispatch({ type: "toggle-minimize", id: item.id }); if (active === item.id) open("/"); }}
       onMaximize={isLauncher ? undefined : () => dispatch({ type: "set-window-placement", id: item.id, placement: placement !== "floating" ? "floating" : "maximized" })}
+      onFullscreen={isLauncher ? undefined : () => dispatch({ type: "set-window-fullscreen", id: item.id, fullscreen: !isFullscreen })}
       onSnap={isLauncher ? undefined : (side) => dispatch({ type: "set-window-placement", id: item.id, placement: side })}
-      maximized={placement !== "floating"} onTitlePointerDown={(event) => begin(event, false)} onTitleKeyDown={(event) => keyboard(event, false)}
+      fullscreen={isFullscreen} frameless={isFullscreen}
+      maximized={placement !== "floating" || isFullscreen} {...(!isLauncher ? { onTitlePointerDown: (event: PointerEvent<HTMLElement>) => begin(event, false), onTitleKeyDown: (event: KeyboardEvent<HTMLElement>) => keyboard(event, false) } : {})}
       onResizePointerDown={(event) => begin(event, true)} onResizeKeyDown={(event) => keyboard(event, true)}
       subtitle={item.subtitle} title={item.title} stream={item.streamId !== undefined} variant={variants.windowChrome}>
       <RouteBoundary location={item.location ?? "/"}><ShellRoutes location={item.location ?? "/"} /></RouteBoundary>
     </ProtectedWindow>
+    {isFullscreen ? <button type="button" className="window-exit-fullscreen" onClick={() => dispatch({ type: "set-window-fullscreen", id: item.id, fullscreen: false })} aria-label={t("window.exitFullscreen")}>
+      <WindowExitFullscreenIcon aria-hidden="true" /><span>{t("window.exitFullscreen")}</span>
+    </button> : null}
+    {isLauncher ? <div className="window-launcher-controls">
+      <button type="button" className="window-launcher-home" aria-label={t("nav.home")} title={t("nav.home")} onClick={() => open("/")}>
+        <HomeIcon aria-hidden="true" /><span>{t("nav.home")}</span>
+      </button>
+      <button type="button" className="window-launcher-switcher" aria-label={t("switcher.title")} title={t("switcher.title")} onClick={() => dispatch({ type: "toggle-app-switcher" })}>
+        <WindowStackIcon aria-hidden="true" /><span>{t("switcher.title")}</span>
+      </button>
+    </div> : null}
   </motion.div>;
 }

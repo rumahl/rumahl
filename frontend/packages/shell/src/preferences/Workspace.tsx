@@ -22,6 +22,8 @@ export interface AppearanceSettings {
   ultraPerformance?: boolean;
   glassEngine?: GlassEngine;
   glassEnabled?: boolean;
+  glassColor?: boolean;
+  glassTint?: string | null;
   glassBackend?: GlassBackend;
   glassQuality?: GlassQuality;
   seed: string | null;
@@ -77,6 +79,8 @@ export function parseAppearance(value: unknown): AppearanceSettings {
     ...(record.ultraPerformance === true ? { ultraPerformance: true } : {}),
     ...(record.glassEngine === "css" || record.glassEngine === "canvas" ? { glassEngine: record.glassEngine } : {}),
     ...(typeof record.glassEnabled === "boolean" ? { glassEnabled: record.glassEnabled } : {}),
+    ...(typeof record.glassColor === "boolean" ? { glassColor: record.glassColor } : {}),
+    ...(typeof record.glassTint === "string" && /^#[0-9a-fA-F]{6}$/.test(record.glassTint) ? { glassTint: record.glassTint } : {}),
     ...(["auto", "svg", "webgl", "css"].includes(record.glassBackend as string) ? { glassBackend: record.glassBackend as GlassBackend } : {}),
     ...(["auto", "high", "balanced", "low"].includes(record.glassQuality as string) ? { glassQuality: record.glassQuality as GlassQuality } : {})
   };
@@ -98,7 +102,7 @@ export function WorkspaceProvider({ live, initial, children }: PropsWithChildren
   useEffect(() => {
     const controller = new AbortController(), profile = browserProfile(); let writing = false, generation = 0;
     const path = `/api/v1/shell/workspace?device=${profile.id}`;
-    function apply(r: Record) { if (controller.signal.aborted || (latest.current?.ownerId === r.ownerId && latest.current.revision > r.revision)) return; latest.current=r; setRecord(r); }
+    function apply(r: Record) { if (controller.signal.aborted || (latest.current?.ownerId === r.ownerId && latest.current.revision >= r.revision)) return; latest.current=r; setRecord(r); }
     async function request(update?: {revision:number;scope:PreferenceScope;value:Workspace|null}) {
       const request = live!.request;
       const response = await request(path,{method:update?"PUT":"GET",credentials:"same-origin",cache:"no-store",signal:controller.signal,headers:{"Content-Type":"application/json"},...(update?{body:JSON.stringify(update)}:{})});

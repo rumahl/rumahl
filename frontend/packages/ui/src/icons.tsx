@@ -30,6 +30,10 @@ export function HomeIcon(props: IconProps) {
   );
 }
 
+export function PhoneIcon(props: IconProps) {
+  return <IconBase {...props}><rect x="7" y="3" width="10" height="18" rx="2.5" /><path d="M11 18h2" strokeLinecap="round" /></IconBase>;
+}
+
 export function GridIcon(props: IconProps) {
   return (
     <IconBase {...props}>
@@ -178,4 +182,24 @@ export function WindowRestoreIcon(props: IconProps) {
 
 export function WindowCloseIcon(props: IconProps) {
   return <IconBase stroke="currentColor" strokeWidth={2} strokeLinecap="round" {...props}><path d="M7 7l10 10M17 7 7 17" /></IconBase>;
+}
+
+export function EditIcon(props: IconProps) {
+  return <IconBase {...props}><path d="M4 20h4L19 9l-4-4L4 16z" /><path d="m14 5 4 4" /></IconBase>;
+}
+
+export function CheckIcon(props: IconProps) {
+  return <IconBase strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" {...props}><path d="m5 12 4 4L19 6" /></IconBase>;
+}
+
+export function WindowStackIcon(props: IconProps) {
+  return <IconBase {...props}><rect x="4" y="8" width="12" height="12" rx="2" /><path d="M8 8V4h12v12h-4" /></IconBase>;
+}
+
+export function WindowFullscreenIcon(props: IconProps) {
+  return <IconBase stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" {...props}><path d="M8 3H4v4M16 3h4v4M20 16v4h-4M4 16v4h4" /></IconBase>;
+}
+
+export function WindowExitFullscreenIcon(props: IconProps) {
+  return <IconBase stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" {...props}><path d="M4 8h4V4M20 8h-4V4M16 20v-4h4M4 16h4v4" /></IconBase>;
 }

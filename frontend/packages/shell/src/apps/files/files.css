@@ -11,6 +11,7 @@
 }
 
 .files-app {
+  position: relative;
   display: grid;
   grid-template-columns: 196px minmax(0, 1fr);
   width: 100%;
@@ -745,4 +746,112 @@
 .shell .files-draft input {
   min-width: 0;
   flex: 1;
+}
+
+/* Phones get the file list/content, not a squeezed desktop sidebar. */
+@container files (max-width: 480px) {
+  .files-app {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .files-app > .files-app__sidebar {
+    display: none;
+  }
+  .files-toolbar {
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+}
+
+
+/* The desktop sidebar is optional on phones; a drawer keeps Locations reachable. */
+.files-sidebar-toggle { display: none; }
+.files-sidebar-scrim {
+  position: absolute;
+  inset: 0;
+  z-index: 20;
+  background: rgba(0, 0, 0, 0.34);
+  backdrop-filter: blur(2px);
+}
+.files-sidebar-drawer {
+  position: absolute;
+  inset: 0 auto 0 0;
+  display: flex;
+  flex-direction: column;
+  width: min(300px, 88%);
+  overflow-y: auto;
+  border: 1px solid color-mix(in srgb, currentColor 12%, transparent);
+  border-left: 0;
+  border-radius: 0 24px 24px 0;
+  background:
+    linear-gradient(160deg, color-mix(in srgb, var(--rumahl-ui-color-panel-background, #fff) 92%, transparent), var(--rumahl-ui-color-panel-background, #fff));
+  box-shadow: 24px 0 70px #0006;
+  backdrop-filter: blur(30px) saturate(1.2);
+  -webkit-backdrop-filter: blur(30px) saturate(1.2);
+  padding: 14px 10px 18px;
+  animation: files-drawer-in 0.22s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+.files-sidebar-drawer__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 4px 6px 14px 12px;
+  color: var(--rumahl-ui-color-text-primary, inherit);
+  font-size: 15px;
+  font-weight: 650;
+  letter-spacing: -0.02em;
+}
+.files-sidebar-drawer .files-app__heading { display: none; }
+.files-sidebar-drawer .files-app__sidebar {
+  display: block;
+  border-right: 0;
+  padding: 0;
+  background: transparent;
+}
+.files-sidebar-drawer .files-nav {
+  min-height: 44px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  font-size: 14px;
+}
+.files-sidebar-close {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  flex: none;
+  border: 1px solid color-mix(in srgb, currentColor 12%, transparent);
+  border-radius: 50%;
+  background: color-mix(in srgb, currentColor 6%, transparent);
+  color: inherit;
+  font-size: 20px;
+  line-height: 1;
+}
+@keyframes files-drawer-in {
+  from { opacity: 0; transform: translateX(-18px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .files-sidebar-drawer { animation: none; }
+}
+/* Phones get the file list/content, not a squeezed desktop sidebar. */
+@media (max-width: 640px) {
+  .files-sidebar-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    flex: none;
+    height: 30px;
+    margin-right: 8px;
+    padding: 0 10px;
+    border: 1px solid var(--material-line, var(--line));
+    border-radius: 999px;
+    background: color-mix(in srgb, currentColor 6%, transparent);
+    color: inherit;
+    font: inherit;
+    font-size: 11px;
+    font-weight: 600;
+  }
+  .files-sidebar-toggle svg { width: 15px; height: 15px; }
+  .files-sidebar-toggle span { white-space: nowrap; }
 }

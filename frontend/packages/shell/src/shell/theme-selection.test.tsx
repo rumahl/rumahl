@@ -1,6 +1,6 @@
 import "../test/popover";
-import { fireEvent, render, screen } from "@testing-library/react";
-import { describe, expect, test } from "vitest";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { describe, expect, test, vi } from "vitest";
 import { paletteTokens } from "@rumahl/ui/palette";
 import { getTheme } from "@rumahl/ui/sdk";
 import { App } from "../App";
@@ -10,6 +10,25 @@ describe("theme selection", () => {
   test("resolves built-in themes by id", () => {
     expect(getTheme("com.rumahl.classic")?.name).toBe("Classic");
     expect(getTheme("com.rumahl.default")?.name).toBe("Aura");
+  });
+
+  test("auto follows the system dark preference", async () => {
+    let dark = true;
+    const listeners = new Set<() => void>();
+    vi.stubGlobal("matchMedia", vi.fn((query: string) => ({
+      get matches() { return query.includes("prefers-color-scheme: dark") ? dark : false; },
+      addEventListener: (_event: string, listener: () => void) => { if (query.includes("prefers-color-scheme: dark")) listeners.add(listener); },
+      removeEventListener: (_event: string, listener: () => void) => { listeners.delete(listener); }
+    })));
+    try {
+      render(<App snapshot={demoSnapshot} initialLocation="/settings/display" />);
+      await waitFor(() => expect(document.querySelector(".shell")).toHaveAttribute("data-scheme", "dark"));
+      dark = false;
+      listeners.forEach((listener) => listener());
+      await waitFor(() => expect(document.querySelector(".shell")).toHaveAttribute("data-scheme", "light"));
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 
   test("applies the classic theme from the settings UI", async () => {

@@ -4,31 +4,30 @@ import { useCallback, useSyncExternalStore } from "react";
  * File-type associations: which program opens a file, decided by its extension.
  *
  * This is intentionally a small, swappable registry. Extensions map to a
- * handler id that names a program (a viewer/editor). Programs are not installed
- * yet, so the default handler is a download; once viewer apps exist they are
- * launched through the same lookup, and the mapping can be changed per extension
- * (see `setFileAssociation`) without touching the Files app.
+ * handler id that names an installed program (a viewer/editor). A file with an
+ * unknown extension, or a program that is not installed, is never downloaded as
+ * a side effect of opening it.
  */
 
-export type FileHandlerKind = "download" | "viewer" | "editor";
+export type FileHandlerKind = "viewer" | "editor";
 
 export interface FileHandler {
   id: string;
   /** Name of the program that opens the type. */
   label: string;
   kind: FileHandlerKind;
+  /** True once a viewer/editor program is actually available in the OS. */
+  installed: boolean;
+  /** App route to launch once the program is installed. */
+  appPath?: string;
 }
-
-/** The fallback: files without an associated program are downloaded. */
-export const downloadHandler: FileHandler = { id: "download", label: "Download", kind: "download" };
 
 /** Programs a file type can be opened with. More are added as apps arrive. */
 export const fileHandlers: readonly FileHandler[] = [
-  downloadHandler,
-  { id: "text", label: "Text editor", kind: "editor" },
-  { id: "image", label: "Image viewer", kind: "viewer" },
-  { id: "media", label: "Media player", kind: "viewer" },
-  { id: "pdf", label: "PDF viewer", kind: "viewer" }
+  { id: "text", label: "Text editor", kind: "editor", installed: false },
+  { id: "image", label: "Image viewer", kind: "viewer", installed: false },
+  { id: "media", label: "Media player", kind: "viewer", installed: false },
+  { id: "pdf", label: "PDF viewer", kind: "viewer", installed: false }
 ];
 
 export function handlerById(id: string | undefined): FileHandler | undefined {
@@ -88,14 +87,10 @@ function persist(next: Overrides): void {
   for (const notify of subscribers) notify();
 }
 
-/** Resolve the program for a file name, honouring per-extension overrides. */
-export function fileAssociation(name: string, overrides: Overrides = load()): FileHandler {
+/** Resolve the registered program for a file name, honouring overrides. */
+export function fileAssociation(name: string, overrides: Overrides = load()): FileHandler | undefined {
   const extension = extensionOf(name);
-  return (
-    handlerById(overrides[extension]) ??
-    handlerById(defaultAssociations[extension]) ??
-    downloadHandler
-  );
+  return handlerById(overrides[extension]) ?? handlerById(defaultAssociations[extension]);
 }
 
 /** Change (or clear) the program that opens a given extension. */

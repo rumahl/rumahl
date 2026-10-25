@@ -1,9 +1,11 @@
 /* Only this public, account-independent offline kit is ever persisted. */
-const VERSION = '1.4.0';
-const CACHE = 'rumahl-os-offline-v5';
+const VERSION = '1.5.0';
+const CACHE = 'rumahl-os-offline-v6';
 // The offline page is fully self-contained, so it renders even when nothing
 // else can be fetched. Only this public, account-independent kit is persisted.
-const RESOURCES = ['/offline'];
+const RESOURCES = ['/offline', '/splash'];
+// Show the splash instead of a blank page when the shell takes too long.
+const SPLASH_TIMEOUT = 1800;
 // Neutral, well-known connectivity endpoints. They answer with an empty 204 and
 // are the only external requests the offline kit ever makes. Replace or remove
 // them to match a deployment's policy.
@@ -61,14 +63,42 @@ self.addEventListener('fetch', event => {
   // Recovery and shell navigations fall back to the offline kit too, so a dead
   // device never shows the browser's own error page.
   if (/^\/(api|oauth2|logout)(\/|$)/.test(url.pathname)) return;
+  // The splash warms the shell, then reloads with this flag. Never show the
+  // splash twice for the same navigation.
+  if (url.searchParams.has('rumahl-shell')) {
+    event.respondWith(fetch(request));
+    return;
+  }
   event.respondWith((async () => {
-    try { return await fetch(request); }
-    catch {
+    const network = fetch(request);
+    let timeout;
+    try {
+      return await Promise.race([
+        network,
+        new Promise((_, reject) => {
+          timeout = setTimeout(() => reject(new Error('splash-timeout')), SPLASH_TIMEOUT);
+        }),
+      ]);
+    } catch (error) {
+      if (error?.message === 'splash-timeout') {
+        const cache = await caches.open(CACHE);
+        const splash = await cache.match('/splash');
+        if (splash) {
+          // Keep the slow response alive; the splash fetches the real document.
+          event.waitUntil(network.catch(() => {}));
+          const headers = new Headers(splash.headers);
+          headers.set('cache-control', 'no-store');
+          return new Response(await splash.blob(), { status: 200, statusText: 'Loading', headers });
+        }
+        return network;
+      }
       const offline = await (await caches.open(CACHE)).match('/offline');
       if (!offline) return Response.error();
       const headers = new Headers(offline.headers);
       headers.set('cache-control', 'no-store');
       return new Response(await offline.blob(), { status: 503, statusText: 'Offline', headers });
+    } finally {
+      clearTimeout(timeout);
     }
   })());
 });

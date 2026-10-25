@@ -14,6 +14,7 @@ import { ShellLayout } from "./shell/ShellLayout";
 import { useSystemMode } from "./shell/system-scheme";
 import { buildSnapshotTheme, resolveActiveTheme, resolveTokens } from "./theme";
 import { rememberLoginAppearance } from "./preferences/login-appearance";
+import { ShellFeatureProvider } from "./features/ShellFeatures";
 
 export function App({ snapshot, live, theme, ...routing }: ShellRouterOptions & {
   snapshot: ShellSnapshotV1;
@@ -35,19 +36,21 @@ export function App({ snapshot, live, theme, ...routing }: ShellRouterOptions & 
   // Device overrides are resolved from the local theme registry.
   const serverTheme = useMemo(() => buildSnapshotTheme(current), [current]);
   return <I18nProvider locale={current.user.locale}>
-    <ShellRouter {...routing}>
-      <ShellPreferencesProvider live={live} initial={{ mode: current.mode, theme: current.theme.id }}>
-        <OsModeProvider live={live}>
-          <AppCatalog live={live} revision={current.revision} initial={current.apps}>
-            <WorkspaceProvider live={live} initial={current.workspace}>
-              <ShellThemeGate override={theme} serverTheme={serverTheme}>
-                {sessionExpired ? <SessionExpired /> : <ShellLayout snapshot={current} live={live} />}
-              </ShellThemeGate>
-            </WorkspaceProvider>
-          </AppCatalog>
-        </OsModeProvider>
-      </ShellPreferencesProvider>
-    </ShellRouter>
+    <ShellFeatureProvider demo={Boolean(live?.demo)}>
+      <ShellRouter {...routing}>
+        <ShellPreferencesProvider live={live} initial={{ mode: current.mode, theme: current.theme.id }}>
+          <OsModeProvider live={live}>
+            <AppCatalog live={live} revision={current.revision} initial={current.apps}>
+              <WorkspaceProvider live={live} initial={current.workspace}>
+                <ShellThemeGate override={theme} serverTheme={serverTheme}>
+                  {sessionExpired ? <SessionExpired /> : <ShellLayout snapshot={current} live={live} />}
+                </ShellThemeGate>
+              </WorkspaceProvider>
+            </AppCatalog>
+          </OsModeProvider>
+        </ShellPreferencesProvider>
+      </ShellRouter>
+    </ShellFeatureProvider>
   </I18nProvider>;
 }
 

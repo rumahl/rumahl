@@ -1,6 +1,8 @@
-import { useEffect } from "react";
-import { GLASS_MATERIALS } from "@rumahl/ui/glass";
-import { mountGlassHost } from "./useGlassEngine";
+import { useEffect, useRef } from "react";
+import { GLASS_MATERIALS, glassColorTint, glassMaterialWithTint } from "@rumahl/ui/glass";
+import { useTheme } from "@rumahl/ui";
+import { useThemeTuning } from "../preferences/theme-tuning";
+import { mountGlassHostHandle, type MountedGlassHost } from "./useGlassEngine";
 
 const HOST_SELECTOR = ".rumahl-glass-host[data-glass-material]";
 
@@ -14,17 +16,23 @@ const HOST_SELECTOR = ".rumahl-glass-host[data-glass-material]";
  * look without refraction.
  */
 export function useGlassHosts(): void {
+  const { tokens } = useTheme();
+  const { tuning } = useThemeTuning();
+  const tint = glassColorTint(tuning.glassColor, tuning.glassTint, tokens["color.accent"] ?? "#beff2d");
+  const tintRef = useRef(tint);
+  tintRef.current = tint;
+  const mounted = useRef(new Map<Element, { name: string; handle: MountedGlassHost }>()).current;
   useEffect(() => {
-    if (typeof window === "undefined" || typeof MutationObserver === "undefined") return;
-    const mounted = new Map<Element, () => void>();
+    if (typeof window === "undefined" || typeof window.matchMedia !== "function" || typeof MutationObserver === "undefined") return;
 
     const upgrade = (element: Element) => {
       if (!(element instanceof HTMLElement) || mounted.has(element)) return;
       // Drop the CSS fallback so the engine owns the surface (no double layer).
       element.querySelectorAll(".rumahl-glass-frame[data-glass-fallback]").forEach((node) => node.remove());
       const name = element.dataset.glassMaterial ?? "bar";
-      const material = (GLASS_MATERIALS as Record<string, object>)[name] ?? GLASS_MATERIALS.bar;
-      mounted.set(element, mountGlassHost(element, { ...material }));
+      const base = (GLASS_MATERIALS as Record<string, object>)[name] ?? GLASS_MATERIALS.bar;
+      const material = name === "widget" ? glassMaterialWithTint(base, tintRef.current) : base;
+      mounted.set(element, { name, handle: mountGlassHostHandle(element, { ...material }) });
     };
 
     const scan = (root: ParentNode) => {
@@ -40,15 +48,15 @@ export function useGlassHosts(): void {
         });
         record.removedNodes.forEach((node) => {
           if (!(node instanceof HTMLElement)) return;
-          const dispose = mounted.get(node);
-          if (dispose) {
-            dispose();
+          const record = mounted.get(node);
+          if (record) {
+            record.handle.destroy();
             mounted.delete(node);
           }
           node.querySelectorAll?.(HOST_SELECTOR).forEach((child) => {
-            const childDispose = mounted.get(child);
-            if (childDispose) {
-              childDispose();
+            const childRecord = mounted.get(child);
+            if (childRecord) {
+              childRecord.handle.destroy();
               mounted.delete(child);
             }
           });
@@ -59,8 +67,14 @@ export function useGlassHosts(): void {
 
     return () => {
       observer.disconnect();
-      for (const dispose of mounted.values()) dispose();
+      for (const record of mounted.values()) record.handle.destroy();
       mounted.clear();
     };
-  }, []);
+  }, [mounted]);
+  useEffect(() => {
+    for (const record of mounted.values()) {
+      if (record.name !== "widget") continue;
+      record.handle.update(glassMaterialWithTint(GLASS_MATERIALS.widget, tint));
+    }
+  }, [mounted, tint]);
 }

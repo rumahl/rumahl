@@ -1,7 +1,6 @@
 import { beforeEach, expect, test } from "vitest";
 import {
   clearFileAssociation,
-  downloadHandler,
   extensionOf,
   fileAssociation,
   resetFileAssociations,
@@ -20,21 +19,22 @@ test("extracts the lowercase extension of a name", () => {
 });
 
 test("associates a file with a program by extension", () => {
-  expect(fileAssociation("notes.txt").id).toBe("text");
-  expect(fileAssociation("photo.PNG").id).toBe("image");
-  expect(fileAssociation("clip.mp4").id).toBe("media");
-  expect(fileAssociation("manual.pdf").id).toBe("pdf");
-  expect(fileAssociation("unknown.xyz")).toBe(downloadHandler);
+  expect(fileAssociation("notes.txt")?.id).toBe("text");
+  expect(fileAssociation("photo.PNG")?.id).toBe("image");
+  expect(fileAssociation("clip.mp4")?.id).toBe("media");
+  expect(fileAssociation("manual.pdf")?.id).toBe("pdf");
+  expect(fileAssociation("notes.txt")?.installed).toBe(false);
+  expect(fileAssociation("unknown.xyz")).toBeUndefined();
 });
 
 test("a program can be swapped per extension and reset", () => {
   setFileAssociation("txt", "image");
-  expect(fileAssociation("notes.txt").id).toBe("image");
+  expect(fileAssociation("notes.txt")?.id).toBe("image");
   clearFileAssociation("txt");
-  expect(fileAssociation("notes.txt").id).toBe("text");
+  expect(fileAssociation("notes.txt")?.id).toBe("text");
 });
 
 test("ignores unknown handlers", () => {
   setFileAssociation("txt", "does-not-exist");
-  expect(fileAssociation("notes.txt").id).toBe("text");
+  expect(fileAssociation("notes.txt")?.id).toBe("text");
 });

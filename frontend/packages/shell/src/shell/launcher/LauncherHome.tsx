@@ -7,7 +7,7 @@ import { useWorkspace } from "../../preferences/Workspace";
 import { useSafeMode } from "../../preferences/safe-mode";
 import { useShell } from "../ShellContext";
 import { useClock } from "../clock";
-import { SearchIcon } from "../../icons";
+import { CheckIcon, EditIcon, SearchIcon } from "../../icons";
 import { Button, RumahlInputGroup } from "@rumahl/ui/components";
 import { createCellStore, gridMetrics, nearestFreeCell, resolveCells, useGridSize, type GridCell } from "../desktop/free-grid";
 import { applyOrder, useLauncherOrder } from "./launcher-order";
@@ -15,9 +15,9 @@ import { LauncherMenu, type LauncherMenuItem } from "./LauncherMenu";
 
 /** Nominal springboard cell (content + gap) used by the free grid. */
 const CELL = { width: 92, height: 104 };
-const MOBILE_CELL = { width: 78, height: 92 };
+const MOBILE_CELL = { width: 80, height: 100 };
 const GAP = 12;
-const MOBILE_GAP = 10;
+const MOBILE_GAP = 8;
 
 /** Fallback page grid until the board has been measured (also used in tests). */
 const UNMEASURED = { cols: 6, rows: 5 };
@@ -340,11 +340,11 @@ export function LauncherHome() {
 
   return <main className={`launcher-home${currentFolder ? " is-folder-open" : ""}`}>
     <header className="launcher-top">
-      <div className="launcher-heading">
-        <h1 className="launcher-greeting">{t(greeting)}<span>{snapshot.user.displayName}</span></h1>
+      <div className="launcher-heading" data-adaptive-text="">
+        <h1 className="launcher-greeting">{t(greeting)}, <span>{snapshot.user.displayName}</span></h1>
         {now ? <div className="launcher-clock"><strong>{clock}</strong><span>{date}</span></div> : null}
       </div>
-      {editing && !normalized ? <Button className="launcher-done" floating type="button" onClick={() => setEditing(false)}>{t("launcher.done")}</Button> : null}
+      {editing && !normalized ? <Button className="launcher-done" floating type="button" aria-label={t("launcher.done")} title={t("launcher.done")} onClick={() => setEditing(false)}><CheckIcon aria-hidden="true" /></Button> : null}
     </header>
 
     {normalized ? <section className="launcher-section">
@@ -411,7 +411,7 @@ export function LauncherHome() {
                 onKeyDown={(event) => { if (event.key === "Enter") event.currentTarget.blur(); if (event.key === "Escape") setRenaming(null); }} />
             : <h2>{currentFolder.name}</h2>}
           <div className="launcher-folder__actions">
-            <Button className="launcher-edit" floating variant={editing ? "primary" : "secondary"} type="button" aria-pressed={editing} onClick={() => setEditing((value) => !value)}>{t(editing ? "launcher.done" : "launcher.edit")}</Button>
+            <Button className="launcher-edit" floating variant={editing ? "primary" : "secondary"} type="button" aria-pressed={editing} aria-label={t(editing ? "launcher.done" : "launcher.edit")} title={t(editing ? "launcher.done" : "launcher.edit")} onClick={() => setEditing((value) => !value)}>{editing ? <CheckIcon aria-hidden="true" /> : <EditIcon aria-hidden="true" />}</Button>
             <button type="button" aria-label={t("launcher.closeFolder")} onClick={() => setFolder(null)}>×</button>
           </div>
         </header>

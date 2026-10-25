@@ -130,9 +130,12 @@ referrer policy so native login/logout forms retain their Origin header. Module 
 limited to the frontend workspace; private state and TLS files are denied.
 There is no unauthenticated development API that performs privileged actions.
 
-The existing fixture-only demo remains available with
-`pnpm --dir frontend dev:demo`. It is not a substitute for the authenticated
-full-stack developer server.
+The fixture-only demo remains available with
+`pnpm --dir frontend dev:demo`. It includes sample apps, files and widgets and
+persists state in the browser. It is not a substitute for the authenticated
+full-stack developer server. Static builds for the public demo are produced
+with `pnpm --dir frontend/packages/shell build:demo` and
+`build:demo-widget`; see `frontend/packages/shell/src/demo/README.md`.
 
 ## Checks
 

@@ -1,4 +1,5 @@
 import { DeviceSettings } from "./DeviceSettings";
+import { MobileSettings } from "./MobileSettings";
 import { themes } from "@rumahl/ui/themes";
 import { useTheme } from "@rumahl/ui";
 import type { ReactNode } from "react";
@@ -11,12 +12,13 @@ import { OsModeSettings } from "./OsModeSettings";
 import { RumahlMark } from "../components/RumahlMark";
 import { SettingsHeading } from "../components/SettingsHeading";
 import { ButtonLink } from "../components/Button";
-import { SettingsIcon, DesktopIcon, GridIcon, PulseIcon, ShieldIcon, InfoIcon, DocumentIcon, ExternalLinkIcon } from "../icons";
+import { SettingsIcon, DesktopIcon, GridIcon, PulseIcon, ShieldIcon, InfoIcon, DocumentIcon, ExternalLinkIcon, PhoneIcon } from "../icons";
 import { useI18n } from "../i18n";
 import { ShellLink } from "../routing/ShellLink";
 import { UnavailablePage } from "./UnavailablePage";
 import { useThemeTuning } from "../preferences/theme-tuning";
 import { useShell } from "../shell/ShellContext";
+import { osName, versionLabel } from "../system-labels";
 
 const WEBSITE_URL = "https://rumahl.dev";
 const SOURCE_URL = "https://github.com/rumahl/rumahl";
@@ -30,13 +32,14 @@ export function SettingsPage() {
   const { pathname } = useLocation();
   const preferences = useShellPreferences();
   const { theme } = useTheme();
-  const { snapshot } = useShell();
+  const { snapshot, live, mode } = useShell();
   const content = useRoutes([
     { index: true, element: <SettingsOverview /> },
     { path: "device", Component: DeviceSettings },
     { path: "display", Component: DisplaySettings },
     { path: "workspace", Component: WorkspaceSettings },
     { path: "accessibility", Component: AccessibilitySettings },
+    { path: "mobile", Component: MobileSettings },
     { path: "os", Component: OsModeSettings },
     { path: "system", Component: SystemSettings },
     { path: "system/about", Component: AboutSettings },
@@ -53,18 +56,20 @@ export function SettingsPage() {
       <ShellLink className="nav-item" to="/settings/display" aria-current={pathname.startsWith("/settings/display") ? "page" : undefined}><DesktopIcon /><span>{t("settings.personalization")}</span></ShellLink>
       <ShellLink className="nav-item" to="/settings/workspace" aria-current={pathname.startsWith("/settings/workspace") ? "page" : undefined}><GridIcon /><span>{t("workspace.title")}</span></ShellLink>
       <ShellLink className="nav-item" to="/settings/accessibility" aria-current={pathname.startsWith("/settings/accessibility") ? "page" : undefined}><PulseIcon /><span>{t("settings.accessibility")}</span></ShellLink>
+      {mode === "mobile" ? <ShellLink className="nav-item" to="/settings/mobile" aria-current={pathname.startsWith("/settings/mobile") ? "page" : undefined}><PhoneIcon /><span>{t("settings.mobile")}</span></ShellLink> : null}
       <ShellLink className="nav-item" to="/settings/os" aria-current={pathname.startsWith("/settings/os") ? "page" : undefined}><ShieldIcon /><span>{t("settings.osMode")}</span></ShellLink>
       <ShellLink className="nav-item" to="/settings/device" aria-current={pathname.startsWith("/settings/device") ? "page" : undefined}><DesktopIcon /><span>{t("device.title")}</span></ShellLink>
       <ShellLink className="nav-item" to="/settings/system" aria-current={pathname.startsWith("/settings/system") ? "page" : undefined}><ShieldIcon /><span>{t("settings.system")}</span></ShellLink>
       <ShellLink className="nav-item" to="/settings" aria-current={pathname === "/settings" ? "page" : undefined}><SettingsIcon /><span>{t("nav.settings")}</span></ShellLink>
     </nav>
-    <div className="side-bottom"><div className="build">rumahl OS <b>Preview</b><br />{themes.find(item => item.id === theme.id)?.name ?? theme.name}</div></div>
+    <div className="side-bottom"><div className="build">{live?.demo ? osName(true) : <>rumahl OS <b>Preview</b></>}<br />{themes.find(item => item.id === theme.id)?.name ?? theme.name}</div></div>
   </aside><div className="content settings-content" key={pathname}>{content}</div></div>;
 }
 
 function SettingsOverview() {
   const { t } = useI18n();
   const settings = useShellPreferences();
+  const { mode } = useShell();
   const { theme } = useTheme();
   return <section className="display-settings">
     <header className="settings-page-heading"><h1 className="pagetitle">{t("nav.settings")}</h1><p className="pagedesc">{t("settings.overviewHelp")}</p></header>
@@ -72,6 +77,7 @@ function SettingsOverview() {
       <NavRow to="/settings/display" icon={<DesktopIcon />} title={t("settings.personalization")} subtitle={`${t(`mode.${settings.mode}`)} · ${themes.find(item => item.id === theme.id)?.name ?? theme.name}`} />
       <NavRow to="/settings/workspace" icon={<GridIcon />} title={t("workspace.title")} subtitle={t("settings.workspaceHelp")} />
       <NavRow to="/settings/accessibility" icon={<PulseIcon />} title={t("settings.accessibility")} subtitle={t("settings.accessibilityHelp")} />
+      {mode === "mobile" ? <NavRow to="/settings/mobile" icon={<PhoneIcon />} title={t("settings.mobile")} subtitle={t("mobile.help")} /> : null}
       <NavRow to="/settings/os" icon={<ShieldIcon />} title={t("settings.osMode")} subtitle={t("settings.osModeHelp")} />
       <NavRow to="/settings/device" icon={<DesktopIcon />} title={t("device.title")} subtitle={t("device.help")} />
       <NavRow to="/settings/system" icon={<ShieldIcon />} title={t("settings.system")} subtitle={t("settings.systemHelp")} />
@@ -114,7 +120,7 @@ function SystemSettings() {
 
 function AboutSettings() {
   const { t } = useI18n();
-  const { snapshot, mode } = useShell();
+  const { snapshot, mode, live } = useShell();
   const { theme } = useTheme();
   return <section className="display-settings">
     <SettingsHeading title={t("settings.system.about")} help={t("settings.system.aboutHelp")} back="/settings/system" />
@@ -122,14 +128,14 @@ function AboutSettings() {
     <div className="settings-group">
       <div className="setting about-identity">
         <span className="about-identity__mark" aria-hidden="true"><RumahlMark /></span>
-        <div className="copy"><strong>rumahl OS</strong><p>{t("settings.system.tagline")}</p></div>
+        <div className="copy"><strong>{osName(Boolean(live?.demo))}</strong><p>{t("settings.system.tagline")}</p></div>
       </div>
     </div>
 
     <h3 className="section-title">{t("settings.system.session")}</h3>
     <div className="settings-group">
       <div className="setting setting--value"><div className="copy"><strong>{t("settings.system.user")}</strong></div><div className="visual"><span>{snapshot.user.displayName}</span></div></div>
-      <div className="setting setting--value"><div className="copy"><strong>{t("settings.system.version")}</strong></div><div className="visual"><code>{snapshot.shellBuildId.slice(0, 12)}</code></div></div>
+      <div className="setting setting--value"><div className="copy"><strong>{t("settings.system.version")}</strong></div><div className="visual"><code>{versionLabel(Boolean(live?.demo))}</code></div></div>
       <div className="setting setting--value"><div className="copy"><strong>{t("settings.system.mode")}</strong></div><div className="visual"><span>{t(`mode.${mode}`)}</span></div></div>
       <div className="setting setting--value"><div className="copy"><strong>{t("settings.system.theme")}</strong></div><div className="visual"><span>{theme.name}</span></div></div>
     </div>

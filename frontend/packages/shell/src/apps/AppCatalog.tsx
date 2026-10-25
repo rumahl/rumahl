@@ -31,7 +31,11 @@ export function AppCatalog({ children, live, revision, initial }: PropsWithChild
     async function refresh() {
       try {
         const apps = await fetchCatalog(live!.request, controller.signal);
-        if (!controller.signal.aborted) setState({ apps, preview: preview.current, status: "ready" });
+        if (!controller.signal.aborted) setState((previous) => previous.status === "ready" &&
+          previous.apps.length === apps.length &&
+          previous.apps.every((app, index) => app.id === apps[index]?.id && app.version === apps[index]?.version)
+          ? previous
+          : { apps, preview: preview.current, status: "ready" });
       } catch {
         if (!controller.signal.aborted) setState({ apps: [], preview: preview.current, status: "unavailable" });
       } finally {

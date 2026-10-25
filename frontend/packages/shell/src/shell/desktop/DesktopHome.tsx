@@ -20,6 +20,8 @@ import { rectsIntersect, type SelectionRect } from "./geometry";
 /** Nominal grid cell (content + gap) used by the free desktop grid. */
 const CELL = { width: 96, height: 106 };
 const GAP = 6;
+/** Space reserved for the dock so app icons never sit at dock height. */
+const DOCK_RESERVE = 94;
 
 /** Grid cells of every desktop item; the layout adapts to the container size. */
 export const desktopCells = createCellStore("rumahl.desktop.cells");
@@ -47,7 +49,10 @@ export function DesktopHome() {
   const shortcuts = useRef<HTMLDivElement>(null);
   const marqueeStart = useRef<{ x: number; y: number; base: ReadonlySet<string> } | null>(null);
   const size = useGridSize(shortcuts);
-  const cols = useMemo(() => gridMetrics(size.width, size.height, CELL.width, CELL.height, GAP).cols, [size.width, size.height]);
+  // The selection surface reaches the bottom edge; only the icon grid keeps the
+  // dock reserve so shortcuts cannot be placed under the dock.
+  const availableHeight = Math.max(0, size.height - DOCK_RESERVE);
+  const cols = useMemo(() => gridMetrics(size.width, availableHeight, CELL.width, CELL.height, GAP).cols, [size.width, availableHeight]);
 
   // A drag suppresses the click that follows its release; any *new* pointer
   // gesture (even outside an icon) must clear that flag so the next click is
@@ -73,7 +78,7 @@ export function DesktopHome() {
     return list;
   }, [workspace.effective.folders, visible, desktopFiles.files]);
   // Enough rows to hold every item (never overlap); grows/scrolls if needed.
-  const rows = useMemo(() => Math.max(gridMetrics(size.width, size.height, CELL.width, CELL.height, GAP).rows, Math.ceil(items.length / Math.max(1, cols))), [size.width, size.height, items.length, cols]);
+  const rows = useMemo(() => Math.max(gridMetrics(size.width, availableHeight, CELL.width, CELL.height, GAP).rows, Math.ceil(items.length / Math.max(1, cols))), [size.width, availableHeight, items.length, cols]);
   // Column-major like the macOS desktop: fill top-to-bottom, then the next column.
   const effective = useMemo(() => resolveCells(items.map((item) => item.id), storedCells, cols, rows, "column"), [items, storedCells, cols, rows]);
 
@@ -233,14 +238,14 @@ export function DesktopHome() {
         {items.map((item) => item.kind === "folder"
           ? <button key={item.id} type="button" className="desktop-icon desktop-app" data-grid-id={item.id} onClick={() => { setFolder(item.folderId!); setSelected(new Set()); }}>
             <span className="desktop-icon__art folder-preview" aria-hidden="true">{(workspace.effective.folders.find((entry) => entry.id === item.folderId)?.apps ?? []).slice(0, 9).map((id) => { const app = byId.get(id); return app ? <span key={id}><AppIcon app={app} /></span> : null; })}</span>
-            <span className="desktop-icon__label">{item.name}</span>
+            <span className="desktop-icon__label" data-adaptive-text="">{item.name}</span>
           </button>
           : item.kind === "file"
           ? <button key={item.id} type="button" className="desktop-icon desktop-app" data-grid-id={item.id}
               onDoubleClick={() => openFile(item.file!)}
               onContextMenu={(event) => { event.preventDefault(); event.stopPropagation(); }}>
               <span className="desktop-icon__art is-file" aria-hidden="true">{item.file!.directory ? <FolderIcon /> : <FileIcon />}</span>
-              <span className="desktop-icon__label">{item.name}</span>
+              <span className="desktop-icon__label" data-adaptive-text="">{item.name}</span>
             </button>
           : <ShellLink
             key={item.id}
@@ -257,7 +262,7 @@ export function DesktopHome() {
             onContextMenu={(event) => { event.preventDefault(); event.stopPropagation(); setSelected(new Set([item.id])); setMenu({ x: event.clientX, y: event.clientY, appId: item.id }); }}
           >
             <span className={`desktop-icon__art${item.app!.system ? " is-system" : ""}`} aria-hidden="true"><AppIcon app={item.app!} /></span>
-            <span className="desktop-icon__label">{item.app!.title}</span>
+            <span className="desktop-icon__label" data-adaptive-text="">{item.app!.title}</span>
           </ShellLink>)}
       </div>
       {marquee ? <span className="desktop-marquee" aria-hidden="true" ref={(element) => {
@@ -269,7 +274,7 @@ export function DesktopHome() {
       }} /> : null}
     </div>
     {layout.layout.widgets ? <DesktopWidgets systemStatus={snapshot.systemStatus} /> : null}
-    <div className="desktop-wordmark" aria-hidden="true"><span>rumahl</span><small>{t("desktop.tagline")}</small></div>
+    <div className="desktop-wordmark" aria-hidden="true" data-adaptive-text=""><span>rumahl</span><small>{t("desktop.tagline")}</small></div>
     <DesktopContextMenu
       menu={menu}
       appTitle={menuApp?.title}

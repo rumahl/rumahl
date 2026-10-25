@@ -7,6 +7,7 @@ import { SHELL_BUILD_ID } from "@rumahl/shell/build-id";
 import { EMBEDDED_SNAPSHOT_ID } from "@rumahl/shell/embedded-snapshot";
 import { resolveLocale } from "@rumahl/shell/i18n";
 import { appearanceCss, windowPositionCss } from "@rumahl/shell/ssr";
+import splashSource from "../../shell/splash.html?raw";
 
 export interface ShellAssets {
   script: string;
@@ -17,6 +18,9 @@ export interface RenderedShell {
   abort: () => void;
   stream: Readable;
 }
+
+const splashStyle = splashSource.match(/<style[^>]*>([\s\S]*?)<\/style>/)?.[1] ?? "";
+const splashBody = splashSource.match(/<body[^>]*>([\s\S]*?)<\/body>/)?.[1] ?? "";
 
 const ASSET_PATH = /^\/assets\/[A-Za-z0-9_-]+\.(?:js|css)$/;
 const NONCE = /^[A-Za-z0-9_-]{16,128}$/;
@@ -31,6 +35,13 @@ export function renderShellDocument(
   if (typeof requestPath !== "string" || requestPath.length > 2048 ||
       !requestPath.startsWith("/") || requestPath.startsWith("//") || (/[\\#]/.test(requestPath) || Array.from(requestPath).some((char) => char.charCodeAt(0) <= 32))) {
     throw new Error("invalid shell request path");
+  }
+  {
+    const url = new URL(requestPath, "http://rumahl.local");
+    if (url.searchParams.has("rumahl-shell")) {
+      url.searchParams.delete("rumahl-shell");
+      requestPath = url.pathname + url.search;
+    }
   }
   const snapshot = parseShellSnapshot(value);
   if (snapshot.shellBuildId !== SHELL_BUILD_ID) {
@@ -92,12 +103,26 @@ function ShellDocument({
       <head>
         <meta charSet="utf-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+        <meta name="theme-color" content="#050505" />
+        <meta name="mobile-web-app-capable" content="yes" />
+        <meta name="apple-mobile-web-app-capable" content="yes" />
+        <meta name="apple-mobile-web-app-title" content="rumahl" />
+        <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+        <link rel="manifest" href="/manifest.webmanifest" />
+        <link rel="icon" href="/icon.svg" type="image/svg+xml" />
+        <link rel="icon" href="/icon-512.png" type="image/png" sizes="512x512" />
+        <link rel="shortcut icon" href="/icon.svg" type="image/svg+xml" />
+        <link rel="apple-touch-icon" href="/icon-512.png" />
         <title>rumahl OS</title>
         <link href={assets.stylesheet} rel="stylesheet" />
         <link href={snapshot.theme.stylesheetUrl} rel="stylesheet" />
         <style nonce={nonce}>{appearanceCss(snapshot) + windowPositionCss(snapshot)}</style>
+        <meta name="rumahl-shell" content="1" />
+        <meta name="rumahl-locale" content={resolveLocale(snapshot.user.locale)} />
+        <style nonce={nonce} dangerouslySetInnerHTML={{ __html: splashStyle }} />
       </head>
       <body>
+        <div id="rumahl-splash-host" dangerouslySetInnerHTML={{ __html: splashBody.replaceAll("{{nonce}}", nonce) }} />
         <div data-shell-ssr="1" id="root">
           <App snapshot={snapshot} router="static" initialLocation={requestPath} />
         </div>

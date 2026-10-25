@@ -5,10 +5,11 @@ import { AppIcon } from "../../apps/AppTile";
 import type { AppFolder } from "../../preferences/Workspace";
 import { ensureDesktopFolder } from "../../shell/desktop-files";
 import { fetchHostList, hostContentUrl } from "../fsClient";
-import { fileAssociation } from "./fileTypes";
+import { extensionOf, fileAssociation } from "./fileTypes";
 import { freshStore, ROOT, type Item, type Nav } from "./types";
 
 export type ExplorerError = "conflict" | "limit" | "missing" | "unavailable";
+export interface OpenError { name: string; extension: string; program?: string }
 
 export interface DesktopSources { apps: readonly ShellApp[]; folders: readonly AppFolder[] }
 export interface ExplorerOptions { desktop?: DesktopSources; openApp?: (path: string) => void; desktopKey?: string }
@@ -39,6 +40,7 @@ export function useExplorer(request: ShellRequest | null, device: string, advanc
   const [entries, setEntries] = useState<Item[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<ExplorerError | null>(null);
+  const [openError, setOpenError] = useState<OpenError | null>(null);
   const [busy, setBusy] = useState(false);
   const [revision, setRevision] = useState(0);
 
@@ -49,6 +51,7 @@ export function useExplorer(request: ShellRequest | null, device: string, advanc
     setHistory((current) => [...current.slice(0, index + 1), next]);
     setIndex((current) => current + 1);
     setError(null);
+    setOpenError(null);
   }, [index]);
   const back = useCallback(() => setIndex((current) => Math.max(0, current - 1)), []);
   const forward = useCallback(() => setIndex((current) => Math.min(history.length - 1, current + 1)), [history.length]);
@@ -145,6 +148,7 @@ export function useExplorer(request: ShellRequest | null, device: string, advanc
   }, [request, busy]);
 
   const open = useCallback((item: Item) => {
+    setOpenError(null);
     if (nav.place.kind === "desktop") {
       if (item.appFolder) { go({ ...nav, trail: [...nav.trail, { id: item.key.slice("folder:".length), name: item.name }] }); return; }
       if (item.appPath) { openApp?.(item.appPath); return; }
@@ -154,25 +158,35 @@ export function useExplorer(request: ShellRequest | null, device: string, advanc
       else go({ ...nav, segments: [...nav.segments, item.name] });
       return;
     }
-    // Which program opens a file is decided by its extension (fileTypes.ts).
-    // Viewer/editor programs are the next step: when one is associated, it is
-    // launched here with the file. Until then every file is downloaded, so
-    // nothing is lost.
+    // Opening never downloads. The extension decides which installed program
+    // handles the file; unknown or unavailable programs produce a shell message.
+    const extension = extensionOf(item.name);
     const handler = fileAssociation(item.name);
-    if (handler.kind !== "download") {
-      // TODO: launch `handler.id` with this file once such programs are installed.
+    if (!handler) {
+      setOpenError({ name: item.name, extension });
+      return;
     }
+    if (!handler.installed || !handler.appPath) {
+      setOpenError({ name: item.name, extension, program: handler.label });
+      return;
+    }
+    openApp?.(handler.appPath);
+  }, [nav, go, openApp]);
+
+  const download = useCallback((item: Item) => {
     const link = document.createElement("a");
     link.href = item.host && nav.place.kind === "host" ? hostContentUrl(nav.place.area, item.key, device) : `/api/v1/files/content?id=${encodeURIComponent(item.key)}`;
     link.download = item.name;
     link.click();
-  }, [nav, go, device, openApp]);
+  }, [nav, device]);
 
   return {
     nav,
     entries,
     loading,
     error,
+    openError,
+    clearOpenError: () => setOpenError(null),
     busy,
     isStore,
     storeParent,
@@ -181,6 +195,7 @@ export function useExplorer(request: ShellRequest | null, device: string, advanc
     canUp: isStore ? nav.trail.length > 1 : nav.place.kind === "host" ? nav.segments.length > 0 : nav.trail.length > 0,
     navigate: go,
     open,
+    download,
     back,
     forward,
     up,

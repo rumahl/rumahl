@@ -55,5 +55,6 @@ export function preloadAppearance(snapshot: ShellSnapshotV1): void {
   if (typeof document === "undefined") return;
   const serverTheme = buildSnapshotTheme(snapshot);
   const active = resolveActiveTheme(serverTheme, snapshot.theme.id);
-  applyTokens(document.documentElement, resolveTokens(applyThemeTuning(active, tuningFromSnapshot(snapshot))));
+  const systemMode = typeof window.matchMedia === "function" && window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+  applyTokens(document.documentElement, resolveTokens(applyThemeTuning(active, tuningFromSnapshot(snapshot), systemMode)));
 }

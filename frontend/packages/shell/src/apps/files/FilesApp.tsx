@@ -10,7 +10,7 @@ import { ContextMenu, type MenuItem } from "./ContextMenu";
 import { FileGrid, FileList, type ViewProps } from "./FileViews";
 import { Sidebar } from "./Sidebar";
 import { Toolbar } from "./Toolbar";
-import { AlertIcon, FilePlusIcon, MoveIcon, OpenIcon, PencilIcon, PlusIcon, TrashIcon, UploadIcon } from "./icons";
+import { AlertIcon, DownloadIcon, FilePlusIcon, FolderIcon, MoveIcon, OpenIcon, PencilIcon, PlusIcon, TrashIcon, UploadIcon } from "./icons";
 import { freshDesktop, type Item } from "./types";
 import { useExplorer } from "./useExplorer";
 import { useMarquee } from "./useMarquee";
@@ -49,6 +49,7 @@ export function FilesApp() {
   const [draft, setDraft] = useState<Draft | null>(null);
   const [clipboard, setClipboard] = useState<{ id: string; name: string } | null>(null);
   const [menu, setMenu] = useState<Menu | null>(null);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
   const [draggingKey, setDraggingKey] = useState<string | null>(null);
   const [dragOverKey, setDragOverKey] = useState<string | null>(null);
   const [mounted, setMounted] = useState(false);
@@ -56,7 +57,7 @@ export function FilesApp() {
   const uploadInput = useRef<HTMLInputElement>(null);
   useEffect(() => setMounted(true), []);
 
-  useEffect(() => { clear(); setSearch(""); setRenameKey(null); setDraft(null); setMenu(null); }, [explorer.nav, clear]);
+  useEffect(() => { clear(); setSearch(""); setRenameKey(null); setDraft(null); setMenu(null); setSidebarOpen(false); }, [explorer.nav, clear]);
   useEffect(() => { if (explorer.error) clear(); }, [explorer.error, clear]);
 
   const visible = useMemo(() => {
@@ -113,6 +114,9 @@ export function FilesApp() {
     if (item) {
       return [
         { label: t("files.open"), icon: <OpenIcon />, onSelect: () => explorer.open(item) },
+        ...(!item.directory && !item.appPath && !item.appFolder
+          ? [{ label: t("files.download"), icon: <DownloadIcon />, onSelect: () => explorer.download(item) }]
+          : []),
         ...(explorer.isStore
           ? [
               { label: t("files.rename"), icon: <PencilIcon />, onSelect: () => setRenameKey(item.key) },
@@ -174,11 +178,25 @@ export function FilesApp() {
         onNewFolder={newFolder} onNewFile={newFile} onUpload={explorer.upload}
         onPaste={() => { if (clipboard) { void explorer.move(clipboard.id, clipboard.name); setClipboard(null); } }}
       />
-      <div className="files-address"><Breadcrumb nav={explorer.nav} onNavigate={explorer.navigate} /></div>
+      <div className="files-address">
+        <button className="files-sidebar-toggle" type="button" aria-label={t("files.locations")} aria-expanded={sidebarOpen} onClick={() => setSidebarOpen(true)}>
+          <FolderIcon /> <span>{t("files.locations")}</span>
+        </button>
+        <Breadcrumb nav={explorer.nav} onNavigate={explorer.navigate} />
+      </div>
       {explorer.error ? <div className="files-alert" role="alert">
         <AlertIcon className="files-alert__icon" />
         <span className="files-alert__text">{t(`files.${explorer.error}`)}</span>
         <button type="button" className="files-alert__close" aria-label={t("files.dismiss")} onClick={explorer.clearError}>×</button>
+      </div> : null}
+      {explorer.openError ? <div className="files-alert" role="alert">
+        <AlertIcon className="files-alert__icon" />
+        <span className="files-alert__text">
+          {explorer.openError.program
+            ? t("files.programMissing", { name: explorer.openError.name, program: explorer.openError.program })
+            : t("files.noAssociation", { name: explorer.openError.name, type: explorer.openError.extension ? `.${explorer.openError.extension}` : t("files.noExtension") })}
+        </span>
+        <button type="button" className="files-alert__close" aria-label={t("files.dismiss")} onClick={explorer.clearOpenError}>×</button>
       </div> : null}
       <div className="files-surface" ref={surface}
         {...marquee.handlers}
@@ -205,6 +223,15 @@ export function FilesApp() {
         {selected.size ? <span>{t("files.selectedCount", { count: selected.size })}</span> : null}
       </div>
     </div>
+    {sidebarOpen ? <div className="files-sidebar-scrim" role="presentation" onClick={() => setSidebarOpen(false)}>
+      <div className="files-sidebar-drawer" role="dialog" aria-modal="true" aria-label={t("files.locations")} onClick={(event) => event.stopPropagation()}>
+        <header className="files-sidebar-drawer__head">
+          <span>{t("files.locations")}</span>
+          <button className="files-sidebar-close" type="button" aria-label={t("files.dismiss")} onClick={() => setSidebarOpen(false)}>×</button>
+        </header>
+        <Sidebar nav={explorer.nav} advanced={advancedSettings} onNavigate={(next) => { explorer.navigate(next); setSidebarOpen(false); }} onOpenDesktop={() => { openDesktop(); setSidebarOpen(false); }} />
+      </div>
+    </div> : null}
     {menu ? <ContextMenu x={menu.x} y={menu.y} items={menuItems(menu.item)} onClose={() => setMenu(null)} /> : null}
   </section>;
 }

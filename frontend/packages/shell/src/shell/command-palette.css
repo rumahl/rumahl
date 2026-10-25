@@ -109,6 +109,13 @@
 .command-palette__item.is-selected {
   box-shadow: inset 0 0 0 1px var(--search-line);
 }
+.command-palette__item:disabled {
+  opacity: .45;
+  cursor: not-allowed;
+}
+.command-palette__item:disabled:hover {
+  background: transparent;
+}
 .command-palette__icon {
   display: grid;
   place-items: center;

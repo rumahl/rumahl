@@ -15,11 +15,15 @@ import { Taskbar } from "./Taskbar";
 import { useI18n } from "../i18n";
 import { initialShellState, shellReducer, type ShellWindow } from "../shell-state";
 import { describeRoute, ShellRoutes } from "../routing/routes";
+import { HomePage } from "../pages/HomePage";
+import { featureReady, useFeatures } from "../features/ShellFeatures";
 import { localPath, type ShellMode } from "../routing/paths";
 import { RouteBoundary } from "../routing/RouteBoundary";
 import { ShellContext } from "./ShellContext";
 import { MenuBar } from "./MenuBar";
 import { CommandPalette } from "./CommandPalette";
+import { AppSwitcher } from "./AppSwitcher";
+import { MobileTutorial } from "./MobileTutorial";
 import { EmergencyShell } from "./EmergencyShell";
 import { KeyPalette } from "./KeyPalette";
 import { installShortcuts, useKeyPaletteOpen } from "./keyboard";
@@ -29,7 +33,6 @@ import { DesktopWindows } from "./DesktopWindows";
 import { useShellPreferences } from "../preferences/ShellPreferences";
 import { useWorkspace } from "../preferences/Workspace";
 import { useOsMode } from "../preferences/OsMode";
-import { HomePage } from "../pages/HomePage";
 
 function WallpaperVideo({ src }: { src: string }) {
   const ref = useRef<HTMLVideoElement>(null);
@@ -45,12 +48,14 @@ function WallpaperVideo({ src }: { src: string }) {
 import { resolveWallpaper } from "../wallpapers";
 import { configureGlass, svgRefractionSupported, subscribeGlassMetrics } from "../glass-engine/useGlassEngine";
 import { useGlassHosts } from "../glass-engine/useGlassHosts";
+import { useAdaptiveContrast } from "./adaptive-contrast";
 import { useTestMedia } from "./test-media";
 import { mobileDesktopOptIn, resolveShellMode, setMobileDesktopOptIn, useDeviceViewport } from "./device";
 import { MobileOrientationHint } from "./MobileOrientationHint";
 import { FrontendUpdateNotice } from "./FrontendUpdateNotice";
 import { isDebug, setDebug, useDebug } from "./debug";
 import { useSystemMode } from "./system-scheme";
+import { SHELL_VERSION } from "../version";
 import { getToasts, installToastApi, setToastAnimations, showToast, ToastStack } from "./toasts";
 
 export function ShellLayout({ snapshot, live }: { snapshot: ShellSnapshotV1; live: ShellLiveSource | undefined }) {
@@ -60,6 +65,7 @@ export function ShellLayout({ snapshot, live }: { snapshot: ShellSnapshotV1; liv
   // Upgrade @rumahl/ui GlassSurface hosts (dock, floating surfaces) to the
   // engine's real refraction glass. CSS in @rumahl/ui/glass.css is the fallback.
   useGlassHosts();
+  useAdaptiveContrast();
   const { t } = useI18n();
   const path = shellLocation(location.pathname + location.search + location.hash);
   const preferences = useShellPreferences();
@@ -83,7 +89,7 @@ export function ShellLayout({ snapshot, live }: { snapshot: ShellSnapshotV1; liv
   const route = describeRoute(path);
   // In launcher mode an opened app replaces the home surface; the top bar then
   // slides away and the window keeps the space the bar occupied.
-  const launcherWindow = mode === "launcher" && route.presentation === "window";
+  const launcherWindow = (mode === "launcher" || mode === "mobile") && route.presentation === "window";
   const catalog = useAppCatalog();
   const installedTitle = catalog.apps.find((app) => app.id === route.appId)?.title;
   const routedWindow = useMemo<Omit<ShellWindow, "minimized">>(() => ({
@@ -160,7 +166,7 @@ export function ShellLayout({ snapshot, live }: { snapshot: ShellSnapshotV1; liv
       // portrait shell stays on the launcher and the hint explains why.
       setHintDismissed(false);
       setDesktopHint(true);
-    } else if (next === "launcher") {
+    } else {
       setDesktopHint(false);
     }
     preferences.save("device", next);
@@ -220,7 +226,9 @@ export function ShellLayout({ snapshot, live }: { snapshot: ShellSnapshotV1; liv
   useEffect(() => {
     setSvgActive(glassEnabled && (glassBackend === "svg" || (glassBackend === "auto" && svgRefractionSupported())));
   }, [glassEnabled, glassBackend]);
+  const fullscreenWindow = state.windows.find((item) => item.fullscreen && !item.minimized);
   const windowMaximized = state.windows.some((item) => !item.minimized && (item.placement ?? "floating") !== "floating");
+  const windowImmersive = state.windows.some((item) => !item.minimized && (item.fullscreen || item.placement === "maximized"));
   useEffect(() => {
     configureGlass({ enabled: effectiveGlass, backend: glassBackend, quality: glassQuality });
   }, [effectiveGlass, glassBackend, glassQuality]);
@@ -233,8 +241,12 @@ export function ShellLayout({ snapshot, live }: { snapshot: ShellSnapshotV1; liv
   useEffect(() => {
     if (mobileChecked.current || !viewport.mobile || !preferences.ready) return;
     mobileChecked.current = true;
-    if (preferences.mode === "desktop" && !mobileDesktopOptIn()) preferences.save("device", "launcher");
-  }, [viewport.mobile, preferences.ready, preferences.mode, preferences]);
+    if (viewport.phone) {
+      if (preferences.mode !== "mobile" && !(preferences.mode === "desktop" && mobileDesktopOptIn())) preferences.save("device", "mobile");
+    } else if (preferences.mode === "desktop" && !mobileDesktopOptIn()) {
+      preferences.save("device", "launcher");
+    }
+  }, [viewport.mobile, viewport.phone, preferences.ready, preferences.mode, preferences]);
   // One short startup benchmark: if the browser cannot keep up, glass is off
   // from the first paint instead of degrading later.
   useEffect(() => {
@@ -339,9 +351,32 @@ export function ShellLayout({ snapshot, live }: { snapshot: ShellSnapshotV1; liv
   }, [theme.css]);
   const emergencyOpen = useEmergencyOpen();
   const paletteOpen = useKeyPaletteOpen();
+  const features = useFeatures();
   // Hidden keyboard commands (leader `r`); the emergency chord goes to /recovery.
-  useEffect(() => installShortcuts(), []);
+  useEffect(() => installShortcuts({ recovery: featureReady(features.recovery) }), [features.recovery.state]);
   // Report shell activity (navigation, mode) into the central audit log.
+  // Safari changes its visual viewport when the browser toolbar collapses. Use
+  // that height instead of the layout viewport so the dock never sits behind it.
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const root = document.documentElement;
+    const viewport = window.visualViewport;
+    const sync = () => {
+      const height = viewport?.height ?? window.innerHeight;
+      root.style.setProperty("--rumahl-app-height", `${Math.round(height)}px`);
+    };
+    sync();
+    viewport?.addEventListener("resize", sync);
+    viewport?.addEventListener("scroll", sync);
+    window.addEventListener("resize", sync);
+    window.addEventListener("orientationchange", sync);
+    return () => {
+      viewport?.removeEventListener("resize", sync);
+      viewport?.removeEventListener("scroll", sync);
+      window.removeEventListener("resize", sync);
+      window.removeEventListener("orientationchange", sync);
+    };
+  }, []);
   useEffect(() => { if (live) reportActivity(live.request, `navigate ${path}`); }, [path, live]);
   useEffect(() => { if (live) reportActivity(live.request, `mode ${mode}`); }, [mode, live]);
   // Mirror the base on <html> so portals (menus, context menus) can style themselves.
@@ -349,14 +384,16 @@ export function ShellLayout({ snapshot, live }: { snapshot: ShellSnapshotV1; liv
     const root = document.documentElement;
     root.dataset.themeBase = theme.base ?? "rumahl";
     root.dataset.theme = theme.id;
+    root.dataset.material = material;
     return () => {
       delete root.dataset.themeBase;
       delete root.dataset.theme;
+      delete root.dataset.material;
     };
-  }, [theme.base, theme.id]);
+  }, [theme.base, theme.id, material]);
 
   return <ShellContext value={{ snapshot, live, state, dispatch, mode, setMode, open }}>
-    <div className={`scene shell${showVideo ? "" : " image-mode"}${appearance.wallpaperMotion === false || svgActive || performanceMode ? " no-motion" : ""}`} data-theme={theme.id} data-theme-base={theme.base} data-material={material} data-app-inputs={appInputs} data-glass={glassEngine} data-scheme={scheme} data-perf={ultra ? "ultra" : undefined} data-maximized={windowMaximized ? "true" : undefined} data-launcher={launcherWindow ? "app" : undefined} data-inactive={inactive ? "true" : undefined} data-debug={debug ? "true" : undefined} data-animations={animations ? undefined : "off"} data-shell-build={snapshot.shellBuildId} data-shell-mode={mode} data-os-mode={osMode.mode} data-mobile={viewport.mobile ? "true" : undefined} data-orientation={viewport.mobile ? (viewport.landscape ? "landscape" : "portrait") : undefined} data-preferences-revision={preferences.preferences?.revision}>
+    <div className={`scene shell${showVideo ? "" : " image-mode"}${appearance.wallpaperMotion === false || svgActive || performanceMode ? " no-motion" : ""}`} data-theme={theme.id} data-theme-base={theme.base} data-material={material} data-app-inputs={appInputs} data-glass={glassEngine} data-scheme={scheme} data-perf={ultra ? "ultra" : undefined} data-maximized={windowMaximized ? "true" : undefined} data-fullscreen={fullscreenWindow ? "true" : undefined} data-launcher={launcherWindow ? "app" : undefined} data-inactive={inactive ? "true" : undefined} data-debug={debug ? "true" : undefined} data-animations={animations ? undefined : "off"} data-shell-build={snapshot.shellBuildId} data-shell-version={SHELL_VERSION} data-demo={live?.demo ? "true" : undefined} data-shell-mode={mode} data-os-mode={osMode.mode} data-mobile={viewport.mobile ? "true" : undefined} data-orientation={viewport.mobile ? (viewport.landscape ? "landscape" : "portrait") : undefined} data-preferences-revision={preferences.preferences?.revision}>
       <div className="wallpaper media-wall" aria-hidden="true">
         {showVideo
           ? media.video ? <WallpaperVideo key={media.video} src={media.video} />
@@ -374,7 +411,18 @@ export function ShellLayout({ snapshot, live }: { snapshot: ShellSnapshotV1; liv
           {mode === "desktop"
             ? theme.slots?.desktop
               ? <SlotRegion name="desktop" />
-              : <DesktopLayout><RouteBoundary location={path}>{route.presentation === "window" ? <HomePage /> : <ShellRoutes />}</RouteBoundary></DesktopLayout>
+              : <DesktopLayout>
+                  {/* The home surface stays mounted across page/window routes.
+                      Remounting it would reload every desktop widget iframe. */}
+                  <RouteBoundary location={path}>
+                    <div className="desktop-surface" data-hidden={route.presentation === "page" && route.id !== "/" ? "true" : undefined}>
+                      <HomePage />
+                    </div>
+                  </RouteBoundary>
+                  {route.presentation === "page" && route.id !== "/"
+                    ? <RouteBoundary location={path}><ShellRoutes /></RouteBoundary>
+                    : null}
+                </DesktopLayout>
             : theme.slots?.launcher
               ? <SlotRegion name="launcher" />
               : <LauncherLayout><RouteBoundary location={path}>{route.presentation === "window" ? null : <ShellRoutes />}</RouteBoundary></LauncherLayout>}
@@ -382,7 +430,9 @@ export function ShellLayout({ snapshot, live }: { snapshot: ShellSnapshotV1; liv
         </div>
         <CommandPalette />
       </div>
-      {theme.slots?.dock ? <SlotRegion name="dock" /> : variants.shellLayout === "taskbar" ? <Taskbar /> : <OsDock />}
+      <AppSwitcher />
+      <MobileTutorial phone={viewport.phone} />
+      {theme.slots?.dock ? <SlotRegion name="dock" /> : variants.shellLayout === "taskbar" ? <Taskbar /> : <OsDock autoHide={mode === "desktop" && windowImmersive && !fullscreenWindow} />}
       {emergencyOpen ? <EmergencyShell /> : null}
       {paletteOpen ? <KeyPalette /> : null}
     </div>

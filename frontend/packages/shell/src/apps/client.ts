@@ -92,24 +92,31 @@ export async function fetchCatalog(request: ShellRequest, signal: AbortSignal): 
   }), 256 * 1024));
 }
 export interface AppLaunch { frameUrl: string; lease: string; renewAfterSeconds: number }
-export function parseLaunch(value: unknown, app: InstalledApp, shellOrigin: string): AppLaunch {
+export function parseLaunch(value: unknown, app: InstalledApp, shellOrigin: string, demo?: { frameOrigin: string } | undefined): AppLaunch {
   const object = record(value);
   if (object.launchVersion !== 1 || object.id !== app.id || object.installationId !== app.installationId ||
       typeof object.lease !== "string" || !LEASE.test(object.lease) || typeof object.frameUrl !== "string" || object.frameUrl.length > 2048 ||
       object.renewAfterSeconds !== 30) throw new Error("invalid app launch");
   const url = new URL(object.frameUrl);
   const shell = new URL(shellOrigin);
+  const demoFrame = demo !== undefined && url.origin === demo.frameOrigin &&
+    url.pathname === `/apps/${encodeURIComponent(app.id)}/`;
+  if (demoFrame) {
+    if (url.username || url.password || url.search || url.hash)
+      throw new Error("invalid demo app origin");
+    return { frameUrl: url.href, lease: object.lease, renewAfterSeconds: 30 };
+  }
   if (url.protocol !== "https:" || url.hostname === shell.hostname ||
       !url.hostname.startsWith(`${app.installationId}.`) || url.username || url.password || url.search || url.hash ||
       !url.pathname.startsWith(`/launch/${object.lease}/`)) throw new Error("invalid isolated app origin");
   return { frameUrl: url.href, lease: object.lease, renewAfterSeconds: 30 };
 }
-export async function launchApp(request: ShellRequest, app: InstalledApp, shellOrigin: string, signal: AbortSignal, lease?: string): Promise<AppLaunch> {
+export async function launchApp(request: ShellRequest, app: InstalledApp, shellOrigin: string, signal: AbortSignal, lease?: string, demo?: { frameOrigin: string } | undefined): Promise<AppLaunch> {
   return parseLaunch(await payload(await request(`/api/v1/shell/apps/${encodeURIComponent(app.id)}/launch`, {
     method: "POST", cache: "no-store", credentials: "same-origin", signal,
     headers: { Accept: "application/json", "Content-Type": "application/json" },
     body: JSON.stringify({ installationId: app.installationId, ...(lease ? { lease } : {}) })
-  }), 4096), app, shellOrigin);
+  }), 4096), app, shellOrigin, demo);
 }
 /** One file of a signed directory package, base64 encoded, path relative to the package root. */
 export interface PackageFile { path: string; content: string }

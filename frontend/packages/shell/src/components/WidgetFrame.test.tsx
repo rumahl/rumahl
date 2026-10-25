@@ -54,11 +54,42 @@ describe("isolated widget frame", () => {
     expect(screen.queryByTitle("Home")).not.toBeInTheDocument();
   });
 
+  test("accepts a demo host path on the demo origin", () => {
+    const origin = "https://demo.rumahl.com";
+    expect(parseWidgetFrameDescriptor({
+      frameVersion: 1,
+      contributionId: widget.id,
+      frameUrl: `${origin}/widgets/home/`
+    }, widget.id, origin, false, origin).frameUrl).toBe(`${origin}/widgets/home/`);
+    expect(() => parseWidgetFrameDescriptor({
+      frameVersion: 1,
+      contributionId: widget.id,
+      frameUrl: `${origin}/not-a-widget/`
+    }, widget.id, origin, false, origin)).toThrow("unsafe widget frame URL");
+  });
+
   test("rejects another port on the shell host because cookies ignore ports", () => {
     expect(() => parseWidgetFrameDescriptor({
       frameVersion: 1,
       contributionId: widget.id,
       frameUrl: "https://shell.rumahl.com:8443/"
     }, widget.id, "https://shell.rumahl.com")).toThrow("unsafe widget frame URL");
+  });
+
+  test("falls back instead of leaving a refused-connection iframe on screen", async () => {
+    const request = vi.fn<typeof fetch>().mockResolvedValue(Response.json({
+      frameVersion: 1,
+      contributionId: widget.id,
+      frameUrl: "http://127.0.0.1:1/"
+    }));
+    const preflight = vi.fn<typeof fetch>().mockRejectedValue(new TypeError("refused"));
+    vi.stubGlobal("fetch", preflight);
+    try {
+      render(<I18nProvider locale="en"><WidgetFrame allowDevelopmentLoopback request={request} widget={widget} /></I18nProvider>);
+      expect(await screen.findByText(/Widget unavailable/)).toBeInTheDocument();
+      expect(screen.queryByTitle("Home")).not.toBeInTheDocument();
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 });

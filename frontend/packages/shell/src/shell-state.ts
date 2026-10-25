@@ -10,12 +10,14 @@ export interface ShellWindow {
   minimized: boolean;
   rect?: WindowRect;
   placement?: WindowPlacement;
+  fullscreen?: boolean;
 }
 
 export interface ShellState {
   windows: readonly ShellWindow[];
   focusedWindowId: string | null;
   commandPaletteOpen: boolean;
+  appSwitcherOpen: boolean;
 }
 
 export type ShellAction =
@@ -26,13 +28,17 @@ export type ShellAction =
   | { type: "focus-window"; id: string }
   | { type: "set-window-rect"; id: string; rect: WindowRect }
   | { type: "set-window-placement"; id: string; placement: WindowPlacement }
+  | { type: "set-window-fullscreen"; id: string; fullscreen: boolean }
   | { type: "minimize-all" }
-  | { type: "toggle-command-palette" };
+  | { type: "toggle-command-palette" }
+  | { type: "toggle-app-switcher" }
+  | { type: "close-app-switcher" };
 
 export const initialShellState: ShellState = {
   windows: [],
   focusedWindowId: null,
-  commandPaletteOpen: false
+  commandPaletteOpen: false,
+  appSwitcherOpen: false
 };
 
 export function shellReducer(state: ShellState, action: ShellAction): ShellState {
@@ -82,9 +88,21 @@ export function shellReducer(state: ShellState, action: ShellAction): ShellState
       return { ...state, windows: state.windows.map((item) => item.id === action.id ? { ...item, rect: action.rect } : item) };
     case "set-window-placement":
       return { ...state, windows: state.windows.map((item) => item.id === action.id ? { ...item, placement: action.placement } : item) };
+    case "set-window-fullscreen":
+      return {
+        ...state,
+        focusedWindowId: action.fullscreen ? action.id : state.focusedWindowId,
+        windows: state.windows.map((item) => item.id === action.id
+          ? { ...item, fullscreen: action.fullscreen, minimized: action.fullscreen ? false : item.minimized }
+          : item)
+      };
     case "minimize-all":
       return { ...state, windows: state.windows.map((item) => ({ ...item, minimized: true })), focusedWindowId: null };
     case "toggle-command-palette":
       return { ...state, commandPaletteOpen: !state.commandPaletteOpen };
+    case "toggle-app-switcher":
+      return { ...state, appSwitcherOpen: !state.appSwitcherOpen };
+    case "close-app-switcher":
+      return { ...state, appSwitcherOpen: false };
   }
 }

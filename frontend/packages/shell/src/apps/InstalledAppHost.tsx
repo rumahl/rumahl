@@ -37,7 +37,10 @@ export function InstalledAppHost() {
   const { apps, status } = useAppCatalog();
   const { t } = useI18n();
   // No visible "Loading apps…" text: the launching app bounces in the dock.
-  if (status === "loading") return <div className="installed-app-loading"><span className="visually-hidden">{t("apps.loading")}</span></div>;
+  if (status === "loading") return <div className="installed-app-loading" role="status">
+    <span className="installed-app-loading__spinner" aria-hidden="true" />
+    <span>{t("apps.loading")}</span>
+  </div>;
   const app = apps.find((item) => item.id === appId);
   if (!app?.launchable) return <UnavailablePage app />;
   return <AppFrame key={`${app.installationId}:${app.version}`} app={app} />;
@@ -57,6 +60,7 @@ function AppFrame({ app }: { app: InstalledApp }) {
   useEffect(() => {
     if (!live) return;
     const request = live.request;
+    const demo = live.demo;
     const controller = new AbortController();
     let timer: ReturnType<typeof setTimeout>;
     let lease: string | undefined;
@@ -64,7 +68,7 @@ function AppFrame({ app }: { app: InstalledApp }) {
     setFrame(null); setFailed(false);
     async function renew() {
       try {
-        const launch = await launchApp(request, app, window.location.origin, controller.signal, lease);
+        const launch = await launchApp(request, app, window.location.origin, controller.signal, lease, demo);
         if (controller.signal.aborted) return;
         lease = launch.lease;
         setFrame(launch.frameUrl);
@@ -120,7 +124,7 @@ function AppFrame({ app }: { app: InstalledApp }) {
       const id = `app:${app.id}`;
       if (action === "focus") dispatch({ type: "focus-window", id });
       else dispatch({ type: action === "minimize" ? "toggle-minimize" : "close-window", id });
-      if (action !== "focus" && mode === "launcher") open("/");
+      if (action !== "focus" && (mode === "launcher" || mode === "mobile")) open("/");
     },
     invokeCapability: async (capability, resource) => {
       if (!live) throw new Error("app unavailable");
@@ -167,7 +171,10 @@ function AppFrame({ app }: { app: InstalledApp }) {
       </div>
     </div>
   </section>;
-  if (!frame) return <div className="installed-app-loading"><span className="visually-hidden">{t("apps.loading")}</span></div>;
+  if (!frame) return <div className="installed-app-loading" role="status">
+    <span className="installed-app-loading__spinner" aria-hidden="true" />
+    <span>{t("apps.loading")}</span>
+  </div>;
   const url = new URL(frame);
   // Key the fragment off this window's location, not the shared browser URL, so
   // focusing or switching windows never changes the iframe source.

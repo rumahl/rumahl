@@ -5,9 +5,12 @@ import { fetchStreamSessions, type StreamSession } from "../stream-client";
 import { Button } from "../components/Button";
 import { browserProfile } from "../preferences/storage";
 import { importPackage, readPackageFiles } from "./client";
+import { featureReady, useFeature } from "../features/ShellFeatures";
 
 export function AppManager() {
   const { snapshot, live, open } = useShell();
+  const installFeature = useFeature("app.install");
+  const installDisabled = !featureReady(installFeature);
   const { t } = useI18n();
   const [sessions, setSessions] = useState<readonly StreamSession[]>([]);
   const [unavailable, setUnavailable] = useState(false);
@@ -53,11 +56,11 @@ export function AppManager() {
           <button key={session.id} onClick={() => open(`/streams/${session.id}?title=${encodeURIComponent(session.title)}`)} type="button">{session.title}</button>
         )}</div>}
       <h4>{t("appManager.installTitle")}</h4>
-      <p>{t("appManager.installHelp")}</p>
+      <p>{installDisabled ? t("appManager.demoUnavailable") : t("appManager.installHelp")}</p>
       {installed ? <p role="status">{t("appManager.installDone", { title: installed })}</p> : null}
       {installError ? <p role="alert">{t("appManager.installFailed")}</p> : null}
       <input ref={packageInput} type="file" hidden multiple onChange={onSelect} />
     </div>
-    <Button onClick={() => packageInput.current?.click()} disabled={installing || !live}>{installing ? t("appManager.installing") : t("appManager.selectPackage")}</Button>
+    <Button onClick={() => packageInput.current?.click()} disabled={installDisabled || installing || !live} title={installDisabled ? t("features.demoUnavailable") : undefined}>{installing ? t("appManager.installing") : t("appManager.selectPackage")}</Button>
   </div>;
 }

@@ -3,7 +3,7 @@ import type { WindowChromeVariant } from "@rumahl/contracts";
 import { useTheme } from "@rumahl/ui";
 import { renderSlot, type SlotBindings, type SlotComponentProps } from "@rumahl/ui/slots";
 import { useI18n } from "../i18n";
-import { WindowCloseIcon, WindowMaximizeIcon, WindowMinimizeIcon, WindowRestoreIcon } from "../icons";
+import { WindowCloseIcon, WindowExitFullscreenIcon, WindowFullscreenIcon, WindowMaximizeIcon, WindowMinimizeIcon, WindowRestoreIcon } from "../icons";
 
 interface ProtectedWindowProps extends PropsWithChildren {
   focused: boolean;
@@ -12,8 +12,10 @@ interface ProtectedWindowProps extends PropsWithChildren {
   flush?: boolean;
   style?: CSSProperties | undefined;
   maximized?: boolean;
+  fullscreen?: boolean;
   onSnap?: ((side: "left" | "right") => void) | undefined;
   onMaximize?: (() => void) | undefined;
+  onFullscreen?: (() => void) | undefined;
   onTitlePointerDown?: PointerEventHandler<HTMLElement>;
   onTitleKeyDown?: KeyboardEventHandler<HTMLElement>;
   onResizePointerDown?: PointerEventHandler<HTMLButtonElement>;
@@ -29,7 +31,7 @@ interface ProtectedWindowProps extends PropsWithChildren {
 }
 
 export function ProtectedWindow({
-  children, style, frameless, flush = false, maximized, onMaximize, onSnap, onTitlePointerDown, onTitleKeyDown, onResizePointerDown, onResizeKeyDown,
+  children, style, frameless, flush = false, maximized, fullscreen, onMaximize, onFullscreen, onSnap, onTitlePointerDown, onTitleKeyDown, onResizePointerDown, onResizeKeyDown,
   focused,
   id,
   onClose,
@@ -50,6 +52,7 @@ export function ProtectedWindow({
     {subtitle ? <p className="titlebar-subtitle">{subtitle}</p> : null}
   </div>;
   const maximizeButton = onMaximize ? controlButton("maximize", t(maximized ? "window.restore" : "window.maximize", { title }), onMaximize, maximized ? <WindowRestoreIcon aria-hidden="true" /> : <WindowMaximizeIcon aria-hidden="true" />) : null;
+  const fullscreenButton = onFullscreen ? controlButton("fullscreen", t(fullscreen ? "window.exitFullscreen" : "window.fullscreen", { title }), onFullscreen, fullscreen ? <WindowExitFullscreenIcon aria-hidden="true" /> : <WindowFullscreenIcon aria-hidden="true" />) : null;
   const controlsBlock = <div aria-label={t("window.controls")} className="winbuttons shell-window__controls">
     {controlButton("minimize", t("window.minimize", { title }), onMinimize, <WindowMinimizeIcon aria-hidden="true" />)}
     {onMaximize && onSnap
@@ -61,6 +64,7 @@ export function ProtectedWindow({
           </div>
         </div>
       : maximizeButton}
+    {fullscreenButton}
     {controlButton("close", t("window.close", { title }), onClose, <WindowCloseIcon aria-hidden="true" />)}
   </div>;
   const windowSlot = theme.slots?.window;
@@ -70,6 +74,7 @@ export function ProtectedWindow({
       close: onClose,
       minimize: onMinimize,
       maximize: () => onMaximize?.(),
+      fullscreen: () => onFullscreen?.(),
       "snap-left": () => onSnap?.("left"),
       "snap-right": () => onSnap?.("right")
     },

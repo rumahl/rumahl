@@ -2,6 +2,7 @@ import { fireEvent, render, screen, waitFor, within } from "@testing-library/rea
 import { expect, test, vi } from "vitest";
 import { App } from "../App";
 import { demoSnapshot } from "../demo/snapshot";
+import { versionLabel } from "../system-labels";
 
 test("settings overview keeps existing routes and the active navigation state", async () => {
   render(<App snapshot={demoSnapshot} initialLocation="/settings" />);
@@ -20,7 +21,7 @@ test("settings overview keeps existing routes and the active navigation state", 
 test("device settings show version and honest unavailable-worker state", async () => {
   render(<App snapshot={demoSnapshot} initialLocation="/settings/device" />);
   expect(await screen.findByRole("heading", { name: "This device" })).toBeInTheDocument();
-  expect(screen.getByText(demoSnapshot.shellBuildId)).toBeInTheDocument();
+  expect(screen.getByText(versionLabel(false))).toBeInTheDocument();
   expect(screen.getByText("Secure connection required")).toBeInTheDocument();
   expect(screen.getByRole("button", { name: "Retry registration" })).toBeDisabled();
   expect(screen.getByText(/private files and apps still require the server/)).toBeInTheDocument();
