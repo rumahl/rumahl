@@ -59,6 +59,11 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y nginx
+      - name: Verify pnpm lockfile is current
+        working-directory: frontend
+        run: |
+          pnpm install --lockfile-only --ignore-scripts
+          git diff --exit-code -- pnpm-lock.yaml
       - name: Install frontend dependencies
         working-directory: frontend
         run: pnpm install --frozen-lockfile
