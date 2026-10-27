@@ -1,23 +1,25 @@
 version: 2
 updates:
-  - package-ecosystem: cargo
-    directory: /
-    schedule:
-      interval: weekly
-    open-pull-requests-limit: 5
-    labels:
-      - backend
-      - dependencies
   - package-ecosystem: npm
-    directory: /frontend
+    directory: "/frontend"
     schedule:
       interval: weekly
     open-pull-requests-limit: 5
     labels:
       - frontend
       - dependencies
+
+  - package-ecosystem: cargo
+    directory: "/"
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    labels:
+      - backend
+      - dependencies
+
   - package-ecosystem: github-actions
-    directory: /
+    directory: "/"
     schedule:
       interval: weekly
     open-pull-requests-limit: 5
