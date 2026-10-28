@@ -1,4 +1,4 @@
-import { useEffect, type RefObject } from "react";
+import { useEffect, useRef, type RefObject } from "react";
 import { GlassEngine } from "./engine.js";
 import { svgBackdropSupported } from "./svg-backdrop.js";
 
@@ -111,32 +111,50 @@ function getEngine(): GlassEngineInstance {
   return engine;
 }
 
+export interface MountedGlassHost {
+  update(material: GlassMaterial): void;
+  destroy(): void;
+}
+
 /**
- * Mounts the shared glass engine on an arbitrary host element (opt-in) and
- * returns a dispose function. Used by the bridge that upgrades `@rumahl/ui`
- * `GlassSurface` hosts; the CSS in `@rumahl/ui/glass.css` is the fallback when
- * the engine is not present.
+ * Mounts the shared glass engine on an arbitrary host element (opt-in).
+ * Updating the material reuses the renderer/context instead of tearing it down;
+ * this matters for live colour changes on many widget surfaces.
  */
-export function mountGlassHost(element: HTMLElement, material: GlassMaterial): () => void {
+export function mountGlassHostHandle(element: HTMLElement, material: GlassMaterial): MountedGlassHost {
   const handle = getEngine().mount(element, { ...material, ...adjust });
   handles.add(handle);
-  return () => {
-    handles.delete(handle);
-    handle.destroy();
+  return {
+    update(next) { handle.update(next); },
+    destroy() {
+      handles.delete(handle);
+      handle.destroy();
+    }
   };
+}
+
+/** Backwards-compatible mount that returns only the dispose function. */
+export function mountGlassHost(element: HTMLElement, material: GlassMaterial): () => void {
+  return mountGlassHostHandle(element, material).destroy;
 }
 
 /** Mounts the shared glass engine on a host element (adds `.rumahl-glass-host`). */
 export function useGlassHost(ref: RefObject<HTMLElement | null>, material: GlassMaterial): void {
   const key = JSON.stringify(material);
+  const mounted = useRef<MountedGlassHost | null>(null);
   useEffect(() => {
     const element = ref.current;
     // The engine needs browser media APIs; stay inert in non-browser environments.
     if (!element || typeof window === "undefined" || typeof window.matchMedia !== "function") return;
-    const handle = getEngine().mount(element, { ...material, ...adjust });
-    handles.add(handle);
-    return () => { handles.delete(handle); handle.destroy(); };
-    // The material is compared by its serialized value.
+    mounted.current = mountGlassHostHandle(element, material);
+    return () => {
+      mounted.current?.destroy();
+      mounted.current = null;
+    };
+    // The host identity is the lifetime boundary; material changes update in place.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [ref, key]);
+  }, [ref]);
+  useEffect(() => {
+    mounted.current?.update(material);
+  }, [key]);
 }

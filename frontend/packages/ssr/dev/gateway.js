@@ -105,7 +105,7 @@ export async function startGateway({ repo, runtime, state, cert, key, port, buil
             "Cache-Control": "no-store",
             "Content-Type": "text/html; charset=utf-8",
             "Content-Security-Policy":
-              "default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; connect-src 'self'; base-uri 'none'",
+              "default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; connect-src 'self' ws: wss:; manifest-src 'self'; base-uri 'none'",
           })
           .end(offlineHtml);
       } else {

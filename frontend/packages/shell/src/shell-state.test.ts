@@ -24,4 +24,29 @@ describe("shellReducer open-window", () => {
     expect(next.windows.map((window) => window.id)).toEqual(["app:a", "app:b", "app:c"]);
     expect(next.focusedWindowId).toBe("app:c");
   });
+
+  test("toggles an exclusive fullscreen window without losing its geometry", () => {
+    let state = shellReducer(initialShellState, { type: "open-window", window: { id: "one", title: "One", subtitle: "", location: "/app/one" } });
+    const rect = { x: 120, y: 90, width: 500, height: 350 };
+    state = shellReducer(state, { type: "set-window-rect", id: "one", rect });
+    state = shellReducer(state, { type: "set-window-fullscreen", id: "one", fullscreen: true });
+    expect(state.windows[0]?.fullscreen).toBe(true);
+    expect(state.windows[0]?.minimized).toBe(false);
+    expect(state.focusedWindowId).toBe("one");
+    state = shellReducer(state, { type: "set-window-fullscreen", id: "one", fullscreen: false });
+    expect(state.windows[0]?.fullscreen).toBe(false);
+    expect(state.windows[0]?.rect).toEqual(rect);
+  });
+});
+
+describe("app switcher overlay", () => {
+  test("toggles and closes independently of the window list", () => {
+    let state = shellReducer(twoWindows(), { type: "toggle-app-switcher" });
+    expect(state.appSwitcherOpen).toBe(true);
+    expect(state.windows).toHaveLength(2);
+    state = shellReducer(state, { type: "toggle-app-switcher" });
+    expect(state.appSwitcherOpen).toBe(false);
+    state = shellReducer(shellReducer(state, { type: "toggle-app-switcher" }), { type: "close-app-switcher" });
+    expect(state.appSwitcherOpen).toBe(false);
+  });
 });

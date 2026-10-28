@@ -12,6 +12,14 @@ describe("desktop shell", () => {
     expect(within(menu).getByRole("menuitem", { name: "Settings" })).toBeInTheDocument();
   });
 
+  test("opens an app's settings from its desktop context menu", async () => {
+    render(<App snapshot={demoSnapshot} initialLocation="/" />);
+    fireEvent.contextMenu(screen.getByRole("link", { name: "Store" }));
+    const menu = screen.getByRole("menu", { name: "Desktop menu" });
+    fireEvent.click(within(menu).getByRole("menuitem", { name: "App settings" }));
+    expect(await screen.findByRole("heading", { name: "Store sources" })).toBeInTheDocument();
+  });
+
   test("removes a shortcut from the desktop and keeps it recoverable", () => {
     render(<App snapshot={demoSnapshot} initialLocation="/" />);
     fireEvent.contextMenu(screen.getByRole("link", { name: "Files" }));

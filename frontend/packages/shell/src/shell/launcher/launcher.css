@@ -1,7 +1,7 @@
 /* Launcher mode: one coherent app surface over the wallpaper.
    Imported unlayered (like glass-surfaces.css) so it wins over the layered
    presentation styles that predate the current design. */
-.shell[data-shell-mode="launcher"] .launcher-workspace {
+.shell:is([data-shell-mode="launcher"], [data-shell-mode="mobile"]) .launcher-workspace {
   display: flex;
   justify-content: center;
   align-items: stretch;
@@ -425,14 +425,14 @@
 }
 
 /* Fit the workspace to the viewport: never scroll, always reserve dock room. */
-.shell[data-shell-mode="launcher"] .launcher-workspace {
+.shell:is([data-shell-mode="launcher"], [data-shell-mode="mobile"]) .launcher-workspace {
   overflow: hidden;
   height: 100%;
   padding-bottom: calc(
     var(--rumahl-ui-layout-dock-offset, 12px) + 72px + env(safe-area-inset-bottom)
   );
 }
-.shell[data-shell-mode="launcher"] .launcher-home {
+.shell:is([data-shell-mode="launcher"], [data-shell-mode="mobile"]) .launcher-home {
   min-height: 0;
 }
 
@@ -461,4 +461,18 @@
 }
 .shell .desktop-grid {
   scroll-snap-align: start;
+}
+
+/* Folder edit/done controls are icon buttons, matching the rest of the OS. */
+.launcher-edit,
+.launcher-done {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+.launcher-edit svg,
+.launcher-done svg {
+  width: 16px;
+  height: 16px;
 }

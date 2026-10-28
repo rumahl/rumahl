@@ -7,6 +7,12 @@ function Icon({ className, children }: PropsWithChildren<{ className?: string | 
 export function FolderIcon({ className }: { className?: string | undefined }) {
   return <Icon className={className}><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" /></Icon>;
 }
+export function FolderArtwork({ className }: { className?: string | undefined }) {
+  return <svg className={className} viewBox="0 0 270.93333 270.93333" fill="none" aria-hidden="true">
+    <path d="m 57.325183,31.871957 c -21.191354,0 -38.251412,17.060573 -38.251412,38.25193 v 92.252253 c 0,21.19135 17.060058,38.25193 38.251412,38.25193 H 215.82248 c 21.19136,0 38.25141,-17.06058 38.25141,-38.25193 V 110.34831 C 253.97499,89.295927 237.20871,72.367947 216.36612,72.284477 h -56.15988 c -12.26852,0 -22.22464,-9.54921 -22.87147,-21.650875 v 0.296623 c 0,-0.12013 -0.001,-0.240079 -0.004,-0.359668 -0.0117,-0.229728 -0.0199,-0.460439 -0.0248,-0.691947 -0.51331,-9.563101 -7.9883,-17.216316 -17.47283,-18.006653 z" fill="currentColor" fillOpacity=".76" />
+    <rect x="19.186193" y="72.25396" width="234.99998" height="168.7558" ry="38.136852" fill="currentColor" fillOpacity=".96" />
+  </svg>;
+}
 export function FileIcon({ className }: { className?: string | undefined }) {
   return <Icon className={className}><path d="M6 3h8l4 4v14H6z" /><path d="M14 3v4h4" /></Icon>;
 }

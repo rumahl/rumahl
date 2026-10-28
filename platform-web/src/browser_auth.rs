@@ -113,6 +113,7 @@ pub(crate) fn valid_shell_target(target: &str) -> bool {
             "service-worker.js",
             "os-client.js",
             "offline",
+            "splash",
         ]
         .contains(&first)
 }
@@ -426,7 +427,7 @@ fn render_page(
     let classic = include_str!("../../frontend/packages/ui/src/classic.css");
     let css = include_str!("login.css");
     let html = format!(
-        r#"<!doctype html><html lang="{lang}" class="shell" data-theme="com.rumahl.default" data-scheme="light"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>{title} · rumahl OS</title><style>{tokens}{materials}{controls}{classic}{css}</style><script src="/login/appearance.js"></script><script src="/os-client.js" defer></script></head><body><header class="lock-clock" aria-hidden="true"><span id="login-date"></span><time id="login-time"></time></header><main><section class="login-profiles" aria-label="{title}">{content}</section></main><footer><span class="brand">rumahl <span>OS</span></span><a href="/recovery">{recovery}</a></footer></body></html>"#
+        r#"<!doctype html><html lang="{lang}" class="shell" data-theme="com.rumahl.default" data-scheme="light"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>{title} · rumahl OS</title><link rel="icon" href="/icon.svg" type="image/svg+xml"><link rel="icon" href="/icon-512.png" type="image/png" sizes="512x512"><style>{tokens}{materials}{controls}{classic}{css}</style><script src="/login/appearance.js"></script><script src="/os-client.js" defer></script></head><body><header class="lock-clock" aria-hidden="true"><span id="login-date"></span><time id="login-time"></time></header><main><section class="login-profiles" aria-label="{title}">{content}</section></main><footer><span class="brand">rumahl <span>OS</span></span><a href="/recovery">{recovery}</a></footer></body></html>"#
     );
     let mut response = Response::new(Body::from(html));
     response.headers_mut().insert(

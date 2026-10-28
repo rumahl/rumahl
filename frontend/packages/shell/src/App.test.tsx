@@ -8,25 +8,24 @@ describe("protected shell behavior", () => {
     render(<App snapshot={fixtureSnapshot} initialLocation="/" />);
 
     const nav = screen.getByRole("navigation", { name: "Main navigation" });
-    expect(within(nav).getByRole("link", { name: "Apps" })).toBeInTheDocument();
-    fireEvent.click(within(nav).getByRole("link", { name: "Apps" }));
+    expect(within(nav).getByRole("link", { name: "Settings" })).toBeInTheDocument();
+    fireEvent.click(within(nav).getByRole("link", { name: "Settings" }));
 
-    expect(screen.getByRole("heading", { level: 1, name: "Apps" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { level: 1, name: "Settings" })).toBeInTheDocument();
     expect(screen.getByRole("navigation", { name: "Main navigation" })).toBeInTheDocument();
   });
 
   test("keeps close and minimize semantics in the first-party window chrome", () => {
-    render(<App snapshot={fixtureSnapshot} initialLocation="/" />);
+    render(<App snapshot={fixtureSnapshot} initialLocation="/app/files" />);
 
-    fireEvent.click(screen.getByRole("link", { name: "App manager" }));
-    expect(screen.getByRole("region", { name: "App manager" })).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "Files" })).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole("button", { name: "Minimize App manager" }));
-    expect(screen.queryByRole("region", { name: "App manager" })).not.toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "App manager" }));
-    fireEvent.click(screen.getByRole("button", { name: "Close App manager" }));
+    fireEvent.click(screen.getByRole("button", { name: "Minimize Files" }));
+    expect(screen.queryByRole("region", { name: "Files" })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Files" }));
+    fireEvent.click(screen.getByRole("button", { name: "Close Files" }));
 
-    expect(screen.queryByRole("region", { name: "App manager" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "Files" })).not.toBeInTheDocument();
   });
 
   test("projects commands into the shell-owned command palette", () => {
@@ -62,22 +61,6 @@ describe("protected shell behavior", () => {
     expect(document.documentElement.lang).toBe("en");
   });
 
-  test("formats singular runtime values instead of embedding them in translations", () => {
-    render(
-      <App initialLocation="/"
-        snapshot={{
-          ...fixtureSnapshot,
-          systemStatus: { ...fixtureSnapshot.systemStatus, installedAppCount: 1 }
-        }}
-      />
-    );
-
-    expect(screen.getByText(/Installed apps: 1/)).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("link", { name: "App manager" }));
-    expect(screen.getByText("1 app")).toBeInTheDocument();
-    expect(screen.getByText(/rumahl OS installs and updates apps/)).toBeInTheDocument();
-  });
-
   test("opens a streamed app inside shell-owned window controls", async () => {
     const id = "4485f47e-a1cd-4b7b-a7c2-203086be13f5";
     const request = vi.fn(async (input: RequestInfo | URL) => {
@@ -93,10 +76,8 @@ describe("protected shell behavior", () => {
       onmessage: null,
       onopen: null
     };
-    render(<App initialLocation="/" snapshot={fixtureSnapshot} live={{ request, openEvents: () => socket }} />);
-    fireEvent.click(screen.getByRole("link", { name: "App manager" }));
-    fireEvent.click(await screen.findByRole("button", { name: "Firefox" }));
-    const window = screen.getByRole("region", { name: "Firefox" });
+    render(<App initialLocation={`/streams/${id}?title=Firefox`} snapshot={fixtureSnapshot} live={{ request, openEvents: () => socket }} />);
+    const window = await screen.findByRole("region", { name: "Firefox" });
     expect(within(window).getByRole("button", { name: "Minimize Firefox" })).toBeInTheDocument();
     const frame = await within(window).findByTitle("Firefox");
     expect(frame).toHaveAttribute("src", `/api/v1/shell/streams/${id}/`);

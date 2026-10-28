@@ -6,6 +6,7 @@ import type { ShellSnapshotV1 } from "@rumahl/contracts";
 import { useTheme } from "@rumahl/ui";
 import type { ShellLiveSource } from "../live-updates";
 import { useAppCatalog } from "../apps/AppCatalog";
+import { findFirstPartyApp } from "../apps/registry";
 import { rememberRecent } from "../apps/recents";
 import { DesktopLayout } from "./desktop/DesktopLayout";
 import { LauncherLayout } from "./launcher/LauncherLayout";
@@ -15,11 +16,15 @@ import { Taskbar } from "./Taskbar";
 import { useI18n } from "../i18n";
 import { initialShellState, shellReducer, type ShellWindow } from "../shell-state";
 import { describeRoute, ShellRoutes } from "../routing/routes";
+import { HomePage } from "../pages/HomePage";
+import { featureReady, useFeatures } from "../features/ShellFeatures";
 import { localPath, type ShellMode } from "../routing/paths";
 import { RouteBoundary } from "../routing/RouteBoundary";
 import { ShellContext } from "./ShellContext";
 import { MenuBar } from "./MenuBar";
 import { CommandPalette } from "./CommandPalette";
+import { AppSwitcher } from "./AppSwitcher";
+import { MobileTutorial } from "./MobileTutorial";
 import { EmergencyShell } from "./EmergencyShell";
 import { KeyPalette } from "./KeyPalette";
 import { installShortcuts, useKeyPaletteOpen } from "./keyboard";
@@ -29,7 +34,7 @@ import { DesktopWindows } from "./DesktopWindows";
 import { useShellPreferences } from "../preferences/ShellPreferences";
 import { useWorkspace } from "../preferences/Workspace";
 import { useOsMode } from "../preferences/OsMode";
-import { HomePage } from "../pages/HomePage";
+import { createSessionSnapshot, flushSessionSnapshot, hasStagedSessionSnapshot, loadSessionSnapshot, stageSessionSnapshot } from "./session-snapshot";
 
 function WallpaperVideo({ src }: { src: string }) {
   const ref = useRef<HTMLVideoElement>(null);
@@ -45,12 +50,14 @@ function WallpaperVideo({ src }: { src: string }) {
 import { resolveWallpaper } from "../wallpapers";
 import { configureGlass, svgRefractionSupported, subscribeGlassMetrics } from "../glass-engine/useGlassEngine";
 import { useGlassHosts } from "../glass-engine/useGlassHosts";
+import { useAdaptiveContrast } from "./adaptive-contrast";
 import { useTestMedia } from "./test-media";
 import { mobileDesktopOptIn, resolveShellMode, setMobileDesktopOptIn, useDeviceViewport } from "./device";
 import { MobileOrientationHint } from "./MobileOrientationHint";
 import { FrontendUpdateNotice } from "./FrontendUpdateNotice";
 import { isDebug, setDebug, useDebug } from "./debug";
 import { useSystemMode } from "./system-scheme";
+import { SHELL_VERSION } from "../version";
 import { getToasts, installToastApi, setToastAnimations, showToast, ToastStack } from "./toasts";
 
 export function ShellLayout({ snapshot, live }: { snapshot: ShellSnapshotV1; live: ShellLiveSource | undefined }) {
@@ -60,6 +67,7 @@ export function ShellLayout({ snapshot, live }: { snapshot: ShellSnapshotV1; liv
   // Upgrade @rumahl/ui GlassSurface hosts (dock, floating surfaces) to the
   // engine's real refraction glass. CSS in @rumahl/ui/glass.css is the fallback.
   useGlassHosts();
+  useAdaptiveContrast();
   const { t } = useI18n();
   const path = shellLocation(location.pathname + location.search + location.hash);
   const preferences = useShellPreferences();
@@ -83,14 +91,26 @@ export function ShellLayout({ snapshot, live }: { snapshot: ShellSnapshotV1; liv
   const route = describeRoute(path);
   // In launcher mode an opened app replaces the home surface; the top bar then
   // slides away and the window keeps the space the bar occupied.
-  const launcherWindow = mode === "launcher" && route.presentation === "window";
+  const launcherWindow = (mode === "launcher" || mode === "mobile") && route.presentation === "window";
   const catalog = useAppCatalog();
   const installedTitle = catalog.apps.find((app) => app.id === route.appId)?.title;
-  const routedWindow = useMemo<Omit<ShellWindow, "minimized">>(() => ({
-    id: route.id, title: route.streamTitle ?? installedTitle ?? t(route.title), subtitle: "",
-    location: path, ...(route.stream ? { streamId: route.id.slice(7) } : {})
-  }), [installedTitle, route.id, route.title, route.streamTitle, route.stream, path, t]);
+  const routedWindow = useMemo<Omit<ShellWindow, "minimized">>(() => {
+    const preferredSize = route.appId ? findFirstPartyApp(route.appId)?.preferredSize : undefined;
+    return {
+      id: route.id, title: route.streamTitle ?? installedTitle ?? t(route.title), subtitle: "",
+      location: path, ...(route.stream ? { streamId: route.id.slice(7) } : {}),
+      ...(preferredSize ? { preferredSize } : {})
+    };
+  }, [installedTitle, route.appId, route.id, route.title, route.streamTitle, route.stream, path, t]);
   const workspace = useWorkspace();
+  const [sessionSnapshotReady, setSessionSnapshotReady] = useState(false);
+  const sessionRestored = useRef(false);
+  const currentPath = useRef(path);
+  const currentRoutePresentation = useRef(route.presentation);
+  const currentRoutedWindow = useRef(routedWindow);
+  currentPath.current = path;
+  currentRoutePresentation.current = route.presentation;
+  currentRoutedWindow.current = routedWindow;
   // Restores the device workspace windows. Available synchronously from the
   // snapshot so windows are server-rendered, not added after a client fetch.
   const restoredWindows = (includeInternal = true) => {
@@ -117,6 +137,50 @@ export function ShellLayout({ snapshot, live }: { snapshot: ShellSnapshotV1; liv
       dispatch({ type: "open-window", window: routedWindow });
     }
   }, [mode, routedWindow, route.presentation]);
+  // The encrypted browser snapshot is the last live desktop, not the older
+  // server workspace. It restores even after logout/session expiry.
+  useEffect(() => {
+    let cancelled = false;
+    void loadSessionSnapshot(snapshot.user.displayName).then((saved) => {
+      if (cancelled) return;
+      if (saved) {
+        sessionRestored.current = true;
+        let windows = saved.windows.map((window) => ({ ...window }));
+        let active: ShellWindow | undefined;
+        if (currentRoutePresentation.current === "window") {
+          const routed = currentRoutedWindow.current;
+          const existing = windows.find((window) => window.id === routed.id);
+          active = { ...existing, ...routed, minimized: false } as ShellWindow;
+          windows = [...windows.filter((window) => window.id !== active!.id), active];
+        }
+        dispatch({ type: "restore-workspace", windows });
+        if (!active && saved.focusedWindowId) {
+          window.setTimeout(() => dispatch({ type: "focus-window", id: saved.focusedWindowId! }), 0);
+        }
+        if (!active && saved.activeLocation && saved.activeLocation !== "/" && currentPath.current === "/") {
+          try { void navigate(localPath(saved.activeLocation), { replace: true }); } catch { /* ignore stale targets */ }
+        }
+      }
+      setSessionSnapshotReady(true);
+    });
+    return () => { cancelled = true; };
+  }, [snapshot.user.displayName]);
+  useEffect(() => {
+    if (!sessionSnapshotReady) return;
+    const focused = state.focusedWindowId ? state.windows.find((window) => window.id === state.focusedWindowId) : undefined;
+    const activeLocation = focused?.location ?? (route.presentation === "window" ? path : null);
+    stageSessionSnapshot(createSessionSnapshot(snapshot.user.displayName, state.windows, state.focusedWindowId, activeLocation));
+  }, [state.windows, state.focusedWindowId, path, route.presentation, sessionSnapshotReady, snapshot.user.displayName]);
+  useEffect(() => {
+    const flush = () => { if (hasStagedSessionSnapshot()) void flushSessionSnapshot(); };
+    const visibility = () => { if (document.visibilityState === "hidden") flush(); };
+    window.addEventListener("pagehide", flush);
+    document.addEventListener("visibilitychange", visibility);
+    return () => {
+      window.removeEventListener("pagehide", flush);
+      document.removeEventListener("visibilitychange", visibility);
+    };
+  }, []);
   const [internalReady, setInternalReady] = useState(false);
   useEffect(() => {
     // Internal tools (the design lab) are gated by the OS mode.
@@ -138,6 +202,8 @@ export function ShellLayout({ snapshot, live }: { snapshot: ShellSnapshotV1; liv
   useEffect(() => { if (internalReady) writeInternalWindows(state.windows); }, [state.windows, internalReady]);
   const restored = useRef(-1);
   useEffect(() => {
+    if (!sessionSnapshotReady) return;
+    if (sessionRestored.current && workspace.restore === 0) return;
     if (!workspace.ready || catalog.status === "loading" || restored.current === workspace.restore) return;
     restored.current = workspace.restore;
     if (workspace.restore === 0 && workspace.effective.windows.length === 0) return;
@@ -148,7 +214,7 @@ export function ShellLayout({ snapshot, live }: { snapshot: ShellSnapshotV1; liv
       const active = { ...existing, ...routedWindow, minimized: false };
       dispatch({ type: "restore-workspace", windows: [...windows.filter(w => w.id !== active.id), active] });
     } else dispatch({ type: "restore-workspace", windows });
-  }, [workspace.ready, workspace.restore, workspace.effective, catalog.status, catalog.apps, route.presentation, routedWindow, t]);
+  }, [workspace.ready, workspace.restore, workspace.effective, catalog.status, catalog.apps, route.presentation, routedWindow, t, sessionSnapshotReady]);
   const open = (target: string) => { const next = localPath(target); if (!isInternalTarget(shellLocation(target))) rememberRecent(next); void navigate(next); };
   const setMode = (next: ShellMode) => {
     if (viewport.mobile) {
@@ -160,7 +226,7 @@ export function ShellLayout({ snapshot, live }: { snapshot: ShellSnapshotV1; liv
       // portrait shell stays on the launcher and the hint explains why.
       setHintDismissed(false);
       setDesktopHint(true);
-    } else if (next === "launcher") {
+    } else {
       setDesktopHint(false);
     }
     preferences.save("device", next);
@@ -220,7 +286,9 @@ export function ShellLayout({ snapshot, live }: { snapshot: ShellSnapshotV1; liv
   useEffect(() => {
     setSvgActive(glassEnabled && (glassBackend === "svg" || (glassBackend === "auto" && svgRefractionSupported())));
   }, [glassEnabled, glassBackend]);
+  const fullscreenWindow = state.windows.find((item) => item.fullscreen && !item.minimized);
   const windowMaximized = state.windows.some((item) => !item.minimized && (item.placement ?? "floating") !== "floating");
+  const windowImmersive = state.windows.some((item) => !item.minimized && (item.fullscreen || item.placement === "maximized"));
   useEffect(() => {
     configureGlass({ enabled: effectiveGlass, backend: glassBackend, quality: glassQuality });
   }, [effectiveGlass, glassBackend, glassQuality]);
@@ -233,8 +301,12 @@ export function ShellLayout({ snapshot, live }: { snapshot: ShellSnapshotV1; liv
   useEffect(() => {
     if (mobileChecked.current || !viewport.mobile || !preferences.ready) return;
     mobileChecked.current = true;
-    if (preferences.mode === "desktop" && !mobileDesktopOptIn()) preferences.save("device", "launcher");
-  }, [viewport.mobile, preferences.ready, preferences.mode, preferences]);
+    if (viewport.phone) {
+      if (preferences.mode !== "mobile" && !(preferences.mode === "desktop" && mobileDesktopOptIn())) preferences.save("device", "mobile");
+    } else if (preferences.mode === "desktop" && !mobileDesktopOptIn()) {
+      preferences.save("device", "launcher");
+    }
+  }, [viewport.mobile, viewport.phone, preferences.ready, preferences.mode, preferences]);
   // One short startup benchmark: if the browser cannot keep up, glass is off
   // from the first paint instead of degrading later.
   useEffect(() => {
@@ -317,16 +389,16 @@ export function ShellLayout({ snapshot, live }: { snapshot: ShellSnapshotV1; liv
     };
     (window as unknown as { __rumahlDebug?: typeof api }).__rumahlDebug = api;
   }, [glassBackend, glassQuality, glassOff, inactive, theme.id, t]);
-  // Pause animations/clock while the tab or browser window is not visible
-  // (imperceptible: everything resumes exactly where it left off).
+  // Pause ambient animations while the tab is actually hidden. Losing window
+  // focus is not the same as being invisible: the browser chrome, another
+  // window or a notification can take focus while the shell stays on screen,
+  // and pausing there froze app icons and other animated surfaces.
   useEffect(() => {
     if (typeof document === "undefined") return;
-    const update = () => setInactive(document.hidden || (typeof document.hasFocus === "function" && !document.hasFocus()));
+    const update = () => setInactive(document.hidden);
     update();
     document.addEventListener("visibilitychange", update);
-    window.addEventListener("focus", update);
-    window.addEventListener("blur", update);
-    return () => { document.removeEventListener("visibilitychange", update); window.removeEventListener("focus", update); window.removeEventListener("blur", update); };
+    return () => document.removeEventListener("visibilitychange", update);
   }, []);
   // Theme stylesheet via constructable stylesheets (not blocked by `style-src`).
   useEffect(() => {
@@ -339,9 +411,32 @@ export function ShellLayout({ snapshot, live }: { snapshot: ShellSnapshotV1; liv
   }, [theme.css]);
   const emergencyOpen = useEmergencyOpen();
   const paletteOpen = useKeyPaletteOpen();
+  const features = useFeatures();
   // Hidden keyboard commands (leader `r`); the emergency chord goes to /recovery.
-  useEffect(() => installShortcuts(), []);
+  useEffect(() => installShortcuts({ recovery: featureReady(features.recovery) }), [features.recovery.state]);
   // Report shell activity (navigation, mode) into the central audit log.
+  // Safari changes its visual viewport when the browser toolbar collapses. Use
+  // that height instead of the layout viewport so the dock never sits behind it.
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const root = document.documentElement;
+    const viewport = window.visualViewport;
+    const sync = () => {
+      const height = viewport?.height ?? window.innerHeight;
+      root.style.setProperty("--rumahl-app-height", `${Math.round(height)}px`);
+    };
+    sync();
+    viewport?.addEventListener("resize", sync);
+    viewport?.addEventListener("scroll", sync);
+    window.addEventListener("resize", sync);
+    window.addEventListener("orientationchange", sync);
+    return () => {
+      viewport?.removeEventListener("resize", sync);
+      viewport?.removeEventListener("scroll", sync);
+      window.removeEventListener("resize", sync);
+      window.removeEventListener("orientationchange", sync);
+    };
+  }, []);
   useEffect(() => { if (live) reportActivity(live.request, `navigate ${path}`); }, [path, live]);
   useEffect(() => { if (live) reportActivity(live.request, `mode ${mode}`); }, [mode, live]);
   // Mirror the base on <html> so portals (menus, context menus) can style themselves.
@@ -349,14 +444,16 @@ export function ShellLayout({ snapshot, live }: { snapshot: ShellSnapshotV1; liv
     const root = document.documentElement;
     root.dataset.themeBase = theme.base ?? "rumahl";
     root.dataset.theme = theme.id;
+    root.dataset.material = material;
     return () => {
       delete root.dataset.themeBase;
       delete root.dataset.theme;
+      delete root.dataset.material;
     };
-  }, [theme.base, theme.id]);
+  }, [theme.base, theme.id, material]);
 
   return <ShellContext value={{ snapshot, live, state, dispatch, mode, setMode, open }}>
-    <div className={`scene shell${showVideo ? "" : " image-mode"}${appearance.wallpaperMotion === false || svgActive || performanceMode ? " no-motion" : ""}`} data-theme={theme.id} data-theme-base={theme.base} data-material={material} data-app-inputs={appInputs} data-glass={glassEngine} data-scheme={scheme} data-perf={ultra ? "ultra" : undefined} data-maximized={windowMaximized ? "true" : undefined} data-launcher={launcherWindow ? "app" : undefined} data-inactive={inactive ? "true" : undefined} data-debug={debug ? "true" : undefined} data-animations={animations ? undefined : "off"} data-shell-build={snapshot.shellBuildId} data-shell-mode={mode} data-os-mode={osMode.mode} data-mobile={viewport.mobile ? "true" : undefined} data-orientation={viewport.mobile ? (viewport.landscape ? "landscape" : "portrait") : undefined} data-preferences-revision={preferences.preferences?.revision}>
+    <div className={`scene shell${showVideo ? "" : " image-mode"}${appearance.wallpaperMotion === false || svgActive || performanceMode ? " no-motion" : ""}`} data-theme={theme.id} data-theme-base={theme.base} data-material={material} data-app-inputs={appInputs} data-glass={glassEngine} data-scheme={scheme} data-perf={ultra ? "ultra" : undefined} data-maximized={windowMaximized ? "true" : undefined} data-fullscreen={fullscreenWindow ? "true" : undefined} data-launcher={launcherWindow ? "app" : undefined} data-inactive={inactive ? "true" : undefined} data-debug={debug ? "true" : undefined} data-animations={animations ? undefined : "off"} data-shell-build={snapshot.shellBuildId} data-shell-version={SHELL_VERSION} data-demo={live?.demo ? "true" : undefined} data-shell-mode={mode} data-os-mode={osMode.mode} data-mobile={viewport.mobile ? "true" : undefined} data-orientation={viewport.mobile ? (viewport.landscape ? "landscape" : "portrait") : undefined} data-preferences-revision={preferences.preferences?.revision} data-session-ready={sessionSnapshotReady ? "true" : undefined}>
       <div className="wallpaper media-wall" aria-hidden="true">
         {showVideo
           ? media.video ? <WallpaperVideo key={media.video} src={media.video} />
@@ -374,7 +471,18 @@ export function ShellLayout({ snapshot, live }: { snapshot: ShellSnapshotV1; liv
           {mode === "desktop"
             ? theme.slots?.desktop
               ? <SlotRegion name="desktop" />
-              : <DesktopLayout><RouteBoundary location={path}>{route.presentation === "window" ? <HomePage /> : <ShellRoutes />}</RouteBoundary></DesktopLayout>
+              : <DesktopLayout>
+                  {/* The home surface stays mounted across page/window routes.
+                      Remounting it would reload every desktop widget iframe. */}
+                  <RouteBoundary location={path}>
+                    <div className="desktop-surface" data-hidden={route.presentation === "page" && route.id !== "/" ? "true" : undefined}>
+                      <HomePage />
+                    </div>
+                  </RouteBoundary>
+                  {route.presentation === "page" && route.id !== "/"
+                    ? <RouteBoundary location={path}><ShellRoutes /></RouteBoundary>
+                    : null}
+                </DesktopLayout>
             : theme.slots?.launcher
               ? <SlotRegion name="launcher" />
               : <LauncherLayout><RouteBoundary location={path}>{route.presentation === "window" ? null : <ShellRoutes />}</RouteBoundary></LauncherLayout>}
@@ -382,7 +490,9 @@ export function ShellLayout({ snapshot, live }: { snapshot: ShellSnapshotV1; liv
         </div>
         <CommandPalette />
       </div>
-      {theme.slots?.dock ? <SlotRegion name="dock" /> : variants.shellLayout === "taskbar" ? <Taskbar /> : <OsDock />}
+      <AppSwitcher />
+      <MobileTutorial phone={viewport.phone} />
+      {theme.slots?.dock ? <SlotRegion name="dock" /> : variants.shellLayout === "taskbar" ? <Taskbar /> : <OsDock autoHide={mode === "desktop" && windowImmersive && !fullscreenWindow} />}
       {emergencyOpen ? <EmergencyShell /> : null}
       {paletteOpen ? <KeyPalette /> : null}
     </div>

@@ -1,17 +1,18 @@
 import { DESIGN_URI, shellLocation } from "./internal";
 import { DesignLab } from "../pages/DesignLab";
-import { createContext, useContext, type ReactNode } from "react";
+import type { ReactNode } from "react";
 import { matchRoutes, useRoutes, useLocation, type RouteObject } from "react-router";
 import { findFirstPartyApp } from "../apps/registry";
 import { ActivityPage } from "../pages/ActivityPage";
 import { Resolver } from "../pages/Resolver";
 import { SettingsPage } from "../pages/SettingsPage";
 import { HomePage } from "../pages/HomePage";
-import { AppsPage } from "../pages/AppsPage";
 import { AppPage } from "../pages/AppPage";
 import { StreamPage } from "../pages/StreamPage";
 import type { ShellSection } from "../shell-state";
 import type { MessageKey } from "../i18n/locales/en";
+import { WindowLocationContext } from "./window-location";
+export { useWindowLocation } from "./window-location";
 
 export interface ShellRouteHandle {
   section: ShellSection;
@@ -25,7 +26,6 @@ function route(path: string, element: ReactNode, handle: ShellRouteHandle): Rout
 // API, login, recovery and untrusted app resources are not shell routes.
 export const shellRoutes: RouteObject[] = [
   route("/", <HomePage />, { section: "home", title: "nav.home", presentation: "page" }),
-  route("/apps", <AppsPage />, { section: "apps", title: "nav.apps", presentation: "page" }),
   route("/activity", <ActivityPage />, { section: "activity", title: "nav.activity", presentation: "window" }),
   route("/settings/*", <SettingsPage />, { section: "settings", title: "nav.settings", presentation: "window" }),
   route("/app/:appId/*", <AppPage />, { section: "apps", title: "route.appUnavailable", presentation: "window" }),
@@ -55,15 +55,4 @@ export function ShellRoutes({ location }: { location?: string }) {
   const internal = shellLocation(target) === DESIGN_URI;
   const element = useRoutes(shellRoutes, internal ? "/" : location);
   return <WindowLocationContext value={target}>{internal ? <DesignLab /> : element}</WindowLocationContext>;
-}
-
-/**
- * The location of the window the calling component is rendered in. A window's
- * app iframe must key its fragment off its own location, never the shared
- * browser URL, so focusing or switching windows never reloads it.
- */
-const WindowLocationContext = createContext<string | null>(null);
-
-export function useWindowLocation(): string | null {
-  return useContext(WindowLocationContext);
 }

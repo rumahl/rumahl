@@ -15,6 +15,8 @@ export function isMobile(): boolean {
 
 export interface DeviceViewport {
   mobile: boolean;
+  /** Phones get their own shell; tablets keep the launcher/desktop choice. */
+  phone: boolean;
   landscape: boolean;
 }
 
@@ -34,21 +36,28 @@ export function setMobileDesktopOptIn(value: boolean): void {
   } catch { /* private mode */ }
 }
 
-export type PreferredShellMode = "desktop" | "launcher";
+export type PreferredShellMode = "desktop" | "launcher" | "mobile";
 
 /**
- * Phone policy: portrait always uses the launcher; landscape may use the
- * desktop, but only after an explicit opt-in. Other devices keep the
- * preference unchanged.
+ * Phone policy: mobile is its own shell and the default. The desktop remains
+ * reachable in landscape after an explicit, tucked-away opt-in. Tablets keep
+ * the launcher unless the user chooses otherwise.
  */
 export function resolveShellMode(preferred: PreferredShellMode, viewport: DeviceViewport, desktopOptIn: boolean): PreferredShellMode {
-  if (!viewport.mobile) return preferred;
-  return viewport.landscape && desktopOptIn ? preferred : "launcher";
+  if (!viewport.mobile) return preferred === "mobile" ? "launcher" : preferred;
+  if (preferred === "desktop" && viewport.landscape && desktopOptIn) return "desktop";
+  if (viewport.phone) return "mobile";
+  return "launcher";
 }
 
 function readViewport(): DeviceViewport {
-  if (typeof window === "undefined") return { mobile: false, landscape: true };
-  return { mobile: isMobile(), landscape: window.innerWidth >= window.innerHeight };
+  if (typeof window === "undefined") return { mobile: false, phone: false, landscape: true };
+  const mobile = isMobile();
+  return {
+    mobile,
+    phone: mobile && Math.min(window.innerWidth, window.innerHeight) < 700,
+    landscape: window.innerWidth >= window.innerHeight
+  };
 }
 
 /**
@@ -56,7 +65,7 @@ function readViewport(): DeviceViewport {
  * stays deterministic and resolves the real device right after mount.
  */
 export function useDeviceViewport(): DeviceViewport {
-  const [viewport, setViewport] = useState<DeviceViewport>({ mobile: false, landscape: true });
+  const [viewport, setViewport] = useState<DeviceViewport>({ mobile: false, phone: false, landscape: true });
   useEffect(() => {
     const update = () => setViewport(readViewport());
     update();

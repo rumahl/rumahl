@@ -11,10 +11,12 @@ export interface DesktopMenuState {
 export interface DesktopContextMenuProps {
   menu: DesktopMenuState | null;
   appTitle?: string | undefined;
+  appSettingsPath?: string | undefined;
   hidden: readonly { id: string; title: string }[];
   widgets: boolean;
   onClose: () => void;
   onOpen: (appId: string) => void;
+  onOpenAppSettings: (path: string) => void;
   onRemove: (appId: string) => void;
   onRestoreApp: (appId: string) => void;
   onSave: () => void;
@@ -54,6 +56,7 @@ export function DesktopContextMenu(props: DesktopContextMenuProps) {
       {menu.appId ? <>
         <p className="desktop-menu__title">{props.appTitle}</p>
         <button role="menuitem" type="button" onClick={() => { props.onOpen(menu.appId!); onClose(); }}>{t("desktop.menu.open")}</button>
+        {props.appSettingsPath ? <button role="menuitem" type="button" onClick={() => { props.onOpenAppSettings(props.appSettingsPath!); onClose(); }}>{t("launcher.menu.settings")}</button> : null}
         <button role="menuitem" type="button" onClick={() => { props.onRemove(menu.appId!); onClose(); }}>{t("desktop.menu.remove")}</button>
       </> : <>
         <button role="menuitem" type="button" onClick={() => { props.onSave(); onClose(); }}>{t("desktop.menu.save")}</button>

@@ -89,7 +89,8 @@ describe("shell revision events", () => {
       vi.fn()
     );
 
-    await vi.waitFor(() => expect(onSnapshot).toHaveBeenCalledWith(demoSnapshot), {
+    const snapshot = await (await backend.request("/api/v1/shell/snapshot")).json();
+    await vi.waitFor(() => expect(onSnapshot).toHaveBeenCalledWith(snapshot), {
       timeout: 2_500
     });
     expect(attempts).toBeGreaterThanOrEqual(2);

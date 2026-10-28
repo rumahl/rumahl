@@ -30,16 +30,16 @@ describe("mobile shell", () => {
     else Reflect.deleteProperty(window, "innerHeight");
   });
 
-  test("starts in the launcher, hints in portrait and allows the desktop in landscape", async () => {
+  test("starts in the mobile shell, hints in portrait and allows the desktop in landscape", async () => {
     setViewport(390, 844);
     render(<App snapshot={demoSnapshot} initialLocation="/" />);
     const shell = document.querySelector(".shell");
-    await waitFor(() => expect(shell).toHaveAttribute("data-shell-mode", "launcher"));
+    await waitFor(() => expect(shell).toHaveAttribute("data-shell-mode", "mobile"));
     expect(shell).toHaveAttribute("data-orientation", "portrait");
 
     fireEvent.click(screen.getByRole("button", { name: "Desktop" }));
     expect(await screen.findByText("Desktop in landscape")).toBeInTheDocument();
-    expect(shell).toHaveAttribute("data-shell-mode", "launcher");
+    expect(shell).toHaveAttribute("data-shell-mode", "mobile");
 
     setViewport(844, 390);
     fireEvent(window, new Event("resize"));

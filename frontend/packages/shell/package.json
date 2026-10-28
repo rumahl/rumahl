@@ -18,7 +18,9 @@
     "dev:demo": "pnpm assets && vite --mode demo --open /demo.html",
     "test": "pnpm assets && vitest run --pool=threads --maxWorkers=1",
     "test:coverage": "pnpm assets && vitest run --pool=threads --maxWorkers=1 --coverage --coverage.reporter=lcov --coverage.reportsDirectory=coverage",
-    "typecheck": "pnpm assets && tsc --noEmit"
+    "typecheck": "pnpm assets && tsc --noEmit",
+    "build:demo": "pnpm assets && vite build --mode demo && node scripts/prepare-demo-output.mjs demo",
+    "build:demo-widget": "vite build --mode demo-widget && node scripts/prepare-demo-output.mjs demo-widget"
   },
   "dependencies": {
     "@fontsource-variable/bricolage-grotesque": "^5.3.0",
@@ -52,6 +54,6 @@
     "rollup-plugin-webpack-stats": "^4.0.1",
     "typescript": "6.0.3",
     "vite": "8.3.5",
-    "vitest": "5.0.1"
+    "vitest": "5.0.5"
   }
 }

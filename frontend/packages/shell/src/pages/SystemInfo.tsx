@@ -1,10 +1,12 @@
 import { useTheme } from "@rumahl/ui";
 import { useI18n } from "../i18n";
 import { useShell } from "../shell/ShellContext";
+import { buildLabel, osName, versionLabel } from "../system-labels";
 
 export function SystemInfo() {
   const { t, locale } = useI18n();
-  const { snapshot, mode } = useShell();
+  const { snapshot, mode, live } = useShell();
+  const demo = Boolean(live?.demo);
   const { theme } = useTheme();
   const unavailable = t("settings.system.unavailable");
   const format = (value: number | null | undefined) => {
@@ -18,8 +20,9 @@ export function SystemInfo() {
   return <>
     <h3 className="section-title">{t("settings.system.info")}</h3>
     <div className="settings-group">
-      <InfoRow label={t("settings.system.os")} value="rumahl OS" />
-      <InfoRow label={t("settings.system.build")} value={snapshot.shellBuildId} mono />
+      <InfoRow label={t("settings.system.os")} value={osName(demo)} />
+      <InfoRow label={t("settings.system.build")} value={buildLabel(snapshot.shellBuildId, demo)} mono />
+      <InfoRow label={t("settings.system.version")} value={versionLabel(demo)} />
       <InfoRow label={t("settings.system.revision")} value={snapshot.revision || unavailable} mono />
       <InfoRow label={t("settings.system.mode")} value={t(`mode.${mode}`)} />
       <InfoRow label={t("settings.system.theme")} value={theme.name} />

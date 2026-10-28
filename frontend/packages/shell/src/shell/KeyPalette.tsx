@@ -5,8 +5,9 @@ import { useShell } from "./ShellContext";
 import { useAppCatalog } from "../apps/AppCatalog";
 import { closeKeyPalette } from "./keyboard";
 import { openEmergency } from "./emergency";
+import { featureReady, useFeatures, type FeatureId } from "../features/ShellFeatures";
 
-interface KeyCommand { id: string; title: string; hint?: string; keywords: string; run: () => void }
+interface KeyCommand { id: string; title: string; hint?: string; keywords: string; run: () => void; feature?: FeatureId; disabled?: boolean }
 
 /**
  * The dynamic keyboard command palette (leader `r`). It lists the commands that
@@ -17,22 +18,22 @@ export function KeyPalette() {
   const { t } = useI18n();
   const { open, setMode } = useShell();
   const { apps } = useAppCatalog();
+  const features = useFeatures();
   const [query, setQuery] = useState("");
   const [active, setActive] = useState(0);
   const input = useRef<HTMLInputElement>(null);
 
   const commands = useMemo<KeyCommand[]>(() => {
     const list: KeyCommand[] = [
-      { id: "recovery", title: t("keycmd.recovery"), hint: "Ctrl+Alt+E", keywords: "emergency notfall recovery crash wiederherstellung", run: () => window.location.assign("/recovery") },
-      { id: "recovery.handover", title: t("keycmd.recoveryHandover"), keywords: "recovery handover test crash testen vorschau", run: () => { closeKeyPalette(); window.location.assign("/recovery?reason=crash"); } },
-      { id: "recovery.reboot", title: t("keycmd.recoveryReboot"), keywords: "recovery reboot neustart test simulieren", run: () => { closeKeyPalette(); window.location.assign("/recovery?state=reboot"); } },
-      { id: "recovery.device", title: t("keycmd.recoveryDevice"), keywords: "recovery offline gerät client netz test simulieren", run: () => { closeKeyPalette(); window.location.assign("/offline?state=device"); } },
-      { id: "recovery.server", title: t("keycmd.recoveryServer"), keywords: "recovery offline rumahl os server nicht erreichbar test simulieren", run: () => { closeKeyPalette(); window.location.assign("/offline?state=server"); } },
-      { id: "recovery.poweroff", title: t("keycmd.recoveryPoweroff"), keywords: "recovery poweroff herunterfahren shutdown test simulieren", run: () => { closeKeyPalette(); window.location.assign("/offline?state=poweroff"); } },
-      { id: "center", title: t("keycmd.center"), keywords: "center maintenance wartung", run: () => { closeKeyPalette(); openEmergency(); } },
-      { id: "activity", title: t("keycmd.activity"), keywords: "log audit protokoll aktivitaet", run: () => { closeKeyPalette(); open("/activity"); } },
+      { id: "recovery", title: t("keycmd.recovery"), hint: "Ctrl+Alt+E", keywords: "emergency notfall recovery crash wiederherstellung", feature: "recovery", run: () => window.location.assign("/recovery") },
+      { id: "recovery.handover", title: t("keycmd.recoveryHandover"), keywords: "recovery handover test crash testen vorschau", feature: "recovery", run: () => { closeKeyPalette(); window.location.assign("/recovery?reason=crash"); } },
+      { id: "recovery.reboot", title: t("keycmd.recoveryReboot"), keywords: "recovery reboot neustart test simulieren", feature: "recovery", run: () => { closeKeyPalette(); window.location.assign("/recovery?state=reboot"); } },
+      { id: "recovery.device", title: t("keycmd.recoveryDevice"), keywords: "recovery offline gerät client netz test simulieren", feature: "recovery.offline", run: () => { closeKeyPalette(); window.location.assign("/offline?state=device"); } },
+      { id: "recovery.server", title: t("keycmd.recoveryServer"), keywords: "recovery offline rumahl os server nicht erreichbar test simulieren", feature: "recovery.offline", run: () => { closeKeyPalette(); window.location.assign("/offline?state=server"); } },
+      { id: "recovery.poweroff", title: t("keycmd.recoveryPoweroff"), keywords: "recovery poweroff herunterfahren shutdown test simulieren", feature: "recovery.offline", run: () => { closeKeyPalette(); window.location.assign("/offline?state=poweroff"); } },
+      { id: "center", title: t("keycmd.center"), keywords: "center maintenance wartung", feature: "recovery.center", run: () => { closeKeyPalette(); openEmergency(); } },
+      { id: "activity", title: t("keycmd.activity"), keywords: "log audit protokoll aktivitaet", feature: "activity", run: () => { closeKeyPalette(); open("/activity"); } },
       { id: "home", title: t("keycmd.home"), keywords: "home desktop start", run: () => { closeKeyPalette(); open("/"); } },
-      { id: "apps", title: t("keycmd.apps"), keywords: "apps applications", run: () => { closeKeyPalette(); open("/apps"); } },
       { id: "settings", title: t("keycmd.settings"), keywords: "settings einstellungen", run: () => { closeKeyPalette(); open("/settings"); } },
       { id: "mode.launcher", title: t("keycmd.launcher"), keywords: "mode launcher springboard", run: () => { closeKeyPalette(); setMode("launcher"); } },
       { id: "mode.desktop", title: t("keycmd.desktop"), keywords: "mode desktop", run: () => { closeKeyPalette(); setMode("desktop"); } }
@@ -40,8 +41,11 @@ export function KeyPalette() {
     for (const app of apps.filter((entry) => entry.launchable)) {
       list.push({ id: `app:${app.id}`, title: t("keycmd.openApp", { name: app.title }), keywords: `app open ${app.id} ${app.title}`, run: () => { closeKeyPalette(); open(`/app/${app.id}`); } });
     }
-    return list;
-  }, [t, apps, open, setMode]);
+    return list.map((command) => ({
+      ...command,
+      disabled: command.feature ? !featureReady(features[command.feature]) : false
+    }));
+  }, [t, apps, open, setMode, features]);
 
   const filtered = useMemo(() => {
     const needle = query.trim().toLowerCase();
@@ -56,7 +60,11 @@ export function KeyPalette() {
     if (event.key === "Escape") { event.preventDefault(); closeKeyPalette(); return; }
     if (event.key === "ArrowDown") { event.preventDefault(); setActive((value) => Math.min(value + 1, filtered.length - 1)); return; }
     if (event.key === "ArrowUp") { event.preventDefault(); setActive((value) => Math.max(value - 1, 0)); return; }
-    if (event.key === "Enter") { event.preventDefault(); filtered[active]?.run(); }
+    if (event.key === "Enter") {
+      event.preventDefault();
+      const command = filtered[active];
+      if (command && !command.disabled) command.run();
+    }
   }
 
   return createPortal(
@@ -76,9 +84,9 @@ export function KeyPalette() {
           {filtered.length === 0
             ? <li className="keypalette__empty">{t("keycmd.noMatch")}</li>
             : filtered.map((command, position) => <li key={command.id}>
-              <button type="button" className={`keypalette__item${position === active ? " is-active" : ""}`} onMouseEnter={() => setActive(position)} onClick={() => command.run()}>
+              <button type="button" className={`keypalette__item${position === active ? " is-active" : ""}`} onMouseEnter={() => setActive(position)} onClick={() => { if (!command.disabled) command.run(); }} disabled={command.disabled} title={command.disabled ? t("features.demoUnavailable") : undefined}>
                 <span>{command.title}</span>
-                {command.hint ? <kbd>{command.hint}</kbd> : null}
+                {command.disabled ? <small className="keypalette__unavailable">{t("features.demoUnavailable")}</small> : command.hint ? <kbd>{command.hint}</kbd> : null}
               </button>
             </li>)}
         </ul>

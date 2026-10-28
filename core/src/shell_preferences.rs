@@ -10,18 +10,21 @@ const MAX_THEME_ID_BYTES: usize = 128;
 pub enum ShellMode {
     Desktop,
     Launcher,
+    Mobile,
 }
 impl ShellMode {
     pub fn as_str(self) -> &'static str {
         match self {
             Self::Desktop => "desktop",
             Self::Launcher => "launcher",
+            Self::Mobile => "mobile",
         }
     }
     pub fn parse(value: &str) -> Option<Self> {
         match value {
             "desktop" => Some(Self::Desktop),
             "launcher" => Some(Self::Launcher),
+            "mobile" => Some(Self::Mobile),
             _ => None,
         }
     }

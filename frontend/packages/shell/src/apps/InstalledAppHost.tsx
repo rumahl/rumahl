@@ -11,10 +11,10 @@ import { attachProviderChannel } from "./provider-channel";
 import { invokeProvider, registerProviderChannel } from "./providers";
 import { readShellTheme } from "./shell-theme";
 import { BRIDGE_CAPABILITY_LIST } from "@rumahl/contracts/bridge";
-import { invokeCapability as requestCapabilityInvocation, launchApp, type InstalledApp } from "./client";
+import { invokeCapability as requestCapabilityInvocation, launchApp, SafeModeError, type InstalledApp } from "./client";
 import { setLaunching } from "./launching";
 import { showToast } from "../shell/toasts";
-import { Button } from "../components/Button";
+import { Button, ButtonLink } from "../components/Button";
 import { UnavailablePage } from "../pages/UnavailablePage";
 import type { ShellRequest } from "../snapshot-client";
 import "../routing/route-failure.css";
@@ -37,7 +37,10 @@ export function InstalledAppHost() {
   const { apps, status } = useAppCatalog();
   const { t } = useI18n();
   // No visible "Loading apps…" text: the launching app bounces in the dock.
-  if (status === "loading") return <div className="installed-app-loading"><span className="visually-hidden">{t("apps.loading")}</span></div>;
+  if (status === "loading") return <div className="installed-app-loading" role="status">
+    <span className="installed-app-loading__spinner" aria-hidden="true" />
+    <span>{t("apps.loading")}</span>
+  </div>;
   const app = apps.find((item) => item.id === appId);
   if (!app?.launchable) return <UnavailablePage app />;
   return <AppFrame key={`${app.installationId}:${app.version}`} app={app} />;
@@ -51,26 +54,37 @@ function AppFrame({ app }: { app: InstalledApp }) {
   const frameRef = useRef<HTMLIFrameElement>(null);
   const [frame, setFrame] = useState<string | null>(null);
   const [failed, setFailed] = useState(false);
+  const [safeMode, setSafeMode] = useState(false);
   const cancel = useRef<() => void>(() => {});
   const loaded = useRef(false);
   const [retry, setRetry] = useState(0);
   useEffect(() => {
     if (!live) return;
     const request = live.request;
+    const demo = live.demo;
     const controller = new AbortController();
     let timer: ReturnType<typeof setTimeout>;
     let lease: string | undefined;
     cancel.current = () => { controller.abort(); clearTimeout(timer); };
-    setFrame(null); setFailed(false);
+    setFrame(null); setFailed(false); setSafeMode(false);
     async function renew() {
       try {
-        const launch = await launchApp(request, app, window.location.origin, controller.signal, lease);
+        const launch = await launchApp(request, app, window.location.origin, controller.signal, lease, demo);
         if (controller.signal.aborted) return;
         lease = launch.lease;
+        setSafeMode(false);
         setFrame(launch.frameUrl);
         timer = setTimeout(() => { void renew(); }, launch.renewAfterSeconds * 1000);
-      } catch {
-        if (!controller.signal.aborted) { setFrame(null); setFailed(true); postReport(request, app.id, "launch-failed"); }
+      } catch (failure) {
+        if (controller.signal.aborted) return;
+        setFrame(null);
+        if (failure instanceof SafeModeError) {
+          setSafeMode(true);
+          setFailed(false);
+        } else {
+          setFailed(true);
+          postReport(request, app.id, "launch-failed");
+        }
       }
     }
     void renew();
@@ -120,7 +134,7 @@ function AppFrame({ app }: { app: InstalledApp }) {
       const id = `app:${app.id}`;
       if (action === "focus") dispatch({ type: "focus-window", id });
       else dispatch({ type: action === "minimize" ? "toggle-minimize" : "close-window", id });
-      if (action !== "focus" && mode === "launcher") open("/");
+      if (action !== "focus" && (mode === "launcher" || mode === "mobile")) open("/");
     },
     invokeCapability: async (capability, resource) => {
       if (!live) throw new Error("app unavailable");
@@ -154,6 +168,20 @@ function AppFrame({ app }: { app: InstalledApp }) {
     observer.observe(scene, { attributes: true, attributeFilter: ["data-scheme", "data-theme"] });
     return () => observer.disconnect();
   }, [readTheme, frame]);
+  if (safeMode) return <section className="route-failure" aria-label={app.title}>
+    <div className="route-failure__content">
+      <div className="route-failure__icon" aria-hidden="true">
+        <svg viewBox="0 0 48 48" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M24 6 8 13v10c0 9 6.8 15.4 16 19 9.2-3.6 16-10 16-19V13Z" /><path d="M17 24h14M24 17v14" />
+        </svg>
+      </div>
+      <div role="alert"><h2>{t("apps.safeModeTitle", { title: app.title })}</h2><p>{t("apps.safeModeHelp")}</p></div>
+      <div className="route-failure__actions">
+        <Button onClick={() => setRetry((value) => value + 1)}>{t("apps.retry")}</Button>
+        <ButtonLink variant="secondary" href="/recovery">{t("apps.openRecovery")}</ButtonLink>
+      </div>
+    </div>
+  </section>;
   if (failed) return <section className="route-failure" aria-label={app.title}>
     <div className="route-failure__content">
       <div className="route-failure__icon" aria-hidden="true">
@@ -167,7 +195,10 @@ function AppFrame({ app }: { app: InstalledApp }) {
       </div>
     </div>
   </section>;
-  if (!frame) return <div className="installed-app-loading"><span className="visually-hidden">{t("apps.loading")}</span></div>;
+  if (!frame) return <div className="installed-app-loading" role="status">
+    <span className="installed-app-loading__spinner" aria-hidden="true" />
+    <span>{t("apps.loading")}</span>
+  </div>;
   const url = new URL(frame);
   // Key the fragment off this window's location, not the shared browser URL, so
   // focusing or switching windows never changes the iframe source.

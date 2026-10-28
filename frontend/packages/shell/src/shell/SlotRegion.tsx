@@ -52,7 +52,7 @@ export function SlotRegion({ name }: { name: SlotName }) {
       "toggle-minimize": (arg) => { if (arg) dispatch({ type: "toggle-minimize", id: arg }); },
       "minimize-all": () => { dispatch({ type: "minimize-all" }); open("/"); },
       "toggle-command": () => dispatch({ type: "toggle-command-palette" }),
-      "set-mode": (arg) => { if (arg === "desktop" || arg === "launcher") setMode(arg); },
+      "set-mode": (arg) => { if (arg === "desktop" || arg === "launcher" || arg === "mobile") setMode(arg); },
       "open-settings": () => open("/settings"),
       navigate: (arg) => { if (arg) open(arg); },
       "open-app": (arg) => { const found = apps.find((entry) => entry.id === arg); if (found) open(found.path); }

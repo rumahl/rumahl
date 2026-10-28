@@ -58,6 +58,7 @@ export function OsModeProvider({ live, children }: PropsWithChildren<{ live: She
     let generation = 0;
     function apply(value: OsModeSettings) {
       if (controller.signal.aborted) return;
+      if (current.current?.ownerId === value.ownerId && current.current.revision === value.revision) return;
       current.current = value;
       setSettings(value);
     }

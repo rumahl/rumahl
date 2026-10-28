@@ -33,7 +33,11 @@
       headers: body === undefined ? {} : { 'Content-Type': 'application/json' },
       body: body === undefined ? undefined : JSON.stringify(body)
     });
-    if (!response.ok) throw new Error(response.status === 401 ? t('Please sign in.') : `${t('Request failed')} (${response.status})`);
+    if (!response.ok) {
+      const failure = new Error(response.status === 401 ? t('Please sign in.') : `${t('Request failed')} (${response.status})`);
+      failure.status = response.status;
+      throw failure;
+    }
     return response.status === 204 ? null : response.json();
   }
   function confirmAction(title, description) {
@@ -307,7 +311,10 @@
       }
       return status;
     } catch (error) {
-      el('p', t('Host maintenance is unavailable or not authorized. A maintenance operator must be configured on this device.'), parent).className = 'inline-error';
+      const message = error && error.status === 503
+        ? t('The host maintenance service is not available. On the development server, host maintenance requires a rumahl OS image.')
+        : t('Host maintenance is unavailable or not authorized. A maintenance operator must be configured on this device.');
+      el('p', message, parent).className = 'inline-error';
       return null;
     }
   }

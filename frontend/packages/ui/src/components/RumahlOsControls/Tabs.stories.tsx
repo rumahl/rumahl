@@ -17,7 +17,8 @@ const meta = {
 ## Rules
 - Tabs switch **content in place** — they are not navigation.
 - 2–7 short, parallel labels.
-- The active tab is clear; for a sequence use **Steps**, not tabs.`
+- The active tab is clear and its shared pill animates in place.
+- For a sequence use **Steps**, not tabs.`
       }
     }
   }

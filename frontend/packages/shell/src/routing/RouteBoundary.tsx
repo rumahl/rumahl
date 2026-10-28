@@ -35,7 +35,7 @@ export function RouteBoundary({ children, location }: PropsWithChildren<{ locati
       <div role="alert"><h2>{t("route.errorTitle")}</h2><p>{t("route.error")}</p></div>
       <div className="route-failure__actions">
         <Button onClick={retry}>{t("route.retry")}</Button>
-        <ShellLink to="/apps" className={buttonClass("ghost")}>{t("route.backToApps")}</ShellLink>
+        <ShellLink to="/" className={buttonClass("ghost")}>{t("nav.home")}</ShellLink>
       </div>
       <small>{t("route.errorHint")}</small>
     </div>

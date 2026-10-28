@@ -27,3 +27,8 @@ describe("default themes", () => {
     expect(themes).toContain(classicTheme);
   });
 });
+
+test("Aura owns the curated preset families; other themes do not inherit them", () => {
+  expect(rumahlTheme.presets).toEqual({ look: true, material: true });
+  expect(classicTheme.presets).toBeUndefined();
+});

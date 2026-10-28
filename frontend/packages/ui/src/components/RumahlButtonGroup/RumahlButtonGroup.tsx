@@ -13,6 +13,11 @@ type Props<T extends string> = {
   disabled?: boolean;
   iconOnly?: boolean;
   size?: ControlSize | undefined;
+  /** Optional control rendered inside the group after the last option. */
+  trailing?: ReactNode;
+  /** Moves the shared selection pill onto the trailing control. */
+  activeTrailing?: boolean;
+  className?: string;
 } & (
   | {
       mode: "actions";
@@ -37,6 +42,7 @@ type Props<T extends string> = {
 /** Segmented single selection or independent toggle buttons, with native button semantics. */
 export function RumahlButtonGroup<T extends string>(props: Props<T>) {
   const groupRef = useRef<HTMLDivElement>(null);
+  const trailingRef = useRef<HTMLSpanElement>(null);
   const drag = useRef<{ id: number; start: number; moved: boolean } | null>(null);
   const suppressClick = useRef(false);
   const [preview, setPreview] = useState<string | null>(null);
@@ -47,21 +53,25 @@ export function RumahlButtonGroup<T extends string>(props: Props<T>) {
     const measure = () => {
       const buttons = Array.from(group.querySelectorAll<HTMLButtonElement>("button"));
       const selected = buttons.find(button => button.dataset.value === (preview ?? props.value));
-      group.dataset.hasSelection = selected ? "true" : "false";
+      const trailing = trailingRef.current;
+      const trailingActive = props.activeTrailing === true && trailing !== null;
+      group.dataset.hasSelection = selected || trailingActive ? "true" : "false";
       // While dragging, the thumb tracks the finger (set in the pointer handler);
       // never snap it to a button until the gesture ends.
       if (dragging) return;
-      if (selected) {
-        group.style.setProperty("--selection-left", `${selected.offsetLeft}px`);
-        group.style.setProperty("--selection-width", `${selected.offsetWidth}px`);
+      const target = trailingActive ? trailing : selected;
+      if (target) {
+        group.style.setProperty("--selection-left", `${target.offsetLeft}px`);
+        group.style.setProperty("--selection-width", `${target.offsetWidth}px`);
       }
     };
     measure();
     const observer = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(measure);
     observer?.observe(group);
     group.querySelectorAll("button").forEach(button => observer?.observe(button));
+    if (trailingRef.current) observer?.observe(trailingRef.current);
     return () => observer?.disconnect();
-  }, [preview, dragging, props.value, props.multiple, props.mode, props.options]);
+  }, [preview, dragging, props.value, props.multiple, props.mode, props.options, props.activeTrailing, props.trailing]);
   function optionAt(group: HTMLDivElement, x: number, y: number) {
     return Array.from(group.querySelectorAll<HTMLButtonElement>("button:not(:disabled)"))
       .find(button => {
@@ -92,11 +102,12 @@ export function RumahlButtonGroup<T extends string>(props: Props<T>) {
     <div
       ref={groupRef}
       data-selection={props.mode === "actions" ? "actions" : props.multiple ? "multiple" : "single"}
-      className={
+      className={[
         props.mode === "actions"
           ? "rumahl-button-group rumahl-button-group--actions"
-          : "segmented rumahl-toggle-group"
-      }
+          : "segmented rumahl-toggle-group",
+        props.className,
+      ].filter(Boolean).join(" ")}
       role="group"
       aria-label={props.label}
       data-size={props.size}
@@ -107,6 +118,7 @@ export function RumahlButtonGroup<T extends string>(props: Props<T>) {
         suppressClick.current = false;
         if (props.disabled || props.multiple || props.mode === "actions" || event.button !== 0 || event.isPrimary === false) return;
         if (!(event.target instanceof Element) || event.target.closest("button")?.matches(":disabled")) return;
+        if (event.target.closest("select, input, textarea")) return;
         drag.current = { id: event.pointerId, start: event.clientX, moved: false };
       }}
       onPointerMove={event => {
@@ -186,6 +198,7 @@ export function RumahlButtonGroup<T extends string>(props: Props<T>) {
           {props.iconOnly ? null : option.label}
         </button>
       ))}
+      {props.trailing ? <span ref={trailingRef} className="rumahl-toggle-group__trailing">{props.trailing}</span> : null}
     </div>
   );
 }

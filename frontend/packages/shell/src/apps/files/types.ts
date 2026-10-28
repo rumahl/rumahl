@@ -15,12 +15,16 @@ export interface Nav {
 export interface Item {
   key: string;
   name: string;
+  /** Friendly label when the backing path name is an identifier. */
+  label?: string;
   directory: boolean;
   size: number;
   modified: number;
   host: boolean;
   /** Desktop app shortcut: opens this path. */
   appPath?: string;
+  /** Host application package or desktop app shortcut. */
+  app?: boolean;
   /** Desktop app-collection folder: drill into its member apps. */
   appFolder?: boolean;
   /** Pre-rendered icon (e.g. an app icon for a shortcut). */

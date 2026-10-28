@@ -1,0 +1,14 @@
+[build]
+  command = "pnpm build:demo-widget"
+  publish = "dist-demo-widget"
+
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
+
+[[headers]]
+  for = "/*"
+  [headers.values]
+    Content-Security-Policy = "frame-ancestors https://demo.rumahl.com"
+    X-Content-Type-Options = "nosniff"
