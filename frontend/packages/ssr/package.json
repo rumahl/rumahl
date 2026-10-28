@@ -1,0 +1,33 @@
+{
+  "name": "@rumahl/ssr",
+  "version": "0.1.0",
+  "private": true,
+  "license": "Apache-2.0",
+  "type": "module",
+  "scripts": {
+    "assets": "node ../../../scripts/fetch-assets.mjs && node ../../../scripts/sync-assets.mjs",
+    "build": "pnpm assets && tsc --noEmit && vite build --ssr src/render.tsx --outDir dist",
+    "start": "node server.js",
+    "test:smoke": "node scripts/smoke.js",
+    "test": "pnpm assets && vitest run --pool=threads --maxWorkers=1",
+    "test:coverage": "pnpm assets && vitest run --pool=threads --maxWorkers=1 --coverage --coverage.reporter=lcov --coverage.reportsDirectory=coverage",
+    "typecheck": "pnpm assets && tsc --noEmit",
+    "dev": "pnpm assets && node dev/start.js"
+  },
+  "dependencies": {
+    "@rumahl/contracts": "workspace:*",
+    "@rumahl/shell": "workspace:*",
+    "@rumahl/ui": "workspace:*",
+    "react": "19.3.0",
+    "react-dom": "19.3.0"
+  },
+  "devDependencies": {
+    "@types/node": "26.6.2",
+    "@types/react": "19.3.0",
+    "@types/react-dom": "19.3.0",
+    "jsdom": "30.1.1",
+    "typescript": "6.0.3",
+    "vite": "8.3.5",
+    "vitest": "5.0.1"
+  }
+}

@@ -1,0 +1,12 @@
+g rumahl-web -
+g rumahl-ssr -
+g rumahl-runtime-control 990 -
+u rumahl-platform - "rumahl platform" /var/lib/rumahl /usr/sbin/nologin
+u rumahl-shell - "rumahl renderer" /nonexistent /usr/sbin/nologin
+u rumahl-runtime 990 "rumahl runtime supervisor" /nonexistent /usr/sbin/nologin
+m rumahl-platform rumahl-web
+m rumahl-platform rumahl-ssr
+m rumahl-platform rumahl-runtime-control
+m rumahl-shell rumahl-ssr
+m rumahl-runtime docker
+m www-data rumahl-web

@@ -1,0 +1,14 @@
+# SPDX-FileCopyrightText: 2026 rumahl contributors
+#
+# Every committed file is Apache-2.0. Non-code artwork is not stored in this
+# repository: it is fetched from the pinned, multi-license rumahl/assets
+# repository into assets/upstream/, which is gitignored and therefore outside
+# REUSE's scope. See assets/README.md and ASSETS.md.
+#
+# Files under LICENSES/ are the license texts themselves and are exempt.
+version = 1
+
+[[annotations]]
+path = "**"
+SPDX-FileCopyrightText = "2026 rumahl contributors"
+SPDX-License-Identifier = "Apache-2.0"

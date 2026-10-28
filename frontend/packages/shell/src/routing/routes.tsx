@@ -1,0 +1,69 @@
+import { DESIGN_URI, shellLocation } from "./internal";
+import { DesignLab } from "../pages/DesignLab";
+import { createContext, useContext, type ReactNode } from "react";
+import { matchRoutes, useRoutes, useLocation, type RouteObject } from "react-router";
+import { findFirstPartyApp } from "../apps/registry";
+import { ActivityPage } from "../pages/ActivityPage";
+import { Resolver } from "../pages/Resolver";
+import { SettingsPage } from "../pages/SettingsPage";
+import { HomePage } from "../pages/HomePage";
+import { AppsPage } from "../pages/AppsPage";
+import { AppPage } from "../pages/AppPage";
+import { StreamPage } from "../pages/StreamPage";
+import type { ShellSection } from "../shell-state";
+import type { MessageKey } from "../i18n/locales/en";
+
+export interface ShellRouteHandle {
+  section: ShellSection;
+  title: MessageKey;
+  presentation: "page" | "window";
+}
+function route(path: string, element: ReactNode, handle: ShellRouteHandle): RouteObject {
+  return { id: path, path, element, handle };
+}
+// Add trusted shell pages here; each app owns its own nested route table.
+// API, login, recovery and untrusted app resources are not shell routes.
+export const shellRoutes: RouteObject[] = [
+  route("/", <HomePage />, { section: "home", title: "nav.home", presentation: "page" }),
+  route("/apps", <AppsPage />, { section: "apps", title: "nav.apps", presentation: "page" }),
+  route("/activity", <ActivityPage />, { section: "activity", title: "nav.activity", presentation: "window" }),
+  route("/settings/*", <SettingsPage />, { section: "settings", title: "nav.settings", presentation: "window" }),
+  route("/app/:appId/*", <AppPage />, { section: "apps", title: "route.appUnavailable", presentation: "window" }),
+  route("/streams/:sessionId", <StreamPage />, { section: "apps", title: "stream.subtitle", presentation: "window" }),
+  route("*", <Resolver />, { section: "home", title: "route.notFound", presentation: "page" })
+];
+export function describeRoute(location: string) {
+  if (shellLocation(location) === DESIGN_URI) return {
+    id: "internal:design", section: "settings" as const, title: "command.design" as const,
+    presentation: "window" as const, stream: false, appId: undefined, streamTitle: undefined
+  };
+  const url = new URL(location, "https://shell.invalid");
+  const match = matchRoutes(shellRoutes, url.pathname)!.at(-1)!;
+  const handle = match.route.handle as ShellRouteHandle;
+  const app = match.params.appId ? findFirstPartyApp(match.params.appId) : undefined;
+  return {
+    appId: match.params.appId,
+    ...handle, title: app?.title ?? handle.title,
+    id: match.params.appId ? `app:${match.params.appId}` : match.params.sessionId ? `stream:${match.params.sessionId}` : match.route.id!,
+    stream: match.params.sessionId !== undefined,
+    streamTitle: match.params.sessionId ? url.searchParams.get("title")?.slice(0, 128) : undefined
+  };
+}
+export function ShellRoutes({ location }: { location?: string }) {
+  const current = useLocation();
+  const target = location ?? current.pathname + current.search + current.hash;
+  const internal = shellLocation(target) === DESIGN_URI;
+  const element = useRoutes(shellRoutes, internal ? "/" : location);
+  return <WindowLocationContext value={target}>{internal ? <DesignLab /> : element}</WindowLocationContext>;
+}
+
+/**
+ * The location of the window the calling component is rendered in. A window's
+ * app iframe must key its fragment off its own location, never the shared
+ * browser URL, so focusing or switching windows never reloads it.
+ */
+const WindowLocationContext = createContext<string | null>(null);
+
+export function useWindowLocation(): string | null {
+  return useContext(WindowLocationContext);
+}

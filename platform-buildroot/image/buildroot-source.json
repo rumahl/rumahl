@@ -1,0 +1,6 @@
+{
+  "version": "2026.08",
+  "url": "https://buildroot.org/downloads/buildroot-2026.08.tar.gz",
+  "sha256": "d678e810abf877d04513e03ca2c99f992dd49118b9c2e18d6e25f5f58fa8c5cd",
+  "prototypeReference": "https://github.com/kaimdt/rumahl-prototype/tree/ce9e5eb4333012d50a89c25f0ac4a8276e493eb2/rumahl-os"
+}

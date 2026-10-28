@@ -1,0 +1,27 @@
+/*
+ * rumahl UI Core: the code-free base must not inherit any Aura geometry.
+ * Loaded last and marked important so no shell/component rule can block it.
+ * Themes that build on this base override it via their injected CSS.
+ */
+[data-theme-base="clean"] *,
+[data-theme-base="clean"] *::before,
+[data-theme-base="clean"] *::after {
+  border-radius: 0 !important;
+}
+
+/* Dropdowns and context menus: plain, token-coloured surfaces. */
+[data-theme-base="clean"] :is(.desktop-menu, .menubar__dropdown, .topbar__dropdown) {
+  background: var(--rumahl-ui-color-panel-background) !important;
+  border: 1px solid var(--rumahl-ui-color-outline) !important;
+  color: var(--rumahl-ui-color-text-primary) !important;
+  box-shadow: none !important;
+  backdrop-filter: none !important;
+  border-radius: 0 !important;
+}
+[data-theme-base="clean"] :is(.desktop-menu, .menubar__dropdown) :is(button, [role="menuitem"], [role="menuitemradio"]) {
+  border-radius: 0 !important;
+  box-shadow: none !important;
+}
+[data-theme-base="clean"] :is(.desktop-menu, .menubar__dropdown) :is(button, [role="menuitem"]):hover:not(:disabled) {
+  background: color-mix(in srgb, var(--rumahl-ui-color-text-primary) 8%, transparent) !important;
+}

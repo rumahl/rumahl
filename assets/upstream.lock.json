@@ -1,0 +1,9 @@
+{
+  "version": 1,
+  "repository": "https://github.com/rumahl/assets",
+  "commit": "f88d2ba36e83899a5e93ca9a6de602f6bca12232",
+  "archive": "https://github.com/rumahl/assets/archive/f88d2ba36e83899a5e93ca9a6de602f6bca12232.tar.gz",
+  "sha256": "5655bc9c1ba63f3db4ebd5ac9b4bdb1077ccff1a8f5fe98b76ab0e93ed48796e",
+  "extractTo": "assets/upstream",
+  "stripComponents": 1
+}

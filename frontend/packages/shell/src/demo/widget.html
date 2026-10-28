@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Demo home widget</title>
+    <style>
+      body { box-sizing: border-box; margin: 0; padding: 18px; background: #e9f3e8; color: #163a2c; font: 14px system-ui, sans-serif; }
+      h1 { margin: 0 0 8px; font-size: 17px; }
+      p { margin: 0; line-height: 1.4; }
+      button { margin-top: 14px; padding: 7px 12px; border: 1px solid #376e53; border-radius: 8px; color: inherit; background: #fff; cursor: pointer; }
+    </style>
+  </head>
+  <body>
+    <h1>Isolated demo app</h1>
+    <p>This page runs on a separate app origin inside a script-only sandbox.</p>
+    <button id="counter" type="button">Clicks: 0</button>
+    <script>
+      let clicks = 0;
+      document.getElementById("counter").addEventListener("click", (event) => {
+        clicks += 1;
+        event.currentTarget.textContent = `Clicks: ${clicks}`;
+      });
+    </script>
+  </body>
+</html>

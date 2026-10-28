@@ -1,0 +1,224 @@
+/*
+ * Layout + typography primitives shared by the OS shell and apps. They read the
+ * same `--control-*` tokens (and the shared `data-size` scale) as the controls,
+ * so one theme retunes everything.
+ */
+
+/* Layout: Box / Flex ------------------------------------------------------- */
+.rumahl-box {
+  box-sizing: border-box;
+  min-width: 0;
+}
+.rumahl-flex {
+  display: flex;
+  min-width: 0;
+}
+.rumahl-flex[data-inline="true"] {
+  display: inline-flex;
+}
+
+/* Text --------------------------------------------------------------------- */
+.rumahl-text {
+  margin: 0;
+  color: var(--rumahl-ui-color-text-primary);
+  line-height: 1.5;
+}
+.rumahl-text[data-size="xs"] { font-size: 11px; }
+.rumahl-text[data-size="sm"] { font-size: 12px; }
+.rumahl-text[data-size="md"] { font-size: 14px; }
+.rumahl-text[data-size="lg"] { font-size: 16px; }
+.rumahl-text[data-size="xl"] { font-size: 20px; }
+.rumahl-text[data-weight="regular"] { font-weight: 400; }
+.rumahl-text[data-weight="medium"] { font-weight: 500; }
+.rumahl-text[data-weight="semibold"] { font-weight: 600; }
+.rumahl-text[data-weight="bold"] { font-weight: 700; }
+.rumahl-text[data-tone="muted"] { color: var(--rumahl-ui-color-text-muted); }
+.rumahl-text[data-tone="accent"] { color: var(--rumahl-ui-color-accent); }
+.rumahl-text[data-tone="success"] { color: #39a77b; }
+.rumahl-text[data-tone="warning"] { color: #d5a347; }
+.rumahl-text[data-tone="danger"] { color: var(--rumahl-ui-color-danger, #e5484d); }
+.rumahl-text[data-truncate="true"] {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.rumahl-text__highlight {
+  background: color-mix(in srgb, var(--rumahl-ui-color-accent) 32%, transparent);
+  border-radius: 3px;
+  padding: 0 2px;
+}
+
+/* Heading ------------------------------------------------------------------ */
+.rumahl-heading {
+  margin: 0;
+  color: var(--rumahl-ui-color-text-primary);
+  font-weight: 700;
+  line-height: 1.2;
+  letter-spacing: -0.01em;
+}
+.rumahl-heading[data-size="xs"] { font-size: 14px; }
+.rumahl-heading[data-size="sm"] { font-size: 16px; }
+.rumahl-heading[data-size="md"] { font-size: 20px; }
+.rumahl-heading[data-size="lg"] { font-size: 24px; }
+.rumahl-heading[data-size="xl"] { font-size: 30px; }
+.rumahl-heading[data-tone="muted"] { color: var(--rumahl-ui-color-text-muted); }
+
+/* Divider ------------------------------------------------------------------ */
+.rumahl-divider {
+  border: 0;
+  margin: 0;
+  background: var(--control-border);
+  flex: none;
+}
+.rumahl-divider:not([data-orientation="vertical"]) {
+  width: 100%;
+  height: 1px;
+}
+.rumahl-divider[data-orientation="vertical"] {
+  width: 1px;
+  min-height: 16px;
+  align-self: stretch;
+}
+
+/* Label -------------------------------------------------------------------- */
+.rumahl-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--rumahl-ui-color-text-primary);
+}
+.rumahl-label[data-tone="muted"] { color: var(--rumahl-ui-color-text-muted); }
+.rumahl-label__required { color: var(--rumahl-ui-color-danger, #e5484d); }
+.rumahl-label__optional {
+  color: var(--rumahl-ui-color-text-muted);
+  font-weight: 400;
+}
+
+/* Link --------------------------------------------------------------------- */
+.rumahl-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--rumahl-ui-color-accent);
+  text-decoration: none;
+  cursor: pointer;
+  border-radius: 4px;
+}
+.rumahl-link:hover { text-decoration: underline; text-underline-offset: 2px; }
+.rumahl-link:focus-visible {
+  outline: 2px solid var(--rumahl-ui-color-accent);
+  outline-offset: -2px;
+}
+.rumahl-link[aria-disabled="true"] { opacity: 0.5; pointer-events: none; }
+.rumahl-link__external { width: 12px; height: 12px; flex: none; }
+
+/* IconButton --------------------------------------------------------------- */
+.rumahl-icon-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: var(--control-h);
+  height: var(--control-h);
+  min-height: var(--control-h);
+  padding: 0;
+  border: 1px solid var(--control-border);
+  border-radius: 10px;
+  --control-tint: transparent;
+  background: var(--control-recess),
+    linear-gradient(var(--control-tint), var(--control-tint)), var(--control-fill);
+  box-shadow: var(--control-inset);
+  backdrop-filter: var(--control-filter);
+  -webkit-backdrop-filter: var(--control-filter);
+  color: var(--rumahl-ui-color-text-primary);
+  cursor: pointer;
+  transition: background 150ms ease, border-color 150ms ease, box-shadow 140ms ease, scale 140ms ease;
+}
+.rumahl-icon-button[data-shape="circle"] { border-radius: 50%; }
+.rumahl-icon-button[data-variant="primary"] {
+  --control-tint: var(--rumahl-ui-color-accent);
+  color: var(--rumahl-ui-color-on-accent);
+}
+.rumahl-icon-button[data-variant="ghost"] {
+  border-color: transparent;
+  background: transparent;
+  box-shadow: none;
+}
+.rumahl-icon-button:hover:not(:disabled) {
+  border-color: var(--control-border-hover);
+  background: var(--control-recess),
+    linear-gradient(var(--control-tint), var(--control-tint)), var(--control-hover);
+}
+.rumahl-icon-button:active:not(:disabled) {
+  scale: 0.98;
+  box-shadow: inset 0 3px 7px #00000030, inset 0 1px 2px #00000024, inset 0 -1px 0 #ffffff28;
+}
+.rumahl-icon-button:disabled { opacity: 0.5; cursor: not-allowed; }
+.rumahl-icon-button:focus-visible {
+  outline: 2px solid var(--rumahl-ui-color-accent);
+  outline-offset: -2px;
+}
+.rumahl-icon-button svg {
+  width: var(--control-icon);
+  height: var(--control-icon);
+}
+
+/* HiddenText --------------------------------------------------------------- */
+.rumahl-hidden-text {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* Clickable ---------------------------------------------------------------- */
+.rumahl-clickable {
+  cursor: pointer;
+  border-radius: 6px;
+}
+.rumahl-clickable:focus-visible {
+  outline: 2px solid var(--rumahl-ui-color-accent);
+  outline-offset: -2px;
+}
+.rumahl-clickable[aria-disabled="true"] {
+  opacity: 0.5;
+  cursor: not-allowed;
+  pointer-events: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .rumahl-icon-button:active:not(:disabled) { scale: none; }
+}
+
+.rumahl-icon-button[data-active="true"] {
+  border-color: var(--control-border-hover);
+  box-shadow: var(--control-button-shadow);
+}
+.rumahl-icon-button[data-loading="true"] { pointer-events: none; }
+.rumahl-icon-button__loader {
+  width: var(--control-icon);
+  height: var(--control-icon);
+  border-radius: 50%;
+  border: 2px solid color-mix(in srgb, currentColor 30%, transparent);
+  border-top-color: currentColor;
+  animation: rumahl-btn-spin 0.7s linear infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .rumahl-icon-button__loader { animation: none; }
+}
+
+.rumahl-icon-button[data-bg="true"] {
+  --control-tint: color-mix(in srgb, var(--btn-bg) 84%, transparent);
+  color: var(--btn-bg-ink, var(--rumahl-ui-color-on-accent));
+  border-color: color-mix(in srgb, var(--btn-bg) 34%, var(--control-border));
+}
+.rumahl-icon-button[data-bg="true"]:hover:not(:disabled) {
+  border-color: color-mix(in srgb, var(--btn-bg) 46%, var(--control-border-hover));
+}

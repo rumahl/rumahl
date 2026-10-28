@@ -1,0 +1,34 @@
+{
+  "id": "com.rumahl.core",
+  "name": "rumahl UI Core",
+  "base": "clean",
+  "modes": [
+    "light",
+    "dark"
+  ],
+  "material": "solid",
+  "tokens": {
+    "color.accent": "#1a73e8",
+    "color.accent.strong": "#4b8bf0",
+    "color.on.accent": "#ffffff",
+    "color.canvas.background": "#ffffff",
+    "color.panel.background": "#ffffff",
+    "color.surface": "#f2f2f2",
+    "color.surface.strong": "#ffffff",
+    "color.text.primary": "#000000",
+    "color.text.muted": "#5f6368",
+    "color.outline": "#767676",
+    "color.shadow": "rgba(0, 0, 0, 0.28)",
+    "color.window.titlebar.background": "#f2f2f2",
+    "color.window.titlebar.foreground": "#000000",
+    "typography.family": "system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif",
+    "typography.display": "system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif",
+    "material.morphism": 0,
+    "material.blur": "0px",
+    "material.opacity": 1,
+    "material.saturation": 1,
+    "motion.duration": "0ms",
+    "motion.duration.fast": "0ms",
+    "texture.wallpaper": "linear-gradient(#ffffff, #ffffff)"
+  }
+}

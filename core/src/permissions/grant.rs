@@ -1,0 +1,243 @@
+use std::error::Error;
+use std::fmt;
+
+use crate::identity::Identity;
+use crate::resources::ResourceRef;
+
+use super::{GrantId, PermissionId, PermissionScope};
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum PermissionGrantError {
+    ExplicitScopeRequiresResources,
+    SystemScopeCannotContainResources,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PermissionGrant {
+    id: GrantId,
+    subject: Identity,
+    permission: PermissionId,
+    scope: PermissionScope,
+    resources: Vec<ResourceRef>,
+    granted_by: Identity,
+}
+
+impl PermissionGrant {
+    pub(crate) fn new(
+        subject: Identity,
+        permission: PermissionId,
+        scope: PermissionScope,
+        resources: Vec<ResourceRef>,
+        granted_by: Identity,
+    ) -> Result<Self, PermissionGrantError> {
+        Self::create(
+            GrantId::new(),
+            subject,
+            permission,
+            scope,
+            resources,
+            granted_by,
+        )
+    }
+
+    pub(crate) fn restore(
+        id: GrantId,
+        subject: Identity,
+        permission: PermissionId,
+        scope: PermissionScope,
+        resources: Vec<ResourceRef>,
+        granted_by: Identity,
+    ) -> Result<Self, PermissionGrantError> {
+        Self::create(id, subject, permission, scope, resources, granted_by)
+    }
+
+    fn create(
+        id: GrantId,
+        subject: Identity,
+        permission: PermissionId,
+        scope: PermissionScope,
+        resources: Vec<ResourceRef>,
+        granted_by: Identity,
+    ) -> Result<Self, PermissionGrantError> {
+        if scope == PermissionScope::Explicit && resources.is_empty() {
+            return Err(PermissionGrantError::ExplicitScopeRequiresResources);
+        }
+
+        if scope == PermissionScope::System && !resources.is_empty() {
+            return Err(PermissionGrantError::SystemScopeCannotContainResources);
+        }
+
+        Ok(Self {
+            id,
+            subject,
+            permission,
+            scope,
+            resources,
+            granted_by,
+        })
+    }
+
+    pub fn id(&self) -> &GrantId {
+        &self.id
+    }
+
+    pub fn subject(&self) -> &Identity {
+        &self.subject
+    }
+
+    pub fn permission(&self) -> &PermissionId {
+        &self.permission
+    }
+
+    pub fn scope(&self) -> PermissionScope {
+        self.scope
+    }
+
+    pub fn resources(&self) -> &[ResourceRef] {
+        &self.resources
+    }
+
+    pub fn granted_by(&self) -> &Identity {
+        &self.granted_by
+    }
+}
+
+impl fmt::Display for PermissionGrantError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::ExplicitScopeRequiresResources => {
+                write!(f, "explicit scope requires at least one resource")
+            }
+
+            Self::SystemScopeCannotContainResources => {
+                write!(f, "system scope cannot contain explicit resources")
+            }
+        }
+    }
+}
+
+impl Error for PermissionGrantError {}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    use crate::{
+        AppId, AppIdentity, InstallationId, PublisherId, ResourceKey, ResourceKind,
+        ResourceNamespace, ResourceRef, UserId, UserIdentity,
+    };
+
+    fn test_app_identity() -> AppIdentity {
+        AppIdentity::new(
+            AppId::parse("com.rumahl.notes").unwrap(),
+            InstallationId::new(),
+            PublisherId::parse("com.rumahl").unwrap(),
+        )
+    }
+
+    fn test_user_identity() -> UserIdentity {
+        UserIdentity::new(UserId::new())
+    }
+
+    fn test_file_resource() -> ResourceRef {
+        ResourceRef::new(
+            ResourceNamespace::parse("rumahl.files").unwrap(),
+            ResourceKind::parse("file").unwrap(),
+            ResourceKey::parse("document-1").unwrap(),
+        )
+    }
+
+    fn notes_app() -> AppIdentity {
+        AppIdentity::new(
+            AppId::parse("com.rumahl.notes").unwrap(),
+            InstallationId::new(),
+            PublisherId::parse("com.rumahl").unwrap(),
+        )
+    }
+
+    #[test]
+    fn rejects_explicit_grant_without_resources() {
+        let app = notes_app();
+
+        let result = PermissionGrant::new(
+            app.clone().into(),
+            PermissionId::parse("rumahl.files.read").unwrap(),
+            PermissionScope::Explicit,
+            vec![],
+            app.into(),
+        );
+
+        assert_eq!(
+            result.unwrap_err(),
+            PermissionGrantError::ExplicitScopeRequiresResources
+        );
+    }
+
+    #[test]
+    fn accepts_explicit_grant_with_resource() {
+        let app = notes_app();
+
+        let resource = ResourceRef::new(
+            ResourceNamespace::parse("rumahl.files").unwrap(),
+            ResourceKind::parse("file").unwrap(),
+            ResourceKey::parse("document-1").unwrap(),
+        );
+
+        let result = PermissionGrant::new(
+            app.clone().into(),
+            PermissionId::parse("rumahl.files.read").unwrap(),
+            PermissionScope::Explicit,
+            vec![resource],
+            app.into(),
+        );
+
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn rejects_system_scope_with_resources() {
+        let result = PermissionGrant::new(
+            test_app_identity().into(),
+            PermissionId::parse("rumahl.files.read").unwrap(),
+            PermissionScope::System,
+            vec![test_file_resource()],
+            test_user_identity().into(),
+        );
+
+        assert_eq!(
+            result.unwrap_err(),
+            PermissionGrantError::SystemScopeCannotContainResources
+        );
+    }
+
+    #[test]
+    fn accepts_system_scope_without_resources() {
+        let result = PermissionGrant::new(
+            test_app_identity().into(),
+            PermissionId::parse("rumahl.files.read").unwrap(),
+            PermissionScope::System,
+            Vec::new(),
+            test_user_identity().into(),
+        );
+
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn restores_existing_grant_id() {
+        let app = notes_app();
+        let id = GrantId::new();
+
+        let grant = PermissionGrant::restore(
+            id,
+            app.clone().into(),
+            PermissionId::parse("rumahl.files.read").unwrap(),
+            PermissionScope::Explicit,
+            vec![test_file_resource()],
+            app.into(),
+        )
+        .unwrap();
+
+        assert_eq!(grant.id(), &id);
+    }
+}

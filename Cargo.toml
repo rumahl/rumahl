@@ -1,0 +1,16 @@
+[workspace]
+resolver = "2"
+
+members = [
+    "account-auth",
+    "app-operations",
+    "app-packages",
+    "core",
+    "oidc-provider",
+    "persistence-sqlite",
+    "platform-buildroot",
+    "platform-api",
+    "platform-web",
+    "platform-service",
+    "ui-contracts",
+]

@@ -1,0 +1,171 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  rust:
+    name: Rust checks
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      CARGO_TERM_COLOR: always
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Install pinned Rust toolchain
+        run: rustup show active-toolchain
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('rust-toolchain.toml', '**/Cargo.toml', 'Cargo.lock') }}
+      - name: Check formatting
+        run: cargo fmt --all -- --check
+      - name: Clippy
+        run: cargo clippy --workspace --all-targets --locked -- -D warnings
+      - name: Tests
+        run: cargo test --workspace --locked
+
+  shell-integration:
+    name: Frontend and local HTTPS shell
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Install pinned frontend package manager
+        run: npm install --global pnpm@11.19.0
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: '24'
+          cache: pnpm
+          cache-dependency-path: frontend/pnpm-lock.yaml
+      - name: Install HTTPS test server
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y nginx
+      - name: Verify pnpm lockfile is current
+        working-directory: frontend
+        run: |
+          pnpm install --lockfile-only --ignore-scripts
+          git diff --exit-code -- pnpm-lock.yaml
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: pnpm install --frozen-lockfile
+      - name: Check frontend
+        working-directory: frontend
+        run: |
+          pnpm typecheck
+          pnpm lint
+          pnpm test
+          pnpm build
+          pnpm --filter @rumahl/ssr test:smoke
+      - name: Upload RelativeCI bundle stats
+        uses: relative-ci/agent-upload-artifact-action@a2b5741b4f7e6a989c84ec1a3059696b23c152e5 # v2.0.0
+        with:
+          webpackStatsFile: frontend/packages/shell/dist/webpack-stats.json
+      - name: Build platform service
+        run: cargo build --locked -p rumahl-platform-service --bins --example app_host_fixture
+      - name: Exercise real HTTPS, SSR, persistent sessions and recovery
+        run: python3 tests/e2e/shell/check.py
+      - name: Install development test browser
+        working-directory: frontend
+        run: pnpm exec playwright install --with-deps chromium
+      - name: Exercise developer HTTPS, browser HMR and persistent sessions
+        run: python3 tests/e2e/development/check.py --browser
+
+  supply-chain:
+    name: Rust dependency checks
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Check advisories, licenses, bans and sources
+        uses: EmbarkStudios/cargo-deny-action@9c67a826e39827395bfa619cd85cb2aaeb43cfaa
+        with:
+          arguments: --all-features --locked
+          command: check
+          command-arguments: advisories licenses bans sources
+
+  dco:
+    name: DCO sign-off
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    env:
+      BASE_REF: ${{ github.base_ref }}
+      HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Verify every commit is signed off
+        run: |
+          set -euo pipefail
+          if [ "${GITHUB_EVENT_NAME}" != "pull_request" ]; then
+            echo "Not a pull request; skipping DCO check."
+            exit 0
+          fi
+          base="$(git merge-base "origin/${BASE_REF}" "${HEAD_SHA}")"
+          failed=0
+          while IFS= read -r sha; do
+            body="$(git log -1 --format=%B "${sha}")"
+            if ! grep -qE '^Signed-off-by: .+ <[^>]+@[^>]+>$' <<<"${body}"; then
+              echo "::error::Commit ${sha} is missing a DCO 'Signed-off-by' line."
+              failed=1
+            fi
+          done < <(git rev-list --no-merges "${base}..${HEAD_SHA}")
+          if [ "${failed}" -ne 0 ]; then
+            echo "Sign off with 'git commit -s' (see CONTRIBUTING.md)."
+            exit 1
+          fi
+          echo "All commits are signed off."
+
+  reuse:
+    name: REUSE license compliance
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Check REUSE compliance
+        uses: fsfe/reuse-action@676e2d560c9a403aa252096d99fcab3e1132b0f5 # v6.0.0
+        with:
+          args: lint
+
+  workflows:
+    name: GitHub Actions checks
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Install verified actionlint
+        working-directory: ${{ runner.temp }}
+        run: |
+          curl --fail --silent --show-error --location --retry 3 \
+            https://github.com/rhysd/actionlint/releases/download/v1.7.12/actionlint_1.7.12_linux_amd64.tar.gz \
+            --output actionlint.tar.gz
+          echo '8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8  actionlint.tar.gz' | sha256sum --check
+          tar -xzf actionlint.tar.gz actionlint
+      - name: Lint all workflows
+        run: '"${{ runner.temp }}/actionlint" -color'

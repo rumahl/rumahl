@@ -1,0 +1,113 @@
+{
+  "id": "com.example.dashboard",
+  "name": "Dashboard (desktop slot)",
+  "base": "clean",
+  "modes": ["light"],
+  "material": "solid",
+  "slots": {
+    "desktop": [
+      {
+        "tag": "section",
+        "class": "dash",
+        "children": [
+          {
+            "tag": "header",
+            "class": "dash__head",
+            "children": [
+              { "tag": "h1", "children": [{ "text": "Dashboard" }] },
+              { "component": "clock", "class": "dash__clock" }
+            ]
+          },
+          {
+            "tag": "div",
+            "class": "dash__grid",
+            "children": [
+              {
+                "tag": "section",
+                "class": "dash__panel",
+                "children": [
+                  { "tag": "h2", "children": [{ "text": "Apps" }] },
+                  {
+                    "tag": "div",
+                    "class": "dash__apps",
+                    "children": [
+                      {
+                        "repeat": "apps",
+                        "as": "app",
+                        "children": [
+                          {
+                            "tag": "button",
+                            "class": "dash__app",
+                            "action": "open-app",
+                            "arg": "{{id}}",
+                            "children": [
+                              { "component": "app-icon", "app": "{{id}}", "class": "dash__app-icon" },
+                              { "tag": "span", "children": [{ "text": "{{title}}" }] }
+                            ]
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "tag": "section",
+                "class": "dash__panel",
+                "children": [
+                  { "tag": "h2", "children": [{ "text": "Running" }] },
+                  {
+                    "repeat": "windows",
+                    "as": "win",
+                    "children": [
+                      {
+                        "tag": "button",
+                        "class": "dash__win",
+                        "action": "focus-window",
+                        "arg": "{{id}}",
+                        "children": [{ "text": "{{title}}" }]
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "tag": "section",
+                "class": "dash__panel",
+                "children": [
+                  { "tag": "h2", "children": [{ "text": "Quick actions" }] },
+                  { "tag": "button", "class": "dash__action", "action": "toggle-command", "children": [{ "text": "Search" }] },
+                  { "tag": "button", "class": "dash__action", "action": "open-settings", "children": [{ "text": "Settings" }] },
+                  { "tag": "button", "class": "dash__action", "action": "minimize-all", "children": [{ "text": "Show desktop" }] }
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "tokens": {
+    "color.accent": "#4f46e5",
+    "color.accent.strong": "#6d67f0",
+    "color.on.accent": "#ffffff",
+    "color.canvas.background": "#eef1f6",
+    "color.panel.background": "#f7f9fc",
+    "color.surface": "#ffffff",
+    "color.surface.strong": "#ffffff",
+    "color.text.primary": "#111827",
+    "color.text.muted": "#6b7280",
+    "color.outline": "#1118271f",
+    "color.shadow": "rgba(17, 24, 39, 0.16)",
+    "typography.family": "'Manrope Variable', system-ui, -apple-system, sans-serif",
+    "typography.display": "'Sora Variable', system-ui, -apple-system, sans-serif",
+    "shape.radius.window": "18px",
+    "shape.radius.dock": "18px",
+    "shape.radius.icon": "14px",
+    "material.morphism": 0,
+    "material.blur": "0px",
+    "material.opacity": 1,
+    "texture.wallpaper": "linear-gradient(135deg, #e9edf5, #dfe6f2)"
+  },
+  "css": "/* Dashboard — replaces the desktop via the `desktop` slot (clean base). */\n.shell .dash { box-sizing: border-box; display: grid; grid-template-rows: auto 1fr; gap: 22px; height: 100%; overflow: auto; padding: 64px 40px 96px; }\n.shell .dash__head { display: flex; align-items: baseline; justify-content: space-between; }\n.shell .dash__head h1 { margin: 0; font-size: 26px; font-weight: 700; letter-spacing: -0.02em; }\n.shell .dash__clock { font-size: 22px; font-variant-numeric: tabular-nums; font-weight: 700; color: #4f46e5; }\n.shell .dash__grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 18px; align-content: start; }\n.shell .dash__panel { border: 1px solid #d7dce6; border-radius: 18px; background: #ffffff; padding: 18px; box-shadow: 0 2px 10px rgba(17, 24, 39, 0.06); }\n.shell .dash__panel h2 { margin: 0 0 12px; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.12em; color: #6b7280; }\n.shell .dash__apps { display: grid; grid-template-columns: repeat(auto-fill, minmax(72px, 1fr)); gap: 12px; }\n.shell .dash__app { display: grid; justify-items: center; gap: 6px; border: 0; background: transparent; color: inherit; cursor: pointer; padding: 6px; border-radius: 12px; font: inherit; }\n.shell .dash__app:hover { background: #eef1f6; }\n.shell .dash__app-icon { width: 44px; height: 44px; }\n.shell .dash__win, .shell .dash__action { display: block; width: 100%; text-align: left; border: 1px solid #d7dce6; background: #f7f9fc; border-radius: 10px; padding: 10px 12px; margin-bottom: 8px; font: inherit; color: inherit; cursor: pointer; }\n.shell .dash__win:hover, .shell .dash__action:hover { border-color: #4f46e5; }\n.shell :focus-visible { outline: 2px solid #4f46e5 !important; outline-offset: 2px; }"
+}

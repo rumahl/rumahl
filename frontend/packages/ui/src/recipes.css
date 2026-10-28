@@ -1,0 +1,275 @@
+/*
+ * Recipe layer — the simple theming surface.
+ *
+ * Components read these CSS variables instead of hard-coded values, so a theme
+ * can restyle a whole component family by overriding a handful of variables
+ * (small changes) — and still override anything with plain CSS (full changes).
+ * Defaults reproduce the stock rumahl look.
+ */
+:root,
+.shell {
+  /* Control family (buttons, inputs, selects, switches, …) lives in
+     `components/controls.css` as `--control-*`. */
+
+  /* Menubar / top bar --------------------------------------------------- */
+  --menubar-island-height: 38px;
+  --menubar-island-radius: 999px;
+  --menubar-island-background: color-mix(
+    in srgb,
+    var(--rumahl-ui-color-surface-strong, var(--rumahl-ui-color-panel-background, #26292c))
+      calc(var(--rumahl-ui-material-opacity, 0.84) * 100%),
+    transparent
+  );
+  --menubar-island-border: 1px solid
+    color-mix(in srgb, var(--rumahl-ui-color-text-primary) 12%, transparent);
+  --menubar-island-shadow: 0 10px 30px #0000004d, inset 0 1px 0 #ffffff2e;
+  --menubar-island-backdrop: blur(28px) saturate(1.5);
+  --menubar-item-radius: 8px;
+  --menubar-item-hover: color-mix(in srgb, currentColor 14%, transparent);
+  --menubar-font-size: 12.5px;
+
+  /* Menus / popovers ---------------------------------------------------- */
+  --menu-background: color-mix(
+    in srgb,
+    var(--rumahl-ui-color-panel-background) 96%,
+    transparent
+  );
+  --menu-border: 1px solid
+    color-mix(in srgb, var(--rumahl-ui-color-text-primary) 12%, transparent);
+  --menu-radius: 12px;
+  --menu-shadow: 0 12px 36px #00000026, 0 2px 6px #00000012;
+  --menu-backdrop: blur(12px);
+  --menu-padding: 5px;
+  --menu-font-size: calc(12px * var(--rumahl-ui-typography-scale, 1));
+  --menu-item-radius: 7px;
+  --menu-item-height: 30px;
+  --menu-item-hover: color-mix(
+    in srgb,
+    var(--rumahl-ui-color-text-primary) 8%,
+    transparent
+  );
+
+  /* Groups -------------------------------------------------------------- */
+  --group-background: var(--rumahl-ui-color-row, rgba(255, 255, 255, 0.047));
+  --group-border: 1px solid
+    var(--rumahl-ui-color-divider, rgba(255, 255, 255, 0.1));
+  --group-radius: 15px;
+  --group-shadow: none;
+  --group-row-height: 65px;
+  --group-row-gap: 15px;
+  --group-row-padding: 15px 18px;
+  --group-divider: 1px solid
+    var(--rumahl-ui-color-divider, rgba(255, 255, 255, 0.1));
+
+  /* Window chrome ------------------------------------------------------- */
+  --window-titlebar-height: 54px;
+  --window-titlebar-padding: 0 19px 0 25px;
+  --window-titlebar-border: 1px solid
+    color-mix(in srgb, var(--rumahl-ui-color-text-primary) 10%, transparent);
+  --window-title-size: 12px;
+  --window-title-weight: 700;
+  --window-subtitle-size: 11px;
+  --window-control-width: 33px;
+  --window-control-height: 30px;
+  --window-control-radius: 8px;
+  --window-background: var(--rumahl-ui-color-window-background);
+  --window-background-solid: var(--rumahl-ui-color-window-background-solid);
+  --window-border: 1px solid rgba(255, 255, 255, 0.12);
+  --window-radius: 23px;
+  --window-shadow: 0 30px 85px rgba(3, 8, 26, 0.43),
+    0 4px 15px rgba(0, 0, 0, 0.11), inset 0 1px 0 rgba(255, 255, 255, 0.1);
+  --window-backdrop: blur(45px) saturate(1.65);
+  --window-sheen: linear-gradient(
+    125deg,
+    rgba(255, 255, 255, 0.09),
+    transparent 32%,
+    rgba(255, 255, 255, 0.025) 78%,
+    transparent
+  );
+
+  /* Chips --------------------------------------------------------------- */
+  --chip-padding: 4px 10px;
+  --chip-radius: 999px;
+  --chip-border: 1px solid var(--surface-edge);
+  --chip-background: var(--surface-sheen), var(--surface-fill);
+  --chip-shadow: var(--surface-rim);
+  --chip-backdrop: var(--surface-filter);
+  --chip-font-size: 12px;
+
+  /* Lists --------------------------------------------------------------- */
+  --list-item-gap: 12px;
+  --list-item-padding: 10px 12px;
+  --list-item-radius: 10px;
+
+  /* Tables -------------------------------------------------------------- */
+  --table-font-size: var(--control-font);
+
+  /* Accordion ----------------------------------------------------------- */
+  --accordion-divider: 1px solid var(--control-border);
+  --accordion-trigger-radius: 8px;
+
+  /* Toast --------------------------------------------------------------- */
+  --toast-padding: 12px;
+  --toast-radius: 14px;
+  --toast-border: 1px solid var(--control-border);
+  --toast-background: var(--control-popup);
+  --toast-shadow: var(--control-popup-shadow);
+
+  /* Skeleton ------------------------------------------------------------ */
+  --skeleton-radius: 8px;
+  --skeleton-background: var(--surface-sheen), var(--surface-fill);
+
+  /* Tipseen ------------------------------------------------------------- */
+  --tipseen-radius: 16px;
+  --tipseen-background: var(--rumahl-ui-color-accent);
+  --tipseen-color: var(--rumahl-ui-color-on-accent);
+  --tipseen-shadow: var(--surface-rim), var(--surface-elevation);
+
+  /* Badge --------------------------------------------------------------- */
+  --badge-radius: 999px;
+  --badge-border: 1px solid var(--control-border);
+  --badge-background: var(--control-fill);
+  --badge-shadow: var(--control-inset);
+
+  /* Notice -------------------------------------------------------------- */
+  --notice-radius: 18px;
+  --notice-border: 1px solid var(--control-border);
+  --notice-background: var(--control-recess), var(--control-fill);
+  --notice-shadow: var(--control-inset);
+
+  /* Tray ---------------------------------------------------------------- */
+  --tray-padding: 4px;
+  --tray-radius: 999px;
+  --tray-background: var(--control-recess), var(--control-fill);
+  --tray-shadow: var(--control-inset);
+
+  /* Toolbar ------------------------------------------------------------- */
+  --toolbar-min-height: 38px;
+  --toolbar-padding: 4px 8px;
+  --toolbar-radius: 12px;
+  --toolbar-background: color-mix(
+    in srgb,
+    var(--rumahl-ui-color-surface-strong, var(--rumahl-ui-color-panel-background))
+      calc(var(--rumahl-ui-material-opacity, 0.84) * 100%),
+    transparent
+  );
+  --toolbar-border: 1px solid
+    color-mix(in srgb, var(--rumahl-ui-color-text-primary) 12%, transparent);
+  --toolbar-shadow: 0 10px 30px #00000033, inset 0 1px 0 #ffffff2e;
+  --toolbar-backdrop: blur(28px) saturate(1.5);
+
+  /* Topbar islands (shell) ---------------------------------------------- */
+  --topbar-island-height: 38px;
+  --topbar-island-radius: 999px;
+  --topbar-island-background: color-mix(
+    in srgb,
+    var(--rumahl-ui-color-surface-strong, var(--rumahl-ui-color-panel-background, #26292c))
+      calc(var(--rumahl-ui-material-opacity, 0.84) * 100%),
+    transparent
+  );
+  --topbar-island-border: 1px solid
+    color-mix(in srgb, var(--rumahl-ui-color-text-primary, #fff) 12%, transparent);
+  --topbar-island-shadow: 0 10px 30px rgba(0, 0, 0, 0.3),
+    inset 0 1px 0 rgba(255, 255, 255, 0.18);
+  --topbar-island-backdrop: blur(28px) saturate(1.5);
+  --topbar-mode-radius: 999px;
+  --topbar-button-size: 30px;
+  --topbar-button-radius: 50%;
+
+  /* Steps / breadcrumbs ------------------------------------------------- */
+  --step-gap: 8px;
+  --breadcrumbs-gap: 6px;
+  --breadcrumbs-font-size: var(--control-font);
+
+  /* Command palette ----------------------------------------------------- */
+  --command-palette-padding: 5px;
+  --command-palette-radius: 14px;
+  --command-palette-border: 1px solid color-mix(
+    in srgb,
+    var(--rumahl-ui-color-text-primary) 12%,
+    transparent
+  );
+  --command-palette-background: color-mix(
+    in srgb,
+    var(--rumahl-ui-color-panel-background) 96%,
+    transparent
+  );
+  --command-palette-shadow: 0 12px 36px #00000026, 0 2px 6px #00000012;
+  --command-palette-backdrop: blur(12px);
+
+  /* Phone frame --------------------------------------------------------- */
+  --phone-radius: 40px;
+  --phone-border: 1px solid var(--surface-edge);
+  --phone-background: var(--rumahl-ui-color-panel-background);
+  --phone-shadow: var(--surface-elevation);
+
+  /* Switch -------------------------------------------------------------- */
+  --switch-width: calc(var(--control-h) * 1.2222);
+  --switch-height: calc(var(--control-h) * 0.7222);
+  --switch-thumb-size: calc(var(--control-h) * 0.5);
+  --switch-pad: calc(var(--control-h) * 0.08333);
+  --switch-border-width: 1px;
+  --switch-border-color: var(--control-border);
+  --switch-radius: 999px;
+  --switch-background: var(--control-recess), var(--control-fill);
+  --switch-background-checked: var(--control-recess),
+    color-mix(
+      in srgb,
+      var(--rumahl-ui-color-accent) var(--control-tint-strength, 72%),
+      var(--control-fill)
+    );
+  --switch-border-checked: color-mix(
+    in srgb,
+    var(--control-border) 70%,
+    var(--rumahl-ui-color-accent)
+  );
+  --switch-thumb: var(--control-thumb);
+  --switch-thumb-checked: var(--switch-thumb);
+  --switch-thumb-radius: 50%;
+  --switch-thumb-shadow: 0 2px 6px #00000026;
+  --switch-travel: calc(
+    var(--switch-width) - var(--switch-thumb-size) - var(--switch-pad) * 2 -
+      var(--switch-border-width) * 2
+  );
+  --switch-thumb-transition: transform 160ms ease;
+  --switch-active-scale: 1;
+
+  /* Choice (checkbox / radio) ------------------------------------------- */
+  --choice-size: calc(var(--control-h) * 0.5);
+  --choice-radius: 6px;
+  --choice-border: 1px solid var(--control-border);
+  --choice-background: var(--control-fill);
+  --choice-shadow: var(--control-inset);
+  --choice-checked-background: color-mix(
+    in srgb,
+    var(--rumahl-ui-color-accent) 22%,
+    var(--control-base)
+  );
+  --choice-checked-border: var(--rumahl-ui-color-accent);
+  --choice-mark: var(--rumahl-ui-color-text-primary);
+
+  /* Icon tiles (group links, …) ----------------------------------------- */
+  --icon-tile-size: 34px;
+  --icon-tile-radius: 10px;
+  --icon-tile-background: color-mix(
+    in srgb,
+    var(--rumahl-ui-color-accent) 16%,
+    transparent
+  );
+  --icon-tile-color: var(--rumahl-ui-color-accent);
+
+  /* Range --------------------------------------------------------------- */
+  --range-radius: 999px;
+  --range-track: var(--indicator-track);
+  --range-fill: var(--indicator-fill);
+  --range-thumb-radius: 50%;
+  --range-thumb-border: 1px solid var(--control-border);
+  --range-thumb-background: var(--control-thumb);
+}
+
+/* Scheme-specific window rim/shadow (low specificity so themes can override). */
+.shell:where([data-scheme="light"]) {
+  --window-border: 1px solid rgba(255, 255, 255, 0.73);
+  --window-shadow: 0 30px 85px rgba(12, 36, 67, 0.23),
+    0 4px 15px rgba(0, 0, 0, 0.11), inset 0 1px 0 rgba(255, 255, 255, 0.1);
+}

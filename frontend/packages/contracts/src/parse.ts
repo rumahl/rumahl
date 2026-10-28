@@ -1,0 +1,149 @@
+import type { ExtensionContribution, ShellSnapshotV1 } from "./v1";
+
+const MAX_SNAPSHOT_BYTES = 256 * 1024;
+const OPAQUE_ID = /^[A-Za-z0-9._-]+$/;
+const LOCALE = /^[a-z]{2,3}(?:-(?:[A-Z]{2}|[A-Za-z0-9]{4,8}))*$/;
+const STYLESHEET = /^\/shell\/themes\/sha256-[0-9a-f]{64}\.css$/;
+const SIMPLE_ID = /^[a-z][a-z0-9-]*$/;
+
+export function parseShellSnapshot(value: unknown): ShellSnapshotV1 {
+  let serialized: string;
+  try {
+    serialized = JSON.stringify(value);
+  } catch {
+    throw new Error("invalid shell snapshot");
+  }
+  if (!serialized || new TextEncoder().encode(serialized).byteLength > MAX_SNAPSHOT_BYTES) {
+    throw new Error("invalid shell snapshot");
+  }
+
+  if (
+    !hasKeys(value, [
+      "snapshotVersion", "uiContractVersion", "extensionApiVersion", "shellBuildId",
+      "revision", "user", "theme", "apps", "workspace", "systemStatus", "mode", "contributions"
+    ]) ||
+    value.snapshotVersion !== 1 ||
+    value.uiContractVersion !== 1 ||
+    value.extensionApiVersion !== 1 ||
+    !validOpaqueId(value.shellBuildId) ||
+    !validOpaqueId(value.revision) ||
+    !validUser(value.user) ||
+    !validTheme(value.theme) ||
+    !validApps(value.apps) ||
+    !validWorkspace(value.workspace) ||
+    !validSystemStatus(value.systemStatus) ||
+    (value.mode !== "desktop" && value.mode !== "launcher") ||
+    !Array.isArray(value.contributions) ||
+    value.contributions.length > 512 ||
+    !value.contributions.every(validContribution)
+  ) {
+    throw new Error("invalid shell snapshot");
+  }
+  const ids = value.contributions.map((item: ExtensionContribution) => item.id);
+  if (new Set(ids).size !== ids.length) {
+    throw new Error("invalid shell snapshot");
+  }
+  return value as unknown as ShellSnapshotV1;
+}
+
+function validUser(value: unknown): boolean {
+  return hasKeys(value, ["displayName", "locale"]) &&
+    validTitle(value.displayName, 128) &&
+    typeof value.locale === "string" && LOCALE.test(value.locale);
+}
+
+function validTheme(value: unknown): boolean {
+  return hasKeys(value, ["id", "stylesheetUrl", "windowChrome", "shellLayout", "launcherLayout", "tokens"]) &&
+    validNamespacedId(value.id) &&
+    typeof value.stylesheetUrl === "string" && STYLESHEET.test(value.stylesheetUrl) &&
+    (value.windowChrome === "standard" || value.windowChrome === "compact") &&
+    (value.shellLayout === "dock" || value.shellLayout === "taskbar") &&
+    (value.launcherLayout === "springboard" || value.launcherLayout === "drawer") &&
+    validTokens(value.tokens);
+}
+
+function validTokens(value: unknown): boolean {
+  if (!isRecord(value)) return false;
+  const entries = Object.entries(value);
+  return entries.length <= 48 && entries.every(([, token]) =>
+    typeof token === "string" && token.length > 0 && token.length <= 256 && !/[;{}\\<>@]/.test(token)
+  );
+}
+
+function validApps(value: unknown): boolean {
+  if (!Array.isArray(value) || value.length > 256) return false;
+  const seen = new Set<string>();
+  return value.every((app) => {
+    if (!isRecord(app) || !hasKeys(app, ["id", "title", "launchable"])) return false;
+    const id = app.id;
+    if (typeof id !== "string" || !validNamespacedId(id) || seen.has(id)) return false;
+    if (!validTitle(app.title, 256) || typeof app.launchable !== "boolean") return false;
+    seen.add(id);
+    return true;
+  });
+}
+
+function validWorkspace(value: unknown): boolean {
+  if (value === null) return true;
+  if (typeof value !== "string" || value.length === 0 || value.length > 96 * 1024) return false;
+  try {
+    const parsed: unknown = JSON.parse(value);
+    return isRecord(parsed);
+  } catch {
+    return false;
+  }
+}
+
+function validSystemStatus(value: unknown): boolean {
+  return hasKeys(value, ["protection", "installedAppCount", "observedAtUnixMs", "lastActivityAtUnixMs"]) &&
+    (value.protection === "active" || value.protection === "attention") &&
+    nonNegativeInteger(value.installedAppCount) && value.installedAppCount <= 0xffffffff &&
+    nonNegativeInteger(value.observedAtUnixMs) && value.observedAtUnixMs > 0 &&
+    (value.lastActivityAtUnixMs === null ||
+      (nonNegativeInteger(value.lastActivityAtUnixMs) && value.lastActivityAtUnixMs <= value.observedAtUnixMs));
+}
+
+function validContribution(value: unknown): boolean {
+  if (!isRecord(value) || !validNamespacedId(value.id) || !validTitle(value.title, 128)) return false;
+  if (value.kind === "command" || value.kind === "search_provider") {
+    return hasKeys(value, ["kind", "id", "title", "capability"]) && validNamespacedId(value.capability);
+  }
+  return value.kind === "widget" &&
+    hasKeys(value, ["kind", "id", "title", "slot", "entrypoint"]) &&
+    value.slot === "dashboard_widgets" && validSimpleId(value.entrypoint);
+}
+
+function validOpaqueId(value: unknown): boolean {
+  return typeof value === "string" && value.length > 0 && value.length <= 128 && OPAQUE_ID.test(value);
+}
+
+function validNamespacedId(value: unknown): boolean {
+  return typeof value === "string" && value.length <= 192 && value.split(".").length >= 3 &&
+    value.split(".").every(validSimpleId);
+}
+
+function validSimpleId(value: unknown): boolean {
+  return typeof value === "string" && value.length > 0 && value.length <= 64 &&
+    SIMPLE_ID.test(value) && !value.endsWith("-");
+}
+
+function validTitle(value: unknown, maxLength: number): boolean {
+  return typeof value === "string" && value.trim().length > 0 &&
+    Array.from(value).length <= maxLength && !Array.from(value).some((character) => {
+      const codePoint = character.codePointAt(0)!;
+      return codePoint <= 31 || (codePoint >= 127 && codePoint <= 159);
+    });
+}
+
+function nonNegativeInteger(value: unknown): value is number {
+  return typeof value === "number" && Number.isSafeInteger(value) && value >= 0;
+}
+
+function hasKeys(value: unknown, expected: readonly string[]): value is Record<string, unknown> {
+  return isRecord(value) && Object.keys(value).length === expected.length &&
+    expected.every((key) => Object.hasOwn(value, key));
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}

@@ -1,0 +1,296 @@
+/* OS chrome: window frame, tray, control tiles, toolbar and app tiles.
+   These are the interface elements the OS uses that a website never would. */
+
+/* Window frame — the native OS window. The glass surface comes from
+   `.rumahl-window-surface` (surface-strong 82% + 45px blur, the reference
+   `.window` recipe); this only carries the frame's layout and titlebar. */
+.rumahl-window {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  color: var(--rumahl-ui-color-text-primary);
+}
+.rumahl-window__titlebar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: var(--window-titlebar-height);
+  padding: var(--window-titlebar-padding);
+  border-bottom: var(--window-titlebar-border);
+  position: relative;
+  z-index: 2;
+  cursor: move;
+  user-select: none;
+}
+.rumahl-window--frameless .rumahl-window__titlebar { display: none; }
+/* Title and subtitle sit on one line (baseline), like the native window. */
+.rumahl-window__titles {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  flex: 1;
+  min-width: 0;
+}
+.rumahl-window__title {
+  margin: 0;
+  font-size: var(--window-title-size);
+  font-weight: var(--window-title-weight);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.rumahl-window__subtitle {
+  margin: 0;
+  font-size: var(--window-subtitle-size);
+  color: var(--rumahl-ui-color-text-muted);
+}
+.rumahl-window__controls { margin-left: auto; display: flex; align-items: center; gap: 2px; }
+.rumahl-window__control {
+  display: grid;
+  place-items: center;
+  width: var(--window-control-width);
+  height: var(--window-control-height);
+  border: 0;
+  border-radius: var(--window-control-radius);
+  background: transparent;
+  color: var(--rumahl-ui-color-text-muted);
+  cursor: pointer;
+}
+.rumahl-window__control:hover {
+  background: color-mix(in srgb, var(--rumahl-ui-color-text-primary) 9%, transparent);
+  color: var(--rumahl-ui-color-text-primary);
+}
+.rumahl-window__control[data-variant="close"]:hover {
+  background: color-mix(in srgb, var(--rumahl-ui-color-danger, #e5484d) 18%, transparent);
+  color: var(--rumahl-ui-color-danger, #e5484d);
+}
+.rumahl-window__control:focus-visible {
+  outline: 2px solid var(--rumahl-ui-color-accent);
+  outline-offset: -2px;
+}
+.rumahl-window__control svg { width: 13px; height: 13px; }
+.rumahl-window__content { flex: 1; min-height: 0; overflow: auto; position: relative; z-index: 2; }
+.rumahl-window--flush .rumahl-window__content { padding: 0; }
+
+/* Anchored popover --------------------------------------------------------- */
+.rumahl-popover { min-width: 180px; }
+
+/* Tray (status items) ------------------------------------------------------ */
+.rumahl-tray {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: var(--tray-padding);
+  border-radius: var(--tray-radius);
+  background: var(--tray-background);
+  box-shadow: var(--tray-shadow);
+}
+.rumahl-tray__item {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--rumahl-ui-color-text-primary);
+  cursor: pointer;
+}
+.rumahl-tray__item:hover { background: var(--control-hover); }
+.rumahl-tray__item[data-active="true"] {
+  --control-tint: color-mix(in srgb, var(--rumahl-ui-color-accent) 78%, transparent);
+  background: var(--control-recess),
+    linear-gradient(var(--control-tint), var(--control-tint)), var(--control-fill);
+  color: var(--rumahl-ui-color-on-accent);
+  box-shadow: var(--control-inset);
+}
+.rumahl-tray__item:focus-visible {
+  outline: 2px solid var(--rumahl-ui-color-accent);
+  outline-offset: -2px;
+}
+.rumahl-tray__item svg { width: 16px; height: 16px; }
+
+/* Control tile (quick settings) -------------------------------------------- */
+.rumahl-toggle-tile {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  min-width: 120px;
+  padding: 12px;
+  border: 1px solid var(--control-border);
+  border-radius: 14px;
+  background: var(--control-recess), var(--control-fill);
+  color: var(--rumahl-ui-color-text-primary);
+  font-size: 12px;
+  text-align: start;
+  cursor: pointer;
+}
+.rumahl-toggle-tile:hover {
+  border-color: var(--control-border-hover);
+  background: var(--control-recess),
+    linear-gradient(var(--control-tint, transparent), var(--control-tint, transparent)), var(--control-hover);
+}
+.rumahl-toggle-tile[data-active="true"] {
+  --control-tint: color-mix(in srgb, var(--rumahl-ui-color-accent) 76%, transparent);
+  background: var(--control-recess),
+    linear-gradient(var(--control-tint), var(--control-tint)), var(--control-fill);
+  color: var(--rumahl-ui-color-on-accent);
+  border-color: color-mix(in srgb, var(--rumahl-ui-color-accent) 45%, var(--control-border));
+  /* Pressed in: an inset reads as sunken, not raised. */
+  box-shadow: inset 0 3px 7px #00000030, inset 0 1px 2px #00000024, inset 0 -1px 0 #ffffff28;
+}
+.rumahl-toggle-tile:focus-visible {
+  outline: 2px solid var(--rumahl-ui-color-accent);
+  outline-offset: -2px;
+}
+.rumahl-toggle-tile__icon {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 10px;
+  background: color-mix(in srgb, currentColor 12%, transparent);
+}
+.rumahl-toggle-tile__icon svg { width: 18px; height: 18px; }
+.rumahl-toggle-tile__label { font-weight: 600; }
+.rumahl-toggle-tile__description { font-size: 11px; opacity: 0.8; }
+
+/* Toolbar ------------------------------------------------------------------ */
+/* Toolbar uses the same island recipe as the top bar / menu bar. */
+.rumahl-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: var(--toolbar-min-height);
+  padding: var(--toolbar-padding);
+  border-radius: var(--toolbar-radius);
+  background: var(--toolbar-background);
+  border: var(--toolbar-border);
+  box-shadow: var(--toolbar-shadow);
+  backdrop-filter: var(--toolbar-backdrop);
+  -webkit-backdrop-filter: var(--toolbar-backdrop);
+  color: var(--rumahl-ui-color-text-primary);
+}
+.rumahl-toolbar__group { display: inline-flex; align-items: center; gap: 4px; }
+.rumahl-toolbar__spacer { flex: 1; }
+.shell[data-material="solid"] .rumahl-toolbar {
+  background: var(--rumahl-ui-color-surface-strong, var(--rumahl-ui-color-panel-background));
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+@media (prefers-reduced-transparency: reduce) {
+  .rumahl-toolbar {
+    background: var(--rumahl-ui-color-surface-strong, var(--rumahl-ui-color-panel-background));
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+  }
+}
+
+/* App tile ----------------------------------------------------------------- */
+.rumahl-app-root { position: relative; display: inline-block; }
+.rumahl-app-tile {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  width: 96px;
+  padding: 12px 8px;
+  border: 1px solid transparent;
+  border-radius: 14px;
+  color: var(--rumahl-ui-color-text-primary);
+  font-size: 13px;
+  text-align: center;
+  text-decoration: none;
+  overflow-wrap: anywhere;
+  cursor: pointer;
+}
+.rumahl-app-tile:hover {
+  background: color-mix(in srgb, var(--rumahl-ui-color-accent) 10%, transparent);
+  border-color: color-mix(in srgb, var(--rumahl-ui-color-accent) 22%, transparent);
+}
+.rumahl-app-tile:focus-visible {
+  outline: 2px solid var(--rumahl-ui-color-accent);
+  outline-offset: -2px;
+}
+.rumahl-app-tile__icon {
+  display: grid;
+  place-items: center;
+  width: 62px;
+  height: 62px;
+  border-radius: 18px;
+  overflow: hidden;
+  box-shadow: 0 6px 18px #00000022;
+}
+.rumahl-app-tile__icon img { width: 100%; height: 100%; object-fit: cover; }
+.rumahl-app-tile__icon svg { width: 29px; height: 29px; }
+.rumahl-app-tile__settings {
+  position: absolute;
+  top: 6px;
+  inset-inline-end: 6px;
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  border: 1px solid var(--control-border);
+  border-radius: 50%;
+  background: var(--control-fill);
+  color: var(--rumahl-ui-color-text-primary);
+  cursor: pointer;
+  opacity: 0;
+}
+.rumahl-app-root:hover .rumahl-app-tile__settings,
+.rumahl-app-tile__settings:focus-visible { opacity: 1; }
+.rumahl-app-tile__settings svg { width: 14px; height: 14px; }
+/* Shared press feedback: the same "pressed" scale as `.btn:active`. */
+.rumahl-tray__item,
+.rumahl-toggle-tile,
+.rumahl-window__control,
+.rumahl-app-tile {
+  transition: background 150ms ease, border-color 150ms ease, color 150ms ease, box-shadow 140ms ease, scale 140ms ease;
+}
+.rumahl-tray__item:active:not(:disabled),
+.rumahl-toggle-tile:active:not(:disabled),
+.rumahl-window__control:active,
+.rumahl-app-tile:active {
+  scale: 0.98;
+}
+.rumahl-toggle-tile:active:not(:disabled) {
+  box-shadow: inset 0 3px 7px #00000030, inset 0 1px 2px #00000024, inset 0 -1px 0 #ffffff28;
+}
+.rumahl-tray__item:active:not(:disabled) {
+  box-shadow: inset 0 2px 5px #00000030;
+}
+
+.rumahl-app-icon-glyph {
+  display: grid;
+  place-items: center;
+  width: 100%;
+  height: 100%;
+  border-radius: inherit;
+  /* The theme's app-icon gradient (consistent, not random hues). */
+  background: var(
+    --rumahl-ui-icon-gradient,
+    linear-gradient(140deg, var(--rumahl-ui-color-accent), #488887)
+  );
+  color: #fff;
+  font-size: 26px;
+  font-weight: 700;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .rumahl-tray__item:active,
+  .rumahl-toggle-tile:active,
+  .rumahl-window__control:active,
+  .rumahl-app-tile:active { scale: none; }
+}
+
+/* App grid (launcher/desktop) — flat, arranges AppTiles. */
+.rumahl-app-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(96px, 1fr));
+  gap: 14px;
+  justify-items: center;
+}

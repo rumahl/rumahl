@@ -1,0 +1,1 @@
+source "$BR2_EXTERNAL_RUMAHL_PATH/package/rumahl-shell/Config.in"

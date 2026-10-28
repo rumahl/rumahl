@@ -1,0 +1,238 @@
+<!doctype html><html lang="{{lang}}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>RRE · rumahl Recovery Environment</title><style>
+/* Standalone RRE desktop. Local materials remain available without shell assets. */
+:root {
+  color-scheme: dark;
+  --accent: #5b8cff;
+  --text: #f0f3f6;
+  --muted: #a5aeb9;
+  --line: #ffffff12;
+  --surface: #292d30;
+  --sidebar: #23272b;
+  --soft: #ffffff05;
+  font: 13px/1.5 ui-sans-serif, system-ui, "Segoe UI", Roboto, sans-serif;
+  color: var(--text);
+  background: #171d22;
+}
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+body { margin: 0; height: 100dvh; display: flex; flex-direction: column; overflow: hidden; }
+button, a, input { font: inherit; touch-action: manipulation; }
+button { cursor: pointer; }
+button:disabled { opacity: .45; cursor: default; }
+a { color: #c0d4ff; text-decoration: none; }
+button:focus-visible, a:focus-visible, summary:focus-visible { outline: 2px solid #99bbff; outline-offset: 3px; }
+header { height: 48px; padding: 0 22px; display: flex; align-items: center; justify-content: space-between; flex-shrink: 0; border-bottom: 1px solid var(--line); background: #20252a; }
+.system-island { display: flex; align-items: center; gap: 12px; }
+.wordmark { font-size: 16px; font-weight: 650; letter-spacing: -.06em; display: inline-flex; align-items: center; }
+.wordmark-mark { width: 12px; height: 22px; color: #8fd0b0; }
+.rre-watermark { position: fixed; inset: 0; display: grid; place-items: center; z-index: 0; pointer-events: none; }
+.rre-watermark svg { width: min(34vmin, 280px); height: auto; color: #ffffff; opacity: .04; }
+header, #rre-desktop, .desktop-bottom { position: relative; z-index: 1; }
+.system-divider { height: 14px; width: 1px; background: #ffffff24; }
+header strong:not(.wordmark) { font-size: 12px; font-weight: 600; }
+.environment-name { color: var(--muted); font-size: 12px; }
+.exit { font-size: 12px; color: #c8cfd8; }
+.exit:hover { color: #fff; }
+h1 { margin: 0 0 10px; font-size: 26px; font-weight: 650; letter-spacing: -.04em; line-height: 1.3; }
+h2, h3 { margin: 0 0 8px; font-size: 14px; font-weight: 600; }
+p { margin: 0 0 16px; color: var(--muted); line-height: 1.6; }
+.page > p { max-width: 680px; margin-bottom: 28px; }
+.summary { display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 8px 20px; padding: 20px; margin: 0 0 28px; border: 1px solid var(--line); border-radius: 12px; background: var(--soft); }
+.summary strong { display: flex; align-items: center; gap: 10px; font-size: 15px; font-weight: 600; }
+.summary strong::before { content: ""; width: 8px; height: 8px; flex: none; border-radius: 50%; background: #aeb9c9; }
+.summary[data-health=attention] strong::before { background: #f0b64b; }
+.summary[data-health=checked] strong::before { background: #8eb6ff; }
+.summary p { grid-column: 1; margin: 0; padding-left: 18px; font-size: 12px; }
+.summary button { grid-column: 2; grid-row: 1 / 3; }
+.grid { display: grid; }
+.grid .panel { display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 5px 24px; padding: 20px 0; border: 0; border-bottom: 1px solid var(--line); border-radius: 0; background: none; margin: 0; }
+.grid .panel h2 { margin: 0; }
+.grid .panel p { grid-column: 1; margin: 0; font-size: 12px; max-width: 560px; }
+.grid .panel button { grid-column: 2; grid-row: 1 / 3; margin: 0; min-width: 122px; }
+.secondary { padding: 8px 11px; margin: 6px 6px 0 0; border: 1px solid #ffffff18; border-radius: 9px; color: var(--text); background: #ffffff07; box-shadow: none; font-size: 13px; }
+.secondary:hover { background: #ffffff0e; }
+.secondary:active { background: #00000018; }
+.secondary[aria-pressed=true] { color: #dbe7ff; background: #5b8cff26; border-color: #5b8cff70; }
+.panel, .problem, .disk { padding: 18px 0; margin: 0; border: 0; border-bottom: 1px solid var(--line); }
+.problem strong { display: block; font-size: 14px; margin-bottom: 6px; }
+.problem p { margin-bottom: 8px; }
+.row { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 13px 0; border-bottom: 1px solid var(--line); }
+.badge { font-size: 12px; color: var(--muted); }
+#recovery-detail > h3:not(:first-child) { margin-top: 30px; }
+.setting-row { display: flex; align-items: center; justify-content: space-between; gap: 24px; padding: 18px 0; border-top: 1px solid var(--line); }
+.setting-row strong { font-size: 13px; font-weight: 600; }
+.setting-row p { margin: 5px 0 0; font-size: 12px; max-width: 560px; }
+.setting-switch { flex: none; width: 36px; height: 22px; padding: 2px; border: 1px solid #ffffff25; border-radius: 12px; background: #ffffff16; }
+.setting-switch::before { content: ""; display: block; width: 16px; height: 16px; border-radius: 50%; background: #f5f7fc; box-shadow: 0 1px 3px #0004; }
+.setting-switch[aria-checked=true] { background: var(--accent); border-color: var(--accent); }
+.setting-switch[aria-checked=true]::before { transform: translateX(13px); }
+.outcome { padding: 10px 12px; border-left: 2px solid #8cb39b; background: #27362e; white-space: pre-wrap; }
+.error { border-color: #d79887; color: #f0c4b8; }
+.notice { padding: 10px 14px; border: 1px solid #5b8cff40; border-radius: 9px; background: #5b8cff0c; font-size: 12px; margin-bottom: 22px; }
+.notice:empty { display: none; }
+.scroll { overflow: auto; margin-top: 12px; }
+table { border-collapse: collapse; width: 100%; font-size: 11px; }
+th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--line); overflow-wrap: anywhere; }
+th { color: var(--muted); font-weight: 500; }
+td { max-width: 250px; }
+summary { cursor: pointer; }
+footer { padding-top: 32px; color: #89939e; font-size: 11px; }
+dialog { max-width: 440px; padding: 24px; border: 1px solid #ffffff26; border-radius: 16px; background: var(--surface); color: var(--text); box-shadow: 0 24px 80px #0008; }
+dialog h2 { font-size: 16px; }
+dialog::backdrop { background: #0007; }
+/* Desktop chrome is intentionally separate from each tool's content. */
+body {
+  background: radial-gradient(ellipse at 14% 20%, #31544b 0%, transparent 55%),
+    radial-gradient(ellipse at 88% 90%, #253951 0%, transparent 60%), #142725;
+}
+header { height: 54px; padding: 8px 14px; background: none; border: 0; gap: 12px; }
+.system-island { min-height: 36px; padding: 7px 13px; border: 1px solid #ffffff1c; border-radius: 12px; background: #252e30ed; box-shadow: inset 0 1px 0 #ffffff20, 0 4px 14px #0002; }
+.environment-name { color: #aab8bb; }
+#rre-desktop { position: relative; flex: 1; min-height: 0; margin: 0 12px; overflow: hidden; }
+.rre-window { position: absolute; width: min(740px, 100%); height: min(560px, 100%); display: flex; flex-direction: column; min-width: 0; border: 1px solid #ffffff24; border-radius: 16px; overflow: hidden; background: #292d30; box-shadow: 0 16px 48px #0004, inset 0 1px 0 #ffffff20; }
+.rre-window.is-focused { border-color: #ffffff48; box-shadow: 0 22px 60px #0007, 0 0 0 1px #0002; }
+.rre-window.is-maximized { inset: 0 !important; width: 100%; height: 100%; }
+.window-bar { height: 44px; flex-shrink: 0; display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 0 10px 0 17px; background: linear-gradient(#ffffff05, transparent), #30373a; border-bottom: 1px solid #ffffff0c; user-select: none; touch-action: none; cursor: grab; }
+.window-bar:active { cursor: grabbing; }
+.window-bar strong { font-size: 12px; font-weight: 600; color: #aeb6be; }
+.is-focused .window-bar strong { color: #f0f3f6; }
+.window-bar:focus-visible { outline: 2px solid #8eb6ff; outline-offset: -3px; }
+.window-controls { display: flex; gap: 4px; }
+.window-controls button { width: 28px; height: 26px; padding: 0; border: 0; border-radius: 7px; color: #dce2e7; background: transparent; font-size: 17px; line-height: 1; }
+.window-controls button:hover { background: #ffffff12; }
+.window-controls button:last-child:hover { background: #b85045; color: #fff; }
+.window-toolbar { display: flex; justify-content: space-between; align-items: center; padding: 7px 16px; border-bottom: 1px solid var(--line); color: #98a8b2; font-size: 11px; }
+.window-toolbar .secondary { margin: 0; padding: 4px 10px; font-size: 11px; }
+.rre-window .page { flex: 1; min-height: 0; width: 100%; max-width: none; margin: 0; padding: 25px 28px 32px; overflow: auto; overscroll-behavior: contain; scrollbar-gutter: stable; }
+.rre-window h1 { font-size: 23px; }
+.desktop-bottom { display: flex; flex-direction: column; align-items: center; flex-shrink: 0; padding: 4px 12px 12px; gap: 5px; }
+.desktop-bottom .notice { max-width: min(700px, 100%); margin: 0; padding: 4px 10px; font-size: 11px; color: #cedbd9; background: #152624b3; border: 0; border-radius: 6px; }
+#rre-dock { display: flex; align-items: center; justify-content: center; gap: 5px; max-width: 100%; padding: 7px 10px 10px; border: 1px solid #ffffff28; border-radius: 20px; background: #293532f2; box-shadow: inset 0 1px 0 #ffffff26, 0 8px 30px #0005; }
+.dock-item { position: relative; display: flex; flex-direction: column; align-items: center; gap: 4px; width: 78px; padding: 3px 3px 7px; border: 0; border-radius: 12px; color: #d5dfdd; background: transparent; }
+.dock-item:hover, .dock-item:focus-visible { background: #ffffff0b; }
+.dock-icon { display: grid; place-items: center; width: 42px; height: 42px; border-radius: 12px; box-shadow: inset 0 1px 1px #ffffff50, inset 0 -1px 1px #0003, 0 3px 8px #0003; background: linear-gradient(150deg, #79a3ce, #456e9a); color: #fff; }
+.dock-icon svg { width: 25px; height: 25px; fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
+.icon-problems { background: linear-gradient(150deg, #58bfa6, #287965); }
+.icon-diagnostics { background: linear-gradient(150deg, #a698d2, #69598f); }
+.icon-storage { background: linear-gradient(150deg, #b7c4cc, #667a88); }
+.icon-settings { background: linear-gradient(150deg, #879baa, #465c6d); }
+.dock-label { max-width: 100%; font-size: 9px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.dock-item.is-open::after { content: ""; position: absolute; bottom: 0; width: 4px; height: 4px; border-radius: 50%; background: #d6e5e1; }
+.dock-item[aria-expanded=true]::after { background: #a2c5ff; }
+.noscript { margin: 24px; padding: 16px; background: #292d30; border-radius: 12px; }
+@media (max-width: 850px) { .environment-name { display: none; } }
+@media (max-width: 650px) {
+  header { padding: 6px 8px; }
+  .system-island { gap: 8px; padding: 6px 10px; }
+  .exit { font-size: 11px; }
+  #rre-desktop { margin: 0 6px; }
+  .rre-window { inset: 0 !important; width: 100%; height: 100%; border-radius: 12px; }
+  .rre-window .page { padding: 20px 16px; }
+  .summary, .grid .panel { grid-template-columns: 1fr; }
+  .summary button, .grid .panel button { grid-column: 1; grid-row: auto; justify-self: start; margin-top: 8px; }
+  #rre-dock { width: 100%; max-width: 520px; gap: 0; padding: 6px 4px 9px; border-radius: 16px; }
+  .dock-item { flex: 1; min-width: 0; }
+  .dock-icon { width: 36px; height: 36px; border-radius: 10px; }
+  .dock-label { font-size: 8px; }
+  .desktop-bottom { padding: 4px 6px max(6px, env(safe-area-inset-bottom)); }
+}
+@media (prefers-reduced-transparency: reduce) {
+  body { background: #142725; }
+  .system-island, #rre-dock, .desktop-bottom .notice { background: #293532; }
+}
+/* Shared app vocabulary; window and dock chrome are unchanged. */
+.rre-window { container-type: inline-size; }
+.page > h1 { margin-bottom: 6px; }
+.page > p { font-size: 12px; line-height: 1.6; margin-bottom: 22px; }
+.app-group { margin: 18px 0; padding: 18px; background: #ffffff03; border: 1px solid #ffffff10; border-radius: 12px; }
+.app-group > h3 { margin-bottom: 14px; font-size: 13px; letter-spacing: -.01em; }
+.group-description { font-size: 11px; color: #99a5af; margin: -5px 0 14px; overflow-wrap: anywhere; }
+.facts { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; margin: 0; }
+.facts > div { min-width: 0; }
+.facts dt { font-size: 10px; color: #98a5af; margin-bottom: 5px; }
+.facts dd { margin: 0; font-size: 14px; font-weight: 550; color: #e4ebf0; overflow-wrap: anywhere; font-variant-numeric: tabular-nums; }
+#overview-facts { padding: 0 4px 24px; border-bottom: 1px solid var(--line); }
+.summary { margin-bottom: 20px; background: linear-gradient(120deg, #5b8cff0d, #ffffff02); }
+.summary[data-health=attention] { background: linear-gradient(120deg, #d6a4440d, #ffffff02); }
+.app-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 7px; padding-top: 12px; }
+.app-actions .secondary { margin: 0; font-size: 12px; }
+.state-badge { display: inline-flex; align-items: center; gap: 6px; width: fit-content; max-width: 100%; padding: 3px 8px; border-radius: 6px; font-size: 10px; font-weight: 500; color: #b3bfca; background: #ffffff06; overflow-wrap: anywhere; }
+.state-badge::before { content: ""; width: 5px; height: 5px; flex: none; border-radius: 50%; background: #8b99a8; }
+.state-badge[data-state=running], .state-badge[data-state=information] { color: #a6d7bf; background: #65b28c12; }
+.state-badge[data-state=running]::before, .state-badge[data-state=information]::before { background: #82c8a7; }
+.state-badge[data-state=warning] { color: #e0c38a; background: #cda24d12; }
+.state-badge[data-state=warning]::before { background: #d1ae65; }
+.state-badge[data-state=error] { color: #edb3a8; background: #df8e7912; }
+.state-badge[data-state=error]::before { background: #df9685; }
+.problem { padding: 16px 0; }
+.problem > .state-badge { margin-bottom: 9px; }
+.problem:last-child { padding-bottom: 0; border-bottom: 0; }
+.problem strong { font-size: 13px; }
+.problem p { font-size: 12px; }
+.metric-row { display: grid; grid-template-columns: 1fr auto auto; align-items: center; gap: 14px; padding: 12px 0; border-bottom: 1px solid var(--line); font-size: 12px; }
+.metric-row:last-child { border-bottom: 0; }
+.metric-row strong { font-weight: 500; font-variant-numeric: tabular-nums; }
+details.app-group summary { font-size: 12px; font-weight: 600; }
+details.app-group[open] summary { margin-bottom: 15px; }
+.service-row { display: grid; grid-template-columns: minmax(100px, 1fr) auto auto; align-items: center; gap: 12px; padding: 11px 0; border-bottom: 1px solid var(--line); font-size: 12px; }
+.service-row:last-child { border-bottom: 0; }
+.service-row > .secondary { margin: 0; font-size: 11px; padding: 5px 8px; }
+.application-row { position: relative; padding: 17px 0; border-bottom: 1px solid var(--line); }
+.application-row:last-child { border-bottom: 0; padding-bottom: 0; }
+.application-row > strong { display: block; margin-bottom: 4px; font-size: 13px; }
+.application-row > p { font-size: 11px; margin: 0 0 10px; overflow-wrap: anywhere; }
+.application-row .app-actions { padding-top: 10px; }
+.app-search { width: 100%; border: 1px solid #ffffff16; border-radius: 9px; padding: 9px 12px; background: #00000014; color: var(--text); font: inherit; font-size: 12px; }
+.app-search:focus-visible { outline: 2px solid #8eb6ff; outline-offset: 2px; }
+.app-search::placeholder { color: #8f9aa6; }
+.empty-state { margin: 0; padding: 18px 4px; font-size: 12px; color: #aab8bf; }
+.inline-error { padding: 12px; border: 1px solid #df96852b; background: #df968508; border-radius: 9px; font-size: 12px; color: #edb3a8; }
+.disk-card .facts { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.disk-usage { margin-top: 20px; font-size: 11px; color: #b6c3cc; }
+.disk-usage meter { display: block; width: 100%; height: 14px; margin-top: 5px; accent-color: #7d9dc7; }
+.local-result { margin: 12px 0 0; font-size: 12px; }
+.local-result:empty { display: none; }
+#settings-host .setting-row { border: 0; padding: 0; }
+#settings-host .app-group > h3 { color: #92a1b0; font-size: 11px; font-weight: 500; }
+.setting-row p { font-size: 11px; }
+@container (max-width: 520px) {
+  .summary, .grid .panel { grid-template-columns: 1fr; }
+  .summary button, .grid .panel button { grid-column: 1; grid-row: auto; justify-self: start; }
+  .facts { grid-template-columns: 1fr 1fr; }
+  .service-row { grid-template-columns: 1fr auto; }
+  .service-row .secondary { grid-column: 1 / -1; justify-self: start; }
+  .metric-row { gap: 8px; }
+  .metric-row .state-badge { grid-column: 1 / -1; }
+  .app-group { padding: 14px; }
+}
+.event-target { display: block; margin-top: 5px; color: var(--muted); }
+.icon-activity { background: linear-gradient(150deg, #b89d70, #80633c); }
+.icon-backups { background: linear-gradient(150deg, #739ebe, #375c7a); }
+.icon-exit { background: linear-gradient(150deg, #c07f86, #7d4750); }
+#rre-dock { overflow-x: auto; justify-content: flex-start; }
+.dock-item { flex-shrink: 0; }
+.log-view { margin: 14px 0 0; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11px; line-height: 1.55; }
+.log-line { display: grid; grid-template-columns: auto 1fr; gap: 12px; padding: 6px 2px; border-bottom: 1px solid var(--line); }
+.log-line time { color: #93a0aa; white-space: nowrap; }
+.log-line .log-message { color: #dde5ea; overflow-wrap: anywhere; }
+.check-row { display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 14px; padding: 12px 0; border-bottom: 1px solid var(--line); font-size: 12px; }
+.check-row:last-child { border-bottom: 0; }
+.pager { display: flex; flex-wrap: wrap; gap: 7px; padding-top: 14px; }
+.pager .secondary { margin: 0; }
+@media(max-width:650px) { .dock-item { flex: 0 0 58px; } }
+</style></head><body><div class="rre-watermark" aria-hidden="true"><svg viewBox="0 0 251 472" fill="currentColor"><path d="M 9.47163 471.21342 Q 0 471.21342 0 461.74179 V 203.63996 C 0 80.50881 80.50883 0 201.27207 0 H 241.52649 Q 250.99811 0 250.99811 9.47163 V 94.71626 Q 250.99811 104.18789 241.52649 104.18789 H 210.74370 C 144.44231 104.18789 101.81999 144.44230 101.81999 210.74369 V 461.74179 Q 101.81999 471.21342 92.34836 471.21342 Z"/></svg></div><header><div class="system-island"><strong class="wordmark" aria-label="rumahl Recovery Environment"><svg class="wordmark-mark" viewBox="0 0 251 472" fill="currentColor" aria-hidden="true"><path d="M 9.47163 471.21342 Q 0 471.21342 0 461.74179 V 203.63996 C 0 80.50881 80.50883 0 201.27207 0 H 241.52649 Q 250.99811 0 250.99811 9.47163 V 94.71626 Q 250.99811 104.18789 241.52649 104.18789 H 210.74370 C 144.44231 104.18789 101.81999 144.44230 101.81999 210.74369 V 461.74179 Q 101.81999 471.21342 92.34836 471.21342 Z"/></svg></strong><span class="system-divider" aria-hidden="true"></span><strong>RRE</strong><span class="environment-name">rumahl Recovery Environment</span></div></header><main id="rre-desktop" aria-label="RRE Desktop">
+
+
+<section class="page" data-page="control" hidden><h1 data-i18n="System status"></h1><p class="intro" data-i18n="Health and recovery utilities for this device."></p><div class="summary"><strong id="health-title" data-i18n="Checking system…"></strong><p id="health-summary"></p></div><div id="overview-facts"></div><div id="overview-checks"></div></section>
+<section class="page" data-page="problems" hidden><h1 data-i18n="Diagnostics & repair"></h1><p data-i18n="Findings are a snapshot. Repair only starts stopped always-on app services you are authorized to control."></p><div id="problems-host"></div></section>
+<section class="page" data-page="diagnostics" hidden><h1 data-i18n="Apps & services"></h1><p data-i18n="Choose the affected component. A restart can interrupt unsaved work."></p><div id="recovery-detail"></div></section>
+<section class="page" data-page="storage" hidden><h1 data-i18n="Storage & disks"></h1><p data-i18n="Check usage first. SMART tests require host support; starting a test does not confirm disk health."></p><div id="disks-host"></div></section>
+<section class="page" data-page="network" hidden><h1 data-i18n="Network"></h1><p data-i18n="Interfaces, addresses, gateway and name resolution. The connectivity test sends no data, only brief TCP connections."></p><div id="network-host"></div></section>
+<section class="page" data-page="logs" hidden><h1 data-i18n="Logs"></h1><p data-i18n="Recent platform or system log entries, newest first. Access may be limited by system permissions."></p><div id="logs-host"></div></section>
+<section class="page" data-page="crashes" hidden><h1 data-i18n="App crashes"></h1><p data-i18n="Apps that stopped unexpectedly or became unresponsive, from the activity log. Disabled apps are never restarted automatically."></p><div id="crashes-host"></div></section>
+<section class="page" data-page="boot" hidden><h1 data-i18n="Boot & errors"></h1><p data-i18n="Failed services and errors from the current boot – often the reason the recovery environment was needed."></p><div id="boot-host"></div></section>
+<section class="page" data-page="system" hidden><h1 data-i18n="System & update"></h1><p data-i18n="System status, rollback to an earlier build, and a complete factory reset. System version changes require host permission."></p><div id="system-host"></div></section>
+<section class="page" data-page="settings" hidden><h1 data-i18n="Boot options"></h1><p data-i18n="These settings apply to this device and persist across restarts."></p><div id="settings-host"></div></section>
+<section class="page" data-page="activity" hidden><h1 data-i18n="Activity"></h1><p data-i18n="System events and recorded actions."></p><div id="activity-host"></div></section>
+<section class="page" data-page="backups" hidden><h1 data-i18n="Backups"></h1><p data-i18n="Back up and restore the complete state of this rumahl device."></p><div id="backups-host"></div></section>
+<noscript><p class="noscript">RRE requires JavaScript to open recovery tools. <a href="/">rumahl OS</a></p></noscript></main><div class="desktop-bottom"><p id="operation-status" class="notice" role="status" aria-live="polite"></p><nav id="rre-dock" aria-label="RRE Dock"></nav></div><script src="/rre-i18n.js" defer></script><script src="/recovery.js" defer></script></body></html>

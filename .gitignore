@@ -1,0 +1,24 @@
+/target
+.DS_Store
+*.lock
+!Cargo.lock
+node_modules/
+/frontend/packages/*/dist
+/frontend/coverage
+*.tsbuildinfo
+
+# Generated: assets copied from the stores by scripts/sync-assets.mjs.
+/frontend/packages/shell/src/assets/
+# Fetched: pinned rumahl/assets checkout by scripts/fetch-assets.mjs.
+/assets/upstream/
+
+/.local-tools/
+
+__pycache__/
+
+/.rumahl-dev/
+/.rufiles/
+
+# Coverage reports uploaded to Codecov.
+/lcov-rust.info
+/frontend/packages/*/coverage/

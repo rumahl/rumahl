@@ -1,0 +1,20 @@
+{
+  "manifestVersion": 1,
+  "uiContractVersion": 1,
+  "id": "com.rumahl.contrast",
+  "name": "rumahl Contrast",
+  "tokens": {
+    "color.canvas.background": "#050505",
+    "color.panel.background": "#111111",
+    "color.text.primary": "#ffffff",
+    "color.text.muted": "#d0d0d0",
+    "color.accent.primary": "#ffe500",
+    "color.window.titlebar.background": "#000000",
+    "color.window.titlebar.foreground": "#ffffff",
+    "radius.window": "0px",
+    "space.shell.gap": "24px"
+  },
+  "variants": {
+    "window.chrome": "compact"
+  }
+}

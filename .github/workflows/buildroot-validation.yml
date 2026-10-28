@@ -1,0 +1,74 @@
+name: Buildroot — validate image
+
+on:
+  pull_request:
+    paths:
+      - 'platform-buildroot/image/**'
+      - 'platform-buildroot/deployment/**'
+      - 'platform-buildroot/Cargo.toml'
+      - 'platform-service/**'
+      - 'Cargo.lock'
+      - '.github/workflows/buildroot-validation.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: buildroot-validation-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  image:
+    # For large images, replace this with a dedicated self-hosted Linux runner.
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install host build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            build-essential git cpio unzip rsync bc file wget curl patch gettext \
+            pkg-config gawk diffutils python3 perl gzip bzip2 tar sed \
+            libncurses-dev libelf-dev libssl-dev acl attr
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+
+      - name: Install pnpm
+        run: npm install --global pnpm@11.19.0
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-unknown-linux-gnu
+
+      - name: Verify source archive matches pinned SHA-256
+        shell: bash
+        run: |
+          python3 <<'PY'
+          import hashlib, json, urllib.request
+          from pathlib import Path
+          data = json.loads(Path('platform-buildroot/image/buildroot-source.json').read_text())
+          expected = f'https://buildroot.org/downloads/buildroot-{data["version"]}.tar.gz'
+          assert data['url'] == expected, 'Unexpected Buildroot download URL'
+          assert len(data['sha256']) == 64 and all(c in '0123456789abcdef' for c in data['sha256'].lower())
+          sha = hashlib.sha256()
+          with urllib.request.urlopen(expected, timeout=120) as response:
+              while chunk := response.read(1024 * 1024):
+                  sha.update(chunk)
+          assert sha.hexdigest() == data['sha256'].lower(), 'Source SHA-256 mismatch'
+          print('Pinned Buildroot archive verified')
+          PY
+
+      - name: Build rumahl OS image (fresh output)
+        env:
+          RUMAHL_BUILDROOT_OUTPUT: ${{ runner.temp }}/rumahl-buildroot-output
+          RUMAHL_ARTIFACTS: ${{ runner.temp }}/rumahl-buildroot-artifacts
+          RUMAHL_BUILDROOT_SOURCE: ${{ runner.temp }}/rumahl-buildroot-source
+        run: bash platform-buildroot/image/build.sh
+
+      # The repository currently documents interactive QEMU acceptance steps.
+      # Add a non-interactive boot/login smoke test here when available.
