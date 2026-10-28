@@ -6,22 +6,7 @@ import { URL } from "node:url";
 import webpackStatsPlugin from "rollup-plugin-webpack-stats";
 import { shellBuildId } from "./scripts/build-id.js";
 
-const splashSource = readFileSync(new URL("./splash.html", import.meta.url), "utf8");
-const splashStyle = splashSource.match(/<style[^>]*>([\s\S]*?)<\/style>/)?.[1] ?? "";
-const splashBody = splashSource.match(/<body[^>]*>([\s\S]*?)<\/body>/)?.[1] ?? "";
-const splashMarkup = `<meta name="rumahl-shell" content="1" /><style>${splashStyle.replaceAll(' nonce="{{nonce}}"', "")}</style>`;
-const splashBodyMarkup = splashBody.replaceAll(' nonce="{{nonce}}"', "");
-
-/** Show the boot splash before the app bundle and styles have painted. */
-const injectSplash = {
-  name: "inject-splash",
-  transformIndexHtml(html: string, ctx: { filename: string }) {
-    if (ctx.filename.endsWith("demo-widget.html") || ctx.filename.endsWith("404.html")) return html;
-    return html
-      .replace("</head>", `${splashMarkup}</head>`)
-      .replace(/<body([^>]*)>/, `<body$1>${splashBodyMarkup}`);
-  }
-};
+import { injectSplash } from "./scripts/splash.js";
 
 const blockDemoEntry = {
   name: "block-demo-entry",

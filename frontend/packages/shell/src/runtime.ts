@@ -8,8 +8,8 @@ import { finishSplashAfterPaint, splashCopy, splashFail, splashProgress, splashS
 import { waitForUiStyles } from "./ui-ready";
 
 interface ShellRuntimeDependencies {
-  render?: (snapshot: ShellSnapshotV1, live: ShellLiveSource) => void;
-  hydrate?: (snapshot: ShellSnapshotV1, live: ShellLiveSource) => void;
+  render?: (snapshot: ShellSnapshotV1, live: ShellLiveSource, onReady: () => void) => void;
+  hydrate?: (snapshot: ShellSnapshotV1, live: ShellLiveSource, onReady: () => void) => void;
   readEmbedded?: () => ShellSnapshotV1 | null;
   renderFailure?: () => void;
   request?: ShellRequest;
@@ -56,8 +56,8 @@ export async function startShell({
       rememberLocale(embedded.user.locale);
       splashSetLocale(embedded.user.locale);
       splashProgress(45, splashCopy("preparing"));
-      hydrate(embedded, live);
-      await uiReady;
+      const committed = new Promise<void>((resolve) => hydrate(embedded, live, resolve));
+      await Promise.all([uiReady, committed]);
       finishSplashAfterPaint();
       return true;
     }
@@ -70,8 +70,8 @@ export async function startShell({
     splashSetLocale(snapshot.user.locale);
     splashProgress(58, splashCopy("dataLoaded"));
     splashProgress(72, splashCopy("buildingDesktop"));
-    render(snapshot, live);
-    await uiReady;
+    const committed = new Promise<void>((resolve) => render(snapshot, live, resolve));
+    await Promise.all([uiReady, committed]);
     finishSplashAfterPaint();
     return true;
   } catch {

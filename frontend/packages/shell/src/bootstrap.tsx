@@ -1,4 +1,4 @@
-import { StrictMode } from "react";
+import { StrictMode, useLayoutEffect } from "react";
 import { createRoot, hydrateRoot } from "react-dom/client";
 import type { ShellSnapshotV1 } from "@rumahl/contracts";
 import { App } from "./App";
@@ -22,7 +22,12 @@ import "./fonts.css";
 import "./styles.css";
 import { registerServiceWorker } from "./service-worker";
 
-export function renderShell(snapshot: ShellSnapshotV1, live?: ShellLiveSource): void {
+function ShellCommitted({ onReady }: { onReady: (() => void) | undefined }) {
+  useLayoutEffect(() => { onReady?.(); }, [onReady]);
+  return null;
+}
+
+export function renderShell(snapshot: ShellSnapshotV1, live?: ShellLiveSource, onReady?: () => void): void {
   const root = document.getElementById("root");
   if (!root) {
     throw new Error("rumahl shell root element is missing");
@@ -34,12 +39,13 @@ export function renderShell(snapshot: ShellSnapshotV1, live?: ShellLiveSource): 
 
   createRoot(root).render(
     <StrictMode>
+      <ShellCommitted onReady={onReady} />
       <App live={live} snapshot={snapshot} router={live?.allowDevelopmentLoopback ? "memory" : "browser"} />
     </StrictMode>
   );
 }
 
-export function hydrateShell(snapshot: ShellSnapshotV1, live?: ShellLiveSource): ReturnType<typeof hydrateRoot> {
+export function hydrateShell(snapshot: ShellSnapshotV1, live?: ShellLiveSource, onReady?: () => void): ReturnType<typeof hydrateRoot> {
   const root = document.getElementById("root");
   if (!root || root.dataset.shellSsr !== "1" || !root.hasChildNodes()) {
     throw new Error("server-rendered shell root is missing");
@@ -51,6 +57,7 @@ export function hydrateShell(snapshot: ShellSnapshotV1, live?: ShellLiveSource):
   return hydrateRoot(
     root,
     <StrictMode>
+      <ShellCommitted onReady={onReady} />
       <App live={live} snapshot={snapshot} router={live?.allowDevelopmentLoopback ? "memory" : "browser"} />
     </StrictMode>
   );

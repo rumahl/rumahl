@@ -15,7 +15,6 @@ browser and renders the shell for the requested path. There is no redirect to
 | URL | Meaning |
 | --- | --- |
 | `/` | Desktop dashboard; app grid in launcher mode |
-| `/apps` | First-party apps and authorized installed-app catalog |
 | `/app/:appId/*` | App identifier and an app-owned nested route |
 | `/settings/*` | Settings module and its nested pages |
 | `/settings/display` | Shell presentation controls |
@@ -63,6 +62,16 @@ added to the shell route table and implemented in its own module. The existing
 module boundary supports nested route/layout objects; heavy views can later
 introduce loading boundaries when needed. There is no custom URL matcher or
 replacement for React Router's History API handling.
+
+A first-party app can opt into a native custom topbar with
+`customTopbar: true` in `apps/registry.tsx`. Its route component reads the
+titlebar host through `useAppTopbarHost()` and portals its toolbar into it
+(`createPortal`). Native window controls stay in place, dragging and
+double-click-to-maximize keep working, and the generic title remains as the
+server-rendered fallback until the app mounts. The Store uses this for its
+brand, global search, refresh and source-management actions. A `preferredSize`
+on the same registry entry selects the initial window size; saved user window
+geometry still wins, and old default-sized Store windows are migrated once.
 
 Third-party app manifests **cannot** register React components in this table.
 The Rust-provided, session-filtered catalog/launch API is consumed by

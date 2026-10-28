@@ -99,18 +99,18 @@
       window.addEventListener("message", (event) => {
         const data = event.data;
         if (!data || data.type !== "rumahl-demo-store-response") return;
-        const resolve = pending.get(data.id);
-        if (!resolve) return;
+        const entry = pending.get(data.id);
+        if (!entry) return;
         pending.delete(data.id);
-        resolve(typeof data.value === "string" ? data.value : null);
+        entry.resolve(typeof data.value === "string" ? data.value : null);
       });
       function demoStore(op, key, value) {
         return new Promise((resolve) => {
           const id = ++storeSeq;
-          pending.set(id, resolve);
+          pending.set(id, { resolve });
           try { parent.postMessage({ type: "rumahl-demo-store-request", id, op, key, value }, "*"); }
           catch { pending.delete(id); resolve(null); return; }
-          setTimeout(() => { if (pending.delete(id)) resolve(null); }, 1500);
+          setTimeout(() => { const entry = pending.get(id); if (pending.delete(id)) entry?.resolve(null); }, 1500);
         });
       }
       const homeWidget = [

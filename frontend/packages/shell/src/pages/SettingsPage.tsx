@@ -282,7 +282,7 @@ function AppManagementBody({ app, details }: { app: ShellApp; details?: Installe
   useEffect(() => {
     if (!isContainer) return;
     const key = `rumahl.app.container.${app.id}`;
-    let stored: Partial<typeof containerOptions> = {};
+    let stored: Partial<typeof containerOptions>;
     try { stored = JSON.parse(localStorage.getItem(key) ?? "null") ?? {}; } catch { stored = {}; }
     setContainerOptions({
       startOnBoot: details?.lifecycle === "always-on",

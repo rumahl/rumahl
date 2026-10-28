@@ -45,6 +45,7 @@ pub enum LauncherLayoutVariant {
 pub enum ShellMode {
     Desktop,
     Launcher,
+    Mobile,
 }
 
 impl ShellMode {
@@ -52,6 +53,7 @@ impl ShellMode {
         match self {
             Self::Desktop => "desktop",
             Self::Launcher => "launcher",
+            Self::Mobile => "mobile",
         }
     }
 
@@ -59,6 +61,7 @@ impl ShellMode {
         match value {
             "desktop" => Some(Self::Desktop),
             "launcher" => Some(Self::Launcher),
+            "mobile" => Some(Self::Mobile),
             _ => None,
         }
     }
@@ -147,6 +150,14 @@ pub enum ExtensionSlot {
     DashboardWidgets,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum ExtensionSize {
+    Small,
+    Medium,
+    Large,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum ExtensionContribution {
@@ -165,6 +176,8 @@ pub enum ExtensionContribution {
         title: String,
         slot: ExtensionSlot,
         entrypoint: String,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        size: Option<ExtensionSize>,
     },
 }
 
@@ -594,6 +607,7 @@ impl ExtensionContribution {
             title,
             slot: ExtensionSlot::DashboardWidgets,
             entrypoint,
+            size: None,
         })
     }
 

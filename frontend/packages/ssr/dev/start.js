@@ -303,6 +303,7 @@ try {
     RUMAHL_RUNTIME_SECRET_SOCKET: join(runtime, "secret.sock"),
     RUMAHL_RUNTIME_IMAGE_SOCKET: join(runtime, "image.sock"),
     RUMAHL_PACKAGE_TRUST_STORE: join(state, "keys", "trust-store.json"),
+    RUMAHL_FILE_ENCRYPTION: "off",
     RUMAHL_TPM2_EXECUTABLE: "/bin/true",
     RUMAHL_SECRET_KEY_ID: "dev-root",
     RUMAHL_SECRET_KEY_OBJECT: join(runtime, "root.ctx") };

@@ -25,16 +25,20 @@
       overflow: hidden;
     }
     #rumahl-splash {
+      --splash-bg: #050505;
+      --splash-fg: #ffffff;
+      --splash-muted: rgba(255, 255, 255, 0.42);
+      --splash-soft: rgba(255, 255, 255, 0.12);
       position: fixed;
       inset: 0;
       z-index: 2147483647;
       display: grid;
       place-items: center;
       isolation: isolate;
-      color: var(--splash-fg);
+      color: var(--splash-fg, #ffffff);
       background:
         radial-gradient(circle at 50% 45%, rgba(255, 255, 255, 0.035), transparent 28%),
-        var(--splash-bg);
+        var(--splash-bg, #050505);
       font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
     }
     #rumahl-splash .brand {
@@ -74,7 +78,7 @@
       overflow: visible;
     }
     #rumahl-splash .mark-path {
-      fill: var(--splash-fg);
+      fill: var(--splash-fg, #ffffff);
     }
     #rumahl-splash .status {
       position: absolute;
@@ -107,7 +111,7 @@
       transition: transform 0.4s cubic-bezier(0.32, 0.72, 0, 1);
     }
     #rumahl-splash .label {
-      color: var(--splash-muted);
+      color: var(--splash-muted, rgba(255, 255, 255, 0.42));
       font-size: 12px;
       font-weight: 500;
       letter-spacing: 0.04em;
@@ -115,13 +119,12 @@
       text-align: center;
     }
     #rumahl-splash.ready {
-      animation: rumahl-splash-out 0.55s 0.18s ease forwards;
+      animation: rumahl-splash-out 0.18s ease-out forwards;
     }
-    #rumahl-splash.ready .brand {
-      animation: rumahl-splash-brand-exit 0.58s cubic-bezier(0.7, 0, 0.84, 0) forwards;
-    }
+    #rumahl-splash.ready .brand,
+    #rumahl-splash.ready .brand::before,
     #rumahl-splash.ready .status {
-      animation: rumahl-splash-status-out 0.35s ease forwards;
+      animation-play-state: paused;
     }
     @keyframes rumahl-splash-brand-enter {
       0% { opacity: 0; transform: translate3d(0, 6px, 0) scale(0.93); }
@@ -135,12 +138,6 @@
     }
     @keyframes rumahl-splash-status-in {
       to { opacity: 1; }
-    }
-    @keyframes rumahl-splash-status-out {
-      to { opacity: 0; transform: translate(-50%, 5px); }
-    }
-    @keyframes rumahl-splash-brand-exit {
-      to { opacity: 0; transform: translate3d(0, -14px, 0) scale(0.985); }
     }
     @keyframes rumahl-splash-out {
       to { opacity: 0; }
@@ -245,11 +242,22 @@
         clearTimeout(veryLongTimer);
         paint(100);
         if (label) label.textContent = "rumahl OS";
-        splash.classList.add("ready");
-        window.setTimeout(() => {
+        let cleanupTimer;
+        function remove() {
+          clearTimeout(cleanupTimer);
           splash.remove();
           root.classList.remove("rumahl-splashing");
-        }, 900);
+        }
+        if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+          remove();
+          return;
+        }
+        splash.addEventListener("animationend", (event) => {
+          if (event.target === splash && event.animationName === "rumahl-splash-out") remove();
+        });
+        splash.classList.add("ready");
+        // Fallback if animations are disabled or their end event is lost.
+        cleanupTimer = window.setTimeout(remove, 250);
       }
 
       function fail(message) {

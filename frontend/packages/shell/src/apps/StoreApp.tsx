@@ -685,6 +685,12 @@ function StoreDetail({ entry, app, source, more, installing, busy, backLabel, on
   </div>;
 }
 
+export function scrollToTop(element: HTMLElement | null | undefined, top = 0): void {
+  if (!element) return;
+  if (typeof element.scrollTo === "function") element.scrollTo({ top });
+  else element.scrollTop = top;
+}
+
 export function StoreApp() {
   const { t, locale } = useI18n();
   const { live, open, state } = useShell();
@@ -764,7 +770,7 @@ export function StoreApp() {
   const openDetails = (entry: StoreAppEntry) => {
     if (!selectedKey) returnScroll.current = scrollSurface()?.scrollTop ?? 0;
     setSelectedKey(entryKey(entry));
-    scrollSurface()?.scrollTo({ top: 0 });
+    scrollToTop(scrollSurface());
   };
   const openDeveloper = (entry: StoreAppEntry) => {
     const key = publisherKey(entry);
@@ -772,14 +778,14 @@ export function StoreApp() {
     setDeveloperOriginKey(selectedKey);
     setSelectedKey(null);
     setDeveloperKey(key);
-    scrollSurface()?.scrollTo({ top: 0 });
+    scrollToTop(scrollSurface());
   };
   const closeDeveloper = () => {
     const origin = developerOriginKey;
     setDeveloperKey(null);
     setDeveloperOriginKey(null);
     setSelectedKey(origin);
-    scrollSurface()?.scrollTo({ top: 0 });
+    scrollToTop(scrollSurface());
   };
   const closeDetails = () => {
     returnScroll.current = returnScroll.current ?? 0;
@@ -791,10 +797,10 @@ export function StoreApp() {
     if (returnScroll.current !== null) {
       const top = returnScroll.current;
       returnScroll.current = null;
-      requestAnimationFrame(() => scroller?.scrollTo({ top }));
+      requestAnimationFrame(() => scrollToTop(scroller, top));
       return;
     }
-    scroller?.scrollTo({ top: 0 });
+    scrollToTop(scroller);
   }, [view, sourceFilter, categoryFilter, query, selectedKey]);
 
   useEffect(() => {

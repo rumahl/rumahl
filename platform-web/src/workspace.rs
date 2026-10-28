@@ -308,16 +308,16 @@ mod appearance_tests {
 
     #[test]
     fn glass_colour_roundtrips_and_rejects_invalid_values() {
-        let valid: Appearance = serde_json::from_str(
-            r##"{"glassColor":false,"glassTint":"#ff5500","tokens":{}}"##,
-        )
-        .unwrap();
+        let valid: Appearance =
+            serde_json::from_str(r##"{"glassColor":false,"glassTint":"#ff5500","tokens":{}}"##)
+                .unwrap();
         assert!(valid_appearance(&valid));
-        assert_eq!(serde_json::to_value(&valid).unwrap()["glassTint"], "#ff5500");
-        let invalid: Appearance = serde_json::from_str(
-            r##"{"glassTint":"red; display:none","tokens":{}}"##,
-        )
-        .unwrap();
+        assert_eq!(
+            serde_json::to_value(&valid).unwrap()["glassTint"],
+            "#ff5500"
+        );
+        let invalid: Appearance =
+            serde_json::from_str(r##"{"glassTint":"red; display:none","tokens":{}}"##).unwrap();
         assert!(!valid_appearance(&invalid));
     }
 }

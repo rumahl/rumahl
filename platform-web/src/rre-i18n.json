@@ -277,7 +277,8 @@
       "rumahl is restarting…": "rumahl wird neu gestartet …",
       "unknown": "unbekannt",
       "unresponsive": "hängend",
-      "used": "belegt"
+      "used": "belegt",
+      "The host maintenance service is not available. On the development server, host maintenance requires a rumahl OS image.": "Der Host-Wartungsdienst ist nicht verfügbar. Auf dem Entwicklungs-Server ist für die Host-Wartung ein rumahl-OS-Image erforderlich."
     },
     "en": {}
   }

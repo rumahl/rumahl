@@ -18,6 +18,12 @@ const FALLBACK_KEY = "rumahl.session.key.v1";
 const STORAGE_KEY = "rumahl.session.snapshot.v1";
 const MAX_WINDOWS = 32;
 const MAX_AGE = 30 * 24 * 60 * 60 * 1000;
+const DISABLED_KEY = "rumahl.session.snapshot.disabled";
+
+function disabled(): boolean {
+  if (typeof localStorage === "undefined") return false;
+  try { return localStorage.getItem(DISABLED_KEY) === "1"; } catch { return false; }
+}
 
 export interface SessionSnapshot {
   version: 1;
@@ -211,6 +217,7 @@ async function writeSnapshot(snapshot: SessionSnapshot): Promise<boolean> {
 
 /** Queues the latest live desktop; coalesces rapid window/drag updates. */
 export function stageSessionSnapshot(snapshot: SessionSnapshot): void {
+  if (disabled()) return;
   latest = snapshot;
   if (timer) clearTimeout(timer);
   timer = setTimeout(() => {
@@ -222,6 +229,7 @@ export function stageSessionSnapshot(snapshot: SessionSnapshot): void {
 
 /** Encrypts the latest staged state immediately (session expiry, logout, pagehide). */
 export function flushSessionSnapshot(): Promise<boolean> {
+  if (disabled()) return Promise.resolve(true);
   if (timer) { clearTimeout(timer); timer = null; }
   const pending = latest;
   if (pending) writes = writes.then(() => writeSnapshot(pending)).catch(() => false);
@@ -233,7 +241,7 @@ export function hasStagedSessionSnapshot(): boolean {
 }
 
 export async function loadSessionSnapshot(account: string): Promise<SessionSnapshot | null> {
-  if (typeof localStorage === "undefined") return null;
+  if (typeof localStorage === "undefined" || disabled()) return null;
   let envelope: Envelope;
   try { envelope = JSON.parse(localStorage.getItem(STORAGE_KEY) ?? "null") as Envelope; } catch { return null; }
   if (!envelope || envelope.version !== 1 || typeof envelope.iv !== "string" || typeof envelope.data !== "string") return null;

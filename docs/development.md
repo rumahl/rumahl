@@ -29,8 +29,10 @@ sockets. A state-directory lock prevents two servers sharing the same database.
 
 ### HTTPS trust
 
-The server creates a 30-day localhost test certificate under `.rumahl-dev/tls`.
-Trust its public `localhost.pem` in a dedicated development browser profile.
+The server creates a 365-day localhost test certificate under `.rumahl-dev/tls`.
+It renews the generated certificate automatically when it expires or enters its
+last seven days; the renewal keeps the existing private key, but the changed
+public certificate still has to be trusted in the development browser profile.
 Alternatively supply your existing locally trusted localhost certificate:
 
 ```sh
@@ -171,7 +173,7 @@ Buildroot acceptance described in their READMEs before shipping an image.
 
 ## Shell routes and modes
 
-Use `/app/app-manager` for a direct first-party app route and
+Use `/app/files` for a direct first-party app route and
 `/settings/display` for presentation preferences. The top bar changes the mode
 for this browser profile; Settings can save it for the whole account or this
 device. The URL stays unchanged. Browser reload and Back/Forward preserve the route; login
@@ -186,8 +188,8 @@ required; the shell does not import an app's React code. See
 [app hosting](architecture/app-hosting.md) for the contract and current limits.
 
 The developer certificate now covers both `localhost` and `*.apps.localhost`.
-On the first start with an older generated certificate, the runner regenerates
-it. Trust the displayed certificate again; custom `--cert` certificates must
+On the first start with an older or expired generated certificate, the runner
+regenerates it. Trust the displayed certificate again; custom `--cert` certificates must
 cover both names. The browser must resolve installation subdomains beneath
 `apps.localhost` to loopback. Shell and apps use the same developer HTTPS port.
 
@@ -199,7 +201,7 @@ pnpm --dir frontend dev:app
 
 It builds and signs the built-in development app, installs it into
 `.rumahl-dev/data` and grants launch access to the existing accounts, so it
-appears in `/apps`. This runs the same signed-package path as production,
+appears in the launcher and Settings → Apps. This runs the same signed-package path as production,
 unlike the integration fixture below (which is not an installer).
 
 The integration fixture is only for disposable developer state; it refuses to
@@ -209,7 +211,7 @@ seed a platform that already has installations. It is not an installer:
 cargo build -p rumahl-platform-service --bins --example app_host_fixture
 # While the developer server is running (adjust the state directory as needed):
 target/debug/examples/app_host_fixture seed "$HOME/.local/state/rumahl-dev/data" developer
-# Open /apps; "Isolated test app" is granted only to the developer account.
+# Open the launcher; "Isolated test app" is granted only to the developer account.
 target/debug/examples/app_host_fixture revoke "$HOME/.local/state/rumahl-dev/data"
 ```
 

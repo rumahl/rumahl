@@ -74,7 +74,13 @@ export function splashProgress(value: number, label?: string): void {
 
 export function splashFinish(): void {
   if (typeof window === "undefined") return;
-  window.rumahlSplash?.finish();
+  if (window.rumahlSplash) {
+    window.rumahlSplash.finish();
+  } else {
+    // CSP may have blocked the inline controller. The shell is ready now.
+    document.getElementById("rumahl-splash")?.remove();
+    document.documentElement.classList.remove("rumahl-splashing");
+  }
 }
 
 export function splashFail(message: string): void {

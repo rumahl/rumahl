@@ -105,6 +105,12 @@ export function ShellLayout({ snapshot, live }: { snapshot: ShellSnapshotV1; liv
   const workspace = useWorkspace();
   const [sessionSnapshotReady, setSessionSnapshotReady] = useState(false);
   const sessionRestored = useRef(false);
+  const currentPath = useRef(path);
+  const currentRoutePresentation = useRef(route.presentation);
+  const currentRoutedWindow = useRef(routedWindow);
+  currentPath.current = path;
+  currentRoutePresentation.current = route.presentation;
+  currentRoutedWindow.current = routedWindow;
   // Restores the device workspace windows. Available synchronously from the
   // snapshot so windows are server-rendered, not added after a client fetch.
   const restoredWindows = (includeInternal = true) => {
@@ -141,16 +147,17 @@ export function ShellLayout({ snapshot, live }: { snapshot: ShellSnapshotV1; liv
         sessionRestored.current = true;
         let windows = saved.windows.map((window) => ({ ...window }));
         let active: ShellWindow | undefined;
-        if (route.presentation === "window") {
-          const existing = windows.find((window) => window.id === routedWindow.id);
-          active = { ...existing, ...routedWindow, minimized: false } as ShellWindow;
+        if (currentRoutePresentation.current === "window") {
+          const routed = currentRoutedWindow.current;
+          const existing = windows.find((window) => window.id === routed.id);
+          active = { ...existing, ...routed, minimized: false } as ShellWindow;
           windows = [...windows.filter((window) => window.id !== active!.id), active];
         }
         dispatch({ type: "restore-workspace", windows });
         if (!active && saved.focusedWindowId) {
           window.setTimeout(() => dispatch({ type: "focus-window", id: saved.focusedWindowId! }), 0);
         }
-        if (!active && saved.activeLocation && saved.activeLocation !== "/" && location.pathname === "/") {
+        if (!active && saved.activeLocation && saved.activeLocation !== "/" && currentPath.current === "/") {
           try { void navigate(localPath(saved.activeLocation), { replace: true }); } catch { /* ignore stale targets */ }
         }
       }
@@ -446,7 +453,7 @@ export function ShellLayout({ snapshot, live }: { snapshot: ShellSnapshotV1; liv
   }, [theme.base, theme.id, material]);
 
   return <ShellContext value={{ snapshot, live, state, dispatch, mode, setMode, open }}>
-    <div className={`scene shell${showVideo ? "" : " image-mode"}${appearance.wallpaperMotion === false || svgActive || performanceMode ? " no-motion" : ""}`} data-theme={theme.id} data-theme-base={theme.base} data-material={material} data-app-inputs={appInputs} data-glass={glassEngine} data-scheme={scheme} data-perf={ultra ? "ultra" : undefined} data-maximized={windowMaximized ? "true" : undefined} data-fullscreen={fullscreenWindow ? "true" : undefined} data-launcher={launcherWindow ? "app" : undefined} data-inactive={inactive ? "true" : undefined} data-debug={debug ? "true" : undefined} data-animations={animations ? undefined : "off"} data-shell-build={snapshot.shellBuildId} data-shell-version={SHELL_VERSION} data-demo={live?.demo ? "true" : undefined} data-shell-mode={mode} data-os-mode={osMode.mode} data-mobile={viewport.mobile ? "true" : undefined} data-orientation={viewport.mobile ? (viewport.landscape ? "landscape" : "portrait") : undefined} data-preferences-revision={preferences.preferences?.revision}>
+    <div className={`scene shell${showVideo ? "" : " image-mode"}${appearance.wallpaperMotion === false || svgActive || performanceMode ? " no-motion" : ""}`} data-theme={theme.id} data-theme-base={theme.base} data-material={material} data-app-inputs={appInputs} data-glass={glassEngine} data-scheme={scheme} data-perf={ultra ? "ultra" : undefined} data-maximized={windowMaximized ? "true" : undefined} data-fullscreen={fullscreenWindow ? "true" : undefined} data-launcher={launcherWindow ? "app" : undefined} data-inactive={inactive ? "true" : undefined} data-debug={debug ? "true" : undefined} data-animations={animations ? undefined : "off"} data-shell-build={snapshot.shellBuildId} data-shell-version={SHELL_VERSION} data-demo={live?.demo ? "true" : undefined} data-shell-mode={mode} data-os-mode={osMode.mode} data-mobile={viewport.mobile ? "true" : undefined} data-orientation={viewport.mobile ? (viewport.landscape ? "landscape" : "portrait") : undefined} data-preferences-revision={preferences.preferences?.revision} data-session-ready={sessionSnapshotReady ? "true" : undefined}>
       <div className="wallpaper media-wall" aria-hidden="true">
         {showVideo
           ? media.video ? <WallpaperVideo key={media.video} src={media.video} />
