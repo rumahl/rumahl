@@ -345,12 +345,6 @@ export const classicTheme: Theme = {
             children: [{ component: "brand" }],
           },
           {
-            tag: "a",
-            class: "taskbar__button",
-            attrs: { href: "/apps" },
-            children: [{ text: "Apps" }],
-          },
-          {
             tag: "div",
             class: "taskbar__apps",
             children: [

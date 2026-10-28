@@ -29,45 +29,45 @@
    * of its own hard-coded height/padding/font, so one `data-size` step resizes
    * the whole system and themes can retune a step centrally.
    */
-  --control-h: 36px;
-  --control-pad-x: 14px;
-  --control-pad-y: 8px;
-  --control-font: 12px;
-  --control-icon: 14px;
-  --control-gap: 7px;
+  --control-h: calc(36px * var(--rumahl-ui-typography-scale, 1));
+  --control-pad-x: calc(14px * var(--rumahl-ui-typography-scale, 1));
+  --control-pad-y: calc(8px * var(--rumahl-ui-typography-scale, 1));
+  --control-font: calc(12px * var(--rumahl-ui-typography-scale, 1));
+  --control-icon: calc(14px * var(--rumahl-ui-typography-scale, 1));
+  --control-gap: calc(7px * var(--rumahl-ui-typography-scale, 1));
 }
 /* Size steps: set `data-size` on any control; `md` is the default above. */
 .shell [data-size="xs"] {
-  --control-h: 26px;
-  --control-pad-x: 10px;
-  --control-pad-y: 4px;
-  --control-font: 11px;
-  --control-icon: 12px;
-  --control-gap: 5px;
+  --control-h: calc(26px * var(--rumahl-ui-typography-scale, 1));
+  --control-pad-x: calc(10px * var(--rumahl-ui-typography-scale, 1));
+  --control-pad-y: calc(4px * var(--rumahl-ui-typography-scale, 1));
+  --control-font: calc(11px * var(--rumahl-ui-typography-scale, 1));
+  --control-icon: calc(12px * var(--rumahl-ui-typography-scale, 1));
+  --control-gap: calc(5px * var(--rumahl-ui-typography-scale, 1));
 }
 .shell [data-size="sm"] {
-  --control-h: 30px;
-  --control-pad-x: 12px;
-  --control-pad-y: 6px;
-  --control-font: 11px;
-  --control-icon: 13px;
-  --control-gap: 6px;
+  --control-h: calc(30px * var(--rumahl-ui-typography-scale, 1));
+  --control-pad-x: calc(12px * var(--rumahl-ui-typography-scale, 1));
+  --control-pad-y: calc(6px * var(--rumahl-ui-typography-scale, 1));
+  --control-font: calc(11px * var(--rumahl-ui-typography-scale, 1));
+  --control-icon: calc(13px * var(--rumahl-ui-typography-scale, 1));
+  --control-gap: calc(6px * var(--rumahl-ui-typography-scale, 1));
 }
 .shell [data-size="lg"] {
-  --control-h: 44px;
-  --control-pad-x: 18px;
-  --control-pad-y: 10px;
-  --control-font: 14px;
-  --control-icon: 16px;
-  --control-gap: 8px;
+  --control-h: calc(44px * var(--rumahl-ui-typography-scale, 1));
+  --control-pad-x: calc(18px * var(--rumahl-ui-typography-scale, 1));
+  --control-pad-y: calc(10px * var(--rumahl-ui-typography-scale, 1));
+  --control-font: calc(14px * var(--rumahl-ui-typography-scale, 1));
+  --control-icon: calc(16px * var(--rumahl-ui-typography-scale, 1));
+  --control-gap: calc(8px * var(--rumahl-ui-typography-scale, 1));
 }
 .shell [data-size="xl"] {
-  --control-h: 52px;
-  --control-pad-x: 22px;
-  --control-pad-y: 13px;
-  --control-font: 15px;
-  --control-icon: 18px;
-  --control-gap: 9px;
+  --control-h: calc(52px * var(--rumahl-ui-typography-scale, 1));
+  --control-pad-x: calc(22px * var(--rumahl-ui-typography-scale, 1));
+  --control-pad-y: calc(13px * var(--rumahl-ui-typography-scale, 1));
+  --control-font: calc(15px * var(--rumahl-ui-typography-scale, 1));
+  --control-icon: calc(18px * var(--rumahl-ui-typography-scale, 1));
+  --control-gap: calc(9px * var(--rumahl-ui-typography-scale, 1));
 }
 .shell[data-scheme="light"] {
   --control-fill: #3345630b;
@@ -2935,4 +2935,57 @@
 @media (prefers-reduced-motion: reduce) {
   .shell :is(button, a, .rumahl-chip, .rumahl-app-tile, .rumahl-list-item):active { scale: none !important; }
   .shell .rumahl-toggle-group::before { scale: none !important; transition: none !important; }
+}
+
+/* Image viewer shares modal chrome and the current material palette. */
+.shell .rumahl-modal:has(.rumahl-lightbox) { width: min(1080px, calc(100vw - 32px)); }
+.rumahl-lightbox { display: grid; gap: 12px; min-width: 0; }
+.rumahl-lightbox__toolbar { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+.rumahl-lightbox__toolbar > span { margin-inline: auto; font-variant-numeric: tabular-nums; }
+.rumahl-lightbox__stage { display: grid; place-items: center; height: min(55vh, 640px); overflow: auto; border-radius: var(--group-radius, 12px); background: var(--control-fill); }
+.rumahl-lightbox__stage img { display: block; width: 100%; height: 100%; min-height: 0; object-fit: contain; }
+.rumahl-lightbox__stage[data-zoomed] { display: block; }
+.rumahl-lightbox__stage[data-zoomed] img { width: auto; height: auto; max-width: none; min-width: 100%; }
+.rumahl-lightbox__caption { margin: 0; color: var(--rumahl-ui-color-text-muted); font-size: 12px; }
+.rumahl-lightbox__thumbnails { display: flex; gap: 8px; overflow-x: auto; padding: 3px; }
+.rumahl-lightbox__thumbnails button { flex: none; width: 80px; padding: 3px; border: 1px solid var(--surface-edge); border-radius: 8px; background: var(--control-fill); cursor: pointer; }
+.rumahl-lightbox__thumbnails button[aria-pressed="true"] { outline: 2px solid var(--rumahl-ui-color-accent); }
+.rumahl-lightbox__thumbnails img { display: block; width: 100%; height: 48px; object-fit: contain; }
+
+/* Tabs reuse the shared sliding selection pill. RumahlButtonGroup single
+   selection already gets the same motion from .rumahl-toggle-group::before. */
+.shell .rumahl-button-group[data-has-selection="true"] { position: relative; isolation: isolate; }
+.shell .rumahl-button-group[data-has-selection="true"]::before {
+  content: "";
+  position: absolute;
+  left: var(--selection-left);
+  width: var(--selection-width);
+  top: calc(var(--control-h) * 0.08333);
+  bottom: calc(var(--control-h) * 0.08333);
+  z-index: 0;
+  border-radius: 16px;
+  background: var(--control-raised);
+  box-shadow: var(--control-button-shadow);
+  pointer-events: none;
+  transition: left 220ms cubic-bezier(.2, .8, .2, 1), width 220ms ease;
+}
+.shell .rumahl-button-group[data-has-selection="true"] > button { position: relative; z-index: 1; }
+.shell .rumahl-button-group[data-has-selection="true"] > button[aria-selected="true"] {
+  background: transparent;
+  box-shadow: none;
+  border-color: var(--control-border);
+}
+.shell[data-animations="off"] .rumahl-button-group[data-has-selection="true"]::before { transition: none; }
+@media (prefers-reduced-motion: reduce) {
+  .shell .rumahl-button-group[data-has-selection="true"]::before { transition: none !important; }
+}
+
+/* Inline trailing control (for example a native overflow dropdown) sits above
+   the shared pill and participates in its measurement. */
+.shell .rumahl-toggle-group > .rumahl-toggle-group__trailing {
+  position: relative;
+  z-index: 1;
+  display: inline-flex;
+  align-items: stretch;
+  flex: none;
 }

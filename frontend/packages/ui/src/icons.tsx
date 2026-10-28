@@ -34,6 +34,10 @@ export function PhoneIcon(props: IconProps) {
   return <IconBase {...props}><rect x="7" y="3" width="10" height="18" rx="2.5" /><path d="M11 18h2" strokeLinecap="round" /></IconBase>;
 }
 
+export function StoreIcon(props: IconProps) {
+  return <IconBase {...props}><path d="M5 8h14l-1 12H6L5 8Z" /><path d="M9 9V6a3 3 0 0 1 6 0v3" strokeLinecap="round" /></IconBase>;
+}
+
 export function GridIcon(props: IconProps) {
   return (
     <IconBase {...props}>
@@ -186,6 +190,16 @@ export function WindowCloseIcon(props: IconProps) {
 
 export function EditIcon(props: IconProps) {
   return <IconBase {...props}><path d="M4 20h4L19 9l-4-4L4 16z" /><path d="m14 5 4 4" /></IconBase>;
+}
+
+export function PlayIcon(props: IconProps) {
+  return <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" {...props}><path d="M8 5.14v13.72a1 1 0 0 0 1.54.84l10.15-6.86a1 1 0 0 0 0-1.68L9.54 4.3A1 1 0 0 0 8 5.14Z" /></svg>;
+}
+export function StopIcon(props: IconProps) {
+  return <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" {...props}><rect x="6" y="6" width="12" height="12" rx="2.2" /></svg>;
+}
+export function RefreshIcon(props: IconProps) {
+  return <IconBase {...props}><path d="M20 11a8 8 0 1 0-2.3 5.7" /><path d="M20 4v7h-7" strokeLinecap="round" strokeLinejoin="round" /></IconBase>;
 }
 
 export function CheckIcon(props: IconProps) {

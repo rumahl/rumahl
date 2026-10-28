@@ -18,6 +18,7 @@ const meta = {
 ## Rules
 - 2–5 mutually exclusive choices (or a small toolbar).
 - The selected option is accent-tinted; keep labels parallel.
+- Single selection uses one shared pill that animates on click and can be dragged.
 - For 4+ options, consider a **Select**.`
       }
     }

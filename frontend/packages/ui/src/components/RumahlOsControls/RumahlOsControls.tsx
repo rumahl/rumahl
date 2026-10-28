@@ -1,4 +1,4 @@
-import { useId, useRef, type CSSProperties, type ReactNode } from "react";
+import { useEffect, useId, useRef, type CSSProperties, type ReactNode } from "react";
 import { Button } from "../Button/Button";
 import { RumahlInputGroup, type ValidationProps } from "../RumahlInputs/RumahlInputs";
 import type { ControlSize } from "../../size";
@@ -215,9 +215,31 @@ export function RumahlTabs({
   style?: CSSProperties;
 }) {
   const id = useId();
+  const groupRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const group = groupRef.current;
+    if (!group) return;
+    const measure = () => {
+      const selected = group.querySelector<HTMLButtonElement>('[role="tab"][aria-selected="true"]');
+      group.dataset.hasSelection = selected ? "true" : "false";
+      if (!selected) return;
+      group.style.setProperty("--selection-left", `${selected.offsetLeft}px`);
+      group.style.setProperty("--selection-width", `${selected.offsetWidth}px`);
+    };
+    measure();
+    const observer = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(measure);
+    observer?.observe(group);
+    group.querySelectorAll('[role="tab"]').forEach((tab) => observer?.observe(tab));
+    window.addEventListener("resize", measure);
+    return () => {
+      observer?.disconnect();
+      window.removeEventListener("resize", measure);
+    };
+  }, [tabs, value]);
   return (
     <div className="rumahl-tabs" data-size={size} style={{ ...colorStyle(color), ...style }}>
       <div
+        ref={groupRef}
         className="rumahl-button-group"
         role="tablist"
         aria-label={label}
