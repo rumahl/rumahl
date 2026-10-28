@@ -1,6 +1,7 @@
 import "../test/popover";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { describe, expect, test, vi } from "vitest";
+import { WCAG, contrastRatio } from "@rumahl/ui/color";
 import { paletteTokens } from "@rumahl/ui/palette";
 import { getTheme } from "@rumahl/ui/sdk";
 import { App } from "../App";
@@ -72,6 +73,22 @@ describe("theme selection", () => {
     expect(document.documentElement.style.getPropertyValue("--rumahl-ui-color-text-primary")).toBe(dark["color.text.primary"]);
     expect(dark["color.surface.strong"]).not.toBe("#000000");
     expect(JSON.parse(localStorage.getItem("rumahl.demo.workspace")!).appearance.mode).toBe("dark");
+  });
+
+  test("derives a readable accent ink for a too-light accent", async () => {
+    render(<App snapshot={demoSnapshot} initialLocation="/settings/display" />);
+    fireEvent.click(await screen.findByLabelText("Accent colour"));
+    const accentHex = screen.getByLabelText("Accent colour value");
+    fireEvent.change(accentHex, { target: { value: "#d9f99d" } });
+    fireEvent.keyDown(accentHex, { key: "Enter" });
+    await waitFor(() => {
+      const root = document.documentElement;
+      const ink = root.style.getPropertyValue("--rumahl-ui-color-accent-ink");
+      const panel = root.style.getPropertyValue("--rumahl-ui-color-panel-background");
+      expect(ink).toBeTruthy();
+      expect(panel).toBeTruthy();
+      expect(contrastRatio(ink, panel).ratio).toBeGreaterThanOrEqual(WCAG.AA);
+    });
   });
 
   test("keeps text readable when a surface colour changes", async () => {

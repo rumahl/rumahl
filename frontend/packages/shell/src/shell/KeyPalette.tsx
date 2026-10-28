@@ -34,7 +34,6 @@ export function KeyPalette() {
       { id: "center", title: t("keycmd.center"), keywords: "center maintenance wartung", feature: "recovery.center", run: () => { closeKeyPalette(); openEmergency(); } },
       { id: "activity", title: t("keycmd.activity"), keywords: "log audit protokoll aktivitaet", feature: "activity", run: () => { closeKeyPalette(); open("/activity"); } },
       { id: "home", title: t("keycmd.home"), keywords: "home desktop start", run: () => { closeKeyPalette(); open("/"); } },
-      { id: "apps", title: t("keycmd.apps"), keywords: "apps applications", run: () => { closeKeyPalette(); open("/apps"); } },
       { id: "settings", title: t("keycmd.settings"), keywords: "settings einstellungen", run: () => { closeKeyPalette(); open("/settings"); } },
       { id: "mode.launcher", title: t("keycmd.launcher"), keywords: "mode launcher springboard", run: () => { closeKeyPalette(); setMode("launcher"); } },
       { id: "mode.desktop", title: t("keycmd.desktop"), keywords: "mode desktop", run: () => { closeKeyPalette(); setMode("desktop"); } }

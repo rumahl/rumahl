@@ -1,7 +1,7 @@
 /* Immersive desktop states. Kept unlayered so the reference presentation
    cannot override the dock tuck-away or the exclusive fullscreen window. */
 .shell .os-dock.is-auto-hide {
-  transform: translateY(calc(100% - 8px + var(--rumahl-ui-layout-dock-offset, 10px)));
+  transform: translateY(calc(100% + var(--rumahl-ui-layout-dock-offset, 10px) - 6px));
   transition: transform 0.34s cubic-bezier(0.32, 0.72, 0, 1);
 }
 .shell .os-dock.is-auto-hide.is-revealed { transform: none; }

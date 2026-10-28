@@ -20,6 +20,7 @@ export interface AppearanceSettings {
   animations?: boolean;
   performanceMode?: boolean;
   ultraPerformance?: boolean;
+  adaptiveType?: boolean;
   glassEngine?: GlassEngine;
   glassEnabled?: boolean;
   glassColor?: boolean;
@@ -77,6 +78,7 @@ export function parseAppearance(value: unknown): AppearanceSettings {
     ...(typeof record.animations === "boolean" ? { animations: record.animations } : {}),
     ...(typeof record.performanceMode === "boolean" ? { performanceMode: record.performanceMode } : {}),
     ...(record.ultraPerformance === true ? { ultraPerformance: true } : {}),
+    ...(record.adaptiveType === true ? { adaptiveType: true } : {}),
     ...(record.glassEngine === "css" || record.glassEngine === "canvas" ? { glassEngine: record.glassEngine } : {}),
     ...(typeof record.glassEnabled === "boolean" ? { glassEnabled: record.glassEnabled } : {}),
     ...(typeof record.glassColor === "boolean" ? { glassColor: record.glassColor } : {}),

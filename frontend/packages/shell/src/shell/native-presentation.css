@@ -481,10 +481,6 @@
 .desktop-icon[data-app-id="files"] .desktop-icon__art {
   background: linear-gradient(150deg, #57b7f8, #2375d2);
 }
-.app-tile[data-app-id="app-manager"] .app-tile__icon,
-.desktop-icon[data-app-id="app-manager"] .desktop-icon__art {
-  background: linear-gradient(150deg, #6caa80, #29705b);
-}
 .app-tile[data-app-id="settings"] .app-tile__icon,
 .desktop-icon[data-app-id="settings"] .desktop-icon__art {
   background: linear-gradient(150deg, #9ba7b5, #536072);

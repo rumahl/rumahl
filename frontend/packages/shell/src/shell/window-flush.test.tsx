@@ -11,7 +11,7 @@ describe("flush app windows", () => {
   it("detects installed iframe apps only", () => {
     expect(isInstalledAppWindow("app:com.rumahl.devapp")).toBe(true);
     expect(isInstalledAppWindow("app:files")).toBe(false);
-    expect(isInstalledAppWindow("app:app-manager")).toBe(false);
+    expect(isInstalledAppWindow("app:files")).toBe(false);
     expect(isInstalledAppWindow("stream:abc")).toBe(false);
     expect(isInstalledAppWindow("/settings/*")).toBe(false);
   });

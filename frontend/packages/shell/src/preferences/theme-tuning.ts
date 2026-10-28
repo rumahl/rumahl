@@ -165,6 +165,19 @@ export function useThemeTuning() {
     (glassReduced: boolean) => persist({ ...tuning, glassReduced }),
     [tuning, persist],
   );
+  const setAdaptiveType = useCallback(
+    (adaptiveType: boolean) => persist({ ...tuning, adaptiveType }),
+    [tuning, persist],
+  );
+  const setFontScale = useCallback(
+    (scale: number) =>
+      persist({
+        ...tuning,
+        adaptiveType: false,
+        tokens: { ...tuning.tokens, "typography.scale": String(scale) },
+      }),
+    [tuning, persist],
+  );
   const setAnimations = useCallback(
     (animations: boolean) => persist({ ...tuning, animations }),
     [tuning, persist],
@@ -222,6 +235,8 @@ export function useThemeTuning() {
     setGlassBackend,
     setGlassQuality,
     setGlassReduced,
+    setAdaptiveType,
+    setFontScale,
     setAnimations,
     setPerformanceMode,
     setUltraPerformance,

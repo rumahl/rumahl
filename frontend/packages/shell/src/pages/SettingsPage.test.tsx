@@ -18,6 +18,29 @@ test("settings overview keeps existing routes and the active navigation state", 
   expect(await screen.findByRole("button", { name: "Save arrangement" })).toBeInTheDocument();
 });
 
+test("resizes the settings navigation with the inner separator", async () => {
+  render(<App snapshot={demoSnapshot} initialLocation="/settings/display" />);
+  const separator = await screen.findByRole("separator", { name: "Resize settings navigation" });
+  fireEvent.keyDown(separator, { key: "ArrowRight" });
+  await waitFor(() => expect(separator).toHaveAttribute("aria-valuenow", "150"));
+  expect(localStorage.getItem("rumahl.settings.sidenav-width")).toBe("150");
+});
+
+test("apps settings lists installed apps for management", async () => {
+  render(<App snapshot={{ ...demoSnapshot, apps: [{ id: "com.example.notes", title: "Notes", launchable: true }] }} initialLocation="/settings/apps" />);
+  const navigation = screen.getByRole("navigation", { name: "Settings" });
+  expect(within(navigation).getByRole("link", { name: "Apps" })).toHaveAttribute("aria-current", "page");
+  const notes = await waitFor(() => document.querySelector<HTMLAnchorElement>('.settings-content a[href="/settings/apps/com.example.notes"]'));
+  expect(notes).toHaveTextContent("Notes");
+  expect(document.querySelector('.settings-content a[href="/settings/store"]')).toBeNull();
+});
+
+test("app management opens without an app-specific settings link", async () => {
+  render(<App snapshot={{ ...demoSnapshot, apps: [{ id: "com.example.notes", title: "Notes", launchable: true }] }} initialLocation="/settings/apps/com.example.notes" />);
+  expect(await screen.findByRole("heading", { name: "Notes" })).toBeInTheDocument();
+  expect(screen.queryByRole("link", { name: /App settings/ })).toBeNull();
+});
+
 test("device settings show version and honest unavailable-worker state", async () => {
   render(<App snapshot={demoSnapshot} initialLocation="/settings/device" />);
   expect(await screen.findByRole("heading", { name: "This device" })).toBeInTheDocument();

@@ -13,6 +13,7 @@ import { useThemeTuning } from "../preferences/theme-tuning";
 import { appearancePresets, isLookActive } from "../preferences/appearance-presets";
 import { useI18n } from "../i18n";
 import { useDeviceViewport } from "../shell/device";
+import { useAdaptiveTypeScale } from "../preferences/adaptive-type";
 import { setTestMedia } from "../shell/test-media";
 import { RumahlSelect } from "../components/RumahlSelect";
 import { RumahlColorPicker } from "../components/RumahlColorPicker";
@@ -34,6 +35,39 @@ const SATURATION_DEFAULT = 100;
 /** Magnetic snap: within `threshold` of the target, pull back to it. */
 function withSnap(value: number, target: number, threshold: number): number {
   return Math.abs(value - target) <= threshold ? target : value;
+}
+
+function AppearanceChoice({ label, moreLabel, options, value, onChange }: {
+  label: string;
+  moreLabel: string;
+  options: readonly { value: string; label: string }[];
+  value: string;
+  onChange: (value: string) => void;
+}) {
+  const visible = options.length > 3 ? options.slice(0, 3) : options;
+  const overflow = options.length > 3 ? options.slice(3) : [];
+  const selectedOverflow = overflow.find((option) => option.value === value);
+  const [overflowEngaged, setOverflowEngaged] = useState(Boolean(selectedOverflow));
+  useEffect(() => {
+    setOverflowEngaged(Boolean(selectedOverflow));
+  }, [selectedOverflow?.value]);
+  return <RumahlButtonGroup className="appearance-choice__group" label={label} value={visible.some((option) => option.value === value) ? value : ""} onChange={onChange} options={visible}
+    activeTrailing={Boolean(selectedOverflow) || (overflowEngaged && overflow.length > 0)}
+    trailing={overflow.length ? <span className="appearance-choice__overflow" data-active={(selectedOverflow || overflowEngaged) ? "" : undefined}>
+      <span className="appearance-choice__more-label" aria-hidden="true">{selectedOverflow?.label ?? moreLabel}</span>
+      <select className="appearance-choice__more" aria-label={moreLabel}
+        value={selectedOverflow ? value : ""}
+        onPointerDown={() => setOverflowEngaged(true)}
+        onFocus={() => setOverflowEngaged(true)}
+        onBlur={() => setOverflowEngaged(Boolean(selectedOverflow))}
+        onChange={(event) => {
+          if (event.target.value) onChange(event.target.value);
+          setOverflowEngaged(true);
+        }}>
+        <option value="" disabled hidden>{moreLabel}</option>
+        {overflow.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+      </select>
+    </span> : undefined} />;
 }
 
 export function DisplaySettings() {
@@ -106,12 +140,20 @@ export function DisplaySettings() {
     setAnimations,
     setPerformanceMode,
     setMaterialPreset,
+    setAdaptiveType,
+    setFontScale,
     reset,
   } = useThemeTuning();
   const [refraction, setRefraction] = useState(REFRACTION_DEFAULT);
   const [chromaPercent, setChromaPercent] = useState(CHROMA_DEFAULT);
   const [saturationPercent, setSaturationPercent] = useState(SATURATION_DEFAULT);
   const [glassColorDraft, setGlassColorDraft] = useState<string | null>(null);
+  const typeScale = Number.parseFloat(tuning.tokens["typography.scale"] ?? "1") || 1;
+  const fontSizePercent = Math.round(typeScale * 100);
+  const adaptiveEnabled = tuning.adaptiveType === true;
+  const adaptiveScale = useAdaptiveTypeScale(adaptiveEnabled);
+  const adaptivePercent = Math.round(adaptiveScale * 100);
+  const [fontSizeDraft, setFontSizeDraft] = useState(String(fontSizePercent));
   // Capabilities are browser-only, so resolve them after mount (hydration-safe).
   const [capabilities, setCapabilities] = useState({ svg: true, webgl: true });
   useEffect(() => {
@@ -127,6 +169,13 @@ export function DisplaySettings() {
   useEffect(() => {
     if (glassColorDraft !== null && tuning.glassTint === glassColorDraft) setGlassColorDraft(null);
   }, [glassColorDraft, tuning.glassTint]);
+  useEffect(() => { setFontSizeDraft(String(fontSizePercent)); }, [fontSizePercent]);
+  const applyFontSize = (raw: string) => {
+    const parsed = Number.parseFloat(raw);
+    const value = Number.isFinite(parsed) ? Math.min(200, Math.max(75, Math.round(parsed / 5) * 5)) : 100;
+    setFontSizeDraft(String(value));
+    setFontScale(value / 100);
+  };
   const backendWarning: Partial<Record<"svg" | "webgl", string>> = {
     ...(capabilities.svg
       ? {}
@@ -352,33 +401,16 @@ export function DisplaySettings() {
             <p>{t("theme.help")}</p>
           </div>
           <div className="visual">
-            <div
-              className="segmented"
-              role="group"
-              aria-label={t("theme.title")}
-            >
-              {themes.map((theme) => (
-                <button
-                  key={theme.id}
-                  className="segment"
-                  type="button"
-                  aria-pressed={selectedTheme === theme.id}
-                  onClick={() => chooseTheme(theme.id)}
-                >
-                  {theme.name}
-                </button>
-              ))}
-              {scope === "device" ? (
-                <button
-                  className="segment"
-                  type="button"
-                  aria-pressed={selectedTheme === null}
-                  onClick={() => chooseTheme(null)}
-                >
-                  {t("preferences.inherit")}
-                </button>
-              ) : null}
-            </div>
+            <AppearanceChoice
+              label={t("theme.title")}
+              moreLabel={t("theme.more")}
+              value={selectedTheme ?? "__inherit"}
+              onChange={(value) => chooseTheme(value === "__inherit" ? null : value)}
+              options={[
+                ...themes.map((theme) => ({ value: theme.id, label: theme.name })),
+                ...(scope === "device" ? [{ value: "__inherit", label: t("preferences.inherit") }] : [])
+              ]}
+            />
             <div className="theme-preview" aria-hidden="true">
               <div className="theme-preview__window">
                 <i /><i /><i />
@@ -416,6 +448,66 @@ export function DisplaySettings() {
         </div>
       </div>
 
+      <h3 className="section-title">{t("theme.textSize")}</h3>
+      <div className="settings-group">
+        <div className="setting">
+          <div className="copy">
+            <strong>{t("theme.textSizePreset")}</strong>
+            <p>{t("theme.textSizePresetHelp")}</p>
+          </div>
+          <div className="visual">
+            <RumahlButtonGroup
+              label={t("theme.textSizePreset")}
+              value={[90, 100, 110, 125, 140].includes(fontSizePercent) ? String(fontSizePercent) : "custom"}
+              onChange={(value) => applyFontSize(value)}
+              options={[
+                { value: "90", label: "90%" },
+                { value: "100", label: "100%" },
+                { value: "110", label: "110%" },
+                { value: "125", label: "125%" },
+                { value: "140", label: "140%" }
+              ]}
+            />
+          </div>
+        </div>
+        <div className="setting">
+          <div className="copy">
+            <strong>{t("theme.textSizeCustom")}</strong>
+            <p>{t("theme.textSizeCustomHelp")}</p>
+          </div>
+          <div className="visual theme-text-size-custom">
+            <input
+              type="number"
+              min={75}
+              max={200}
+              step={5}
+              value={fontSizeDraft}
+              aria-label={t("theme.textSizeCustom")}
+              onChange={(event) => setFontSizeDraft(event.target.value)}
+              onBlur={(event) => applyFontSize(event.target.value)}
+              onKeyDown={(event) => { if (event.key === "Enter") event.currentTarget.blur(); }}
+            />
+            <span>%</span>
+          </div>
+        </div>
+        <div className="setting">
+          <div className="copy">
+            <strong>{t("theme.textSizeAdaptive")}</strong>
+            <p>{t("theme.textSizeAdaptiveHelp")}</p>
+          </div>
+          <div className="visual">
+            <Button
+              variant={adaptiveEnabled ? "primary" : "secondary"}
+              active={adaptiveEnabled}
+              aria-pressed={adaptiveEnabled}
+              onClick={() => setAdaptiveType(!adaptiveEnabled)}
+            >
+              {adaptiveEnabled ? t("theme.textSizeAdaptiveActive", { percent: adaptivePercent }) : t("theme.textSizeAdaptive")}
+            </Button>
+          </div>
+        </div>
+      </div>
+
       {supportsLookPresets || supportsMaterialPresets ? (
         <>
           <h3 className="section-title">{t("theme.auraPresets")}</h3>
@@ -429,19 +521,15 @@ export function DisplaySettings() {
                 </div>
                 <div className="visual">
                   <div className="look-preset-picker">
-                    <div className="segmented" role="group" aria-label={t("theme.lookPresets")}>
-                      {appearancePresets.map((preset) => (
-                        <button
-                          key={preset.id}
-                          className="segment"
-                          type="button"
-                          aria-pressed={isLookActive(tuning, preset.appearance)}
-                          onClick={() => applyPreset(preset.appearance)}
-                        >
-                          {t(preset.labelKey)}
-                        </button>
-                      ))}
-                    </div>
+                    <RumahlButtonGroup
+                      label={t("theme.lookPresets")}
+                      value={activeLookPreset?.id ?? ""}
+                      onChange={(value) => {
+                        const preset = appearancePresets.find((item) => item.id === value);
+                        if (preset) applyPreset(preset.appearance);
+                      }}
+                      options={appearancePresets.map((preset) => ({ value: preset.id, label: t(preset.labelKey) }))}
+                    />
                     <select
                       className="look-preset-select"
                       aria-label={t("theme.lookPresets")}
@@ -911,36 +999,16 @@ export function DisplaySettings() {
               {activeTheme.modes.includes("dark") ? (
                 <div className="theme-parameter">
                   <span>{t("theme.parameter.mode")}</span>
-                  <div
-                    className="segmented"
-                    role="group"
-                    aria-label={t("theme.parameter.mode")}
-                  >
-                    <button
-                      className="segment"
-                      type="button"
-                      aria-pressed={tuning.mode === null}
-                      onClick={() => setMode(null)}
-                    >
-                      {t("theme.mode.auto")}
-                    </button>
-                    <button
-                      className="segment"
-                      type="button"
-                      aria-pressed={tuning.mode === "light"}
-                      onClick={() => setMode("light")}
-                    >
-                      {t("theme.mode.light")}
-                    </button>
-                    <button
-                      className="segment"
-                      type="button"
-                      aria-pressed={tuning.mode === "dark"}
-                      onClick={() => setMode("dark")}
-                    >
-                      {t("theme.mode.dark")}
-                    </button>
-                  </div>
+                  <RumahlButtonGroup<"auto" | "light" | "dark">
+                    label={t("theme.parameter.mode")}
+                    value={tuning.mode === null ? "auto" : tuning.mode}
+                    onChange={(value) => setMode(value === "auto" ? null : value)}
+                    options={[
+                      { value: "auto", label: t("theme.mode.auto") },
+                      { value: "light", label: t("theme.mode.light") },
+                      { value: "dark", label: t("theme.mode.dark") }
+                    ]}
+                  />
                 </div>
               ) : null}
               {overrideColors.map(renderOverride)}

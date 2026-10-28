@@ -34,7 +34,8 @@ describe("launcher shell", () => {
       expect(dots.length).toBeGreaterThan(1);
       expect(await screen.findByRole("link", { name: /Files/ })).toBeInTheDocument();
       fireEvent.click(dots[1]!);
-      expect(await screen.findByRole("link", { name: /App manager/ })).toBeInTheDocument();
+      expect(dots[1]).toHaveAttribute("aria-current", "page");
+      expect(screen.queryByRole("link", { name: /Files/ })).toBeNull();
     } finally {
       if (width) Object.defineProperty(HTMLElement.prototype, "clientWidth", width);
       else Reflect.deleteProperty(HTMLElement.prototype, "clientWidth");

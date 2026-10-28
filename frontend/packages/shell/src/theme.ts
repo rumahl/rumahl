@@ -5,6 +5,7 @@ import type { Theme } from "@rumahl/ui/themes";
 import { resolveWallpaper } from "./wallpapers";
 import { emptyAppearance, parseWorkspace } from "./preferences/Workspace";
 import { applyThemeTuning } from "./preferences/theme-tuning";
+import { adaptiveTypographicScale, monitorSize } from "./preferences/adaptive-type";
 
 /** Builds the server-resolved theme, substituting the bundled wallpaper. */
 export function buildSnapshotTheme(snapshot: ShellSnapshotV1): Theme {
@@ -56,5 +57,11 @@ export function preloadAppearance(snapshot: ShellSnapshotV1): void {
   const serverTheme = buildSnapshotTheme(snapshot);
   const active = resolveActiveTheme(serverTheme, snapshot.theme.id);
   const systemMode = typeof window.matchMedia === "function" && window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
-  applyTokens(document.documentElement, resolveTokens(applyThemeTuning(active, tuningFromSnapshot(snapshot), systemMode)));
+  const appearance = tuningFromSnapshot(snapshot);
+  const tokens = { ...resolveTokens(applyThemeTuning(active, appearance, systemMode)) };
+  if (appearance.adaptiveType === true) {
+    const { width, height } = monitorSize();
+    tokens["typography.scale"] = String(adaptiveTypographicScale(width, height));
+  }
+  applyTokens(document.documentElement, tokens);
 }

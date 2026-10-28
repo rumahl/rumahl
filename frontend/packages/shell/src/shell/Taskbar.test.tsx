@@ -10,7 +10,7 @@ describe("theme-driven shell layout", () => {
     expect(document.querySelector(".taskbar")).not.toBeNull();
     expect(document.querySelector(".os-dock")).toBeNull();
     const nav = screen.getByRole("navigation", { name: "Main navigation" });
-    expect(within(nav).getByRole("link", { name: "Apps" })).toBeInTheDocument();
+    expect(within(nav).queryByRole("link", { name: "Apps" })).toBeNull();
   });
 
   test("renders the launcher home", async () => {

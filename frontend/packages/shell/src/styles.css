@@ -21,10 +21,16 @@
 @import "./shell/desktop/free-grid.css";
 @import "./shell/topbar.css";
 @import "@rumahl/ui/base.css";
+@import "@rumahl/ui/primitives.css";
 @import "./shell/base-clean.css";
 @import "./shell/mobile.css";
 @import "./shell/update-notice.css";
 @import "./shell/immersive.css";
+@import "@rumahl/ui/nav.css";
+@import "@rumahl/ui/interactive.css";
+@import "@rumahl/ui/group.css";
+@import "./shell/font-scale.css";
+@import "./apps/store.css";
 
 @layer foundation {
   :root {
@@ -587,38 +593,6 @@
     padding: 30px;
   }
 
-  .app-manager {
-    display: flex;
-    align-items: end;
-    justify-content: space-between;
-    gap: 32px;
-  }
-
-  .app-manager h3 {
-    margin-bottom: 10px;
-    font:
-      500 28px/1.1 Georgia,
-      serif;
-  }
-
-  .app-manager p:last-child {
-    max-width: 430px;
-    margin-bottom: 0;
-    color: var(--rumahl-ui-color-text-muted, var(--rumahl-color-text-muted));
-    line-height: 1.55;
-  }
-
-  .app-manager > button {
-    flex: 0 0 auto;
-    padding: 11px 14px;
-    border: 0;
-    border-radius: 10px;
-    color: #fff;
-    background: var(--rumahl-color-accent-primary);
-    font-size: 12px;
-    font-weight: 700;
-  }
-
   .window-dock {
     position: fixed;
     z-index: 45;
@@ -808,10 +782,6 @@
       width: calc(100% - 24px);
     }
 
-    .app-manager {
-      align-items: stretch;
-      flex-direction: column;
-    }
   }
 
   @media (prefers-reduced-motion: no-preference) {

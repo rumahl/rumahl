@@ -7,6 +7,8 @@ export interface ShellWindow {
   subtitle: string;
   streamId?: string;
   location?: string;
+  /** Preferred initial size for a newly opened window. */
+  preferredSize?: { width: number; height: number };
   minimized: boolean;
   rect?: WindowRect;
   placement?: WindowPlacement;

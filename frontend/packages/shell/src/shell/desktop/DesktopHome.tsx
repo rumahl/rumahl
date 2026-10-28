@@ -278,10 +278,12 @@ export function DesktopHome() {
     <DesktopContextMenu
       menu={menu}
       appTitle={menuApp?.title}
+      appSettingsPath={menuApp?.managePath ?? menuApp?.settingsPath}
       hidden={hidden}
       widgets={layout.layout.widgets}
       onClose={() => setMenu(null)}
       onOpen={(id) => { const app = byId.get(id); if (app) navigate(app); }}
+      onOpenAppSettings={(path) => open(path)}
       onRemove={(id) => { layout.hide(id); setSelected(new Set()); }}
       onRestoreApp={layout.restore}
       onSave={saveArrangement}

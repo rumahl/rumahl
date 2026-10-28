@@ -6,6 +6,7 @@ import type { ShellSnapshotV1 } from "@rumahl/contracts";
 import { useTheme } from "@rumahl/ui";
 import type { ShellLiveSource } from "../live-updates";
 import { useAppCatalog } from "../apps/AppCatalog";
+import { findFirstPartyApp } from "../apps/registry";
 import { rememberRecent } from "../apps/recents";
 import { DesktopLayout } from "./desktop/DesktopLayout";
 import { LauncherLayout } from "./launcher/LauncherLayout";
@@ -33,6 +34,7 @@ import { DesktopWindows } from "./DesktopWindows";
 import { useShellPreferences } from "../preferences/ShellPreferences";
 import { useWorkspace } from "../preferences/Workspace";
 import { useOsMode } from "../preferences/OsMode";
+import { createSessionSnapshot, flushSessionSnapshot, hasStagedSessionSnapshot, loadSessionSnapshot, stageSessionSnapshot } from "./session-snapshot";
 
 function WallpaperVideo({ src }: { src: string }) {
   const ref = useRef<HTMLVideoElement>(null);
@@ -92,11 +94,17 @@ export function ShellLayout({ snapshot, live }: { snapshot: ShellSnapshotV1; liv
   const launcherWindow = (mode === "launcher" || mode === "mobile") && route.presentation === "window";
   const catalog = useAppCatalog();
   const installedTitle = catalog.apps.find((app) => app.id === route.appId)?.title;
-  const routedWindow = useMemo<Omit<ShellWindow, "minimized">>(() => ({
-    id: route.id, title: route.streamTitle ?? installedTitle ?? t(route.title), subtitle: "",
-    location: path, ...(route.stream ? { streamId: route.id.slice(7) } : {})
-  }), [installedTitle, route.id, route.title, route.streamTitle, route.stream, path, t]);
+  const routedWindow = useMemo<Omit<ShellWindow, "minimized">>(() => {
+    const preferredSize = route.appId ? findFirstPartyApp(route.appId)?.preferredSize : undefined;
+    return {
+      id: route.id, title: route.streamTitle ?? installedTitle ?? t(route.title), subtitle: "",
+      location: path, ...(route.stream ? { streamId: route.id.slice(7) } : {}),
+      ...(preferredSize ? { preferredSize } : {})
+    };
+  }, [installedTitle, route.appId, route.id, route.title, route.streamTitle, route.stream, path, t]);
   const workspace = useWorkspace();
+  const [sessionSnapshotReady, setSessionSnapshotReady] = useState(false);
+  const sessionRestored = useRef(false);
   // Restores the device workspace windows. Available synchronously from the
   // snapshot so windows are server-rendered, not added after a client fetch.
   const restoredWindows = (includeInternal = true) => {
@@ -123,6 +131,49 @@ export function ShellLayout({ snapshot, live }: { snapshot: ShellSnapshotV1; liv
       dispatch({ type: "open-window", window: routedWindow });
     }
   }, [mode, routedWindow, route.presentation]);
+  // The encrypted browser snapshot is the last live desktop, not the older
+  // server workspace. It restores even after logout/session expiry.
+  useEffect(() => {
+    let cancelled = false;
+    void loadSessionSnapshot(snapshot.user.displayName).then((saved) => {
+      if (cancelled) return;
+      if (saved) {
+        sessionRestored.current = true;
+        let windows = saved.windows.map((window) => ({ ...window }));
+        let active: ShellWindow | undefined;
+        if (route.presentation === "window") {
+          const existing = windows.find((window) => window.id === routedWindow.id);
+          active = { ...existing, ...routedWindow, minimized: false } as ShellWindow;
+          windows = [...windows.filter((window) => window.id !== active!.id), active];
+        }
+        dispatch({ type: "restore-workspace", windows });
+        if (!active && saved.focusedWindowId) {
+          window.setTimeout(() => dispatch({ type: "focus-window", id: saved.focusedWindowId! }), 0);
+        }
+        if (!active && saved.activeLocation && saved.activeLocation !== "/" && location.pathname === "/") {
+          try { void navigate(localPath(saved.activeLocation), { replace: true }); } catch { /* ignore stale targets */ }
+        }
+      }
+      setSessionSnapshotReady(true);
+    });
+    return () => { cancelled = true; };
+  }, [snapshot.user.displayName]);
+  useEffect(() => {
+    if (!sessionSnapshotReady) return;
+    const focused = state.focusedWindowId ? state.windows.find((window) => window.id === state.focusedWindowId) : undefined;
+    const activeLocation = focused?.location ?? (route.presentation === "window" ? path : null);
+    stageSessionSnapshot(createSessionSnapshot(snapshot.user.displayName, state.windows, state.focusedWindowId, activeLocation));
+  }, [state.windows, state.focusedWindowId, path, route.presentation, sessionSnapshotReady, snapshot.user.displayName]);
+  useEffect(() => {
+    const flush = () => { if (hasStagedSessionSnapshot()) void flushSessionSnapshot(); };
+    const visibility = () => { if (document.visibilityState === "hidden") flush(); };
+    window.addEventListener("pagehide", flush);
+    document.addEventListener("visibilitychange", visibility);
+    return () => {
+      window.removeEventListener("pagehide", flush);
+      document.removeEventListener("visibilitychange", visibility);
+    };
+  }, []);
   const [internalReady, setInternalReady] = useState(false);
   useEffect(() => {
     // Internal tools (the design lab) are gated by the OS mode.
@@ -144,6 +195,8 @@ export function ShellLayout({ snapshot, live }: { snapshot: ShellSnapshotV1; liv
   useEffect(() => { if (internalReady) writeInternalWindows(state.windows); }, [state.windows, internalReady]);
   const restored = useRef(-1);
   useEffect(() => {
+    if (!sessionSnapshotReady) return;
+    if (sessionRestored.current && workspace.restore === 0) return;
     if (!workspace.ready || catalog.status === "loading" || restored.current === workspace.restore) return;
     restored.current = workspace.restore;
     if (workspace.restore === 0 && workspace.effective.windows.length === 0) return;
@@ -154,7 +207,7 @@ export function ShellLayout({ snapshot, live }: { snapshot: ShellSnapshotV1; liv
       const active = { ...existing, ...routedWindow, minimized: false };
       dispatch({ type: "restore-workspace", windows: [...windows.filter(w => w.id !== active.id), active] });
     } else dispatch({ type: "restore-workspace", windows });
-  }, [workspace.ready, workspace.restore, workspace.effective, catalog.status, catalog.apps, route.presentation, routedWindow, t]);
+  }, [workspace.ready, workspace.restore, workspace.effective, catalog.status, catalog.apps, route.presentation, routedWindow, t, sessionSnapshotReady]);
   const open = (target: string) => { const next = localPath(target); if (!isInternalTarget(shellLocation(target))) rememberRecent(next); void navigate(next); };
   const setMode = (next: ShellMode) => {
     if (viewport.mobile) {
@@ -329,16 +382,16 @@ export function ShellLayout({ snapshot, live }: { snapshot: ShellSnapshotV1; liv
     };
     (window as unknown as { __rumahlDebug?: typeof api }).__rumahlDebug = api;
   }, [glassBackend, glassQuality, glassOff, inactive, theme.id, t]);
-  // Pause animations/clock while the tab or browser window is not visible
-  // (imperceptible: everything resumes exactly where it left off).
+  // Pause ambient animations while the tab is actually hidden. Losing window
+  // focus is not the same as being invisible: the browser chrome, another
+  // window or a notification can take focus while the shell stays on screen,
+  // and pausing there froze app icons and other animated surfaces.
   useEffect(() => {
     if (typeof document === "undefined") return;
-    const update = () => setInactive(document.hidden || (typeof document.hasFocus === "function" && !document.hasFocus()));
+    const update = () => setInactive(document.hidden);
     update();
     document.addEventListener("visibilitychange", update);
-    window.addEventListener("focus", update);
-    window.addEventListener("blur", update);
-    return () => { document.removeEventListener("visibilitychange", update); window.removeEventListener("focus", update); window.removeEventListener("blur", update); };
+    return () => document.removeEventListener("visibilitychange", update);
   }, []);
   // Theme stylesheet via constructable stylesheets (not blocked by `style-src`).
   useEffect(() => {

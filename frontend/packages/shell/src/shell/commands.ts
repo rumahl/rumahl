@@ -71,10 +71,8 @@ export function useShellCommands(): ShellCommand[] {
   const animations = tuning.tuning.animations !== false;
   return [
     { id: "open.settings", title: t("command.run.openSettings"), hint: "/settings", keywords: "settings einstellungen preferences personalization", run: () => open("/settings") },
-    { id: "open.apps", title: t("command.run.openApps"), hint: "/apps", keywords: "apps applications anwendungen programs", run: () => open("/apps") },
     { id: "open.activity", title: t("command.run.openActivity"), hint: "/activity", keywords: "activity aktivitaet log", disabled: !featureReady(features.activity), run: () => open("/activity") },
     { id: "open.home", title: t("command.run.openHome"), hint: "/", keywords: "home start startseite desktop", run: () => open("/") },
-    { id: "open.appManager", title: t("command.run.openAppManager"), hint: "/app/app-manager", keywords: "app manager verwalten install", run: () => open("/app/app-manager") },
     { id: "theme.dark", title: t("command.run.darkMode"), hint: "dark", keywords: "dark dunkel night nacht", run: () => tuning.setMode("dark") },
     { id: "theme.light", title: t("command.run.lightMode"), hint: "light", keywords: "light hell day tag", run: () => tuning.setMode("light") },
     { id: "shell.desktop", title: t("command.run.desktopMode"), hint: "desktop", keywords: "desktop", run: () => setMode("desktop") },

@@ -69,21 +69,28 @@ export function DesktopWindows({ animations = true }: { animations?: boolean } =
 function HostedWindow({ item, area, zIndex, animations: motionEnabled = true }: { item: ShellWindow; area: WorkArea | null; zIndex: number; animations?: boolean }) {
   const { state, dispatch, open, mode } = useShell();
   const { t } = useI18n();
-  const { variants } = useTheme();
+  const { variants, tokens } = useTheme();
+  const topbarInset = TOPBAR_HEIGHT * (Number.parseFloat(tokens["typography.scale"] ?? "1") || 1);
   const location = useLocation();
   const active = describeRoute(location.pathname + location.search + location.hash).id;
   const isLauncher = mode === "launcher" || mode === "mobile";
   const flush = isInstalledAppWindow(item.id);
+  const customTopbar = active.startsWith("app:") && findFirstPartyApp(active.slice(4))?.customTopbar === true;
   const isFullscreen = item.fullscreen === true;
   const hidden = item.minimized || (isLauncher && active !== item.id);
-  const stored = item.rect ?? centeredRect(area ?? { width: 760, height: 540 });
+  const savedRect = readWindowRect(item.id);
+  // Ignore the old generic frame and the Store's superseded 1040×720 default
+  // so a wider preferred size is adopted without discarding user resizes.
+  const supersededDefault = savedRect?.width === 1040 && savedRect.height === 720 && item.preferredSize && (item.preferredSize.width !== 1040 || item.preferredSize.height !== 720);
+  const effectiveSaved = item.preferredSize && (supersededDefault || (savedRect?.width === 760 && savedRect.height === 540)) ? undefined : savedRect;
+  const stored = item.rect ?? effectiveSaved ?? centeredRect(area ?? { width: 760, height: 540 }, item.preferredSize);
   const positionReady = useRef(false);
   useLayoutEffect(() => {
     if (!area) return;
     if (!positionReady.current) {
       positionReady.current = true;
       // The latest position takes precedence over the initial workspace preset.
-      const initial = readWindowRect(item.id) ?? item.rect ?? centeredRect(area);
+      const initial = item.rect ?? effectiveSaved ?? centeredRect(area, item.preferredSize);
       if (initial !== item.rect) {
         dispatch({ type: "set-window-rect", id: item.id, rect: initial });
         return;
@@ -92,10 +99,12 @@ function HostedWindow({ item, area, zIndex, animations: motionEnabled = true }: 
     if (item.rect) writeWindowRect(item.id, item.rect);
   }, [area, item.id, item.rect, dispatch]);
   const placement = item.placement ?? "floating";
+  const immersive = isLauncher || placement === "maximized";
+  const windowTopInset = immersive ? 10 : topbarInset;
   const rect = area
     ? isFullscreen
       ? { x: 0, y: 0, width: area.width, height: area.height }
-      : placedRect(stored, isLauncher ? "maximized" : placement, area, TOPBAR_HEIGHT, isLauncher ? 0 : WINDOW_GAP)
+      : placedRect(stored, isLauncher ? "maximized" : placement, area, windowTopInset, isLauncher ? 0 : WINDOW_GAP)
     : stored;
   useEffect(() => {
     if (!isFullscreen) return;
@@ -216,7 +225,7 @@ function HostedWindow({ item, area, zIndex, animations: motionEnabled = true }: 
     transition={isLauncher ? { type: "spring", stiffness: 320, damping: 30 } : { duration: 0.22, ease: [0.2, 0.7, 0.2, 1] }}
     onPointerMove={move} onPointerUp={end} onPointerCancel={end} onLostPointerCapture={end}>
     {snap ? <div aria-hidden="true" className={`snap-preview snap-preview--${snap}`} /> : null}
-    <ProtectedWindow flush={flush} id={item.id} focused={state.focusedWindowId === item.id}
+    <ProtectedWindow customTopbar={customTopbar} flush={flush} id={item.id} focused={state.focusedWindowId === item.id}
       style={area ? { left: rect.x, top: rect.y, width: rect.width, height: rect.height } : undefined}
       onClose={() => { dispatch({ type: "close-window", id: item.id }); if (active === item.id) open("/"); }}
       onFocus={focus} onMinimize={() => { dispatch({ type: "toggle-minimize", id: item.id }); if (active === item.id) open("/"); }}

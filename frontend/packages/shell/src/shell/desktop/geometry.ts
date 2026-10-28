@@ -27,7 +27,7 @@ export function rectsIntersect(a: SelectionRect, b: SelectionRect): boolean {
 }
 
 /** Center a new window within the measured desktop, including small screens. */
-export function centeredRect(area: WorkArea): WindowRect {
-  const width = Math.min(760, area.width), height = Math.min(540, area.height);
+export function centeredRect(area: WorkArea, preferred: { width: number; height: number } = { width: 760, height: 540 }): WindowRect {
+  const width = Math.min(preferred.width, area.width), height = Math.min(preferred.height, area.height);
   return { x: (area.width - width) / 2, y: (area.height - height) / 2, width, height };
 }
