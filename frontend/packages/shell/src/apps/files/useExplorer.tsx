@@ -43,6 +43,7 @@ export function useExplorer(request: ShellRequest | null, device: string, advanc
   const [openError, setOpenError] = useState<OpenError | null>(null);
   const [busy, setBusy] = useState(false);
   const [revision, setRevision] = useState(0);
+  const loadedView = useRef("");
 
   const isStore = nav.place.kind === "store";
   const storeParent = nav.trail.at(-1)?.id ?? "root";
@@ -71,9 +72,16 @@ export function useExplorer(request: ShellRequest | null, device: string, advanc
       return;
     }
     const controller = new AbortController();
-    setLoading(true);
-    setError(null);
-    setEntries([]);
+    // A revision bump is an automatic background refresh (desktop polling or
+    // a completed mutation). Keep the current listing visible and only swap it
+    // once the fresh data arrives; only real view changes show the loader.
+    const view = `${JSON.stringify(nav)}|${advanced}|${device}|${desktopKey ?? ""}`;
+    const background = loadedView.current === view;
+    if (!background) {
+      setLoading(true);
+      setError(null);
+      setEntries([]);
+    }
     if (nav.place.kind === "store") {
       const parent = nav.trail.at(-1)?.id ?? "root";
       void request(`/api/v1/files?parent=${parent}`, { signal: controller.signal, credentials: "same-origin", cache: "no-store" })
@@ -81,16 +89,35 @@ export function useExplorer(request: ShellRequest | null, device: string, advanc
           if (!response.ok) throw new Error(fail(response.status));
           const value = (await response.json()) as { id: string; name: string; directory: boolean; size: number }[];
           if (!Array.isArray(value) || value.length > 1000) throw new Error("unavailable");
-          if (!controller.signal.aborted) setEntries(value.map((file) => ({ key: file.id, name: file.name, directory: file.directory, size: file.size, modified: 0, host: false })));
+          if (!controller.signal.aborted) {
+            loadedView.current = view;
+            setEntries(value.map((file) => ({ key: file.id, name: file.name, directory: file.directory, size: file.size, modified: 0, host: false })));
+          }
         })
-        .catch((cause) => { if (!controller.signal.aborted) setError(mapError(cause)); })
+        .catch((cause) => { if (!controller.signal.aborted && !background) setError(mapError(cause)); })
         .finally(() => { if (!controller.signal.aborted) setLoading(false); });
     } else if (nav.place.kind === "host") {
       const area = nav.place.area;
       const base = nav.segments.join("/");
+      const appById = new Map((desktopRef.current?.apps ?? []).map((app) => [app.id, app]));
       void fetchHostList(request, area, base, device, controller.signal)
-        .then((list) => { if (!controller.signal.aborted) setEntries(list.map((entry) => ({ key: [base, entry.name].filter(Boolean).join("/"), name: entry.name, directory: entry.directory, size: entry.size, modified: entry.modified, host: true }))); })
-        .catch((cause) => { if (!controller.signal.aborted) setError(mapError(cause)); })
+        .then((list) => {
+          if (controller.signal.aborted) return;
+          loadedView.current = view;
+          setEntries(list.map((entry) => {
+            const app = area === "apps" && !base && entry.directory ? appById.get(entry.name) : undefined;
+            return {
+              key: [base, entry.name].filter(Boolean).join("/"),
+              name: entry.name,
+              ...(app ? { label: app.title, app: true, icon: <AppIcon app={app} /> } : {}),
+              directory: entry.directory,
+              size: entry.size,
+              modified: entry.modified,
+              host: true,
+            };
+          }));
+        })
+        .catch((cause) => { if (!controller.signal.aborted && !background) setError(mapError(cause)); })
         .finally(() => { if (!controller.signal.aborted) setLoading(false); });
     } else {
       // Virtual desktop: app shortcuts + app folders + the real desktop files.
@@ -103,6 +130,7 @@ export function useExplorer(request: ShellRequest | null, device: string, advanc
           const app = sources?.apps.find((entry) => entry.id === id);
           if (app) virtual.push({ key: `app:${app.id}`, name: app.title, directory: false, size: 0, modified: 0, host: false, appPath: app.path, icon: <AppIcon app={app} /> });
         }
+        loadedView.current = view;
         setEntries(virtual);
         setLoading(false);
       } else {
@@ -118,8 +146,8 @@ export function useExplorer(request: ShellRequest | null, device: string, advanc
               if (Array.isArray(value)) files = value.map((file) => ({ key: file.id, name: file.name, directory: file.directory, size: file.size, modified: 0, host: false }));
             }
           }
-          if (!controller.signal.aborted) { setEntries([...virtual, ...files]); setLoading(false); }
-        }).catch(() => { if (!controller.signal.aborted) { setEntries(virtual); setLoading(false); } });
+          if (!controller.signal.aborted) { loadedView.current = view; setEntries([...virtual, ...files]); setLoading(false); }
+        }).catch(() => { if (!controller.signal.aborted) { loadedView.current = view; setEntries(virtual); setLoading(false); } });
       }
     }
     return () => controller.abort();

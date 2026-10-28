@@ -40,6 +40,8 @@ export interface InstalledApp {
   launchable: boolean;
   /** Permission ids the app's manifest declares (used to gate the OS bridge). */
   capabilities?: readonly string[];
+  /** Runtime kind declared by the app. Container apps can be controlled. */
+  runtime?: "web" | "native" | "container";
   /** Runtime lifecycle declared by the app: `always-on` (service) or `on-demand`. */
   lifecycle?: "always-on" | "on-demand";
   /** External services the app ships a connector bundle for. */
@@ -71,6 +73,12 @@ export function parseCatalog(value: unknown): readonly InstalledApp[] {
           app.capabilities.some((entry) => typeof entry !== "string" || entry.length === 0 || entry.length > 255)) throw new Error("invalid app capabilities");
       capabilities = app.capabilities as string[];
     }
+    let runtime: "web" | "native" | "container" | undefined;
+    if (app.runtime !== undefined) {
+      if (app.runtime !== "web" && app.runtime !== "native" && app.runtime !== "container")
+        throw new Error("invalid app runtime kind");
+      runtime = app.runtime;
+    }
     let lifecycle: "always-on" | "on-demand" | undefined;
     if (app.lifecycle !== undefined) {
       if (app.lifecycle !== "always-on" && app.lifecycle !== "on-demand") throw new Error("invalid app lifecycle");
@@ -83,13 +91,19 @@ export function parseCatalog(value: unknown): readonly InstalledApp[] {
       connectors = app.connectors as string[];
     }
     ids.add(app.id);
-    return { id: app.id, installationId: app.installationId, title: app.title, version: app.version, launchable: app.launchable, ...(capabilities ? { capabilities } : {}), ...(lifecycle ? { lifecycle } : {}), ...(connectors ? { connectors } : {}) };
+    return { id: app.id, installationId: app.installationId, title: app.title, version: app.version, launchable: app.launchable, ...(capabilities ? { capabilities } : {}), ...(runtime ? { runtime } : {}), ...(lifecycle ? { lifecycle } : {}), ...(connectors ? { connectors } : {}) };
   });
 }
 export async function fetchCatalog(request: ShellRequest, signal: AbortSignal): Promise<readonly InstalledApp[]> {
   return parseCatalog(await payload(await request("/api/v1/shell/apps", {
     cache: "no-store", credentials: "same-origin", headers: { Accept: "application/json" }, signal
   }), 256 * 1024));
+}
+export class SafeModeError extends Error {
+  constructor() {
+    super("safe mode blocks app launches");
+    this.name = "SafeModeError";
+  }
 }
 export interface AppLaunch { frameUrl: string; lease: string; renewAfterSeconds: number }
 export function parseLaunch(value: unknown, app: InstalledApp, shellOrigin: string, demo?: { frameOrigin: string } | undefined): AppLaunch {
@@ -112,11 +126,13 @@ export function parseLaunch(value: unknown, app: InstalledApp, shellOrigin: stri
   return { frameUrl: url.href, lease: object.lease, renewAfterSeconds: 30 };
 }
 export async function launchApp(request: ShellRequest, app: InstalledApp, shellOrigin: string, signal: AbortSignal, lease?: string, demo?: { frameOrigin: string } | undefined): Promise<AppLaunch> {
-  return parseLaunch(await payload(await request(`/api/v1/shell/apps/${encodeURIComponent(app.id)}/launch`, {
+  const response = await request(`/api/v1/shell/apps/${encodeURIComponent(app.id)}/launch`, {
     method: "POST", cache: "no-store", credentials: "same-origin", signal,
     headers: { Accept: "application/json", "Content-Type": "application/json" },
     body: JSON.stringify({ installationId: app.installationId, ...(lease ? { lease } : {}) })
-  }), 4096), app, shellOrigin, demo);
+  });
+  if (response.status === 423) throw new SafeModeError();
+  return parseLaunch(await payload(response, 4096), app, shellOrigin, demo);
 }
 /** One file of a signed directory package, base64 encoded, path relative to the package root. */
 export interface PackageFile { path: string; content: string }
@@ -129,20 +145,51 @@ export function parseImport(value: unknown): ImportedApp {
       typeof object.version !== "string" || object.version.length > 128) throw new Error("invalid app import");
   return { id: object.id, installationId: object.installationId, title: object.title, version: object.version };
 }
-export async function importPackage(request: ShellRequest, files: readonly PackageFile[], device: string, signal: AbortSignal): Promise<ImportedApp> {
+export async function importPackage(request: ShellRequest, files: readonly PackageFile[], device: string, signal: AbortSignal, origin?: "store"): Promise<ImportedApp> {
   return parseImport(await payload(await request("/api/v1/shell/apps/import", {
     method: "POST", cache: "no-store", credentials: "same-origin", signal,
     headers: { Accept: "application/json", "Content-Type": "application/json" },
-    body: JSON.stringify({ importVersion: 1, device, files })
+    body: JSON.stringify({ importVersion: 1, device, files, ...(origin ? { installOrigin: origin } : {}) })
   }), 4096));
 }
 export type AppRuntimeAction = "start" | "stop";
-export async function controlAppRuntime(request: ShellRequest, app: InstalledApp, action: AppRuntimeAction, signal: AbortSignal): Promise<void> {
-  await payload(await request(`/api/v1/shell/apps/${encodeURIComponent(app.id)}/runtime`, {
+export interface AppRuntime {
+  id: string;
+  installationId: string;
+  state: "running" | "stopped";
+}
+export interface AppRuntimeTarget {
+  id: string;
+  installationId: string;
+}
+export function parseAppRuntime(value: unknown, app: AppRuntimeTarget): AppRuntime {
+  const object = record(value);
+  if (object.runtimeVersion !== 1 || object.id !== app.id ||
+      object.installationId !== app.installationId ||
+      (object.state !== "running" && object.state !== "stopped"))
+    throw new Error("invalid app runtime");
+  return { id: app.id, installationId: app.installationId, state: object.state };
+}
+export async function fetchAppRuntime(request: ShellRequest, app: AppRuntimeTarget, signal: AbortSignal): Promise<AppRuntime> {
+  return parseAppRuntime(await payload(await request(
+    `/api/v1/shell/apps/${encodeURIComponent(app.id)}/runtime?installationId=${encodeURIComponent(app.installationId)}`,
+    { cache: "no-store", credentials: "same-origin", headers: { Accept: "application/json" }, signal }
+  ), 4096), app);
+}
+export async function controlAppRuntime(request: ShellRequest, app: AppRuntimeTarget, action: AppRuntimeAction, signal: AbortSignal): Promise<AppRuntime> {
+  return parseAppRuntime(await payload(await request(`/api/v1/shell/apps/${encodeURIComponent(app.id)}/runtime`, {
     method: "POST", cache: "no-store", credentials: "same-origin", signal,
     headers: { Accept: "application/json", "Content-Type": "application/json" },
     body: JSON.stringify({ installationId: app.installationId, action })
-  }), 4096);
+  }), 4096), app);
+}
+export async function uninstallApp(request: ShellRequest, app: AppRuntimeTarget, signal: AbortSignal): Promise<void> {
+  const response = await request(`/api/v1/shell/apps/${encodeURIComponent(app.id)}`, {
+    method: "DELETE", cache: "no-store", credentials: "same-origin", signal,
+    headers: { Accept: "application/json", "Content-Type": "application/json" },
+    body: JSON.stringify({ installationId: app.installationId })
+  });
+  if (!response.ok) throw new Error(response.status === 403 ? "denied" : "unavailable");
 }
 export interface CapabilityBrowserDelivery {
   appId: string;

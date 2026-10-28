@@ -36,11 +36,11 @@ export interface DemoState {
 
 /** Sample apps shown by the demo. Their frames are served by demo-widget.rumahl.com. */
 export const demoApps: readonly InstalledApp[] = [
-  { id: "com.rumahl.demo.notes", installationId: "01990000-0000-7000-8000-000000000101", title: "Notes", version: "1.4.0", launchable: true, lifecycle: "on-demand" },
-  { id: "com.rumahl.demo.weather", installationId: "01990000-0000-7000-8000-000000000102", title: "Weather", version: "2.1.0", launchable: true, lifecycle: "on-demand" },
-  { id: "com.rumahl.demo.photos", installationId: "01990000-0000-7000-8000-000000000103", title: "Photos", version: "1.2.0", launchable: true, lifecycle: "on-demand" },
-  { id: "com.rumahl.demo.music", installationId: "01990000-0000-7000-8000-000000000104", title: "Music", version: "3.0.1", launchable: true, lifecycle: "on-demand" },
-  { id: "com.rumahl.demo.home", installationId: "01990000-0000-7000-8000-000000000105", title: "Home", version: "1.0.0", launchable: true, lifecycle: "on-demand" }
+  { id: "com.rumahl.demo.notes", installationId: "01990000-0000-7000-8000-000000000101", title: "Notes", version: "1.4.0", launchable: true, runtime: "web", lifecycle: "on-demand" },
+  { id: "com.rumahl.demo.weather", installationId: "01990000-0000-7000-8000-000000000102", title: "Weather", version: "2.1.0", launchable: true, runtime: "web", lifecycle: "on-demand" },
+  { id: "com.rumahl.demo.photos", installationId: "01990000-0000-7000-8000-000000000103", title: "Photos", version: "1.2.0", launchable: true, runtime: "web", lifecycle: "on-demand" },
+  { id: "com.rumahl.demo.music", installationId: "01990000-0000-7000-8000-000000000104", title: "Music", version: "3.0.1", launchable: true, runtime: "web", lifecycle: "on-demand" },
+  { id: "com.rumahl.demo.home", installationId: "01990000-0000-7000-8000-000000000105", title: "Home", version: "1.0.0", launchable: true, runtime: "web", lifecycle: "on-demand" }
 ];
 
 const welcome = `# Welcome to rumahl OS

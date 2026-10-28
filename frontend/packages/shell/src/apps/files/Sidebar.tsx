@@ -20,6 +20,7 @@ export function Sidebar({ nav, advanced, onNavigate, onOpenDesktop }: { nav: Nav
       </button>
       {advanced
         ? <>
+            <span className="files-nav__divider" aria-hidden="true" />
             <button type="button" className={item(isHost("apps"))} aria-current={isHost("apps") ? "page" : undefined} onClick={() => onNavigate(freshHost("apps"))}>
               <GridIcon className="files-nav__icon" />{t("files.applications")}
             </button>

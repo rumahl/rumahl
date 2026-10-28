@@ -1,8 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { useI18n } from "../../i18n";
 import { useOsModePolicy } from "../../preferences/OsMode";
 import { browserProfile } from "../../preferences/storage";
 import { useShell } from "../../shell/ShellContext";
+import { useAppTopbarHost } from "../../components/ProtectedWindow";
 import { useShellApps } from "../../apps/useShellApps";
 import { useWorkspace } from "../../preferences/Workspace";
 import { Breadcrumb } from "./Breadcrumb";
@@ -10,7 +12,8 @@ import { ContextMenu, type MenuItem } from "./ContextMenu";
 import { FileGrid, FileList, type ViewProps } from "./FileViews";
 import { Sidebar } from "./Sidebar";
 import { Toolbar } from "./Toolbar";
-import { AlertIcon, DownloadIcon, FilePlusIcon, FolderIcon, MoveIcon, OpenIcon, PencilIcon, PlusIcon, TrashIcon, UploadIcon } from "./icons";
+import { Topbar } from "./Topbar";
+import { AlertIcon, DownloadIcon, FilePlusIcon, FolderArtwork, FolderIcon, MoveIcon, OpenIcon, PencilIcon, PlusIcon, TrashIcon, UploadIcon } from "./icons";
 import { freshDesktop, type Item } from "./types";
 import { useExplorer } from "./useExplorer";
 import { useMarquee } from "./useMarquee";
@@ -29,6 +32,7 @@ type Menu = { x: number; y: number; item: Item | null };
 export function FilesApp() {
   const { live, open: openPath } = useShell();
   const { t } = useI18n();
+  const topbarHost = useAppTopbarHost();
   const { advancedSettings } = useOsModePolicy();
   const apps = useShellApps();
   const workspace = useWorkspace();
@@ -53,16 +57,26 @@ export function FilesApp() {
   const [draggingKey, setDraggingKey] = useState<string | null>(null);
   const [dragOverKey, setDragOverKey] = useState<string | null>(null);
   const [mounted, setMounted] = useState(false);
+  const [compact, setCompact] = useState(false);
   const root = useRef<HTMLElement>(null);
   const uploadInput = useRef<HTMLInputElement>(null);
   useEffect(() => setMounted(true), []);
+  useEffect(() => {
+    const element = root.current;
+    if (!element || typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(([entry]) => {
+      if (entry) setCompact(entry.contentRect.width < 980);
+    });
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, []);
 
   useEffect(() => { clear(); setSearch(""); setRenameKey(null); setDraft(null); setMenu(null); setSidebarOpen(false); }, [explorer.nav, clear]);
   useEffect(() => { if (explorer.error) clear(); }, [explorer.error, clear]);
 
   const visible = useMemo(() => {
     const query = search.trim().toLowerCase();
-    return query ? explorer.entries.filter((item) => item.name.toLowerCase().includes(query)) : explorer.entries;
+    return query ? explorer.entries.filter((item) => (item.label ?? item.name).toLowerCase().includes(query)) : explorer.entries;
   }, [explorer.entries, search]);
 
   function commitRename(item: Item, name: string) {
@@ -165,25 +179,39 @@ export function FilesApp() {
     }
   }
 
-  return <section ref={root} className="files-app" tabIndex={-1} onKeyDown={handleKeys}
+  const topbar = <Topbar
+    nav={explorer.nav} compact={compact} isStore={explorer.isStore} busy={explorer.busy}
+    canBack={explorer.canBack} canForward={explorer.canForward} canUp={explorer.canUp}
+    canPaste={!!clipboard} view={view} search={search}
+    onNavigate={explorer.navigate} onBack={explorer.back} onForward={explorer.forward} onUp={explorer.up}
+    onView={setView} onSearch={setSearch}
+    onNewFolder={newFolder} onNewFile={newFile} onUpload={explorer.upload}
+    onPaste={() => { if (clipboard) { void explorer.move(clipboard.id, clipboard.name); setClipboard(null); } }}
+  />;
+  const fallbackChrome = compact || !topbarHost;
+
+  return <section ref={root} className="files-app" data-view={view} tabIndex={-1} onKeyDown={handleKeys}
     onPointerDown={(event) => { if (!(event.target as HTMLElement).closest("input, textarea, button, label, .files-menu")) root.current?.focus(); }}>
     <Sidebar nav={explorer.nav} advanced={advancedSettings} onNavigate={explorer.navigate} onOpenDesktop={openDesktop} />
     <div className="files-app__main">
-      <Toolbar
-        isStore={explorer.isStore} busy={explorer.busy}
-        canBack={explorer.canBack} canForward={explorer.canForward} canUp={explorer.canUp}
-        canPaste={!!clipboard} view={view} search={search}
-        onBack={explorer.back} onForward={explorer.forward} onUp={explorer.up}
-        onView={setView} onSearch={setSearch}
-        onNewFolder={newFolder} onNewFile={newFile} onUpload={explorer.upload}
-        onPaste={() => { if (clipboard) { void explorer.move(clipboard.id, clipboard.name); setClipboard(null); } }}
-      />
-      <div className="files-address">
-        <button className="files-sidebar-toggle" type="button" aria-label={t("files.locations")} aria-expanded={sidebarOpen} onClick={() => setSidebarOpen(true)}>
-          <FolderIcon /> <span>{t("files.locations")}</span>
-        </button>
-        <Breadcrumb nav={explorer.nav} onNavigate={explorer.navigate} />
-      </div>
+      {fallbackChrome ? <>
+        <Toolbar
+          isStore={explorer.isStore} busy={explorer.busy}
+          canBack={explorer.canBack} canForward={explorer.canForward} canUp={explorer.canUp}
+          canPaste={!!clipboard} view={view} search={search}
+          onBack={explorer.back} onForward={explorer.forward} onUp={explorer.up}
+          onView={setView} onSearch={setSearch}
+          onNewFolder={newFolder} onNewFile={newFile} onUpload={explorer.upload}
+          onPaste={() => { if (clipboard) { void explorer.move(clipboard.id, clipboard.name); setClipboard(null); } }}
+        />
+        <div className="files-address">
+          <button className="files-sidebar-toggle" type="button" aria-label={t("files.locations")} aria-expanded={sidebarOpen} onClick={() => setSidebarOpen(true)}>
+            <FolderIcon /> <span>{t("files.locations")}</span>
+          </button>
+          <FolderIcon className="files-address__icon" />
+          <Breadcrumb nav={explorer.nav} onNavigate={explorer.navigate} />
+        </div>
+      </> : null}
       {explorer.error ? <div className="files-alert" role="alert">
         <AlertIcon className="files-alert__icon" />
         <span className="files-alert__text">{t(`files.${explorer.error}`)}</span>
@@ -212,15 +240,18 @@ export function FilesApp() {
           <button className="btn btn--primary" type="submit">{t("files.save")}</button>
           <button className="btn" type="button" onClick={() => setDraft(null)}>{t("workspace.cancel")}</button>
         </form> : null}
-        {mounted && !live ? <p role="status">{t("files.demo")}</p> : null}
+        {mounted && !live ? <p className="files-demo" role="status">{t("files.demo")}</p> : null}
         {explorer.loading
           ? <div className="files-skeleton" aria-hidden="true">{Array.from({ length: 8 }).map((_, index) => <div key={index} className="files-skeleton__cell" />)}</div>
-          : visible.length === 0 ? <p className="files-empty">{t("files.empty")}</p>
+          : visible.length === 0 ? <div className="files-empty">
+              <span className="files-empty__art" aria-hidden="true"><FolderArtwork /></span>
+              <p>{search.trim() ? t("files.noMatches") : t("files.empty")}</p>
+            </div>
           : view === "grid" ? <FileGrid {...viewProps} /> : <FileList {...viewProps} />}
       </div>
       <div className="files-status">
-        <span>{t("files.items", { count: visible.length })}</span>
-        {selected.size ? <span>{t("files.selectedCount", { count: selected.size })}</span> : null}
+        <span className="files-status__count">{t("files.items", { count: visible.length })}</span>
+        {selected.size ? <span className="files-status__selection">{t("files.selectedCount", { count: selected.size })}</span> : null}
       </div>
     </div>
     {sidebarOpen ? <div className="files-sidebar-scrim" role="presentation" onClick={() => setSidebarOpen(false)}>
@@ -233,5 +264,6 @@ export function FilesApp() {
       </div>
     </div> : null}
     {menu ? <ContextMenu x={menu.x} y={menu.y} items={menuItems(menu.item)} onClose={() => setMenu(null)} /> : null}
+    {topbarHost ? createPortal(topbar, topbarHost) : null}
   </section>;
 }
