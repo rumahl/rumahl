@@ -27,7 +27,7 @@ export function windowPositionCss(snapshot: ShellSnapshotV1): string {
   } catch {
     return "";
   }
-  const launcher = snapshot.mode === "launcher";
+  const launcher = snapshot.mode === "launcher" || snapshot.mode === "mobile";
   const rules: string[] = [];
   const seen = new Set<string>();
   for (const saved of windows.slice(0, 32)) {

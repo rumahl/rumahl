@@ -4,6 +4,7 @@ import { useI18n } from "../i18n";
 import { useOsModePolicy } from "../preferences/OsMode";
 import { useShell } from "../shell/ShellContext";
 import { UnavailablePage } from "../pages/UnavailablePage";
+import { AppErrorCard } from "../components/AppErrorCard";
 import { useAppCatalog } from "./AppCatalog";
 import { AppDataBrowser } from "./AppDataBrowser";
 import { fetchAppSettings, type AppSetting, type AppSettings, type InstalledApp } from "./client";
@@ -41,7 +42,7 @@ function AppSettingsBody({ app }: { app: InstalledApp }) {
     return () => controller.abort();
   }, [live, app.id, app.installationId, app.version]);
 
-  if (failed) return <main className="route-message" role="alert"><h1>{app.title}</h1><p>{t("appSettings.unavailable")}</p></main>;
+  if (failed) return <AppErrorCard title={app.title} message={t("appSettings.unavailable")} />;
   if (!settings) return <p role="status">{t("appSettings.loading")}</p>;
   return <main className="app-settings" data-advanced={policy.advancedSettings ? "true" : "false"}>
     <h1>{app.title}</h1>

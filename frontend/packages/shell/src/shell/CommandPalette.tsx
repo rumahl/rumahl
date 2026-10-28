@@ -100,21 +100,21 @@ export function CommandPalette() {
     { path: "/settings/system", title: t("settings.system") }
   ];
   const entries = [
-    ...commands.map(command => ({ id: command.id, kind: "command", title: command.title, subtitle: command.hint, keywords: command.keywords, run: command.run })),
+    ...commands.map(command => ({ id: command.id, kind: "command", title: command.title, subtitle: command.hint, keywords: command.keywords, run: command.run, disabled: command.disabled === true })),
     ...snapshot.contributions.flatMap(item => item.kind === "command"
-      ? [{ id: item.id, kind: "command" as const, title: item.title, subtitle: item.capability, keywords: item.title, run: () => undefined }]
+      ? [{ id: item.id, kind: "command" as const, title: item.title, subtitle: item.capability, keywords: item.title, run: () => undefined, disabled: false }]
       : []),
-    ...apps.filter(app => app.launchable).map(app => ({ id: `app:${app.id}`, kind: "app", title: app.title, subtitle: app.path, keywords: app.id, run: () => open(app.path) })),
-    ...pages.map(page => ({ id: page.path, kind: "page", title: page.title, subtitle: page.path, keywords: page.title, run: () => open(page.path) }))
+    ...apps.filter(app => app.launchable).map(app => ({ id: `app:${app.id}`, kind: "app", title: app.title, subtitle: app.path, keywords: app.id, run: () => open(app.path), disabled: false })),
+    ...pages.map(page => ({ id: page.path, kind: "page", title: page.title, subtitle: page.path, keywords: page.title, run: () => open(page.path), disabled: false }))
   ];
   // Undeclared extension capabilities are not executable shell commands.
   const items = entries.filter(item => !term || `${item.title} ${item.subtitle} ${item.keywords}`.toLocaleLowerCase().includes(term) || item.subtitle === normalized).sort((a, b) => Number(b.subtitle.toLocaleLowerCase() === normalized || b.title.toLocaleLowerCase() === term) - Number(a.subtitle.toLocaleLowerCase() === normalized || a.title.toLocaleLowerCase() === term));
   const typed = raw.replace(/^(open|go|goto)\s+/i, "");
   const target = typed.startsWith("app:") ? `/app/${typed.slice(4)}` : typed;
   if (raw && (target.startsWith("/") && !target.startsWith("//")) && target !== "/_design" && !items.some(item => item.subtitle === target)) {
-    items.unshift({ id: "typed", kind: "page", title: t("command.openTarget"), subtitle: target, keywords: "", run: () => open(target) });
+    items.unshift({ id: "typed", kind: "page", title: t("command.openTarget"), subtitle: target, keywords: "", run: () => open(target), disabled: false });
   }
-  if (policy.browseSystemFiles && (term === "design.rl" || raw === DESIGN_URI)) items.unshift({ id: "design.rl", kind: "command", title: t("command.design"), subtitle: "design.rl", keywords: "", run: () => { open(DESIGN_URI); } });
+  if (policy.browseSystemFiles && (term === "design.rl" || raw === DESIGN_URI)) items.unshift({ id: "design.rl", kind: "command", title: t("command.design"), subtitle: "design.rl", keywords: "", run: () => { open(DESIGN_URI); }, disabled: false });
   const selected = items.length ? Math.min(index, items.length - 1) : 0;
 
   useEffect(() => {
@@ -126,7 +126,7 @@ export function CommandPalette() {
   // Preview selection and Enter always refer to the same executable target.
   const execute = (at: number) => {
     const item = items[at];
-    if (item) { close(); item.run(); return; }
+    if (item && !item.disabled) { close(); item.run(); return; }
   };
   const isMac = typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent);
   const preview = items[selected];
@@ -158,9 +158,9 @@ export function CommandPalette() {
       {items.length > 0 ? <div id={listId} className="command-palette__results" ref={listRef} role="listbox" aria-label={t("command.title")}>
         {items.map((item, i) => <button id={`${listId}-${i}`} tabIndex={-1} key={item.id} type="button" role="option" aria-selected={selected === i}
           className={`command-palette__item${selected === i ? " is-selected" : ""}`}
-          onPointerMove={() => setIndex(i)} onPointerDown={event => event.preventDefault()} onClick={() => execute(i)}>
+          onPointerMove={() => setIndex(i)} onPointerDown={event => event.preventDefault()} onClick={() => execute(i)} disabled={item.disabled} title={item.disabled ? t("features.demoUnavailable") : undefined}>
           <span className="command-palette__icon" aria-hidden="true">{item.kind === "app" ? <GridIcon /> : <TerminalIcon />}</span>
-          <span className="command-palette__text"><strong>{item.title}</strong></span>
+          <span className="command-palette__text"><strong>{item.title}</strong>{item.disabled ? <small>{t("features.demoUnavailable")}</small> : null}</span>
         </button>)}
       </div> : <p role="status" className="command-palette__empty">{t("command.noResults")}</p>}
       {preview ? <aside className="command-palette__preview" aria-label={t("command.preview")}>

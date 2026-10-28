@@ -32,7 +32,7 @@ export function parseShellSnapshot(value: unknown): ShellSnapshotV1 {
     !validApps(value.apps) ||
     !validWorkspace(value.workspace) ||
     !validSystemStatus(value.systemStatus) ||
-    (value.mode !== "desktop" && value.mode !== "launcher") ||
+    (value.mode !== "desktop" && value.mode !== "launcher" && value.mode !== "mobile") ||
     !Array.isArray(value.contributions) ||
     value.contributions.length > 512 ||
     !value.contributions.every(validContribution)
@@ -109,8 +109,9 @@ function validContribution(value: unknown): boolean {
     return hasKeys(value, ["kind", "id", "title", "capability"]) && validNamespacedId(value.capability);
   }
   return value.kind === "widget" &&
-    hasKeys(value, ["kind", "id", "title", "slot", "entrypoint"]) &&
-    value.slot === "dashboard_widgets" && validSimpleId(value.entrypoint);
+    hasKeysWithOptional(value, ["kind", "id", "title", "slot", "entrypoint"], ["size"]) &&
+    value.slot === "dashboard_widgets" && validSimpleId(value.entrypoint) &&
+    (value.size === undefined || value.size === "small" || value.size === "medium" || value.size === "large");
 }
 
 function validOpaqueId(value: unknown): boolean {
@@ -142,6 +143,14 @@ function nonNegativeInteger(value: unknown): value is number {
 function hasKeys(value: unknown, expected: readonly string[]): value is Record<string, unknown> {
   return isRecord(value) && Object.keys(value).length === expected.length &&
     expected.every((key) => Object.hasOwn(value, key));
+}
+
+function hasKeysWithOptional(value: unknown, required: readonly string[], optional: readonly string[]): value is Record<string, unknown> {
+  if (!isRecord(value)) return false;
+  const keys = Object.keys(value);
+  return required.every((key) => Object.hasOwn(value, key)) &&
+    keys.every((key) => required.includes(key) || optional.includes(key)) &&
+    keys.length <= required.length + optional.length;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

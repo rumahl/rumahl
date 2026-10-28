@@ -1,0 +1,151 @@
+<!doctype html>
+<html lang="en" data-locale="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="robots" content="noindex" />
+    <meta name="theme-color" content="#050505" />
+    <title>404 · rumahl OS</title>
+    <link rel="icon" href="/icon.svg" type="image/svg+xml" />
+    <link rel="icon" href="/icon-512.png" type="image/png" sizes="512x512" />
+    <script>
+      (() => {
+        let stored = null;
+        try { stored = localStorage.getItem("rumahl.locale"); } catch { /* storage unavailable */ }
+        const raw = (stored || navigator.language || document.documentElement.lang || "en").toLowerCase();
+        const locale = raw.startsWith("de") ? "de" : "en";
+        document.documentElement.lang = locale;
+        document.documentElement.dataset.locale = locale;
+      })();
+    </script>
+    <style>
+      :root {
+        color-scheme: dark;
+        --bg: #050505;
+        --fg: #ffffff;
+        --muted: rgba(255, 255, 255, 0.46);
+        --quiet: rgba(255, 255, 255, 0.3);
+        --line: rgba(255, 255, 255, 0.14);
+      }
+      * { box-sizing: border-box; }
+      html, body {
+        margin: 0;
+        min-height: 100%;
+        background: var(--bg);
+        color: var(--fg);
+      }
+      body {
+        min-height: 100svh;
+        display: grid;
+        place-items: center;
+        padding: 40px 24px;
+        font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        background:
+          radial-gradient(circle at 50% 42%, rgba(255, 255, 255, 0.04), transparent 30%),
+          var(--bg);
+      }
+      .not-found {
+        width: min(400px, 100%);
+        display: grid;
+        justify-items: center;
+        text-align: center;
+      }
+      .brand {
+        width: clamp(68px, 8vw, 94px);
+        aspect-ratio: 1;
+        display: grid;
+        place-items: center;
+        margin-bottom: 38px;
+        filter: drop-shadow(0 8px 24px rgba(0, 0, 0, 0.3));
+      }
+      .brand svg { width: 100%; height: 100%; display: block; }
+      .eyebrow {
+        margin: 0 0 18px;
+        color: var(--quiet);
+        font-size: 11px;
+        font-weight: 600;
+        letter-spacing: 0.18em;
+        text-transform: uppercase;
+      }
+      h1 {
+        margin: 0;
+        max-width: 340px;
+        font-size: clamp(25px, 4vw, 34px);
+        font-weight: 560;
+        letter-spacing: -0.035em;
+        line-height: 1.14;
+      }
+      p {
+        max-width: 310px;
+        margin: 18px 0 0;
+        color: var(--muted);
+        font-size: 13px;
+        line-height: 1.6;
+      }
+      .back {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        min-height: 42px;
+        margin-top: 34px;
+        padding: 0 18px;
+        border: 1px solid var(--line);
+        border-radius: 999px;
+        background: rgba(255, 255, 255, 0.055);
+        color: var(--fg);
+        font-size: 12.5px;
+        font-weight: 560;
+        text-decoration: none;
+        transition: background 160ms ease, border-color 160ms ease, transform 160ms ease;
+      }
+      .back:hover {
+        border-color: rgba(255, 255, 255, 0.28);
+        background: rgba(255, 255, 255, 0.1);
+      }
+      .back:active { transform: scale(0.98); }
+      .back:focus-visible {
+        outline: 2px solid rgba(255, 255, 255, 0.8);
+        outline-offset: 3px;
+      }
+      html[data-locale="de"] [data-lang="en"],
+      html[data-locale="en"] [data-lang="de"] {
+        display: none;
+      }
+      .back svg {
+        width: 13px;
+        height: 13px;
+        fill: none;
+        stroke: currentColor;
+        stroke-width: 1.8;
+        stroke-linecap: round;
+        stroke-linejoin: round;
+      }
+      @media (prefers-reduced-motion: reduce) {
+        .back { transition: none; }
+      }
+    </style>
+  </head>
+  <body>
+    <main class="not-found">
+      <div class="brand" aria-hidden="true">
+        <svg viewBox="0 0 251 472" role="img" aria-label="rumahl">
+          <path fill="currentColor" d="M 9.47163 471.21342 Q 0 471.21342 0 461.74179 V 203.63996 C 0 80.50881 80.50883 0 201.27207 0 H 241.52649 Q 250.99811 0 250.99811 9.47163 V 94.71626 Q 250.99811 104.18789 241.52649 104.18789 H 210.74370 C 144.44231 104.18789 101.81999 144.44230 101.81999 210.74369 V 461.74179 Q 101.81999 471.21342 92.34836 471.21342 Z"/>
+        </svg>
+      </div>
+      <p class="eyebrow">
+        <span data-lang="de">404 · Kein Ziel</span><span data-lang="en">404 · No target</span>
+      </p>
+      <h1>
+        <span data-lang="de">Dieser Pfad führt nirgendwohin.</span><span data-lang="en">This path leads nowhere.</span>
+      </h1>
+      <p>
+        <span data-lang="de">rumahl OS hat hier kein Ziel registriert. Prüfe den Aufruf oder kehre zum Desktop zurück.</span>
+        <span data-lang="en">rumahl OS has no target registered here. Check the call or return to the desktop.</span>
+      </p>
+      <a class="back" href="/">
+        <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M11.5 8H4.5M7 4.5 3.5 8 7 11.5"/></svg>
+        <span data-lang="de">Zum Desktop</span><span data-lang="en">Return to desktop</span>
+      </a>
+    </main>
+  </body>
+</html>

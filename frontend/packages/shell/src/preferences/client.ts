@@ -1,5 +1,5 @@
 import type { ShellRequest } from "../snapshot-client";
-export type ShellMode = "desktop" | "launcher";
+export type ShellMode = "desktop" | "launcher" | "mobile";
 export type PreferenceScope = "user" | "device";
 export type PreferenceKey = "shell.mode" | "shell.theme";
 const THEME_ID = /^[a-z][a-z0-9-]*(?:\.[a-z][a-z0-9-]*){2,}$/;
@@ -20,7 +20,7 @@ export interface PreferenceUpdate {
   key: PreferenceKey;
   value: ShellMode | string | null;
 }
-export function isMode(value: unknown): value is ShellMode { return value === "desktop" || value === "launcher"; }
+export function isMode(value: unknown): value is ShellMode { return value === "desktop" || value === "launcher" || value === "mobile"; }
 export function parsePreferences(value: unknown): Preferences {
   if (!value || typeof value !== "object") throw new Error("invalid preferences");
   const p = value as Partial<Preferences>;

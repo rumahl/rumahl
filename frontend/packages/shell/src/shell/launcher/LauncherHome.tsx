@@ -1,13 +1,17 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent } from "react";
 import { createPortal } from "react-dom";
 import { AppIcon, AppTile } from "../../apps/AppTile";
-import { useShellApps } from "../../apps/useShellApps";
+import { controlAppRuntime, fetchAppRuntime, uninstallApp, type AppRuntime } from "../../apps/client";
+import { CATALOG_REFRESH_EVENT } from "../../apps/AppCatalog";
+import { restartComponent } from "../../apps/recovery-client";
+import { useShellApps, type ShellApp } from "../../apps/useShellApps";
+import { useAppStatusIndicators } from "../../preferences/app-status-indicators";
 import { useI18n } from "../../i18n";
 import { useWorkspace } from "../../preferences/Workspace";
 import { useSafeMode } from "../../preferences/safe-mode";
 import { useShell } from "../ShellContext";
 import { useClock } from "../clock";
-import { SearchIcon } from "../../icons";
+import { CheckIcon, EditIcon, PlayIcon, RefreshIcon, SearchIcon, StopIcon, WarningTriangleIcon } from "../../icons";
 import { Button, RumahlInputGroup } from "@rumahl/ui/components";
 import { createCellStore, gridMetrics, nearestFreeCell, resolveCells, useGridSize, type GridCell } from "../desktop/free-grid";
 import { applyOrder, useLauncherOrder } from "./launcher-order";
@@ -15,9 +19,9 @@ import { LauncherMenu, type LauncherMenuItem } from "./LauncherMenu";
 
 /** Nominal springboard cell (content + gap) used by the free grid. */
 const CELL = { width: 92, height: 104 };
-const MOBILE_CELL = { width: 78, height: 92 };
+const MOBILE_CELL = { width: 80, height: 100 };
 const GAP = 12;
-const MOBILE_GAP = 10;
+const MOBILE_GAP = 8;
 
 /** Fallback page grid until the board has been measured (also used in tests). */
 const UNMEASURED = { cols: 6, rows: 5 };
@@ -54,11 +58,34 @@ function useShellMaterial(): "solid" | "translucent" {
  */
 export function LauncherHome() {
   const { t, locale } = useI18n();
-  const { open, snapshot } = useShell();
+  const { open, snapshot, live, state } = useShell();
   const allApps = useShellApps();
+  const statusIndicators = useAppStatusIndicators();
   const safeMode = useSafeMode();
   // Safe mode keeps third-party apps stopped.
   const apps = useMemo(() => (safeMode ? allApps.filter((app) => app.system) : allApps), [allApps, safeMode]);
+  useEffect(() => {
+    if (!statusIndicators || !live) return;
+    const targets = apps.filter((app) => app.runtime === "container" && app.installationId);
+    if (!targets.length) { setRuntimeStates({}); return; }
+    const controller = new AbortController();
+    const load = () => {
+      for (const app of targets) {
+        fetchAppRuntime(live.request, { id: app.id, installationId: app.installationId! }, controller.signal)
+          .then((value) => { if (!controller.signal.aborted) setRuntimeStates((previous) => ({ ...previous, [app.id]: value.state })); })
+          .catch(() => { if (!controller.signal.aborted) setRuntimeStates((previous) => ({ ...previous, [app.id]: "unknown" })); });
+      }
+    };
+    load();
+    const timer = window.setInterval(load, 10_000);
+    return () => { controller.abort(); window.clearInterval(timer); };
+  }, [apps, live, statusIndicators]);
+  const statusFor = (app: ShellApp): "running" | "stopped" | "unknown" => {
+    if (app.runtime === "container") return runtimeStates[app.id] ?? "unknown";
+    const openWindow = state.windows.some((item) => !item.minimized && (item.location === app.path || item.location?.startsWith(`${app.path}/`)));
+    return openWindow ? "running" : "stopped";
+  };
+  const launcherTile = (app: ShellApp, key?: string) => <AppTile key={key} app={app} minimal {...(statusIndicators ? { status: statusFor(app) } : {})} />;
   const { effective, save } = useWorkspace();
   const order = useLauncherOrder();
   const storedCells = launcherCells.use();
@@ -70,9 +97,13 @@ export function LauncherHome() {
   const [dropFolder, setDropFolder] = useState<string | null>(null);
   const [renaming, setRenaming] = useState<string | null>(null);
   const [outDrag, setOutDrag] = useState<null | { id: string; x: number; y: number; width: number }>(null);
+  const [runtimeStates, setRuntimeStates] = useState<Record<string, AppRuntime["state"] | "unknown">>({});
   const outGesture = useRef<null | { pointer: number; x: number; y: number; width: number }>(null);
   const outDragRef = useRef<null | { folderId: string; appId: string }>(null);
   const [menu, setMenu] = useState<null | { x: number; y: number; appId?: string; folderId?: string }>(null);
+  const [pendingUninstall, setPendingUninstall] = useState<ShellApp | null>(null);
+  const [uninstalling, setUninstalling] = useState(false);
+  const [uninstallError, setUninstallError] = useState(false);
   const now = useClock();
   const press = useRef<null | { timer: number; x: number; y: number }>(null);
   const swipe = useRef<null | { pointer: number; x: number; y: number }>(null);
@@ -224,14 +255,53 @@ export function LauncherHome() {
     }
     setOutDrag(null);
   }
+  async function runtimeAction(app: ShellApp, action: "start" | "stop" | "restart") {
+    if (!live || !app.installationId) return;
+    const controller = new AbortController();
+    try {
+      if (action === "restart") {
+        const response = await restartComponent(live.request, "app", { appId: app.id, installationId: app.installationId });
+        if (!response.ok) throw new Error("restart failed");
+        setRuntimeStates((previous) => ({ ...previous, [app.id]: "running" }));
+      } else {
+        const value = await controlAppRuntime(live.request, { id: app.id, installationId: app.installationId }, action, controller.signal);
+        setRuntimeStates((previous) => ({ ...previous, [app.id]: value.state }));
+      }
+    } catch {
+      setRuntimeStates((previous) => ({ ...previous, [app.id]: "unknown" }));
+    }
+  }
+  async function confirmUninstall() {
+    if (!live || !pendingUninstall || !pendingUninstall.installationId || uninstalling) return;
+    setUninstalling(true);
+    setUninstallError(false);
+    const controller = new AbortController();
+    try {
+      await uninstallApp(live.request, { id: pendingUninstall.id, installationId: pendingUninstall.installationId }, controller.signal);
+      window.dispatchEvent(new Event(CATALOG_REFRESH_EVENT));
+      setPendingUninstall(null);
+    } catch {
+      setUninstallError(true);
+    } finally {
+      setUninstalling(false);
+    }
+  }
   function menuItems(): LauncherMenuItem[] {
     if (!menu) return [];
     if (menu.appId) {
       const app = byId.get(menu.appId);
       if (!app) return [];
+      const settingsTarget = app.managePath ?? app.settingsPath;
+      const runtime = runtimeStates[app.id] ?? "unknown";
       return [
         { label: t("launcher.menu.open"), onSelect: () => open(app.path) },
-        ...(!app.system ? [{ label: t("launcher.menu.settings"), onSelect: () => open(`${app.path}/settings`) }] : []),
+        ...(settingsTarget ? [{ label: t("launcher.menu.settings"), onSelect: () => open(settingsTarget) }] : []),
+        ...(app.runtime === "container" && app.installationId ? [
+          { label: t("settings.appStart"), icon: <PlayIcon />, disabled: runtime === "running", onSelect: () => void runtimeAction(app, "start") },
+          { label: t("settings.appStop"), icon: <StopIcon />, disabled: runtime !== "running", onSelect: () => void runtimeAction(app, "stop") },
+          { label: t("settings.appRestart"), icon: <RefreshIcon />, disabled: runtime !== "running", onSelect: () => void runtimeAction(app, "restart") },
+          { label: t("settings.appUninstall"), icon: <WarningTriangleIcon />, danger: true, onSelect: () => { setUninstallError(false); setPendingUninstall(app); } }
+        ] : []),
         ...(currentFolder?.apps.includes(app.id) ? [{ label: t("launcher.menu.removeFromFolder"), danger: true, onSelect: () => removeFromFolder(currentFolder.id, app.id) }] : [])
       ];
     }
@@ -256,7 +326,7 @@ export function LauncherHome() {
   /** The tile shown for a dragged token (app or folder) in the floating preview. */
   function dragTile(token: string) {
     const app = byId.get(token);
-    if (app) return <AppTile app={app} />;
+    if (app) return launcherTile(app);
     const folderItem = effective.folders.find((item) => item.id === token);
     return folderItem ? <span className="app-tile">{folderPreview(folderItem)}<span>{folderItem.name}</span></span> : null;
   }
@@ -340,16 +410,16 @@ export function LauncherHome() {
 
   return <main className={`launcher-home${currentFolder ? " is-folder-open" : ""}`}>
     <header className="launcher-top">
-      <div className="launcher-heading">
-        <h1 className="launcher-greeting">{t(greeting)}<span>{snapshot.user.displayName}</span></h1>
+      <div className="launcher-heading" data-adaptive-text="">
+        <h1 className="launcher-greeting">{t(greeting)}, <span>{snapshot.user.displayName}</span></h1>
         {now ? <div className="launcher-clock"><strong>{clock}</strong><span>{date}</span></div> : null}
       </div>
-      {editing && !normalized ? <Button className="launcher-done" floating type="button" onClick={() => setEditing(false)}>{t("launcher.done")}</Button> : null}
+      {editing && !normalized ? <Button className="launcher-done" floating type="button" aria-label={t("launcher.done")} title={t("launcher.done")} onClick={() => setEditing(false)}><CheckIcon aria-hidden="true" /></Button> : null}
     </header>
 
     {normalized ? <section className="launcher-section">
       <h2>{t("launcher.searchResults")}</h2>
-      <div className="app-grid">{results.map((app) => <AppTile app={app} key={app.id} />)}</div>
+      <div className="app-grid">{results.map((app) => launcherTile(app, app.id))}</div>
       {results.length === 0 ? <p role="status" className="launcher-empty">{t("launcher.noResults")}</p> : null}
     </section> : <div className={`launcher-board${editing ? " is-editing" : ""}`} ref={board} onContextMenu={(event) => openMenu(event)}
       onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={onPointerUp} onPointerCancel={onPointerCancel} onKeyDown={onKeyDown} tabIndex={0}>
@@ -365,7 +435,7 @@ export function LauncherHome() {
             onContextMenu={(event) => openMenu(event, app ? { appId: token } : { folderId: token })}
             onClickCapture={(event) => { if (suppressClick.current || editing) { event.preventDefault(); event.stopPropagation(); suppressClick.current = false; } }}>
             {app
-              ? <AppTile app={app} />
+              ? launcherTile(app)
               : renaming === token
                 ? <input className="launcher-rename" autoFocus defaultValue={folderItem!.name} maxLength={128}
                     onClick={(event) => event.stopPropagation()}
@@ -411,7 +481,7 @@ export function LauncherHome() {
                 onKeyDown={(event) => { if (event.key === "Enter") event.currentTarget.blur(); if (event.key === "Escape") setRenaming(null); }} />
             : <h2>{currentFolder.name}</h2>}
           <div className="launcher-folder__actions">
-            <Button className="launcher-edit" floating variant={editing ? "primary" : "secondary"} type="button" aria-pressed={editing} onClick={() => setEditing((value) => !value)}>{t(editing ? "launcher.done" : "launcher.edit")}</Button>
+            <Button className="launcher-edit" floating variant={editing ? "primary" : "secondary"} type="button" aria-pressed={editing} aria-label={t(editing ? "launcher.done" : "launcher.edit")} title={t(editing ? "launcher.done" : "launcher.edit")} onClick={() => setEditing((value) => !value)}>{editing ? <CheckIcon aria-hidden="true" /> : <EditIcon aria-hidden="true" />}</Button>
             <button type="button" aria-label={t("launcher.closeFolder")} onClick={() => setFolder(null)}>×</button>
           </div>
         </header>
@@ -421,7 +491,7 @@ export function LauncherHome() {
             onPointerDown={(event) => beginOutDrag(currentFolder.id, id, event)} onPointerMove={moveOutDrag} onPointerUp={endOutDrag} onPointerCancel={endOutDrag}
             onDragStart={(event) => event.preventDefault()}
             onClickCapture={(event) => { if (suppressClick.current) { event.preventDefault(); event.stopPropagation(); suppressClick.current = false; } }}>
-            <AppTile app={app} /></div> : null; })}
+            {launcherTile(app)}</div> : null; })}
         </div>
         {currentFolder.apps.length === 0 ? <p role="status" className="launcher-empty">{t("launcher.folderEmpty")}</p> : null}
       </div>
@@ -429,13 +499,38 @@ export function LauncherHome() {
 
     {outDrag ? createPortal(
       <div className="springboard-float" ref={(element) => { if (element) { element.style.left = `${outDrag.x}px`; element.style.top = `${outDrag.y}px`; element.style.width = `${outDrag.width}px`; } }} aria-hidden="true">
-        {byId.get(outDrag.id) ? <AppTile app={byId.get(outDrag.id)!} /> : null}
+        {byId.get(outDrag.id) ? launcherTile(byId.get(outDrag.id)!) : null}
       </div>, document.body) : null}
 
     {drag?.moved ? createPortal(
       <div className="springboard-float" ref={(element) => { if (element) { element.style.left = `${drag.x}px`; element.style.top = `${drag.y}px`; element.style.width = `${drag.width}px`; } }} aria-hidden="true">
         {dragTile(drag.id)}
       </div>, document.body) : null}
+    {pendingUninstall ? createPortal(
+      <div className="app-management-modal" role="dialog" aria-modal="true" aria-labelledby="launcher-uninstall-title" onClick={(event) => { if (event.target === event.currentTarget && !uninstalling) setPendingUninstall(null); }}>
+        <div className="app-management-modal__surface app-uninstall-dialog">
+          <header className="app-management-modal__head">
+            <div className="app-management-modal__title">
+              <p className="app-management-modal__eyebrow">{pendingUninstall.title}</p>
+              <h2 id="launcher-uninstall-title">{t("settings.appUninstallConfirm")}</h2>
+            </div>
+            <button type="button" className="app-management-modal__close" aria-label={t("settings.appClose")} disabled={uninstalling} onClick={() => setPendingUninstall(null)}>×</button>
+          </header>
+          <div className="app-management-modal__body">
+            <p className="settings-footnote">{t("settings.appUninstallWarning")}</p>
+            {uninstallError ? <p className="settings-footnote" role="alert">{t("settings.appUninstallFailed")}</p> : null}
+          </div>
+          <footer className="app-management-modal__foot">
+            <div />
+            <div className="app-management-modal__actions">
+              <Button size="sm" disabled={uninstalling} onClick={() => setPendingUninstall(null)}>{t("settings.appCancel")}</Button>
+              <Button size="sm" variant="danger" disabled={uninstalling} onClick={() => void confirmUninstall()}>{uninstalling ? t("settings.appUninstalling") : t("settings.appUninstall")}</Button>
+            </div>
+          </footer>
+        </div>
+      </div>,
+      document.querySelector(".shell") ?? document.body
+    ) : null}
     {menu ? <LauncherMenu x={menu.x} y={menu.y} items={menuItems()} onClose={() => setMenu(null)} /> : null}
   </main>;
 }

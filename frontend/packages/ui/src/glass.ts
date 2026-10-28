@@ -1,4 +1,5 @@
 import type { Tokens } from "./tokens";
+import { hexToRgb } from "./color";
 
 /**
  * Shared glass interface. The engine, materials and CSS hooks are a shell-wide
@@ -42,7 +43,7 @@ export const GLASS_MATERIALS = {
   // Same glass as the desktop widgets, so dock and widget look identical
   // (only the corner radius follows the dock's shape).
   dock: { radius: 29, bevel: 20, refraction: 40, chroma: 0.28, blur: 1.2, saturation: 1.05, brightness: 1, tint: "rgba(30,37,66,.05)" },
-  widget: { radius: 23, bevel: 20, refraction: 40, chroma: 0.28, blur: 1.2, saturation: 1.05, brightness: 1, tint: "rgba(30,37,66,.05)" },
+  widget: { radius: 23, bevel: 20, refraction: 40, chroma: 0.28, blur: 1.2, saturation: 1.05, brightness: 1, tint: "color-mix(in srgb, var(--rumahl-ui-color-accent, #28694c) 22%, transparent)" },
   bar: { radius: 14, bevel: 16, refraction: 14, chroma: 0.08, blur: 2.1, saturation: 1.05, brightness: 1, tint: "rgba(20,28,47,.10)" }
 } as const satisfies Record<string, GlassMaterial>;
 
@@ -58,4 +59,17 @@ export function glassMaterialFromTokens(tokens: Tokens, overrides: GlassMaterial
     radius: number(tokens["shape.radius.dock"], 24),
     ...overrides
   };
+}
+
+/** The tint used by the dock and widgets. `null` means "follow the accent". */
+export function glassColorTint(enabled: boolean | undefined, color: string | null | undefined, accent: string): string {
+  if (enabled === false) return "rgba(30,37,66,.05)";
+  const selected = color && /^#[0-9a-fA-F]{6}$/.test(color) ? color : (/^#[0-9a-fA-F]{6}$/.test(accent) ? accent : "#beff2d");
+  const [r, g, b] = hexToRgb(selected);
+  return `rgba(${r}, ${g}, ${b}, 0.22)`;
+}
+
+/** Adds or replaces only the material tint, preserving the engine settings. */
+export function glassMaterialWithTint(material: GlassMaterial, tint: string): GlassMaterial {
+  return { ...material, tint };
 }

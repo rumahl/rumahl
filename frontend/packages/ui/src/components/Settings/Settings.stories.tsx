@@ -49,7 +49,8 @@ content is transparent (the window glass shows through).
 - Compose content from \`PageHeader\` + \`PageSection\` +
   \`GroupContainer\`/\`GroupRow\` (or \`GroupLinkContainer\`).
 - **No material on the content** — material is for the sidebar and the frame.
-- A template / inspiration, not a mandate.`
+- A template / inspiration, not a mandate.
+- For an app shell that also needs top navigation and the standard mobile island, use \`AppNavLayout\` instead.`
       }
     }
   }

@@ -17,6 +17,10 @@ pub(crate) fn routes() -> Router<Arc<GatewayState>> {
         .route("/service-worker.js", get(worker))
         .route("/os-client.js", get(client))
         .route("/offline", get(page))
+        .route("/splash", get(splash))
+        .route("/manifest.webmanifest", get(manifest))
+        .route("/icon.svg", get(icon_svg))
+        .route("/icon-512.png", get(icon_png))
         .route("/rre-i18n.js", get(i18n))
         .route("/offline/wallpaper.jpg", get(wallpaper))
         .route(
@@ -79,6 +83,43 @@ async fn i18n() -> Response {
     )
 }
 
+/// Boot splash for slow navigations. Self-contained so the service worker can
+/// serve it while the platform is still loading the shell.
+async fn splash() -> Response {
+    let body = include_str!("../../frontend/packages/shell/splash.html")
+        .replace(" nonce=\"{{nonce}}\"", "");
+    let mut response = public(body, "text/html; charset=utf-8", true);
+    response.headers_mut().insert(
+        CONTENT_SECURITY_POLICY,
+        HeaderValue::from_static("default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; connect-src 'self'; img-src 'self' data:; base-uri 'none'; form-action 'self'; frame-ancestors 'none'"),
+    );
+    response
+}
+
+async fn manifest() -> Response {
+    public(
+        include_str!("../../frontend/packages/shell/public/manifest.webmanifest"),
+        "application/manifest+json",
+        true,
+    )
+}
+
+async fn icon_svg() -> Response {
+    public(
+        include_bytes!("../../frontend/packages/shell/public/icon.svg").as_slice(),
+        "image/svg+xml",
+        true,
+    )
+}
+
+async fn icon_png() -> Response {
+    public(
+        include_bytes!("../../frontend/packages/shell/public/icon-512.png").as_slice(),
+        "image/png",
+        true,
+    )
+}
+
 async fn page() -> Response {
     // Self-contained (inline script): it must render even when the platform is
     // unreachable and no other asset can be fetched.
@@ -114,5 +155,15 @@ mod tests {
         assert_eq!(wallpaper().await.headers()[CONTENT_TYPE], "image/jpeg");
         assert_eq!(page().await.status(), axum::http::StatusCode::OK);
         assert!(!page().await.headers().contains_key("set-cookie"));
+        assert_eq!(splash().await.status(), axum::http::StatusCode::OK);
+        assert_eq!(manifest().await.status(), axum::http::StatusCode::OK);
+        assert_eq!(icon_svg().await.status(), axum::http::StatusCode::OK);
+        assert_eq!(icon_png().await.status(), axum::http::StatusCode::OK);
+        assert!(
+            splash().await.headers()[CACHE_CONTROL]
+                .to_str()
+                .unwrap()
+                .starts_with("public")
+        );
     }
 }

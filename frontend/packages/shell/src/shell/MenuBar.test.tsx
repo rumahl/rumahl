@@ -36,10 +36,10 @@ describe("menu bar", () => {
   });
 
   test("lists open windows and focuses one", () => {
-    render(<App snapshot={demoSnapshot} initialLocation="/app/app-manager" />);
+    render(<App snapshot={demoSnapshot} initialLocation="/app/files" />);
     fireEvent.click(screen.getByRole("button", { name: "Window" }));
     const menu = screen.getByRole("menu");
-    fireEvent.click(within(menu).getByRole("menuitem", { name: "App manager" }));
-    expect(screen.getByRole("region", { name: "App manager" })).toBeInTheDocument();
+    fireEvent.click(within(menu).getByRole("menuitem", { name: "Files" }));
+    expect(screen.getByRole("region", { name: "Files" })).toBeInTheDocument();
   });
 });

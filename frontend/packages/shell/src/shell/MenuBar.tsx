@@ -1,18 +1,25 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useLocation } from "react-router";
 import { RumahlMark } from "../components/RumahlMark";
 import { DesktopIcon, GridIcon, SearchIcon, SlidersIcon } from "../icons";
 import { useI18n } from "../i18n";
 import { useShellPreferences } from "../preferences/ShellPreferences";
-import { appPath } from "../routing/paths";
 import { useShell } from "./ShellContext";
+import { useDeviceViewport } from "./device";
 import { useClock } from "./clock";
 import { ControlCenter } from "./ControlCenter";
+import { openMobileTour } from "./MobileTutorial";
 import { MenuDropdown } from "./MenuDropdown";
+import { featureReady, useFeatures } from "../features/ShellFeatures";
+import { flushSessionSnapshot } from "./session-snapshot";
 
 type MenuId = "system" | "go" | "view" | "window" | "user";
 
 export function MenuBar() {
   const { snapshot, state, dispatch, open, mode, setMode } = useShell();
+  const location = useLocation();
+  const viewport = useDeviceViewport();
+  const features = useFeatures();
   const preferences = useShellPreferences();
   const { t, locale } = useI18n();
   const now = useClock(1000);
@@ -23,18 +30,18 @@ export function MenuBar() {
   const [timeZone, setTimeZone] = useState("UTC");
   const bar = useRef<HTMLElement>(null);
   const anchors = useRef<{ [key: string]: HTMLElement | null }>({});
+  const signingOut = useRef(false);
   useEffect(() => {
     document.documentElement.lang = locale;
     setTimeZone(Intl.DateTimeFormat().resolvedOptions().timeZone);
   }, [locale]);
+  const atHome = location.pathname === "/";
   // "An app is fullscreen": a launcher app is open, or a window is maximized.
-  // Only then does the launcher island auto-hide; otherwise it shows normally.
-  const appFullscreen = mode === "launcher"
-    ? state.windows.some((item) => !item.minimized)
-    : state.windows.some((item) => !item.minimized && item.placement === "maximized");
-  // When fullscreen the island hides upward (a sliver stays tucked away) and
-  // drops back down when the pointer nears the top edge or on a top swipe-down;
-  // it hides again once the pointer moves further down or on a tap elsewhere.
+  // The island tucks upward so the window can use the space; a slim sliver
+  // remains at the top edge and reveals the full bar on approach.
+  const appFullscreen = mode === "launcher" || mode === "mobile"
+    ? !atHome && state.windows.some((item) => !item.minimized)
+    : state.windows.some((item) => !item.minimized && (item.fullscreen || item.placement === "maximized"));
   useEffect(() => {
     if (!appFullscreen) { setTopRevealed(false); return; }
     const reveal = () => { if (hideTop.current) window.clearTimeout(hideTop.current); setTopRevealed(true); };
@@ -94,6 +101,7 @@ export function MenuBar() {
   const protection = snapshot.systemStatus.protection === "active" ? t("status.protection.value") : t("status.protection.attention");
   // Live clock after mount; falls back to the snapshot time for the first paint.
   const time = now ?? new Date(snapshot.systemStatus.observedAtUnixMs);
+
   const topRevealedNow = topRevealed || openMenu !== null || controlOpen;
   const autoHide = appFullscreen;
 
@@ -110,18 +118,16 @@ export function MenuBar() {
   return <header ref={bar} className={`menubar topbar${autoHide ? " is-auto-hide" : ""}${autoHide && topRevealedNow ? " is-revealed" : ""}`}>
     <div className="topbar__island topbar__island--left">
       <nav className="menubar__menus" aria-label={t("menubar.label")}>
-        {menu("system", <span className="menubar__brand brand" aria-label="rumahl OS"><RumahlMark /></span>, <>
+        {menu("system", <span className="menubar__brand brand" aria-label="rumahl OS"><RumahlMark /><span className="menubar__wordmark" aria-hidden="true">rumahl</span></span>, <>
           <p className="menubar__about">{t("menubar.about")}<small>{snapshot.shellBuildId.slice(0, 8)}</small></p>
           <div className="menubar__separator" role="separator" />
           <button role="menuitem" type="button" onClick={act(() => open("/settings"))}>{t("nav.settings")}</button>
-          <button role="menuitem" type="button" onClick={act(() => open(appPath("app-manager")))}>{t("appManager.title")}</button>
           <div className="menubar__separator" role="separator" />
-          <button role="menuitem" type="submit" form="rumahl-sign-out">{t("session.signOut")}</button>
+          <button role="menuitem" type="submit" form="rumahl-sign-out" disabled={!featureReady(features["session.signOut"])} title={!featureReady(features["session.signOut"]) ? t("features.demoUnavailable") : undefined}>{t("session.signOut")}</button>
         </>)}
         {menu("go", t("menubar.go"), <>
           <button role="menuitem" type="button" onClick={act(() => open("/"))}>{t("nav.home")}</button>
-          <button role="menuitem" type="button" onClick={act(() => open("/apps"))}>{t("nav.apps")}</button>
-          <button role="menuitem" type="button" onClick={act(() => open("/activity"))}>{t("nav.activity")}</button>
+          <button role="menuitem" type="button" disabled={!featureReady(features.activity)} title={!featureReady(features.activity) ? t("features.demoUnavailable") : undefined} onClick={act(() => open("/activity"))}>{t("nav.activity")}</button>
           <button role="menuitem" type="button" onClick={act(() => open("/settings"))}>{t("nav.settings")}</button>
         </>)}
         {menu("view", t("menubar.view"), <>
@@ -149,7 +155,7 @@ export function MenuBar() {
         <button className="topbar__button" type="button" aria-haspopup="dialog" aria-expanded={controlOpen}
           aria-label={t("controlCenter.label")} title={t("controlCenter.label")} onClick={() => setControlOpen((value) => !value)}><SlidersIcon /></button>
         <MenuDropdown anchor={{ current: anchors.current.control ?? null }} open={controlOpen} align="right" className="menubar__dropdown menubar__dropdown--right menubar__dropdown--control">
-          <ControlCenter protection={protection} state={snapshot.systemStatus.protection} error={preferences.error} onOpenSettings={act(() => open("/settings"))} onClose={() => setControlOpen(false)} />
+          <ControlCenter protection={protection} state={snapshot.systemStatus.protection} error={preferences.error} userName={snapshot.user.displayName} windowCount={state.windows.length} onOpenSettings={act(() => open("/settings"))} onOpenSwitcher={() => { setControlOpen(false); dispatch({ type: "toggle-app-switcher" }); }} onOpenTour={(mode === "launcher" || mode === "mobile") && viewport.phone ? () => { setControlOpen(false); openMobileTour(); } : undefined} onClose={() => setControlOpen(false)} />
         </MenuDropdown>
       </div>
       <div className="topbar__mode" role="group" aria-label={t("mode.label")}>
@@ -168,10 +174,17 @@ export function MenuBar() {
           <p className="menubar__about">{t("menubar.signedInAs", { name: snapshot.user.displayName })}</p>
           <div className="menubar__separator" role="separator" />
           <button role="menuitem" type="button" onClick={act(() => open("/settings"))}>{t("nav.settings")}</button>
-          <button role="menuitem" type="submit" form="rumahl-sign-out">{t("session.signOut")}</button>
+          <button role="menuitem" type="submit" form="rumahl-sign-out" disabled={!featureReady(features["session.signOut"])} title={!featureReady(features["session.signOut"]) ? t("features.demoUnavailable") : undefined}>{t("session.signOut")}</button>
         </MenuDropdown>
       </div>
     </div>
-    <form action="/logout" id="rumahl-sign-out" method="post" hidden />
+    <form action="/logout" id="rumahl-sign-out" method="post" hidden onSubmit={(event) => {
+      if (signingOut.current) return;
+      event.preventDefault();
+      signingOut.current = true;
+      const form = event.currentTarget;
+      const timeout = new Promise((resolve) => window.setTimeout(resolve, 600));
+      void Promise.race([flushSessionSnapshot(), timeout]).finally(() => form.submit());
+    }} />
   </header>;
 }

@@ -69,6 +69,9 @@ export interface Theme {
   slots?: Partial<Record<SlotName, SlotTemplate>> | undefined;
   /** Optional theme stylesheet (applied CSP-safely, first-party themes). */
   css?: string | undefined;
+  /** Optional built-in preset families. These are curated by the theme, not a
+   * generic shell capability; themes that omit them get only their parameters. */
+  presets?: { look?: boolean; material?: boolean } | undefined;
   /** Fixed opaque material, even when device settings request transparency. */
   material?: "solid" | undefined;
   /** Base look (defaults to `rumahl`). */
@@ -284,6 +287,7 @@ export const rumahlTheme: Theme = {
   tokens: { ...defaultTokens, ...paletteTokens(defaultTokens["color.accent"]) },
   variants: defaultVariants,
   parameters: officialParameters,
+  presets: { look: true, material: true },
   modes: ["light", "dark"],
 };
 
@@ -339,12 +343,6 @@ export const classicTheme: Theme = {
             class: "taskbar__start",
             action: "minimize-all",
             children: [{ component: "brand" }],
-          },
-          {
-            tag: "a",
-            class: "taskbar__button",
-            attrs: { href: "/apps" },
-            children: [{ text: "Apps" }],
           },
           {
             tag: "div",

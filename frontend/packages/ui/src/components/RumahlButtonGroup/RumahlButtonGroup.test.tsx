@@ -94,3 +94,19 @@ it("previews a dragged selection and commits once on release", () => {
   expect(group).not.toHaveAttribute("data-dragging");
   expect(change).toHaveBeenCalledTimes(1);
 });
+
+it("renders a native trailing control inside the selection group", () => {
+  render(
+    <RumahlButtonGroup
+      label="Theme"
+      options={options.slice(0, 2)}
+      value="a"
+      onChange={() => undefined}
+      activeTrailing
+      trailing={<select aria-label="More themes"><option value="d">Delta</option></select>}
+    />,
+  );
+  const group = screen.getByRole("group");
+  expect(group).toContainElement(screen.getByRole("combobox", { name: "More themes" }));
+  expect(group).toHaveAttribute("data-has-selection", "true");
+});

@@ -3,6 +3,7 @@ import { describe, it, expect } from "vitest";
 import { App } from "../App";
 import { demoSnapshot } from "../demo/snapshot";
 import { parseWorkspace } from "./Workspace";
+import { createSessionSnapshot, flushSessionSnapshot, stageSessionSnapshot } from "../shell/session-snapshot";
 describe("workspace persistence",()=>{
  it("rejects external routes, invalid geometry and duplicate folder memberships",()=>{
   const w={version:1,windows:[{location:"/app/files",rect:{x:20,y:30,width:600,height:400},placement:"left",minimized:false}],folders:[]};
@@ -13,9 +14,9 @@ describe("workspace persistence",()=>{
  });
  it("restores a saved window while preserving an explicit deep link",async()=>{
   localStorage.setItem("rumahl.demo.workspace",JSON.stringify({version:1,windows:[{location:"/app/files",rect:{x:20,y:30,width:600,height:400},placement:"left",minimized:false}],folders:[]}));
-  render(<App snapshot={demoSnapshot} initialLocation="/app/app-manager"/>);
+  render(<App snapshot={demoSnapshot} initialLocation="/app/store"/>);
   expect(await screen.findByRole("region",{name:"Files"})).toBeInTheDocument();
-  expect(screen.getByRole("region",{name:"App manager"})).toBeInTheDocument();
+  expect(screen.getByRole("region",{name:"Store"})).toBeInTheDocument();
  });
  it("creates a folder without importing app code and retains it across a reload",async()=>{
   const rendered=render(<App snapshot={demoSnapshot} initialLocation="/settings/workspace"/>);
@@ -28,3 +29,11 @@ describe("workspace persistence",()=>{
   expect(screen.getByRole("link",{name:"Files"})).toBeInTheDocument();
  });
 });
+
+ it("restores encrypted live windows in addition to the saved workspace",async()=>{
+  const win={id:"app:files",title:"Files",subtitle:"",location:"/app/files",minimized:false,rect:{x:20,y:30,width:600,height:400},placement:"floating" as const};
+  stageSessionSnapshot(createSessionSnapshot(demoSnapshot.user.displayName,[win],"app:files","/app/files"));
+  await flushSessionSnapshot();
+  render(<App snapshot={demoSnapshot} initialLocation="/"/>);
+  expect(await screen.findByRole("region",{name:"Files"})).toBeInTheDocument();
+ });

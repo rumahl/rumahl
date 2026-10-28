@@ -3,7 +3,7 @@ export const SNAPSHOT_VERSION = 1 as const;
 export const UI_CONTRACT_VERSION = 1 as const;
 export const EXTENSION_API_VERSION = 1 as const;
 
-export type ShellMode = "desktop" | "launcher";
+export type ShellMode = "desktop" | "launcher" | "mobile";
 export type WindowChromeVariant = "standard" | "compact";
 export type ShellLayoutVariant = "dock" | "taskbar";
 export type LauncherLayoutVariant = "springboard" | "drawer";
@@ -103,6 +103,7 @@ export type ExtensionContribution =
       title: string;
       slot: ExtensionSlot;
       entrypoint: string;
+      size?: "small" | "medium" | "large";
     };
 
 export interface ShellSnapshotV1 {

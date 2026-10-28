@@ -1,0 +1,63 @@
+/* Immersive desktop states. Kept unlayered so the reference presentation
+   cannot override the dock tuck-away or the exclusive fullscreen window. */
+.shell .os-dock.is-auto-hide {
+  transform: translateY(calc(100% + var(--rumahl-ui-layout-dock-offset, 10px) - 6px));
+  transition: transform 0.34s cubic-bezier(0.32, 0.72, 0, 1);
+}
+.shell .os-dock.is-auto-hide.is-revealed { transform: none; }
+@media (prefers-reduced-motion: reduce) {
+  .shell .os-dock.is-auto-hide { transition: none; }
+}
+
+/* Exclusive app fullscreen: no shell chrome, only the app and its exit button. */
+.shell[data-fullscreen="true"] :is(.menubar.topbar, .os-dock, .taskbar) { display: none !important; }
+.shell[data-fullscreen="true"] .desktop-workspace { animation: none; transform: none; }
+.shell[data-fullscreen="true"] .window-layer { z-index: 150; }
+.window-position[data-fullscreen="true"] {
+  position: fixed;
+  inset: 0;
+  width: 100vw;
+  height: 100dvh;
+}
+.window-position[data-fullscreen="true"] > .shell-window {
+  left: 0 !important;
+  top: 0 !important;
+  width: 100% !important;
+  height: 100% !important;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+}
+.window-position[data-fullscreen="true"] .shell-window__titlebar {
+  display: none !important;
+}
+.window-exit-fullscreen {
+  position: absolute;
+  top: max(12px, env(safe-area-inset-top));
+  right: max(12px, env(safe-area-inset-right));
+  z-index: 30;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 34px;
+  padding: 0 13px;
+  border: 1px solid color-mix(in srgb, currentColor 18%, transparent);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--rumahl-ui-color-panel-background, var(--rumahl-color-panel-background)) 84%, transparent);
+  color: var(--rumahl-ui-color-text-primary, var(--rumahl-color-text-primary));
+  box-shadow: 0 8px 24px #0004;
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+  pointer-events: auto;
+}
+.window-exit-fullscreen:hover {
+  background: color-mix(in srgb, var(--rumahl-ui-color-panel-background, var(--rumahl-color-panel-background)) 96%, transparent);
+}
+.window-exit-fullscreen:focus-visible {
+  outline: 2px solid var(--rumahl-ui-color-accent, var(--rumahl-color-accent-primary));
+  outline-offset: 2px;
+}
+.window-exit-fullscreen svg { width: 14px; height: 14px; }

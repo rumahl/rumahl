@@ -2104,7 +2104,7 @@ select:focus-visible {
   border-radius: 17px;
 }
 /* Launcher content starts below the top bar. */
-.shell[data-shell-mode="launcher"] .launcher-home {
+.shell:is([data-shell-mode="launcher"], [data-shell-mode="mobile"]) .launcher-home {
   padding-top: 58px;
 }
 /* Desktop icon grid: a comfortable single-column flow (not squished) and no
@@ -2496,7 +2496,7 @@ body {
   pointer-events: none;
 }
 /* Launcher: switching the active app is instant (no fade/scale). */
-.shell[data-shell-mode="launcher"] .window-position > .shell-window {
+.shell:is([data-shell-mode="launcher"], [data-shell-mode="mobile"]) .window-position > .shell-window {
   transition: none;
 }
 @keyframes rumahl-surface-in {

@@ -3,7 +3,7 @@ import { AppIcon } from "../apps/AppTile";
 import { isLaunching, useLaunching } from "../apps/launching";
 import { RumahlMark } from "../components/RumahlMark";
 import { useShellApps } from "../apps/useShellApps";
-import { useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from "react";
 import { useLocation } from "react-router";
 import { HomeIcon, GridIcon, SettingsIcon, PulseIcon } from "../icons";
 import { ShellLink } from "../routing/ShellLink";
@@ -12,11 +12,16 @@ import { useI18n } from "../i18n";
 import { useShell } from "./ShellContext";
 import { StartMenu } from "./launcher/StartMenu";
 import { useGlassHost } from "../glass-engine/useGlassEngine";
-import { GLASS_MATERIALS } from "@rumahl/ui/glass";
+import { GLASS_MATERIALS, glassColorTint, glassMaterialWithTint } from "@rumahl/ui/glass";
+import { useTheme } from "@rumahl/ui";
+import { useThemeTuning } from "../preferences/theme-tuning";
 
-export function OsDock() {
+export function OsDock({ autoHide = false }: { autoHide?: boolean | undefined }) {
   const dockRef = useRef<HTMLElement>(null);
-  useGlassHost(dockRef, GLASS_MATERIALS.dock);
+  const { tokens } = useTheme();
+  const { tuning } = useThemeTuning();
+  const tint = glassColorTint(tuning.glassColor, tuning.glassTint, tokens["color.accent"] ?? "#beff2d");
+  useGlassHost(dockRef, glassMaterialWithTint(GLASS_MATERIALS.dock, tint));
   const { t } = useI18n();
   const apps = useShellApps();
   const { state, dispatch, open, mode } = useShell();
@@ -25,10 +30,62 @@ export function OsDock() {
   const active = describeRoute(location.pathname + location.search + location.hash).id;
   const [launcher, setLauncher] = useState(false);
   const [hover, setHover] = useState<string | null>(null);
+  const [fit, setFit] = useState(1);
+  const [revealed, setRevealed] = useState(false);
+  const [hoverDock, setHoverDock] = useState(false);
+  useEffect(() => {
+    if (!autoHide || !revealed || hoverDock) return;
+    const timer = window.setTimeout(() => setRevealed(false), 1800);
+    return () => window.clearTimeout(timer);
+  }, [autoHide, revealed, hoverDock]);
+  useEffect(() => {
+    if (!autoHide) { setRevealed(false); return; }
+    const reveal = () => setRevealed(true);
+    const hide = () => setRevealed(false);
+    const onMove = (event: PointerEvent) => {
+      if (event.pointerType === "touch") return;
+      if (event.clientY >= window.innerHeight - 24) reveal();
+      else if (event.clientY < window.innerHeight - 96) hide();
+    };
+    let startY: number | null = null;
+    const onTouchStart = (event: TouchEvent) => {
+      startY = event.touches[0]?.clientY ?? null;
+      if (startY !== null && startY >= window.innerHeight - 28) reveal();
+      else hide();
+    };
+    const onTouchMove = (event: TouchEvent) => {
+      const y = event.touches[0]?.clientY ?? 0;
+      if (startY !== null && startY >= window.innerHeight - 28 && startY - y > 18) reveal();
+    };
+    window.addEventListener("pointermove", onMove, { passive: true });
+    window.addEventListener("touchstart", onTouchStart, { passive: true });
+    window.addEventListener("touchmove", onTouchMove, { passive: true });
+    return () => {
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("touchstart", onTouchStart);
+      window.removeEventListener("touchmove", onTouchMove);
+    };
+  }, [autoHide]);
   const windows = [...state.windows].sort((a, b) => a.id.localeCompare(b.id));
+  // The dock stays on screen at every window width and font preset. Shrink it
+  // only when its natural width would exceed the available viewport.
+  useLayoutEffect(() => {
+    const element = dockRef.current;
+    if (!element) return;
+    const update = () => {
+      const available = Math.max(1, window.innerWidth - 24);
+      const current = Number.parseFloat(element.style.getPropertyValue("--dock-fit")) || 1;
+      const natural = Math.max(1, element.scrollWidth / current);
+      setFit(Math.max(0.3, Math.min(1, available / natural)));
+    };
+    update();
+    const observer = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(update);
+    observer?.observe(element);
+    window.addEventListener("resize", update);
+    return () => { observer?.disconnect(); window.removeEventListener("resize", update); };
+  }, [windows.length, apps.length, mode]);
   const links = [
     { to: "/", id: "home", label: t("nav.home"), icon: <HomeIcon /> },
-    { to: "/apps", id: "apps", label: t("nav.apps"), icon: <GridIcon /> },
     { to: "/activity", id: "activity", label: t("nav.activity"), icon: <PulseIcon /> },
     { to: "/settings", id: "settings", label: t("nav.settings"), icon: <SettingsIcon /> }
   ];
@@ -45,14 +102,14 @@ export function OsDock() {
     return "";
   };
   return <>
-    <nav ref={dockRef} className={`dock os-dock rumahl-glass-host os-dock--${mode}`} aria-label={t("nav.main")} onPointerLeave={() => setHover(null)}>
+    <nav ref={dockRef} className={`dock os-dock rumahl-glass-host os-dock--${mode}${autoHide ? " is-auto-hide" : ""}${autoHide && revealed ? " is-revealed" : ""}`} style={{ "--dock-fit": String(fit) } as CSSProperties} aria-label={t("nav.main")} onPointerEnter={() => { setHoverDock(true); if (autoHide) setRevealed(true); }} onFocusCapture={() => { setHoverDock(true); if (autoHide) setRevealed(true); }} onBlurCapture={(event) => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setHoverDock(false); }} onPointerLeave={() => { setHoverDock(false); setHover(null); }}>
       {mode === "desktop" ? <button className={`dock-item dock-icon dock-start${magnify("start")}`} type="button" aria-label={t("launcher.open")} aria-expanded={launcher}
         onPointerEnter={() => setHover("start")}
         onClick={() => setLauncher((value) => !value)}><RumahlMark /></button> : null}
       {links.map(link => {
         const item = windows.find(window => windowBelongsToLink(window, link.to));
         const focused = item ? !item.minimized && state.focusedWindowId === item.id : active === describeRoute(link.to).id;
-        const running = !!item || (link.to === "/apps" && focused);
+        const running = !!item;
         return <ShellLink key={link.to} className={`dock-item dock-icon${magnify(link.to)}${running ? " is-running" : ""}${item?.minimized ? " is-minimized" : ""}`}
           to={item?.location ?? link.to} aria-label={link.label} title={link.label} data-dock-app={link.id}
           data-open={running || undefined} data-focused={focused || undefined} aria-current={focused ? "page" : undefined}

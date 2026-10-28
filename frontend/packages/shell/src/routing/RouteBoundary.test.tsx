@@ -10,7 +10,7 @@ test("offers recovery without reloading the shell", () => {
   try {
     render(<MemoryRouter><RouteBoundary location="/app/test"><View /></RouteBoundary></MemoryRouter>);
     expect(screen.getByRole("alert")).toHaveTextContent("This view is currently unavailable");
-    expect(screen.getByRole("link", { name: "Go to apps" })).toHaveAttribute("href", "/apps");
+    expect(screen.getByRole("link", { name: "Home" })).toHaveAttribute("href", "/");
     fails = false;
     fireEvent.click(screen.getByRole("button", { name: "Try again" }));
     expect(screen.getByText("Recovered view")).toBeInTheDocument();

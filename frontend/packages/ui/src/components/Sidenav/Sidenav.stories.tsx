@@ -16,7 +16,8 @@ const meta = {
 ## Rules
 - One level of sections; put the **primary** destinations here.
 - The active item uses the accent; identity / header / footer are slots.
-- Use \`AppSidebar\` inside \`AppLayout\`; keep labels short.`
+- Use \`AppSidebar\` inside \`AppLayout\`; for app shells with a navbar and mobile island use \`AppNavLayout\`.
+- Keep labels short.`
       }
     }
   }

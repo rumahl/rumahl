@@ -1,0 +1,322 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="theme-color" content="#050505" />
+  <title>rumahl OS</title>
+    <link rel="icon" href="/icon.svg" type="image/svg+xml" />
+    <link rel="icon" href="/icon-512.png" type="image/png" sizes="512x512" />
+
+  <style nonce="{{nonce}}">
+    html.rumahl-splashing {
+      color-scheme: dark;
+      --splash-bg: #050505;
+      --splash-fg: #ffffff;
+      --splash-muted: rgba(255, 255, 255, 0.42);
+      --splash-soft: rgba(255, 255, 255, 0.12);
+    }
+    html.rumahl-splashing,
+    html.rumahl-splashing body {
+      margin: 0;
+      min-width: 100%;
+      min-height: 100%;
+      background: var(--splash-bg);
+      overflow: hidden;
+    }
+    #rumahl-splash {
+      --splash-bg: #050505;
+      --splash-fg: #ffffff;
+      --splash-muted: rgba(255, 255, 255, 0.42);
+      --splash-soft: rgba(255, 255, 255, 0.12);
+      position: fixed;
+      inset: 0;
+      z-index: 2147483647;
+      display: grid;
+      place-items: center;
+      isolation: isolate;
+      color: var(--splash-fg, #ffffff);
+      background:
+        radial-gradient(circle at 50% 45%, rgba(255, 255, 255, 0.035), transparent 28%),
+        var(--splash-bg, #050505);
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+    #rumahl-splash .brand {
+      position: relative;
+      width: clamp(72px, 8.2vw, 116px);
+      aspect-ratio: 1;
+      display: grid;
+      place-items: center;
+      transform: translate3d(0, -6px, 0);
+      will-change: transform, opacity;
+      animation: rumahl-splash-brand-enter 1.05s cubic-bezier(0.16, 1, 0.3, 1) both;
+    }
+    #rumahl-splash .brand::before {
+      content: "";
+      position: absolute;
+      inset: -58%;
+      border-radius: 50%;
+      background: radial-gradient(
+        circle,
+        rgba(255, 255, 255, 0.2) 0%,
+        rgba(255, 255, 255, 0.075) 32%,
+        rgba(255, 255, 255, 0.025) 53%,
+        rgba(255, 255, 255, 0) 70%
+      );
+      opacity: 0.14;
+      transform: translateZ(0) scale(0.92);
+      will-change: opacity, transform;
+      /* Starts with the splash so the compositor owns it before the shell
+         blocks the main thread. The pulse is independent of load duration. */
+      animation: rumahl-splash-backlight 3.4s ease-in-out infinite;
+      z-index: -1;
+    }
+    #rumahl-splash .mark {
+      width: 100%;
+      height: 100%;
+      display: block;
+      overflow: visible;
+    }
+    #rumahl-splash .mark-path {
+      fill: var(--splash-fg, #ffffff);
+    }
+    #rumahl-splash .status {
+      position: absolute;
+      left: 50%;
+      bottom: clamp(34px, 6vh, 68px);
+      transform: translateX(-50%);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 14px;
+      opacity: 0;
+      animation: rumahl-splash-status-in 0.7s 800ms ease forwards;
+    }
+    #rumahl-splash .progress {
+      width: min(180px, 44vw);
+      height: 2px;
+      overflow: hidden;
+      border-radius: 999px;
+      background: var(--splash-soft);
+    }
+    #rumahl-splash .progress__fill {
+      display: block;
+      width: 100%;
+      height: 100%;
+      border-radius: inherit;
+      background: rgba(255, 255, 255, 0.82);
+      transform: scaleX(0);
+      transform-origin: left center;
+      will-change: transform;
+      transition: transform 0.4s cubic-bezier(0.32, 0.72, 0, 1);
+    }
+    #rumahl-splash .label {
+      color: var(--splash-muted, rgba(255, 255, 255, 0.42));
+      font-size: 12px;
+      font-weight: 500;
+      letter-spacing: 0.04em;
+      user-select: none;
+      text-align: center;
+    }
+    #rumahl-splash.ready {
+      animation: rumahl-splash-out 0.18s ease-out forwards;
+    }
+    #rumahl-splash.ready .brand,
+    #rumahl-splash.ready .brand::before,
+    #rumahl-splash.ready .status {
+      animation-play-state: paused;
+    }
+    @keyframes rumahl-splash-brand-enter {
+      0% { opacity: 0; transform: translate3d(0, 6px, 0) scale(0.93); }
+      55% { opacity: 1; }
+      72% { transform: translate3d(0, -6px, 0) scale(1.012); }
+      100% { opacity: 1; transform: translate3d(0, -6px, 0) scale(1); }
+    }
+    @keyframes rumahl-splash-backlight {
+      0%, 100% { opacity: 0.16; transform: translateZ(0) scale(0.9); }
+      50% { opacity: 0.58; transform: translateZ(0) scale(1.08); }
+    }
+    @keyframes rumahl-splash-status-in {
+      to { opacity: 1; }
+    }
+    @keyframes rumahl-splash-out {
+      to { opacity: 0; }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      #rumahl-splash .brand,
+      #rumahl-splash .brand::before,
+      #rumahl-splash .status,
+      #rumahl-splash.ready,
+      #rumahl-splash.ready .brand,
+      #rumahl-splash.ready .status,
+      #rumahl-splash .progress__fill {
+        animation: none !important;
+        transition: none !important;
+      }
+      #rumahl-splash .status { opacity: 1; }
+      #rumahl-splash .brand::before {
+        opacity: 0.24;
+        transform: none;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main id="rumahl-splash" aria-label="rumahl OS">
+    <div class="brand" aria-hidden="true">
+      <svg class="mark" viewBox="0 0 251 472" role="img" aria-label="rumahl">
+        <path class="mark-path" d="M 9.47163 471.21342 Q 0 471.21342 0 461.74179 V 203.63996 C 0 80.50881 80.50883 0 201.27207 0 H 241.52649 Q 250.99811 0 250.99811 9.47163 V 94.71626 Q 250.99811 104.18789 241.52649 104.18789 H 210.74370 C 144.44231 104.18789 101.81999 144.44230 101.81999 210.74369 V 461.74179 Q 101.81999 471.21342 92.34836 471.21342 Z"/>
+      </svg>
+    </div>
+    <div class="status" aria-live="polite">
+      <div class="progress" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
+        <i class="progress__fill"></i>
+      </div>
+      <div class="label">rumahl OS</div>
+    </div>
+  </main>
+  <script nonce="{{nonce}}">
+    (() => {
+      const splash = document.getElementById("rumahl-splash");
+      if (!splash) return;
+      const root = document.documentElement;
+      const bar = splash.querySelector(".progress__fill");
+      const progress = splash.querySelector(".progress");
+      const label = splash.querySelector(".label");
+      const copy = {
+        de: {
+          label: "rumahl OS startet",
+          slow: "Das dauert länger als erwartet…",
+          verySlow: "Die Verbindung ist langsam. rumahl OS lädt weiter…",
+          connecting: "Verbindung zu rumahl OS…",
+          building: "Oberfläche wird aufgebaut…",
+          unavailable: "rumahl OS ist gerade nicht erreichbar. Bitte später erneut versuchen."
+        },
+        en: {
+          label: "rumahl OS is starting",
+          slow: "This is taking longer than expected…",
+          verySlow: "The connection is slow. rumahl OS is still loading…",
+          connecting: "Connecting to rumahl OS…",
+          building: "Building the interface…",
+          unavailable: "rumahl OS is unavailable right now. Please try again later."
+        }
+      };
+      const localeMeta = document.querySelector('meta[name="rumahl-locale"]')?.getAttribute("content");
+      const appDocument = Boolean(document.querySelector('meta[name="rumahl-shell"]'));
+      let storedLocale = null;
+      try { storedLocale = localStorage.getItem("rumahl.locale"); } catch { /* private mode */ }
+      const localeSource = localeMeta ||
+        storedLocale ||
+        (appDocument ? root.lang : null) ||
+        navigator.language ||
+        root.lang ||
+        "en";
+      let lang = "en";
+      let text = copy.en;
+      function applyLocale(next) {
+        lang = String(next).toLowerCase().startsWith("de") ? "de" : "en";
+        text = copy[lang];
+        root.lang = lang;
+        splash.setAttribute("aria-label", text.label);
+      }
+      applyLocale(localeSource);
+      let value = 6;
+      let finished = false;
+      let timer;
+      let longTimer;
+      let veryLongTimer;
+
+      root.classList.add("rumahl-splashing");
+
+      function paint(next) {
+        value = Math.max(0, Math.min(100, next));
+        if (bar) bar.style.transform = `scaleX(${value / 100})`;
+        progress?.setAttribute("aria-valuenow", String(Math.round(value)));
+      }
+
+      function finish() {
+        if (finished) return;
+        finished = true;
+        clearInterval(timer);
+        clearTimeout(longTimer);
+        clearTimeout(veryLongTimer);
+        paint(100);
+        if (label) label.textContent = "rumahl OS";
+        let cleanupTimer;
+        function remove() {
+          clearTimeout(cleanupTimer);
+          splash.remove();
+          root.classList.remove("rumahl-splashing");
+        }
+        if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+          remove();
+          return;
+        }
+        splash.addEventListener("animationend", (event) => {
+          if (event.target === splash && event.animationName === "rumahl-splash-out") remove();
+        });
+        splash.classList.add("ready");
+        // Fallback if animations are disabled or their end event is lost.
+        cleanupTimer = window.setTimeout(remove, 250);
+      }
+
+      function fail(message) {
+        if (finished) return;
+        clearInterval(timer);
+        clearTimeout(longTimer);
+        clearTimeout(veryLongTimer);
+        if (label) label.textContent = message;
+        paint(Math.max(value, 90));
+        window.setTimeout(finish, 3000);
+      }
+
+      window.rumahlSplash = {
+        progress(next, text) {
+          if (finished) return;
+          paint(next);
+          if (text && label) label.textContent = text;
+        },
+        finish,
+        fail,
+        setLocale: applyLocale
+      };
+
+      paint(value);
+      timer = window.setInterval(() => {
+        if (!finished) paint(value + (88 - value) * 0.08 + 0.25);
+      }, 450);
+      longTimer = window.setTimeout(() => {
+        if (!finished && label) label.textContent = text.slow;
+      }, 5000);
+      veryLongTimer = window.setTimeout(() => {
+        if (!finished && label) label.textContent = text.verySlow;
+      }, 12000);
+
+      // The standalone splash is served by the service worker for slow
+      // navigations. App documents carry this marker and boot the shell instead.
+      if (!document.querySelector('meta[name="rumahl-shell"]')) {
+        paint(10);
+        if (label) label.textContent = text.connecting;
+        const target = location.pathname === "/splash" ? "/" : location.href;
+        fetch(target, {
+          cache: "no-store",
+          credentials: "same-origin",
+          headers: { "X-Rumahl-Splash": "1" }
+        })
+          .then((response) => {
+            if (!response.ok) throw new Error(`HTTP ${response.status}`);
+            paint(92);
+            if (label) label.textContent = text.building;
+            const next = new URL(target, location.href);
+            next.searchParams.set("rumahl-shell", "1");
+            // The shell gets its own CSP and scripts. The warmed response is
+            // usually ready immediately, so the splash stays painted until
+            // the real document commits.
+            location.replace(next.href);
+          })
+          .catch(() => fail(text.unavailable));
+      }
+    })();
+  </script>
+</body>
+</html>

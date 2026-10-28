@@ -34,6 +34,7 @@ const browser = await chromium.launch({ channel: "chromium", args: [`--ignore-ce
 const reducedMotion = { reducedMotion: "reduce" };
 try {
   const page = await browser.newPage(reducedMotion);
+  await page.addInitScript(() => { try { globalThis.localStorage.setItem("rumahl.session.snapshot.disabled", "1"); } catch { /* sandboxed app frame */ } });
   const modeReady = () => {
     const trigger = globalThis.document.querySelector('.topbar__mode button');
     return Boolean(trigger) && !trigger.disabled;
@@ -97,7 +98,7 @@ try {
   ];
   page.on("pageerror", (error) => errors.push(error.message));
   page.on("console", (message) => { if (message.type() === "error" && !ignoredConsole.some((pattern) => pattern.test(message.text()))) errors.push(message.text()); });
-  await page.goto(`${info.origin}/app/app-manager?mode=launcher`);
+  await page.goto(`${info.origin}/app/files?mode=launcher`);
   await chooseAccount(page);
   // Exercise a native form POST: the browser must supply its real Origin.
   await page.locator("form").evaluate((form, login) => {
@@ -109,9 +110,9 @@ try {
   await page.locator('button[type="submit"]').click();
   await page.locator(".shell").waitFor();
   await hydrated;
-  assert.equal(new URL(page.url()).pathname, "/app/app-manager", "login lost deep link");
+  assert.equal(new URL(page.url()).pathname, "/app/files", "login lost deep link");
   await setMode("desktop");
-  const appWindow = page.getByRole("region", { name: "App manager", exact: true });
+  const appWindow = page.getByRole("region", { name: "Files", exact: true });
   const before = await appWindow.boundingBox();
   const title = appWindow.locator(".shell-window__titlebar");
   const titleBox = await title.boundingBox();
@@ -120,14 +121,14 @@ try {
   await page.mouse.move(titleBox.x + 220, titleBox.y + 40, { steps: 5 });
   await page.mouse.up();
   assert((await appWindow.boundingBox()).x > before.x + 40, `window did not move: ${JSON.stringify(before)} -> ${JSON.stringify(await appWindow.boundingBox())}`);
-  const resize = appWindow.getByRole("button", { name: "Resize App manager with arrow keys" });
+  const resize = appWindow.getByRole("button", { name: "Resize Files with arrow keys" });
   await resize.focus();
   const width = (await appWindow.boundingBox()).width;
   await page.keyboard.press("Shift+ArrowLeft");
   assert((await appWindow.boundingBox()).width < width, "keyboard resize failed");
-  await appWindow.getByRole("button", { name: "Maximize App manager", exact: true }).click();
+  await appWindow.getByRole("button", { name: "Maximize Files", exact: true }).click();
   assert((await appWindow.boundingBox()).width > width, "maximize failed");
-  await appWindow.getByRole("button", { name: "Restore App manager", exact: true }).click();
+  await appWindow.getByRole("button", { name: "Restore Files", exact: true }).click();
   await page.getByRole("button", { name: "Open launcher", exact: true }).click();
   const menu = page.getByRole("dialog");
   await menu.getByRole("searchbox").fill("Settings");
@@ -137,11 +138,12 @@ try {
   if (process.env.RUMAHL_SCREENSHOT_DIR) await page.screenshot({ path: join(process.env.RUMAHL_SCREENSHOT_DIR, "desktop.png") });
   await setMode("launcher");
   assert.equal(await page.locator(".shell").getAttribute("data-shell-mode"), "launcher");
-  assert.equal(await page.getByRole("button", { name: "Close App manager", exact: true }).count(), 1);
+  assert.equal(await page.getByRole("button", { name: "Close Files", exact: true }).count(), 1);
   await page.getByRole("navigation", { name: "Main navigation" }).getByRole("link", { name: "Settings" }).click();
   await page.getByRole("navigation", { name: "Settings", exact: true }).getByRole("link", { name: "Personalization" }).click();
   assert.equal(new URL(page.url()).pathname, "/settings/display");
   await page.reload();
+  await page.locator('.shell[data-session-ready="true"]').waitFor();
   await page.getByRole("heading", { name: "Personalization" }).waitFor();
   await page.goBack();
   await page.getByRole("heading", { name: "Settings", exact: true, level: 1 }).waitFor();
@@ -156,7 +158,7 @@ try {
     if (new URL(request.url()).hostname.endsWith(".apps.localhost")) appCookies.push(request.headers().cookie);
   });
   await setMode("launcher");
-  await page.goto(`${info.origin}/apps`);
+  await page.getByRole("navigation", { name: "Main navigation" }).getByRole("link", { name: "Home", exact: true }).click();
   await page.getByRole("link", { name: "Isolated test app", exact: true }).click();
   const iframe = page.locator('iframe[title="Isolated test app"]');
   await page.frameLocator('iframe[title="Isolated test app"]').getByText("Isolated app ready", { exact: true }).waitFor();
@@ -166,12 +168,12 @@ try {
   await iframe.contentFrame().locator("body").evaluate((body) => { body.dataset.persistenceProbe = "preserved"; });
   await setMode("desktop");
   assert.equal(await iframe.contentFrame().locator("body").getAttribute("data-persistence-probe"), "preserved");
-  await page.getByRole("button", { name: "Minimize Isolated test app", exact: true }).click();
+  await page.getByRole("button", { name: "Minimize Isolated test app", exact: true }).dispatchEvent("click");
   await page.getByRole("navigation", { name: "Main navigation" }).getByRole("button", { name: "Isolated test app", exact: true }).click();
   assert.equal(await iframe.contentFrame().locator("body").getAttribute("data-persistence-probe"), "preserved");
   await setMode("launcher");
   if (process.env.RUMAHL_SCREENSHOT_DIR) {
-    await page.getByRole("button", { name: "Launcher home", exact: true }).click();
+    await page.getByRole("navigation", { name: "Main navigation" }).getByRole("link", { name: "Home", exact: true }).click();
     await page.getByRole("heading", { name: "Your apps. Your space.", exact: true }).waitFor();
     await page.screenshot({ path: join(process.env.RUMAHL_SCREENSHOT_DIR, "launcher.png") });
     await page.setViewportSize({ width: 390, height: 844 });
@@ -197,8 +199,9 @@ try {
   assert.equal(oldAsset, 404, "revoked lease still served app assets");
   await page.locator('iframe[title="Isolated test app"]').waitFor({ state: "detached", timeout: 35_000 });
   await setMode("launcher");
-  await page.goto(`${info.origin}/apps`);
-  await page.getByText("No apps are available for this account.", { exact: true }).waitFor();
+  await page.getByRole("navigation", { name: "Main navigation" }).getByRole("link", { name: "Home", exact: true }).click();
+  await page.locator(".launcher-home").waitFor();
+  assert.equal(await page.getByRole("link", { name: "Isolated test app", exact: true }).count(), 0);
   assert.equal(await page.locator('iframe[title="Isolated test app"]').count(), 0);
   await setMode("desktop");
   await page.goto(`${info.origin}/`);
@@ -272,21 +275,22 @@ try {
   await page.getByRole("button", { name: "Save folder", exact: true }).dispatchEvent("click");
   assert.equal((await folderSaved).status(), 200);
   await page.reload();
+  await page.locator('.shell[data-session-ready="true"]').waitFor();
   await page.getByRole("region", { name: "Files", exact: true }).waitFor();
   assert(Math.abs((await page.getByRole("region", { name: "Files", exact: true }).boundingBox()).width - snapped.width) < 2);
-  await page.getByRole("navigation", { name: "Main navigation" }).getByRole("button", { name: "Files", exact: true }).click();
   const files = page.getByRole("region", { name: "Files", exact: true });
   // New folder through the explorer toolbar, then open it.
   await files.getByRole("button", { name: "New folder", exact: true }).click();
   await files.locator(".files-draft input").fill("Documents");
-  await files.getByRole("button", { name: "Save", exact: true }).click();
+  await files.locator(".files-draft input").press("Enter");
   await files.locator("[data-file-key]", { hasText: "Documents" }).dblclick();
   await files.getByLabel("Upload file").setInputFiles({ name: "hello.txt", mimeType: "text/plain", buffer: Buffer.from("workspace upload") });
   await files.getByText("hello.txt", { exact: true }).waitFor();
-  // Opening a file downloads it (the explorer clicks a `download` anchor).
+  // Download the uploaded file through the explicit context-menu action.
+  await files.getByText("hello.txt", { exact: true }).click({ button: "right" });
   const [download] = await Promise.all([
     page.waitForEvent("download"),
-    files.getByText("hello.txt", { exact: true }).dblclick()
+    page.getByRole("menuitem", { name: "Download", exact: true }).click()
   ]);
   const stream = await download.createReadStream();
   const chunks = [];
@@ -302,7 +306,7 @@ try {
   // Move back to the root through the context menus.
   await files.getByText("renamed.txt", { exact: true }).click({ button: "right" });
   await page.getByRole("menuitem", { name: "Move", exact: true }).click();
-  await files.getByRole("complementary", { name: "Locations", exact: true }).getByRole("button", { name: "My files", exact: true }).click();
+  await page.getByRole("button", { name: "Up", exact: true }).click();
   await files.locator(".files-surface").click({ button: "right", position: { x: 4, y: 4 } });
   await page.getByRole("menuitem", { name: "Move here", exact: true }).click();
   await files.getByText("renamed.txt", { exact: true }).waitFor();

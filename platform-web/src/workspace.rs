@@ -44,6 +44,10 @@ struct Appearance {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     glass_enabled: Option<bool>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    glass_color: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    glass_tint: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     glass_backend: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     glass_quality: Option<String>,
@@ -55,6 +59,8 @@ struct Appearance {
     performance_mode: Option<bool>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     ultra_performance: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    adaptive_type: Option<bool>,
     #[serde(default)]
     seed: Option<String>,
     #[serde(default)]
@@ -73,6 +79,11 @@ fn valid_appearance(appearance: &Appearance) -> bool {
             .glass_engine
             .as_deref()
             .is_none_or(|engine| ["css", "canvas"].contains(&engine))
+        && appearance.glass_tint.as_deref().is_none_or(|tint| {
+            tint.len() == 7
+                && tint.starts_with('#')
+                && tint[1..].bytes().all(|byte| byte.is_ascii_hexdigit())
+        })
         && appearance
             .glass_backend
             .as_deref()
@@ -293,5 +304,20 @@ mod appearance_tests {
         assert!(valid_appearance(&new));
         let stored = serde_json::to_value(&new).unwrap();
         assert_eq!(stored["autoColor"], true);
+    }
+
+    #[test]
+    fn glass_colour_roundtrips_and_rejects_invalid_values() {
+        let valid: Appearance =
+            serde_json::from_str(r##"{"glassColor":false,"glassTint":"#ff5500","tokens":{}}"##)
+                .unwrap();
+        assert!(valid_appearance(&valid));
+        assert_eq!(
+            serde_json::to_value(&valid).unwrap()["glassTint"],
+            "#ff5500"
+        );
+        let invalid: Appearance =
+            serde_json::from_str(r##"{"glassTint":"red; display:none","tokens":{}}"##).unwrap();
+        assert!(!valid_appearance(&invalid));
     }
 }

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { ShellRequest } from "../snapshot-client";
-import { controlAppRuntime, invokeCapability, parseAppData, parseAppSettings, parseCapabilityInvocation, parseCatalog, parseImport, parseLaunch } from "./client";
+import { controlAppRuntime, fetchAppRuntime, invokeCapability, launchApp, parseAppData, parseAppSettings, parseCapabilityInvocation, parseCatalog, parseImport, parseLaunch, SafeModeError, uninstallApp } from "./client";
 const app = { id: "com.rumahl.notes", installationId: "01990000-0000-7000-8000-000000000001", title: "Notes", version: "1.0.0", launchable: true };
 const lease = "a".repeat(64);
 const launch = { launchVersion: 1, id: app.id, installationId: app.installationId, lease, frameUrl: `https://${app.installationId}.apps.localhost:8443/launch/${lease}/web/index.html`, renewAfterSeconds: 30 };
@@ -32,13 +32,14 @@ describe("installed app contracts", () => {
     expect(() => parseLaunch({ ...launch, renewAfterSeconds: 99999 }, app, "https://localhost:8443")).toThrow();
   });
   it("accepts declared capabilities and lifecycle, and rejects malformed ones", () => {
-    const withMeta = { ...app, capabilities: ["com.rumahl.os.window", "com.rumahl.os.info"], lifecycle: "always-on", connectors: ["nextcloud"] };
-    expect(parseCatalog({ catalogVersion: 1, apps: [withMeta] })[0]).toMatchObject({ capabilities: ["com.rumahl.os.window", "com.rumahl.os.info"], lifecycle: "always-on", connectors: ["nextcloud"] });
+    const withMeta = { ...app, capabilities: ["com.rumahl.os.window", "com.rumahl.os.info"], runtime: "container", lifecycle: "always-on", connectors: ["nextcloud"] };
+    expect(parseCatalog({ catalogVersion: 1, apps: [withMeta] })[0]).toMatchObject({ capabilities: ["com.rumahl.os.window", "com.rumahl.os.info"], runtime: "container", lifecycle: "always-on", connectors: ["nextcloud"] });
     expect(parseCatalog({ catalogVersion: 1, apps: [{ ...app }] })[0]?.capabilities).toBeUndefined();
     const cases = [
       { ...app, capabilities: "window" },
       { ...app, capabilities: [""] },
       { ...app, capabilities: ["x".repeat(300)] },
+      { ...app, runtime: "docker" },
       { ...app, lifecycle: "sometimes" },
       { ...app, connectors: [1] },
       { ...app, connectors: ["x".repeat(65)] },
@@ -64,21 +65,36 @@ describe("installed app contracts", () => {
     ];
     for (const value of cases) expect(() => parseAppSettings(value)).toThrow();
   });
-  it("posts on-demand runtime start and stop", async () => {
-    const calls: { url: string; body: unknown }[] = [];
+  it("reads and controls on-demand runtime state", async () => {
+    const calls: { url: string; method: string; body: unknown }[] = [];
     const request = (async (url: string, init?: RequestInit) => {
-      calls.push({ url, body: init?.body ? JSON.parse(String(init.body)) : null });
+      calls.push({ url, method: init?.method ?? "GET", body: init?.body ? JSON.parse(String(init.body)) : null });
       return new Response(JSON.stringify({ runtimeVersion: 1, id: app.id, installationId: app.installationId, state: "running" }), { status: 200, headers: { "content-type": "application/json" } });
     }) as unknown as ShellRequest;
     const signal = new AbortController().signal;
-    await controlAppRuntime(request, app, "start", signal);
+    expect((await fetchAppRuntime(request, app, signal)).state).toBe("running");
+    expect((await controlAppRuntime(request, app, "start", signal)).state).toBe("running");
     await controlAppRuntime(request, app, "stop", signal);
     expect(calls.map((call) => call.url)).toEqual([
+      `/api/v1/shell/apps/${app.id}/runtime?installationId=${app.installationId}`,
       `/api/v1/shell/apps/${app.id}/runtime`,
       `/api/v1/shell/apps/${app.id}/runtime`,
     ]);
-    expect(calls[0]?.body).toMatchObject({ installationId: app.installationId, action: "start" });
-    expect(calls[1]?.body).toMatchObject({ installationId: app.installationId, action: "stop" });
+    expect(calls[1]?.body).toMatchObject({ installationId: app.installationId, action: "start" });
+    expect(calls[2]?.body).toMatchObject({ installationId: app.installationId, action: "stop" });
+  });
+  it("uninstalls through the app installation route", async () => {
+    const calls: { url: string; method: string; body: unknown }[] = [];
+    const request = (async (url: string, init?: RequestInit) => {
+      calls.push({ url, method: init?.method ?? "GET", body: init?.body ? JSON.parse(String(init.body)) : null });
+      return new Response(null, { status: 204 });
+    }) as unknown as ShellRequest;
+    await uninstallApp(request, app, new AbortController().signal);
+    expect(calls).toEqual([{
+      url: `/api/v1/shell/apps/${app.id}`,
+      method: "DELETE",
+      body: { installationId: app.installationId },
+    }]);
   });
   it("posts a capability invocation and parses the outcome", async () => {
     const calls: { url: string; body: unknown }[] = [];
@@ -96,6 +112,13 @@ describe("installed app contracts", () => {
       .toEqual({ capability: "cap", outcome: "invoked", browser: { appId: app.id, installationId: app.installationId } });
     expect(() => parseCapabilityInvocation({ capabilityVersion: 1, outcome: "invoked", browser: { appId: "../escape", installationId: app.installationId } }, "cap")).toThrow();
     expect(() => parseCapabilityInvocation({ capabilityVersion: 1, outcome: "invoked", browser: { appId: app.id } }, "cap")).toThrow();
+  });
+  it("identifies safe-mode launch blocks", async () => {
+    const request = (async () => new Response(JSON.stringify({ launchError: "safe-mode" }), {
+      status: 423, headers: { "content-type": "application/json" }
+    })) as unknown as ShellRequest;
+    await expect(launchApp(request, app, "https://localhost:8443", new AbortController().signal))
+      .rejects.toBeInstanceOf(SafeModeError);
   });
   it("parses a successful import and rejects malformed responses", () => {
     const imported = { importVersion: 1, id: app.id, installationId: app.installationId, title: "Notes", version: "1.0.0" };

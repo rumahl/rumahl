@@ -55,9 +55,9 @@ describe("shell routes and presentation", () => {
   });
 
   test("renders a deep linked app in the desktop's protected window immediately", () => {
-    render(<App snapshot={demoSnapshot} initialLocation="/app/app-manager" />);
-    expect(screen.getByRole("region", { name: "App manager" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Close App manager" })).toBeInTheDocument();
+    render(<App snapshot={demoSnapshot} initialLocation="/app/files" />);
+    expect(screen.getByRole("region", { name: "Files" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Close Files" })).toBeInTheDocument();
   });
 
   test("changes presentation without losing the selected route", async () => {
@@ -95,18 +95,20 @@ describe("shell routes and presentation", () => {
   });
 
   test("retains independent windows and routes when closing one", async () => {
-    render(<App snapshot={demoSnapshot} initialLocation="/app/app-manager" />);
+    render(<App snapshot={demoSnapshot} initialLocation="/app/files" />);
     fireEvent.click(within(screen.getByRole("navigation", { name: "Main navigation" })).getByRole("link", { name: "Settings" }));
     const settings = await screen.findByRole("region", { name: "Settings" });
-    expect(screen.getByRole("region", { name: "App manager" })).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "Files" })).toBeInTheDocument();
     fireEvent.click(within(settings).getByRole("button", { name: "Close Settings" }));
     expect(screen.queryByRole("region", { name: "Settings" })).toBeNull();
-    expect(screen.getByRole("region", { name: "App manager" })).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "Files" })).toBeInTheDocument();
   });
 
   test("does not invent an app or source URL from an unknown ID", () => {
     render(<App snapshot={demoSnapshot} initialLocation="/app/not-installed/sub/page?mode=launcher" />);
-    expect(screen.getByRole("heading", { name: "App unavailable", level: 1 })).toBeInTheDocument();
+    const card = document.querySelector<HTMLElement>(".route-failure");
+    expect(card).not.toBeNull();
+    expect(within(card!).getByRole("heading", { name: "App unavailable" })).toBeInTheDocument();
     expect(document.querySelector("iframe")).toBeNull();
   });
 

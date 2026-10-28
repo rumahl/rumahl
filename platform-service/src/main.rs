@@ -216,22 +216,28 @@ async fn run() -> Result<(), ServiceError> {
         widgets: Arc::new(NoWidgets),
         streams: None,
         apps: Some(apps.clone()),
-        files: Some(match optional_key_provider() {
-            Some(provider) => Arc::new(
-                rumahl_persistence_sqlite::SqlitePersonalFiles::open_encrypted(
-                    state_dir.join("files.sqlite"),
-                    provider,
-                )?,
-            ),
-            None => {
-                eprintln!(
-                    "rumahl platform: file content encryption disabled (no TPM key configured)"
-                );
-                Arc::new(rumahl_persistence_sqlite::SqlitePersonalFiles::open(
-                    state_dir.join("files.sqlite"),
-                )?)
-            }
-        }),
+        files: Some(
+            match if env::var("RUMAHL_FILE_ENCRYPTION").as_deref() == Ok("off") {
+                None
+            } else {
+                optional_key_provider()
+            } {
+                Some(provider) => Arc::new(
+                    rumahl_persistence_sqlite::SqlitePersonalFiles::open_encrypted(
+                        state_dir.join("files.sqlite"),
+                        provider,
+                    )?,
+                ),
+                None => {
+                    eprintln!(
+                        "rumahl platform: file content encryption disabled (no TPM key configured)"
+                    );
+                    Arc::new(rumahl_persistence_sqlite::SqlitePersonalFiles::open(
+                        state_dir.join("files.sqlite"),
+                    )?)
+                }
+            },
+        ),
         workspace: Some(Arc::new(
             rumahl_persistence_sqlite::SqliteShellPreferences::open(
                 state_dir.join("preferences.sqlite"),

@@ -1,0 +1,225 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="light dark" />
+    <title>rumahl demo</title>
+    <style>
+      :root {
+        color-scheme: light dark;
+        --accent: #28694c;
+        --accent-soft: #dcefe0;
+        --ink: #16231c;
+        --muted: #5d6f64;
+        --surface: #f7faf6;
+        --line: #d5e2d8;
+        font-family: Inter, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+      }
+      @media (prefers-color-scheme: dark) {
+        :root { --accent: #7be0b0; --accent-soft: #143d2c; --ink: #eef7f1; --muted: #a4b8aa; --surface: #101a15; --line: #2b3d33; }
+      }
+      * { box-sizing: border-box; }
+      html, body { margin: 0; min-height: 100%; background: transparent; color: var(--ink); }
+      body { padding: 14px; }
+      body[data-kind="widget"] { padding: 0; overflow: hidden; }
+      h1, h2, h3, p { margin: 0; }
+      h1 { font-size: 22px; letter-spacing: -0.02em; }
+      h2 { font-size: 15px; }
+      p, li, small { color: var(--muted); font-size: 13px; line-height: 1.45; }
+      .card { border: 1px solid var(--line); border-radius: 18px; background: var(--surface); box-shadow: 0 12px 32px #00000014; }
+      .widget { display: grid; gap: 8px; height: 100%; padding: 15px 16px; }
+      /* Widgets show their text directly on the tinted desktop glass. */
+      body[data-kind="widget"] .card,
+      body[data-kind="widget"] .pill,
+      body[data-kind="widget"] .meter,
+      body[data-kind="widget"] .forecast > div {
+        border: 0;
+        background: transparent;
+        box-shadow: none;
+      }
+      body[data-kind="widget"] .pill { padding: 0; color: var(--adaptive-ink, var(--ink)); }
+      body[data-kind="widget"] .meter { height: auto; }
+      body[data-kind="widget"] .meter > i { display: none; }
+      body[data-kind="widget"] .widget .eyebrow { color: var(--adaptive-muted, var(--muted)); }
+      body[data-kind="widget"] .widget { color: var(--adaptive-ink, var(--ink)); }
+      body[data-kind="widget"] .widget :is(p, small) { color: var(--adaptive-muted, var(--muted)); }
+      body[data-kind="widget"] .widget :is(strong, span, .big) { color: inherit; }
+      body[data-kind="widget"] .widget,
+      body[data-kind="widget"] .widget :is(p, small, strong, span) { transition: color 0.45s ease; }
+      .eyebrow { color: var(--accent); font-size: 10px; font-weight: 750; letter-spacing: 0.12em; text-transform: uppercase; }
+      .big { font-size: 27px; font-weight: 720; letter-spacing: -0.03em; }
+      .row { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+      .pill { padding: 4px 9px; border-radius: 999px; background: var(--accent-soft); color: var(--accent); font-size: 11px; font-weight: 700; }
+      .meter { height: 7px; overflow: hidden; border-radius: 999px; background: #00000012; }
+      .meter > i { display: block; height: 100%; border-radius: inherit; background: var(--accent); }
+      .app { display: grid; gap: 18px; max-width: 860px; margin: 0 auto; }
+      .hero { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 20px 22px; }
+      .hero__icon { display: grid; place-items: center; width: 46px; height: 46px; border-radius: 14px; background: var(--accent-soft); color: var(--accent); font-size: 20px; font-weight: 750; }
+      .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; }
+      .tile { padding: 16px; }
+      .tile strong { display: block; margin: 6px 0 2px; font-size: 20px; }
+      .list { display: grid; gap: 8px; }
+      .item { display: flex; align-items: center; gap: 12px; padding: 12px 14px; }
+      .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--accent); }
+      .art { aspect-ratio: 16 / 9; border-radius: 12px; background: linear-gradient(135deg, #0b3d2b, #67c39a); }
+      .art--2 { background: linear-gradient(135deg, #1d3557, #a8dadc); }
+      .art--3 { background: linear-gradient(135deg, #5a189a, #e0aaff); }
+      .art--4 { background: linear-gradient(135deg, #7f4f24, #ddb892); }
+      textarea { width: 100%; min-height: 300px; padding: 16px; border: 1px solid var(--line); border-radius: 14px; color: var(--ink); background: var(--surface); font: 14px/1.55 ui-monospace, SFMono-Regular, Menlo, monospace; resize: vertical; }
+      button { border: 0; border-radius: 999px; padding: 8px 13px; color: #fff; background: var(--accent); font: inherit; font-size: 12px; font-weight: 650; cursor: pointer; }
+      button.ghost { color: var(--accent); background: var(--accent-soft); }
+      .controls { display: flex; flex-wrap: wrap; gap: 8px; }
+      .forecast { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 8px; }
+      .forecast div { padding: 10px 6px; border-radius: 12px; background: var(--accent-soft); text-align: center; }
+      .forecast strong { display: block; margin-bottom: 3px; font-size: 13px; }
+      .track { display: grid; grid-template-columns: 34px 1fr auto; align-items: center; gap: 10px; padding: 10px 12px; }
+      .track.is-playing { outline: 2px solid var(--accent); outline-offset: -2px; }
+      .play { width: 34px; height: 34px; padding: 0; }
+      .gallery { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; }
+      .gallery figure { margin: 0; overflow: hidden; border-radius: 14px; background: var(--surface); }
+      .gallery .art { border-radius: 0; }
+      .gallery figcaption { padding: 10px 12px; font-size: 12px; color: var(--muted); }
+    </style>
+  </head>
+  <body data-kind="app">
+    <main class="app" id="app"></main>
+    <script>
+      const app = document.getElementById("app");
+      // Sandboxed app frames cannot use localStorage. Cache small demo values
+      // through the shell instead, falling back to memory when there is no host.
+      window.addEventListener("message", (event) => {
+        const data = event.data;
+        if (!data || data.type !== "rumahl-adaptive-contrast") return;
+        if (typeof data.ink === "string") document.documentElement.style.setProperty("--adaptive-ink", data.ink);
+        if (typeof data.muted === "string") document.documentElement.style.setProperty("--adaptive-muted", data.muted);
+      });
+      const pending = new Map();
+      let storeSeq = 0;
+      window.addEventListener("message", (event) => {
+        const data = event.data;
+        if (!data || data.type !== "rumahl-demo-store-response") return;
+        const entry = pending.get(data.id);
+        if (!entry) return;
+        pending.delete(data.id);
+        entry.resolve(typeof data.value === "string" ? data.value : null);
+      });
+      function demoStore(op, key, value) {
+        return new Promise((resolve) => {
+          const id = ++storeSeq;
+          pending.set(id, { resolve });
+          try { parent.postMessage({ type: "rumahl-demo-store-request", id, op, key, value }, "*"); }
+          catch { pending.delete(id); resolve(null); return; }
+          setTimeout(() => { const entry = pending.get(id); if (pending.delete(id)) entry?.resolve(null); }, 1500);
+        });
+      }
+      const homeWidget = [
+        '<section class="card widget">',
+        '<span class="eyebrow">Home overview</span>',
+        '<div class="row"><strong class="big">21.5°C</strong><span class="pill">All good</span></div>',
+        '<p>Living room · 48% humidity</p>',
+        '<div><div class="row"><small>Energy today</small><small>4.8 kWh</small></div><div class="meter"><i style="width:62%"></i></div></div>',
+        '<div class="row"><small>Devices</small><small>12 online</small></div>',
+        '</section>'
+      ].join("");
+      const weatherWidget = [
+        '<section class="card widget">',
+        '<span class="eyebrow">Weather · Berlin</span>',
+        '<div class="row"><strong class="big">18°</strong><span class="pill">Partly cloudy</span></div>',
+        '<p>Feels like 17° · Light breeze</p>',
+        '<div class="row"><small>Humidity 54%</small><small>Sunset 19:42</small></div>',
+        '</section>'
+      ].join("");
+      const energyWidget = [
+        '<section class="card widget">',
+        '<span class="eyebrow">Energy today</span>',
+        '<div class="row"><strong class="big">4.8 kWh</strong><span class="pill">−12%</span></div>',
+        '<div class="meter"><i style="width:62%"></i></div>',
+        '<div class="row"><small>Solar 3.1 kWh</small><small>Grid 1.7 kWh</small></div>',
+        '</section>'
+      ].join("");
+
+      function renderHomeWidget() { document.body.dataset.kind = "widget"; app.innerHTML = homeWidget; }
+      function renderWeatherWidget() { document.body.dataset.kind = "widget"; app.innerHTML = weatherWidget; }
+      function renderEnergyWidget() { document.body.dataset.kind = "widget"; app.innerHTML = energyWidget; }
+
+      function hero(letter, title, subtitle) {
+        return '<section class="card hero"><div><span class="eyebrow">rumahl demo app</span><h1>' + title + '</h1><p>' + subtitle + '</p></div><span class="hero__icon">' + letter + '</span></section>';
+      }
+
+      function renderNotes() {
+        app.innerHTML = hero("N", "Notes", "A small local-first notebook. Changes stay in this tab.") +
+          '<section class="card" style="padding:16px"><textarea id="note" aria-label="Demo note">Demo notes\n\n- Try the launcher and the file manager\n- Open Photos, Music and Weather\n- Move a widget around on the desktop\n- Clear the site data to reset the demo\n</textarea><div class="controls" style="margin-top:12px"><button id="save">Save note</button><span id="saved"></span></div></section>';
+        const note = document.getElementById("note");
+        demoStore("get", "notes").then((saved) => { if (saved) note.value = saved; });
+        document.getElementById("save").addEventListener("click", () => {
+          demoStore("set", "notes", note.value).then(() => {
+            document.getElementById("saved").textContent = "Saved in this tab";
+          });
+        });
+      }
+
+      function renderWeather() {
+        const days = [["Mon", "18°", "12°"], ["Tue", "20°", "13°"], ["Wed", "17°", "11°"], ["Thu", "21°", "14°"], ["Fri", "23°", "15°"]];
+        app.innerHTML = hero("W", "Weather", "Sample forecast for Berlin. No network requests.") +
+          '<section class="card hero"><div><span class="eyebrow">Now</span><strong class="big">18°</strong><p>Partly cloudy · feels like 17°</p></div><span class="pill">Light breeze</span></section>' +
+          '<section class="card" style="padding:16px"><h2>Next five days</h2><div class="forecast" style="margin-top:12px">' +
+          days.map(([day, high, low]) => '<div><small>' + day + '</small><strong>' + high + '</strong><small>' + low + '</small></div>').join("") +
+          '</div></section>';
+      }
+
+      function renderPhotos() {
+        app.innerHTML = hero("P", "Photos", "Generated demo artwork — no files leave your browser.") +
+          '<section class="gallery"><figure class="card"><div class="art"></div><figcaption>Aurora · demo</figcaption></figure>' +
+          '<figure class="card"><div class="art art--2"></div><figcaption>Coastline · demo</figcaption></figure>' +
+          '<figure class="card"><div class="art art--3"></div><figcaption>Evening · demo</figcaption></figure>' +
+          '<figure class="card"><div class="art art--4"></div><figcaption>Workshop · demo</figcaption></figure></section>';
+      }
+
+      function renderMusic() {
+        const tracks = [["Morning light", "3:42"], ["Glass house", "4:18"], ["Local first", "2:56"], ["Slow network", "5:07"]];
+        app.innerHTML = hero("M", "Music", "Sample library and a pretend player.") +
+          '<section class="card list" id="tracks">' + tracks.map(([title, length], index) =>
+            '<div class="track" data-track="' + index + '"><button class="play ghost" data-play="' + index + '">▶</button><div><strong>' + title + '</strong><small style="display:block">Demo artist</small></div><small>' + length + '</small></div>').join("") +
+          '</section><p id="now-playing" style="margin-top:12px">Nothing playing</p>';
+        app.querySelectorAll("[data-play]").forEach((button) => {
+          button.addEventListener("click", () => {
+            const index = Number(button.dataset.play);
+            app.querySelectorAll(".track").forEach((track) => track.classList.remove("is-playing"));
+            button.closest(".track").classList.add("is-playing");
+            document.getElementById("now-playing").textContent = "Playing: " + tracks[index][0] + " (demo)";
+          });
+        });
+      }
+
+      function renderHome() {
+        app.innerHTML = hero("H", "Home", "An interactive sample dashboard for a local-first home.") +
+          '<section class="grid"><div class="card tile"><span class="eyebrow">Climate</span><strong>21.5°C</strong><p>Living room · 48% humidity</p></div>' +
+          '<div class="card tile"><span class="eyebrow">Energy</span><strong id="energy">4.8 kWh</strong><p>Today · 12% below yesterday</p></div>' +
+          '<div class="card tile"><span class="eyebrow">Network</span><strong>12</strong><p>Devices online</p></div>' +
+          '<div class="card tile"><span class="eyebrow">Security</span><strong>All good</strong><p>No alerts in the demo</p></div></section>' +
+          '<section class="card" style="padding:16px"><div class="row"><div><h2>Living room</h2><p>Lights, blinds and the demo speaker</p></div><button id="toggle">Toggle lights</button></div><p id="light-state" style="margin-top:12px">Lights are on</p></section>';
+        let on = true;
+        document.getElementById("toggle").addEventListener("click", () => {
+          on = !on;
+          document.getElementById("light-state").textContent = on ? "Lights are on" : "Lights are off";
+        });
+        document.getElementById("energy").textContent = "4.8 kWh";
+      }
+
+      const routes = location.pathname.split("/").filter(Boolean);
+      if (routes[0] === "widgets") {
+        if (routes[1] === "weather") renderWeatherWidget();
+        else if (routes[1] === "energy") renderEnergyWidget();
+        else renderHomeWidget();
+      } else {
+        const id = routes[1] || "com.rumahl.demo.home";
+        if (id === "com.rumahl.demo.notes") renderNotes();
+        else if (id === "com.rumahl.demo.weather") renderWeather();
+        else if (id === "com.rumahl.demo.photos") renderPhotos();
+        else if (id === "com.rumahl.demo.music") renderMusic();
+        else renderHome();
+      }
+    </script>
+  </body>
+</html>

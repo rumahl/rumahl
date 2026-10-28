@@ -10,7 +10,10 @@ import { ThemeSafetyError } from "../preferences/theme-safety";
 import type { MessageKey } from "../i18n/locales/en";
 import { useShellPreferences } from "../preferences/ShellPreferences";
 import { useThemeTuning } from "../preferences/theme-tuning";
+import { appearancePresets, isLookActive } from "../preferences/appearance-presets";
 import { useI18n } from "../i18n";
+import { useDeviceViewport } from "../shell/device";
+import { useAdaptiveTypeScale } from "../preferences/adaptive-type";
 import { setTestMedia } from "../shell/test-media";
 import { RumahlSelect } from "../components/RumahlSelect";
 import { RumahlColorPicker } from "../components/RumahlColorPicker";
@@ -26,11 +29,6 @@ import {
 /** Resting/middle value of the glass adjustment sliders (a soft detent). */
 const REFRACTION_DEFAULT = 50;
 const CHROMA_DEFAULT = 30;
-const TINT_DEFAULT = 50;
-/** Tint is a milky rgba overlay; the slider scales its alpha around the default. */
-const TINT_MAX_ALPHA = 0.1;
-const tintColor = (percent: number): string =>
-  `rgba(30,37,66,${((percent / 100) * TINT_MAX_ALPHA).toFixed(3)})`;
 /** Saturation is a multiplier where 100% is neutral (no background tint). */
 const SATURATION_DEFAULT = 100;
 
@@ -39,11 +37,46 @@ function withSnap(value: number, target: number, threshold: number): number {
   return Math.abs(value - target) <= threshold ? target : value;
 }
 
+function AppearanceChoice({ label, moreLabel, options, value, onChange }: {
+  label: string;
+  moreLabel: string;
+  options: readonly { value: string; label: string }[];
+  value: string;
+  onChange: (value: string) => void;
+}) {
+  const visible = options.length > 3 ? options.slice(0, 3) : options;
+  const overflow = options.length > 3 ? options.slice(3) : [];
+  const selectedOverflow = overflow.find((option) => option.value === value);
+  const [overflowEngaged, setOverflowEngaged] = useState(Boolean(selectedOverflow));
+  useEffect(() => {
+    setOverflowEngaged(Boolean(selectedOverflow));
+  }, [selectedOverflow?.value]);
+  return <RumahlButtonGroup className="appearance-choice__group" label={label} value={visible.some((option) => option.value === value) ? value : ""} onChange={onChange} options={visible}
+    activeTrailing={Boolean(selectedOverflow) || (overflowEngaged && overflow.length > 0)}
+    trailing={overflow.length ? <span className="appearance-choice__overflow" data-active={(selectedOverflow || overflowEngaged) ? "" : undefined}>
+      <span className="appearance-choice__more-label" aria-hidden="true">{selectedOverflow?.label ?? moreLabel}</span>
+      <select className="appearance-choice__more" aria-label={moreLabel}
+        value={selectedOverflow ? value : ""}
+        onPointerDown={() => setOverflowEngaged(true)}
+        onFocus={() => setOverflowEngaged(true)}
+        onBlur={() => setOverflowEngaged(Boolean(selectedOverflow))}
+        onChange={(event) => {
+          if (event.target.value) onChange(event.target.value);
+          setOverflowEngaged(true);
+        }}>
+        <option value="" disabled hidden>{moreLabel}</option>
+        {overflow.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+      </select>
+    </span> : undefined} />;
+}
+
 export function DisplaySettings() {
   const { t } = useI18n();
   const settings = useShellPreferences();
+  const viewport = useDeviceViewport();
   const { scope, setScope } = settings;
   const selected = settings.preferences?.[scope].shellMode;
+  const selectedMode = selected === "mobile" ? "launcher" : selected;
   const selectedTheme = settings.preferences?.[scope].shellTheme;
   const themes = useThemeRegistry();
   const effectiveTheme = themes.find((item) => item.id === settings.theme);
@@ -88,6 +121,7 @@ export function DisplaySettings() {
   };
   const {
     tuning,
+    applyPreset,
     setSeed,
     setMode,
     setToken,
@@ -98,23 +132,50 @@ export function DisplaySettings() {
     setWallpaperTint,
     setWallpaperMotion,
     setGlassEnabled,
+    setGlassColor,
+    setGlassTint,
     setGlassBackend,
     setGlassQuality,
     setGlassReduced,
     setAnimations,
     setPerformanceMode,
     setMaterialPreset,
+    setAdaptiveType,
+    setFontScale,
     reset,
   } = useThemeTuning();
   const [refraction, setRefraction] = useState(REFRACTION_DEFAULT);
   const [chromaPercent, setChromaPercent] = useState(CHROMA_DEFAULT);
-  const [tintPercent, setTintPercent] = useState(TINT_DEFAULT);
   const [saturationPercent, setSaturationPercent] = useState(SATURATION_DEFAULT);
+  const [glassColorDraft, setGlassColorDraft] = useState<string | null>(null);
+  const typeScale = Number.parseFloat(tuning.tokens["typography.scale"] ?? "1") || 1;
+  const fontSizePercent = Math.round(typeScale * 100);
+  const adaptiveEnabled = tuning.adaptiveType === true;
+  const adaptiveScale = useAdaptiveTypeScale(adaptiveEnabled);
+  const adaptivePercent = Math.round(adaptiveScale * 100);
+  const [fontSizeDraft, setFontSizeDraft] = useState(String(fontSizePercent));
   // Capabilities are browser-only, so resolve them after mount (hydration-safe).
   const [capabilities, setCapabilities] = useState({ svg: true, webgl: true });
   useEffect(() => {
     setCapabilities({ svg: svgRefractionSupported(), webgl: webglSupported() });
   }, []);
+  // The colour picker emits continuously while dragging. Persist once the
+  // value settles instead of dropping writes while the workspace is busy.
+  useEffect(() => {
+    if (glassColorDraft === null) return;
+    const timer = window.setTimeout(() => setGlassTint(glassColorDraft), 300);
+    return () => window.clearTimeout(timer);
+  }, [glassColorDraft, setGlassTint]);
+  useEffect(() => {
+    if (glassColorDraft !== null && tuning.glassTint === glassColorDraft) setGlassColorDraft(null);
+  }, [glassColorDraft, tuning.glassTint]);
+  useEffect(() => { setFontSizeDraft(String(fontSizePercent)); }, [fontSizePercent]);
+  const applyFontSize = (raw: string) => {
+    const parsed = Number.parseFloat(raw);
+    const value = Number.isFinite(parsed) ? Math.min(200, Math.max(75, Math.round(parsed / 5) * 5)) : 100;
+    setFontSizeDraft(String(value));
+    setFontScale(value / 100);
+  };
   const backendWarning: Partial<Record<"svg" | "webgl", string>> = {
     ...(capabilities.svg
       ? {}
@@ -273,6 +334,9 @@ export function DisplaySettings() {
       </div>
     );
   };
+  const activeLookPreset = appearancePresets.find((preset) => isLookActive(tuning, preset.appearance));
+  const supportsLookPresets = activeTheme.presets?.look === true;
+  const supportsMaterialPresets = activeTheme.presets?.material === true;
   return (
     <section className="display-settings">
       <SettingsHeading
@@ -305,28 +369,30 @@ export function DisplaySettings() {
         <div className="setting">
           <div className="copy">
             <strong>{t("mode.label")}</strong>
-            <p>{t("settings.displayHelp")}</p>
+            <p>{t("settings.shellModeHelp")}</p>
           </div>
           <div className="visual">
-            <RumahlButtonGroup<"desktop" | "launcher" | "inherit">
-              label={t("mode.label")}
-              value={selected ?? "inherit"}
-              onChange={(value) =>
-                settings.save(scope, value === "inherit" ? null : value)
-              }
-              options={[
-                { value: "desktop", label: t("mode.desktop") },
-                { value: "launcher", label: t("mode.launcher") },
-                ...(scope === "device"
-                  ? [
-                      {
-                        value: "inherit" as const,
-                        label: t("preferences.inherit"),
-                      },
-                    ]
-                  : []),
-              ]}
-            />
+            {viewport.phone
+              ? <span>{t("mode.mobile")}</span>
+              : <RumahlButtonGroup<"desktop" | "launcher" | "inherit">
+                  label={t("mode.label")}
+                  value={selectedMode ?? "inherit"}
+                  onChange={(value) =>
+                    settings.save(scope, value === "inherit" ? null : value)
+                  }
+                  options={[
+                    { value: "desktop", label: t("mode.desktop") },
+                    { value: "launcher", label: t("mode.launcher") },
+                    ...(scope === "device"
+                      ? [
+                          {
+                            value: "inherit" as const,
+                            label: t("preferences.inherit"),
+                          },
+                        ]
+                      : []),
+                  ]}
+                />}
           </div>
         </div>
         <div className="setting">
@@ -335,32 +401,21 @@ export function DisplaySettings() {
             <p>{t("theme.help")}</p>
           </div>
           <div className="visual">
-            <div
-              className="segmented"
-              role="group"
-              aria-label={t("theme.title")}
-            >
-              {themes.map((theme) => (
-                <button
-                  key={theme.id}
-                  className="segment"
-                  type="button"
-                  aria-pressed={selectedTheme === theme.id}
-                  onClick={() => chooseTheme(theme.id)}
-                >
-                  {theme.name}
-                </button>
-              ))}
-              {scope === "device" ? (
-                <button
-                  className="segment"
-                  type="button"
-                  aria-pressed={selectedTheme === null}
-                  onClick={() => chooseTheme(null)}
-                >
-                  {t("preferences.inherit")}
-                </button>
-              ) : null}
+            <AppearanceChoice
+              label={t("theme.title")}
+              moreLabel={t("theme.more")}
+              value={selectedTheme ?? "__inherit"}
+              onChange={(value) => chooseTheme(value === "__inherit" ? null : value)}
+              options={[
+                ...themes.map((theme) => ({ value: theme.id, label: theme.name })),
+                ...(scope === "device" ? [{ value: "__inherit", label: t("preferences.inherit") }] : [])
+              ]}
+            />
+            <div className="theme-preview" aria-hidden="true">
+              <div className="theme-preview__window">
+                <i /><i /><i />
+              </div>
+              <div className="theme-preview__dock"><span /><span /><span /></div>
             </div>
           </div>
         </div>
@@ -393,40 +448,136 @@ export function DisplaySettings() {
         </div>
       </div>
 
+      <h3 className="section-title">{t("theme.textSize")}</h3>
+      <div className="settings-group">
+        <div className="setting">
+          <div className="copy">
+            <strong>{t("theme.textSizePreset")}</strong>
+            <p>{t("theme.textSizePresetHelp")}</p>
+          </div>
+          <div className="visual">
+            <RumahlButtonGroup
+              label={t("theme.textSizePreset")}
+              value={[90, 100, 110, 125, 140].includes(fontSizePercent) ? String(fontSizePercent) : "custom"}
+              onChange={(value) => applyFontSize(value)}
+              options={[
+                { value: "90", label: "90%" },
+                { value: "100", label: "100%" },
+                { value: "110", label: "110%" },
+                { value: "125", label: "125%" },
+                { value: "140", label: "140%" }
+              ]}
+            />
+          </div>
+        </div>
+        <div className="setting">
+          <div className="copy">
+            <strong>{t("theme.textSizeCustom")}</strong>
+            <p>{t("theme.textSizeCustomHelp")}</p>
+          </div>
+          <div className="visual theme-text-size-custom">
+            <input
+              type="number"
+              min={75}
+              max={200}
+              step={5}
+              value={fontSizeDraft}
+              aria-label={t("theme.textSizeCustom")}
+              onChange={(event) => setFontSizeDraft(event.target.value)}
+              onBlur={(event) => applyFontSize(event.target.value)}
+              onKeyDown={(event) => { if (event.key === "Enter") event.currentTarget.blur(); }}
+            />
+            <span>%</span>
+          </div>
+        </div>
+        <div className="setting">
+          <div className="copy">
+            <strong>{t("theme.textSizeAdaptive")}</strong>
+            <p>{t("theme.textSizeAdaptiveHelp")}</p>
+          </div>
+          <div className="visual">
+            <Button
+              variant={adaptiveEnabled ? "primary" : "secondary"}
+              active={adaptiveEnabled}
+              aria-pressed={adaptiveEnabled}
+              onClick={() => setAdaptiveType(!adaptiveEnabled)}
+            >
+              {adaptiveEnabled ? t("theme.textSizeAdaptiveActive", { percent: adaptivePercent }) : t("theme.textSizeAdaptive")}
+            </Button>
+          </div>
+        </div>
+      </div>
+
+      {supportsLookPresets || supportsMaterialPresets ? (
+        <>
+          <h3 className="section-title">{t("theme.auraPresets")}</h3>
+          <p className="settings-section-help">{t("theme.auraPresetsHelp")}</p>
+          <div className="settings-group">
+            {supportsLookPresets ? (
+              <div className="setting aura-preset-row">
+                <div className="copy">
+                  <strong>{t("theme.lookPresets")}</strong>
+                  <p>{t("theme.lookPresetsHelp")}</p>
+                </div>
+                <div className="visual">
+                  <div className="look-preset-picker">
+                    <RumahlButtonGroup
+                      label={t("theme.lookPresets")}
+                      value={activeLookPreset?.id ?? ""}
+                      onChange={(value) => {
+                        const preset = appearancePresets.find((item) => item.id === value);
+                        if (preset) applyPreset(preset.appearance);
+                      }}
+                      options={appearancePresets.map((preset) => ({ value: preset.id, label: t(preset.labelKey) }))}
+                    />
+                    <select
+                      className="look-preset-select"
+                      aria-label={t("theme.lookPresets")}
+                      value={activeLookPreset?.id ?? ""}
+                      onChange={(event) => {
+                        const preset = appearancePresets.find((item) => item.id === event.target.value);
+                        if (preset) applyPreset(preset.appearance);
+                      }}
+                    >
+                      {!activeLookPreset ? <option value="">{t("theme.lookCustom")}</option> : null}
+                      {appearancePresets.map((preset) => <option key={preset.id} value={preset.id}>{t(preset.labelKey)}</option>)}
+                    </select>
+                  </div>
+                </div>
+              </div>
+            ) : null}
+            {supportsMaterialPresets && activeTheme.material !== "solid" ? (
+              <div className="setting aura-preset-row">
+                <div className="copy">
+                  <strong>{t("theme.presets")}</strong>
+                  <p>{t("theme.presetsHelp")}</p>
+                </div>
+                <div className="visual aura-material-presets">
+                  <div className="material-presets" role="group" aria-label={t("theme.presets")}>
+                    {(["clear", "soft", "bold", "solid"] as const).map((preset) => (
+                      <button
+                        type="button"
+                        key={preset}
+                        className={`material-card material-card--${preset}`}
+                        aria-pressed={activePreset === preset}
+                        onClick={() => setMaterialPreset(preset)}
+                      >
+                        <span className="material-card__preview" aria-hidden="true" />
+                        <span className="material-card__label">
+                          {t(`theme.preset.${preset}`)}
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            ) : null}
+          </div>
+        </>
+      ) : null}
+
       <h3 className="section-title">{t("theme.materials")}</h3>
       <div className="settings-group">
-        {activeTheme.material !== "solid" ? (
-          <>
-            <div className="setting">
-              <div className="copy">
-                <strong>{t("theme.presets")}</strong>
-              </div>
-              <div
-                className="visual material-presets"
-                role="group"
-                aria-label={t("theme.presets")}
-              >
-                {(["clear", "soft", "bold", "solid"] as const).map((preset) => (
-                  <button
-                    type="button"
-                    key={preset}
-                    className={`material-card material-card--${preset}`}
-                    aria-pressed={activePreset === preset}
-                    onClick={() => setMaterialPreset(preset)}
-                  >
-                    <span
-                      className="material-card__preview"
-                      aria-hidden="true"
-                    />
-                    <span className="material-card__label">
-                      {t(`theme.preset.${preset}`)}
-                    </span>
-                  </button>
-                ))}
-              </div>
-            </div>
-          </>
-        ) : null}
         <div className="setting">
           <div className="copy">
             <strong>{t("theme.autoColor")}</strong>
@@ -540,6 +691,42 @@ export function DisplaySettings() {
             </div>
             <div className="setting">
               <div className="copy">
+                <strong>{t("theme.glass.colorEnabled")}</strong>
+                <p>{t("theme.glass.colorEnabledHelp")}</p>
+              </div>
+              <div className="visual">
+                <input
+                  type="checkbox"
+                  role="switch"
+                  aria-label={t("theme.glass.colorEnabled")}
+                  disabled={reduced || transparencyOff}
+                  checked={tuning.glassColor !== false}
+                  onChange={(event) => {
+                    if (!event.target.checked) setGlassColorDraft(null);
+                    setGlassColor(event.target.checked);
+                  }}
+                />
+              </div>
+            </div>
+            <div className="setting">
+              <div className="copy">
+                <strong>{t("theme.glass.color")}</strong>
+                <p>{t("theme.glass.colorHelp")}</p>
+              </div>
+              <div className="visual">
+                <input
+                  className="glass-color-input"
+                  type="color"
+                  aria-label={t("theme.glass.color")}
+                  disabled={reduced || transparencyOff || tuning.glassColor === false}
+                  value={glassColorDraft ?? tuning.glassTint ?? tokens["color.accent"] ?? "#beff2d"}
+                  onChange={(event) => setGlassColorDraft(event.target.value)}
+                  onBlur={() => { if (glassColorDraft !== null) setGlassTint(glassColorDraft); }}
+                />
+              </div>
+            </div>
+            <div className="setting">
+              <div className="copy">
                 <strong>{t("theme.glass.backend")}</strong>
                 <p>{t("theme.glass.backendHelp")}</p>
               </div>
@@ -644,33 +831,6 @@ export function DisplaySettings() {
                   }}
                 />
                 <output>{chromaPercent}%</output>
-              </div>
-            </div>
-            <div className="setting">
-              <div className="copy">
-                <strong>{t("theme.glass.tint")}</strong>
-                <p>{t("theme.glass.tintHelp")}</p>
-              </div>
-              <div className="visual visual--range">
-                <input
-                  className="range"
-                  type="range"
-                  aria-label={t("theme.glass.tint")}
-                  disabled={reduced || transparencyOff}
-                  min={0}
-                  max={100}
-                  value={tintPercent}
-                  onChange={(event) => {
-                    const value = withSnap(
-                      Number(event.target.value),
-                      TINT_DEFAULT,
-                      4,
-                    );
-                    setTintPercent(value);
-                    setGlassAdjust({ tint: tintColor(value) });
-                  }}
-                />
-                <output>{tintPercent}%</output>
               </div>
             </div>
             <div className="setting">
@@ -839,36 +999,16 @@ export function DisplaySettings() {
               {activeTheme.modes.includes("dark") ? (
                 <div className="theme-parameter">
                   <span>{t("theme.parameter.mode")}</span>
-                  <div
-                    className="segmented"
-                    role="group"
-                    aria-label={t("theme.parameter.mode")}
-                  >
-                    <button
-                      className="segment"
-                      type="button"
-                      aria-pressed={tuning.mode === null}
-                      onClick={() => setMode(null)}
-                    >
-                      {t("theme.mode.auto")}
-                    </button>
-                    <button
-                      className="segment"
-                      type="button"
-                      aria-pressed={tuning.mode === "light"}
-                      onClick={() => setMode("light")}
-                    >
-                      {t("theme.mode.light")}
-                    </button>
-                    <button
-                      className="segment"
-                      type="button"
-                      aria-pressed={tuning.mode === "dark"}
-                      onClick={() => setMode("dark")}
-                    >
-                      {t("theme.mode.dark")}
-                    </button>
-                  </div>
+                  <RumahlButtonGroup<"auto" | "light" | "dark">
+                    label={t("theme.parameter.mode")}
+                    value={tuning.mode === null ? "auto" : tuning.mode}
+                    onChange={(value) => setMode(value === "auto" ? null : value)}
+                    options={[
+                      { value: "auto", label: t("theme.mode.auto") },
+                      { value: "light", label: t("theme.mode.light") },
+                      { value: "dark", label: t("theme.mode.dark") }
+                    ]}
+                  />
                 </div>
               ) : null}
               {overrideColors.map(renderOverride)}

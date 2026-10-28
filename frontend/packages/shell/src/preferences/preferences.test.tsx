@@ -24,6 +24,7 @@ describe("synchronized preferences", () => {
   });
   it("rejects inconsistent effective values and unsafe revisions", () => {
     expect(parsePreferences(defaults).effective.shellMode).toBe("desktop");
+    expect(parsePreferences({ ...defaults, user: { shellMode: "mobile", shellTheme }, effective: { shellMode: "mobile", shellTheme } }).effective.shellMode).toBe("mobile");
     expect(() => parsePreferences({ ...defaults, effective: { shellMode: "launcher", shellTheme } })).toThrow();
     expect(() => parsePreferences({ ...defaults, revision: Number.MAX_SAFE_INTEGER + 1 })).toThrow();
   });

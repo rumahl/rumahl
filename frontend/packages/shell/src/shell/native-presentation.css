@@ -334,10 +334,10 @@
   border-radius: 20px;
 }
 /* Launcher is a home screen, with no surrounding dashboard panel. */
-.shell[data-shell-mode="launcher"] {
+.shell:is([data-shell-mode="launcher"], [data-shell-mode="mobile"]) {
   background-position: center;
 }
-.shell[data-shell-mode="launcher"] .workspace-surfaces {
+.shell:is([data-shell-mode="launcher"], [data-shell-mode="mobile"]) .workspace-surfaces {
   margin: 0 12px 94px;
 }
 .launcher-home {
@@ -481,10 +481,6 @@
 .desktop-icon[data-app-id="files"] .desktop-icon__art {
   background: linear-gradient(150deg, #57b7f8, #2375d2);
 }
-.app-tile[data-app-id="app-manager"] .app-tile__icon,
-.desktop-icon[data-app-id="app-manager"] .desktop-icon__art {
-  background: linear-gradient(150deg, #6caa80, #29705b);
-}
 .app-tile[data-app-id="settings"] .app-tile__icon,
 .desktop-icon[data-app-id="settings"] .desktop-icon__art {
   background: linear-gradient(150deg, #9ba7b5, #536072);
@@ -530,7 +526,7 @@
 .launcher-row {
   color: var(--rumahl-ui-color-text-primary, var(--rumahl-color-text-primary));
 }
-.shell[data-shell-mode="launcher"] .shell-window {
+.shell:is([data-shell-mode="launcher"], [data-shell-mode="mobile"]) .shell-window {
   border-radius: 16px;
 }
 @media (max-width: 700px) {
@@ -549,13 +545,13 @@
     padding: 7px;
     bottom: 10px;
   }
-  .shell[data-shell-mode="launcher"]
+  .shell:is([data-shell-mode="launcher"], [data-shell-mode="mobile"])
     .menubar__menus
     > .menubar__menu:not(:first-child),
-  .shell[data-shell-mode="launcher"] .menubar__protection {
+  .shell:is([data-shell-mode="launcher"], [data-shell-mode="mobile"]) .menubar__protection {
     display: none;
   }
-  .shell[data-shell-mode="launcher"] .dock-windows {
+  .shell:is([data-shell-mode="launcher"], [data-shell-mode="mobile"]) .dock-windows {
     max-width: 48px;
   }
 }

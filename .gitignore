@@ -22,3 +22,11 @@ __pycache__/
 # Coverage reports uploaded to Codecov.
 /lcov-rust.info
 /frontend/packages/*/coverage/
+# Static demo builds (deployed separately).
+/frontend/packages/shell/dist-demo/
+/frontend/packages/shell/dist-demo-widget/
+/frontend/core.*
+
+# Local QA screenshots and scratch certificates.
+/frontend/.shots/
+/ca.pem

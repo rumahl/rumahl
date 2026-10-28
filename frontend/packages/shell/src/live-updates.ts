@@ -19,6 +19,11 @@ export interface ShellLiveSource {
   request: ShellRequest;
   openEvents: OpenEvents;
   allowDevelopmentLoopback?: boolean | undefined;
+  /**
+   * Demo-only: app frames are served by this dedicated origin instead of a
+   * per-installation host. Production never sets this.
+   */
+  demo?: { frameOrigin: string } | undefined;
 }
 
 export function browserEventSocket(url: string): EventSocket {

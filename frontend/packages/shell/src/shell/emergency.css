@@ -203,6 +203,8 @@
 .keypalette__item { display: flex; align-items: center; justify-content: space-between; gap: 16px; width: 100%; text-align: left; padding: 11px 13px; border: 0; border-radius: 10px; background: transparent; color: #e6eaf5; font: inherit; font-size: 14px; cursor: pointer; }
 .keypalette__item.is-active { background: color-mix(in srgb, var(--rumahl-ui-color-accent, #5b8cff) 26%, transparent); }
 .keypalette__item kbd { flex: none; padding: 2px 8px; border-radius: 6px; background: rgba(255, 255, 255, 0.08); border: 1px solid rgba(255, 255, 255, 0.14); font: 600 11px ui-monospace, SFMono-Regular, Menlo, monospace; color: #cdd3e0; }
+.keypalette__item:disabled { opacity: .42; cursor: not-allowed; }
+.keypalette__unavailable { flex: none; color: #9aa3b7; font-size: 11px; }
 .keypalette__empty { padding: 14px; color: #8a93a8; }
 
 @media (max-width: 720px) {

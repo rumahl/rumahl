@@ -17,3 +17,22 @@
   z-index: 4;
   cursor: grabbing;
 }
+
+
+.desktop-widget--extension .contribution-card__frame {
+  height: 150px;
+  margin-top: 8px;
+}
+
+.desktop-widget--extension[data-size="large"] {
+  width: calc(min(230px, 42vw) * 2 + 12px);
+}
+.desktop-widget--extension[data-size="small"] .contribution-card__frame {
+  height: 100px;
+}
+.desktop-widget--extension[data-size="medium"] .contribution-card__frame {
+  height: 150px;
+}
+.desktop-widget--extension[data-size="large"] .contribution-card__frame {
+  height: 150px;
+}

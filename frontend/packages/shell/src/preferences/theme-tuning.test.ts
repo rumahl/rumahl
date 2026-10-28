@@ -2,7 +2,7 @@ import { classicTheme } from "@rumahl/ui/themes";
 import { paletteTokens } from "@rumahl/ui/palette";
 import { applyThemeTuning } from "./theme-tuning";
 import wallpaperUrl from "../assets/monstera.jpg";
-import { expect, test } from "vitest";
+import { describe, expect, test } from "vitest";
 import { defaultTheme } from "@rumahl/ui";
 import { applyTuning, enableGlass, wallpaperSeed } from "./theme-tuning";
 import { emptyAppearance, parseAppearance } from "./Workspace";
@@ -26,6 +26,16 @@ test("automatic colour survives parsing and follows wallpaper changes", () => {
     seed: "#0078ff",
   });
   expect(manual["color.accent"]).toBe("#0078ff");
+});
+
+test("auto mode follows the system dark palette for glass themes", () => {
+  const light = applyTuning(defaultTheme.tokens, { ...emptyAppearance, mode: null }, "light");
+  const dark = applyTuning(defaultTheme.tokens, { ...emptyAppearance, mode: null }, "dark");
+  const darkPalette = paletteTokens(defaultTheme.tokens["color.accent"], { mode: "dark" });
+  expect(dark["color.canvas.background"]).toBe(darkPalette["color.canvas.background"]);
+  expect(dark["color.canvas.background"]).not.toBe(light["color.canvas.background"]);
+  const explicitLight = applyTuning(defaultTheme.tokens, { ...emptyAppearance, mode: "light" }, "dark");
+  expect(explicitLight["color.canvas.background"]).toBe(paletteTokens(defaultTheme.tokens["color.accent"], { mode: "light" })["color.canvas.background"]);
 });
 
 test("explicit glass activation recovers from solid and automatic reduction", () => {
@@ -83,4 +93,17 @@ test("keeps Classic opaque despite saved glass settings and derives both modes f
     expect(tokens["material.blur"]).toBe("0px");
     expect(tokens["color.surface"]).toBe(tokens["color.surface.strong"]);
   }
+});
+
+describe("glass colour preferences", () => {
+  test("round-trips a custom tint and the coloured-glass switch", () => {
+    const parsed = parseAppearance({ ...emptyAppearance, glassColor: false, glassTint: "#ff5500" });
+    expect(parsed.glassColor).toBe(false);
+    expect(parsed.glassTint).toBe("#ff5500");
+  });
+
+  test("ignores malformed tints instead of persisting unsafe CSS", () => {
+    const parsed = parseAppearance({ ...emptyAppearance, glassTint: "red; display:none" });
+    expect(parsed.glassTint).toBeUndefined();
+  });
 });
