@@ -23,6 +23,8 @@ pub struct CatalogApp {
     /// Permission ids the installed app's manifest declares, exposed so the
     /// shell can gate the app <-> OS bridge per method.
     pub capabilities: Vec<String>,
+    /// Runtime kind: `"web"`, `"native"` or `"container"`.
+    pub runtime: String,
     /// Runtime lifecycle: `"always-on"` (service) or `"on-demand"`.
     pub lifecycle: String,
     /// External services this app ships a connector bundle for.
@@ -198,6 +200,14 @@ pub trait AppProvider: Send + Sync + 'static {
     ) -> Result<RuntimeState, AppAccessError> {
         Err(AppAccessError::Unavailable)
     }
+    /// Removes an installation and releases its runtime, grants, secrets and data.
+    fn uninstall_app(
+        &self,
+        _identity: ShellIdentity,
+        _installation: InstallationId,
+    ) -> Result<(), AppAccessError> {
+        Err(AppAccessError::Unavailable)
+    }
     /// Verifies and installs a signed package uploaded from the shell. Fails
     /// closed when no importer is wired.
     fn import_package(
@@ -321,6 +331,20 @@ impl AppAccess {
             .find(|app| app.id == id && app.installation_id.to_string() == installation)
             .ok_or(AppAccessError::Denied)?;
         self.provider.data(identity, app.installation_id, path)
+    }
+    pub fn uninstall(
+        &self,
+        identity: ShellIdentity,
+        id: &str,
+        installation: &str,
+    ) -> Result<(), AppAccessError> {
+        AppId::parse(id).map_err(|_| AppAccessError::Denied)?;
+        let app = self
+            .catalog(identity)?
+            .into_iter()
+            .find(|app| app.id == id && app.installation_id.to_string() == installation)
+            .ok_or(AppAccessError::Denied)?;
+        self.provider.uninstall_app(identity, app.installation_id)
     }
     pub fn runtime(
         &self,
@@ -509,6 +533,7 @@ mod tests {
                     version: "1.0.0".into(),
                     launchable: true,
                     capabilities: vec!["com.rumahl.os.window".into()],
+                    runtime: "web".into(),
                     lifecycle: "on-demand".into(),
                     connectors: vec![],
                 }]
@@ -522,6 +547,17 @@ mod tests {
             _: InstallationId,
         ) -> Result<RuntimeState, AppAccessError> {
             Ok(RuntimeState::Running)
+        }
+        fn uninstall_app(
+            &self,
+            identity: ShellIdentity,
+            installation: InstallationId,
+        ) -> Result<(), AppAccessError> {
+            if identity == self.owner && installation == self.installation {
+                Ok(())
+            } else {
+                Err(AppAccessError::Denied)
+            }
         }
         fn import_package(
             &self,
@@ -730,6 +766,46 @@ mod tests {
                     "com.rumahl.test",
                     &InstallationId::new().to_string(),
                     RuntimeAction::Status
+                )
+                .unwrap_err(),
+            AppAccessError::Denied
+        );
+    }
+
+    #[test]
+    fn uninstall_requires_identity_and_matching_installation() {
+        let owner = ShellIdentity {
+            user_id: UserId::new(),
+            session_id: SessionId::new(),
+        };
+        let installation = InstallationId::new();
+        let access = AppAccess::new(
+            Arc::new(Provider {
+                owner,
+                installation,
+            }),
+            &Url::parse("https://localhost:8443").unwrap(),
+            "apps.localhost",
+        )
+        .unwrap();
+        access
+            .uninstall(owner, "com.rumahl.test", &installation.to_string())
+            .unwrap();
+        assert_eq!(
+            access
+                .uninstall(owner, "com.rumahl.test", &InstallationId::new().to_string())
+                .unwrap_err(),
+            AppAccessError::Denied
+        );
+        assert_eq!(
+            access
+                .uninstall(
+                    ShellIdentity {
+                        session_id: SessionId::new(),
+                        ..owner
+                    },
+                    "com.rumahl.test",
+                    &installation.to_string(),
                 )
                 .unwrap_err(),
             AppAccessError::Denied

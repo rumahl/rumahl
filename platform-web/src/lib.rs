@@ -7,6 +7,7 @@ mod oidc;
 mod sensors;
 mod server;
 mod ssr;
+mod store;
 mod streams;
 
 pub use sensors::{

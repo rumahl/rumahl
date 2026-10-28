@@ -13,7 +13,7 @@ use axum::http::header::{
 };
 use axum::http::{HeaderMap, HeaderValue, StatusCode, Uri};
 use axum::response::{IntoResponse, Response};
-use axum::routing::{get, post};
+use axum::routing::{delete, get, post};
 use base64::Engine as _;
 use futures_util::{SinkExt, StreamExt};
 use http_body_util::{BodyExt, Full, Limited};
@@ -204,6 +204,10 @@ pub fn router(state: GatewayState) -> Router {
         .route("/api/v1/shell/apps/{id}/settings", get(app_settings))
         .route("/api/v1/shell/apps/{id}/data", get(app_data))
         .route(
+            "/api/v1/shell/apps/{id}",
+            delete(app_uninstall).layer(axum::extract::DefaultBodyLimit::max(2048)),
+        )
+        .route(
             "/api/v1/shell/apps/{id}/runtime",
             get(app_runtime_status).post(app_runtime_action),
         )
@@ -259,6 +263,7 @@ pub fn router(state: GatewayState) -> Router {
         .merge(oidc::routes())
         .merge(crate::preferences::routes())
         .merge(crate::os_mode::routes())
+        .merge(crate::store::routes())
         .merge(crate::host_files::routes())
         .merge(crate::workspace::routes())
         .merge(crate::files::routes())
@@ -329,7 +334,7 @@ async fn app_catalog(State(state): State<Arc<GatewayState>>, headers: HeaderMap)
             let apps: Vec<_> = apps.into_iter().map(|app| serde_json::json!({
                 "id": app.id, "installationId": app.installation_id.to_string(), "title": app.title,
                 "version": app.version, "launchable": app.launchable, "capabilities": app.capabilities,
-                "lifecycle": app.lifecycle, "connectors": app.connectors,
+                "runtime": app.runtime, "lifecycle": app.lifecycle, "connectors": app.connectors,
             })).collect();
             let mut response =
                 axum::Json(serde_json::json!({"catalogVersion": 1, "apps": apps})).into_response();
@@ -387,7 +392,11 @@ async fn app_launch(
         _ => return error(StatusCode::BAD_REQUEST),
     };
     if crate::recovery_settings::load(state.state_dir.as_deref()).safe_mode {
-        return error(StatusCode::FORBIDDEN);
+        let mut response =
+            axum::Json(serde_json::json!({"launchError": "safe-mode"})).into_response();
+        *response.status_mut() = StatusCode::LOCKED;
+        secure_headers(&mut response);
+        return response;
     }
     let Some(apps) = state.apps.clone() else {
         return error(StatusCode::SERVICE_UNAVAILABLE);
@@ -552,6 +561,73 @@ async fn app_data(
             response
         }
         Ok(Err(error)) => crate::app_error(error),
+        Err(_) => error(StatusCode::SERVICE_UNAVAILABLE),
+    }
+}
+
+async fn app_uninstall(
+    State(state): State<Arc<GatewayState>>,
+    UrlPath(id): UrlPath<String>,
+    headers: HeaderMap,
+    body: axum::body::Bytes,
+) -> Response {
+    if !valid_origin(&headers, &state.config.public_origin) {
+        return error(StatusCode::FORBIDDEN);
+    }
+    if headers.get("content-type").and_then(|v| v.to_str().ok()) != Some("application/json") {
+        return error(StatusCode::UNSUPPORTED_MEDIA_TYPE);
+    }
+    let identity = match credential(&headers) {
+        Ok(token) => match authenticate(&state, &token).await {
+            Ok(identity) => identity,
+            Err(error) => return backend_error(error),
+        },
+        Err(_) => return error(StatusCode::UNAUTHORIZED),
+    };
+    let Ok(value) = serde_json::from_slice::<serde_json::Value>(&body) else {
+        return error(StatusCode::BAD_REQUEST);
+    };
+    let Some(object) = value.as_object() else {
+        return error(StatusCode::BAD_REQUEST);
+    };
+    if object.keys().any(|key| key != "installationId") {
+        return error(StatusCode::BAD_REQUEST);
+    }
+    let Some(installation) = value
+        .get("installationId")
+        .and_then(|v| v.as_str())
+        .map(str::to_owned)
+    else {
+        return error(StatusCode::BAD_REQUEST);
+    };
+    let Some(apps) = state.apps.clone() else {
+        return error(StatusCode::SERVICE_UNAVAILABLE);
+    };
+    let user = identity.user_id;
+    let audit_id = id.clone();
+    match tokio::task::spawn_blocking(move || apps.uninstall(identity, &id, &installation)).await {
+        Ok(Ok(())) => {
+            record_audit(
+                &state,
+                rumahl_core::AuditActor::User(user),
+                rumahl_core::AuditAction::AppUninstalled,
+                rumahl_core::AuditOutcome::Success,
+                Some(audit_id.as_str()),
+            );
+            let mut response = StatusCode::NO_CONTENT.into_response();
+            secure_headers(&mut response);
+            response
+        }
+        Ok(Err(error)) => {
+            record_audit(
+                &state,
+                rumahl_core::AuditActor::User(user),
+                rumahl_core::AuditAction::AppUninstalled,
+                rumahl_core::AuditOutcome::Failure,
+                Some(audit_id.as_str()),
+            );
+            crate::app_error(error)
+        }
         Err(_) => error(StatusCode::SERVICE_UNAVAILABLE),
     }
 }
@@ -857,12 +933,16 @@ async fn app_import(
     let Some(object) = value.as_object() else {
         return error(StatusCode::BAD_REQUEST);
     };
-    if object
-        .keys()
-        .any(|key| key != "importVersion" && key != "files" && key != "device")
-    {
+    if object.keys().any(|key| {
+        key != "importVersion" && key != "files" && key != "device" && key != "installOrigin"
+    }) {
         return error(StatusCode::BAD_REQUEST);
     }
+    let store_install = match value.get("installOrigin") {
+        None => false,
+        Some(origin) if origin.as_str() == Some("store") => true,
+        Some(_) => return error(StatusCode::BAD_REQUEST),
+    };
     if value.get("importVersion").and_then(|v| v.as_i64()) != Some(1) {
         return error(StatusCode::BAD_REQUEST);
     }
@@ -873,7 +953,9 @@ async fn app_import(
     else {
         return error(StatusCode::BAD_REQUEST);
     };
-    // Installing app packages requires an OS mode that permits it.
+    // Manual package-folder imports require Advanced. Store installs are the
+    // guided-mode exception: they are explicit, first-party UI actions and the
+    // package still passes signature and payload verification.
     let Some(mode_repository) = state.os_mode.clone() else {
         return error(StatusCode::SERVICE_UNAVAILABLE);
     };
@@ -882,7 +964,7 @@ async fn app_import(
         Ok(Ok(settings)) => settings.effective_mode(),
         Ok(Err(_)) | Err(_) => return error(StatusCode::SERVICE_UNAVAILABLE),
     };
-    if !mode.policy().can_install_apps() {
+    if !(mode.policy().can_install_apps() || store_install && mode.policy().is_guided()) {
         return error(StatusCode::FORBIDDEN);
     }
     let Some(files) = value.get("files").and_then(|v| v.as_array()) else {
@@ -2896,7 +2978,7 @@ pub(super) fn secure_headers(response: &mut Response) {
         .insert("referrer-policy", HeaderValue::from_static("same-origin"));
 }
 
-fn error(status: StatusCode) -> Response {
+pub(crate) fn error(status: StatusCode) -> Response {
     if status == StatusCode::SERVICE_UNAVAILABLE {
         return unavailable_page();
     }

@@ -404,6 +404,12 @@ impl AppProvider for PersistentApps {
                     self.read_asset(*app.installation_id(), path, false).is_ok()
                 }),
                 capabilities: app_capabilities(app),
+                runtime: match app.manifest().runtime().kind() {
+                    RuntimeKind::Web => "web",
+                    RuntimeKind::Container => "container",
+                    RuntimeKind::Native => "native",
+                }
+                .into(),
                 lifecycle: app.manifest().lifecycle().as_str().into(),
                 connectors: app
                     .manifest()
@@ -508,6 +514,17 @@ impl AppProvider for PersistentApps {
             self.runtime_control(identity, installation)?
                 .stop(&installation),
         )
+    }
+    fn uninstall_app(
+        &self,
+        identity: ShellIdentity,
+        installation: InstallationId,
+    ) -> Result<(), AppAccessError> {
+        self.app(identity, installation)?;
+        let state_dir = self.root.parent().ok_or(AppAccessError::Unavailable)?;
+        crate::install::uninstall_package_dir(state_dir, &installation)
+            .map(|_| ())
+            .map_err(|_| AppAccessError::Unavailable)
     }
     fn import_package(
         &self,

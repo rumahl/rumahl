@@ -244,6 +244,88 @@ pub struct InstalledPackageInfo {
     pub version: String,
 }
 
+/// Removes an installed app and every resource recorded in its operation plan.
+/// Asset files and the private data directory are removed after the durable
+/// uninstall commits, so a stale directory can never keep an app discoverable.
+pub fn uninstall_package_dir(
+    state_dir: &Path,
+    installation_id: &InstallationId,
+) -> Result<InstalledPackageInfo, InstallError> {
+    uninstall_with(&InstallConfig::from_env()?, state_dir, installation_id)
+}
+
+fn uninstall_with(
+    config: &InstallConfig,
+    state_dir: &Path,
+    installation_id: &InstallationId,
+) -> Result<InstalledPackageInfo, InstallError> {
+    let platform = state_dir.join("platform.sqlite");
+    let origin = InstallationHostOriginResolver::new(config.app_host_suffix.clone())
+        .map_err(InstallError::provider)?;
+    let journal = SqliteAppOperationRepository::open(&platform).map_err(InstallError::provider)?;
+    let databases = SqliteAppDatabaseProvider::open(state_dir.join("databases"))
+        .map_err(InstallError::provider)?;
+    let oidc_repository =
+        SqliteOidcClientRepository::open(&platform).map_err(InstallError::provider)?;
+    let runtime_provider = PlatformRuntimeProvider::new(UnixAppRuntimeProvider::new(
+        UnixAppRuntimeProviderConfig::new(&config.control_socket, config.runtime_uid)
+            .map_err(InstallError::provider)?,
+    ));
+    let secret_delivery = UnixRuntimeSecretDelivery::new(
+        UnixRuntimeSecretDeliveryConfig::new(&config.secret_socket, config.runtime_uid)
+            .map_err(InstallError::provider)?,
+    );
+    let key_provider = secret_key_provider(config)?;
+    let secret_store =
+        SqliteSecretStore::open(&platform, key_provider).map_err(InstallError::provider)?;
+    let snapshot_repository =
+        SqliteSnapshotRepository::open(&platform).map_err(InstallError::provider)?;
+
+    let mut state = PlatformState::new();
+    let mut grants = InMemoryGrantStore::new();
+    if let Some(snapshot) = snapshot_repository.load().map_err(InstallError::provider)? {
+        PlatformRecovery::new()
+            .recover(&snapshot, &mut state, &mut grants)
+            .map_err(|error| InstallError::Recovery(Box::new(error)))?;
+    }
+    let app = state
+        .installed_apps()
+        .get_by_installation_id(installation_id)
+        .cloned()
+        .ok_or_else(|| InstallError::provider(std::io::Error::other("installation not found")))?;
+    let info = InstalledPackageInfo {
+        app_id: app.identity().app_id().as_str().to_owned(),
+        installation_id: *installation_id,
+        title: app.manifest().display_name().to_owned(),
+        version: app.manifest().version().to_string(),
+    };
+
+    let runner = AppOperationRunner::new(
+        journal,
+        databases,
+        AppRuntimeServices::new(runtime_provider, secret_delivery),
+        oidc_repository,
+        origin,
+        snapshot_repository,
+        secret_store,
+    );
+    runner
+        .uninstall(installation_id, &mut state, &mut grants)
+        .map_err(InstallError::provider)?;
+
+    // These directories are outside the operation journal. The snapshot and
+    // grants have already committed, so cleanup is best effort and cannot
+    // resurrect the app.
+    let assets = state_dir
+        .join("app-assets")
+        .join(installation_id.to_string());
+    let _ = std::fs::remove_dir_all(assets);
+    if let Some(apps_root) = crate::apps_data_root() {
+        let _ = std::fs::remove_dir_all(apps_root.join(&info.app_id));
+    }
+    Ok(info)
+}
+
 fn install_with(
     config: &InstallConfig,
     state_dir: &Path,

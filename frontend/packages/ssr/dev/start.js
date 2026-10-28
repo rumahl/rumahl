@@ -142,19 +142,32 @@ async function tls() {
   await mkdir(directory, { mode: 0o700, recursive: true });
   const cert = join(directory, "localhost.pem");
   const key = join(directory, "localhost-key.pem");
+  const requiredAppHost = "00000000-0000-7000-8000-000000000000.apps.localhost";
   try {
     await stat(key);
     const certificate = new X509Certificate(await readFile(cert));
-    if (!certificate.checkHost("00000000-0000-7000-8000-000000000000.apps.localhost")) {
-      console.log("[tls] Updating the generated developer certificate for app hosts; trust the new public certificate.");
-      throw Object.assign(new Error("app names missing"), { code: "ENOENT" });
+    const expiresAt = Date.parse(certificate.validTo);
+    const expired = !Number.isFinite(expiresAt) || expiresAt <= Date.now();
+    const expiringSoon = !expired && expiresAt - Date.now() < 7 * 24 * 60 * 60 * 1000;
+    if (!certificate.checkHost(requiredAppHost) || expired || expiringSoon) {
+      console.log(expired
+        ? "[tls] Renewing the expired developer certificate; trust the renewed public certificate."
+        : expiringSoon
+          ? "[tls] Renewing the generated developer certificate before it expires; trust the renewed public certificate."
+          : "[tls] Updating the generated developer certificate for app hosts; trust the new public certificate.");
+      throw Object.assign(new Error("certificate renewal needed"), { code: "ENOENT" });
     }
   }
   catch (error) {
     if (error.code !== "ENOENT") throw error;
-    await command("openssl", ["req", "-x509", "-newkey", "rsa:2048", "-nodes", "-days", "30",
+    let keyExists = true;
+    try { await stat(key); } catch (keyError) { if (keyError.code !== "ENOENT") throw keyError; keyExists = false; }
+    const args = ["req", "-x509", "-sha256", "-days", "365",
       "-subj", "/CN=localhost", "-addext", "subjectAltName=DNS:localhost,DNS:*.apps.localhost,IP:127.0.0.1,IP:::1",
-      "-keyout", key, "-out", cert], { capture: true });
+      "-out", cert];
+    if (keyExists) args.push("-key", key);
+    else args.push("-newkey", "rsa:2048", "-nodes", "-keyout", key);
+    await command("openssl", args, { capture: true });
     await chmod(key, 0o600);
   }
   return { cert, key };
@@ -281,7 +294,18 @@ try {
     RUMAHL_APP_HOST_SUFFIX: "apps.localhost", RUMAHL_APPS_ROOT: join(state, "data", "apps"),
     RUMAHL_CLIENT_BUILD: buildFile, RUMAHL_PASSWORD_BLOCKLIST: blocklist,
     RUMAHL_GATEWAY_SOCKET: join(runtime, "gateway.sock"), RUMAHL_GATEWAY_SOCKET_ACCESS: "owner",
-    RUMAHL_SSR_SOCKET: join(runtime, "ssr.sock"), RUMAHL_SSR_SOCKET_ACCESS: "owner" };
+    RUMAHL_SSR_SOCKET: join(runtime, "ssr.sock"), RUMAHL_SSR_SOCKET_ACCESS: "owner",
+    // Store installs use the same signed-package path as production. Example
+    // store keys are generated in .rumahl-dev/keys; web apps never contact the
+    // runtime supervisor.
+    RUMAHL_RUNTIME_UID: String(process.getuid()),
+    RUMAHL_RUNTIME_CONTROL_SOCKET: join(runtime, "control.sock"),
+    RUMAHL_RUNTIME_SECRET_SOCKET: join(runtime, "secret.sock"),
+    RUMAHL_RUNTIME_IMAGE_SOCKET: join(runtime, "image.sock"),
+    RUMAHL_PACKAGE_TRUST_STORE: join(state, "keys", "trust-store.json"),
+    RUMAHL_TPM2_EXECUTABLE: "/bin/true",
+    RUMAHL_SECRET_KEY_ID: "dev-root",
+    RUMAHL_SECRET_KEY_OBJECT: join(runtime, "root.ctx") };
   await provision();
   await launchPlatform();
   watchRust();
