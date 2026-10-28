@@ -9,6 +9,7 @@ on:
       - 'platform-service/**'
       - 'Cargo.lock'
       - '.github/workflows/buildroot-validation.yml'
+      - 'platform-buildroot/image/buildroot-source.json'
   workflow_dispatch:
 
 permissions:
