@@ -71,7 +71,7 @@ jobs:
       - name: Generate GitHub App installation token
         if: steps.check.outputs.changed == 'true'
         id: app-token
-        uses: actions/create-github-app-token@v2
+        uses: actions/create-github-app-token@v3
         with:
           app-id: ${{ vars.BUILDROOT_APP_ID }}
           private-key: ${{ secrets.BUILDROOT_APP_PRIVATE_KEY }}
