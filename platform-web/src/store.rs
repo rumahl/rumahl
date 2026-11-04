@@ -561,6 +561,20 @@ async fn fetch(
     response
 }
 
+const ALLOWED_STORE_HOSTS: &[&str] = &[
+    "store.example.com",
+    "cdn.store.example.com",
+];
+
+fn allowed_store_target(url: &Url) -> bool {
+    let Some(host) = url.host_str() else {
+        return false;
+    };
+    ALLOWED_STORE_HOSTS
+        .iter()
+        .any(|allowed| host.eq_ignore_ascii_case(allowed))
+}
+
 async fn image(
     State(state): State<Arc<GatewayState>>,
     Query(query): Query<FetchQuery>,
@@ -569,6 +583,9 @@ async fn image(
     let Some(target) = source_url(&query.url) else {
         return error(StatusCode::BAD_REQUEST);
     };
+    if !allowed_store_target(&target) {
+        return error(StatusCode::BAD_REQUEST);
+    }
     let token = match credential(&headers) {
         Ok(token) => token,
         Err(_) => return error(StatusCode::UNAUTHORIZED),
