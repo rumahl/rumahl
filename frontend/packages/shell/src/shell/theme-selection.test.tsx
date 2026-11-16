@@ -1,16 +1,32 @@
 import "../test/popover";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { describe, expect, test, vi } from "vitest";
+import { beforeAll, describe, expect, test, vi } from "vitest";
 import { WCAG, contrastRatio } from "@rumahl/ui/color";
 import { paletteTokens } from "@rumahl/ui/palette";
 import { getTheme } from "@rumahl/ui/sdk";
+import { loadThemePackage } from "../test/theme-packages";
+import { installTheme } from "../preferences/installed-themes";
 import { App } from "../App";
 import { demoSnapshot } from "../demo/snapshot";
+
+const hallowsTheme = loadThemePackage("hallows");
+const classicTheme = loadThemePackage("classic");
+
+beforeAll(() => {
+  for (const theme of [classicTheme, hallowsTheme]) {
+    installTheme({ ...theme, tokens: theme.tokens, parameters: theme.parameters, variants: theme.variants,
+      modes: theme.modes, css: theme.css, code: theme.code, slots: theme.slots,
+      ...(theme.material ? { material: theme.material } : {}) }, "manual");
+  }
+});
 
 describe("theme selection", () => {
   test("resolves built-in themes by id", () => {
     expect(getTheme("com.rumahl.classic")?.name).toBe("Classic");
-    expect(getTheme("com.rumahl.default")?.name).toBe("Aura");
+    expect(getTheme("com.rumahl.default")?.name).toBe("Iris");
+    // The package is installed/registered like any other theme; the built-in
+    // registry does not know it.
+    expect(getTheme("com.rumahl.hallows")?.name).toBe("Hallows");
   });
 
   test("auto follows the system dark preference", async () => {
@@ -33,7 +49,7 @@ describe("theme selection", () => {
   });
 
   test("applies the classic theme from the settings UI", async () => {
-    render(<App snapshot={demoSnapshot} initialLocation="/settings/display" />);
+    render(<App snapshot={demoSnapshot} initialLocation="/settings/display/appearance" />);
     const classic = await screen.findByRole("button", { name: "Classic" });
     fireEvent.click(classic);
     expect(classic).toHaveAttribute("aria-pressed", "true");
@@ -45,8 +61,35 @@ describe("theme selection", () => {
     expect(document.querySelector(".os-dock")).toBeNull();
   });
 
+  test("keeps the dark-only Hallows theme dark when the system prefers light", async () => {
+    vi.stubGlobal("matchMedia", vi.fn(() => ({
+      matches: false,
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn()
+    })));
+    try {
+      render(<App snapshot={demoSnapshot} initialLocation="/" theme={hallowsTheme} />);
+      await waitFor(() => expect(document.querySelector(".shell")).toHaveAttribute("data-scheme", "dark"));
+      expect(document.documentElement.style.getPropertyValue("--rumahl-ui-color-accent")).toBe("#c81d1d");
+      expect(document.documentElement.style.getPropertyValue("--rumahl-ui-color-canvas-background")).toBe("#020101");
+      expect(document.documentElement.style.getPropertyValue("--rumahl-ui-texture-wallpaper")).toContain("monstera");
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  test("picks the Hallows theme from the appearance picker", async () => {
+    render(<App snapshot={demoSnapshot} initialLocation="/settings/display/appearance" />);
+    const hallows = await screen.findByRole("button", { name: "Hallows" });
+    fireEvent.click(hallows);
+    expect(hallows).toHaveAttribute("aria-pressed", "true");
+    expect(document.querySelector(".shell")).toHaveAttribute("data-theme", "com.rumahl.hallows");
+    expect(document.querySelector(".shell")).toHaveAttribute("data-scheme", "dark");
+    expect(document.documentElement.style.getPropertyValue("--rumahl-ui-color-accent")).toBe("#c81d1d");
+  });
+
   test("re-tints derivatives from the accent via the rumahl colour engine", async () => {
-    render(<App snapshot={demoSnapshot} initialLocation="/settings/display" />);
+    render(<App snapshot={demoSnapshot} initialLocation="/settings/display/advanced" />);
     fireEvent.click(await screen.findByLabelText("Accent colour"));
     const accentHex = screen.getByLabelText("Accent colour value");
     fireEvent.change(accentHex, { target: { value: "#ff0000" } });
@@ -61,7 +104,7 @@ describe("theme selection", () => {
   });
 
   test("offers direct colour presets and a dark mode", async () => {
-    render(<App snapshot={demoSnapshot} initialLocation="/settings/display" />);
+    render(<App snapshot={demoSnapshot} initialLocation="/settings/display/advanced" />);
     fireEvent.click(await screen.findByLabelText("Accent colour"));
     fireEvent.click(await screen.findByRole("button", { name: "Red" }));
     expect(document.documentElement.style.getPropertyValue("--rumahl-ui-color-accent")).toBe("#e5484d");
@@ -76,7 +119,7 @@ describe("theme selection", () => {
   });
 
   test("derives a readable accent ink for a too-light accent", async () => {
-    render(<App snapshot={demoSnapshot} initialLocation="/settings/display" />);
+    render(<App snapshot={demoSnapshot} initialLocation="/settings/display/advanced" />);
     fireEvent.click(await screen.findByLabelText("Accent colour"));
     const accentHex = screen.getByLabelText("Accent colour value");
     fireEvent.change(accentHex, { target: { value: "#d9f99d" } });
@@ -92,7 +135,7 @@ describe("theme selection", () => {
   });
 
   test("keeps text readable when a surface colour changes", async () => {
-    render(<App snapshot={demoSnapshot} initialLocation="/settings/display" />);
+    render(<App snapshot={demoSnapshot} initialLocation="/settings/display/advanced" />);
     fireEvent.click(await screen.findByLabelText("Panel colour"));
     const panelHex = screen.getByLabelText("Panel colour value");
     fireEvent.change(panelHex, { target: { value: "#000000" } });
@@ -102,23 +145,25 @@ describe("theme selection", () => {
   });
 
   test("lets the official theme tune transparency", async () => {
-    render(<App snapshot={demoSnapshot} initialLocation="/settings/display" />);
+    render(<App snapshot={demoSnapshot} initialLocation="/settings/display/advanced" />);
     const slider = await screen.findByRole("slider", { name: "Transparency" });
     fireEvent.change(slider, { target: { value: "0.5" } });
     expect(JSON.parse(localStorage.getItem("rumahl.demo.workspace")!).appearance.tokens["material.opacity"]).toBe("0.50");
     expect(document.documentElement.style.getPropertyValue("--rumahl-ui-material-opacity")).toBe("0.50");
   });
   test("turns surface effects off atomically without changing the palette", async () => {
-    const rendered = render(<App snapshot={demoSnapshot} initialLocation="/settings/display" />);
+    const rendered = render(<App snapshot={demoSnapshot} initialLocation="/settings/display/advanced" />);
     fireEvent.click(await screen.findByLabelText("Accent colour"));
     fireEvent.click(await screen.findByRole("button", { name: "Red" }));
-    const control = screen.getByRole("switch", { name: "Transparency effects" });
+    fireEvent.click(screen.getByRole("link", { name: "Back" }));
+    fireEvent.click(await screen.findByRole("link", { name: /Surface effects/ }));
+    const control = await screen.findByRole("switch", { name: "Transparency effects" });
     fireEvent.click(control);
     expect(document.querySelector(".shell")).toHaveAttribute("data-material", "solid");
     expect(document.documentElement.style.getPropertyValue("--rumahl-ui-material-blur")).toBe("0px");
     expect(document.documentElement.style.getPropertyValue("--rumahl-ui-color-accent")).toBe("#e5484d");
     rendered.unmount();
-    render(<App snapshot={demoSnapshot} initialLocation="/settings/display" />);
+    render(<App snapshot={demoSnapshot} initialLocation="/settings/display/surface" />);
     expect(await screen.findByRole("switch", { name: "Transparency effects" })).not.toBeChecked();
     fireEvent.click(screen.getByRole("switch", { name: "Transparency effects" }));
     expect(document.querySelector(".shell")).toHaveAttribute("data-material", "translucent");

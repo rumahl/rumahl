@@ -1,4 +1,8 @@
-import { classicTheme } from "@rumahl/ui/themes";
+import { themeFromPackage } from "@rumahl/ui/themes";
+import { loadThemePackage } from "../test/theme-packages";
+
+const classicTheme = loadThemePackage("classic");
+import { readFileSync } from "node:fs";
 import { paletteTokens } from "@rumahl/ui/palette";
 import { applyThemeTuning } from "./theme-tuning";
 import wallpaperUrl from "../assets/monstera.jpg";
@@ -106,4 +110,25 @@ describe("glass colour preferences", () => {
     const parsed = parseAppearance({ ...emptyAppearance, glassTint: "red; display:none" });
     expect(parsed.glassTint).toBeUndefined();
   });
+});
+
+
+const packageFile = (name: string) => readFileSync(`${process.cwd()}/../../../examples/themes/hallows/${name}`, "utf8");
+const hallowsTheme = themeFromPackage(
+  JSON.parse(packageFile("theme.json")),
+  packageFile("styles.css"),
+  packageFile("code.js")
+);
+
+test("a locked art direction ignores colour tuning but keeps effect switches", () => {
+  const tuned = applyThemeTuning(hallowsTheme, {
+    ...emptyAppearance,
+    seed: "#00ff00",
+    autoColor: false,
+    mode: "light",
+    tokens: { "color.accent": "#00ff00", "color.canvas.background": "#00ff00", "effect.blood": "0" }
+  });
+  expect(tuned["color.accent"]).toBe("#c81d1d");
+  expect(tuned["color.canvas.background"]).toBe("#020101");
+  expect(tuned["effect.blood"]).toBe("0");
 });

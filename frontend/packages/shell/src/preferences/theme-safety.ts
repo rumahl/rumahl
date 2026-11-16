@@ -140,7 +140,13 @@ export function validateTheme(raw: unknown): SafetyReport {
     for (const match of css.matchAll(/([^{}]+)\{([^}]*)\}/g)) {
       const [, selector, body] = match;
       if (!selector || !body) continue;
-      if (DISABLES.test(body) && CRITICAL_SELECTOR.test(selector)) {
+      // Pseudo-element layers (scrims, overlays, HUD labels) can never disable
+      // the chrome they are drawn on, so they may use pointer-events/opacity.
+      const disablesChrome = selector
+        .split(",")
+        .map((part) => part.trim())
+        .some((part) => CRITICAL_SELECTOR.test(part) && !/::(?:before|after)/i.test(part));
+      if (DISABLES.test(body) && disablesChrome) {
         issues.push(
           issue(
             "error",

@@ -68,12 +68,12 @@ export function useThemeTuning() {
     [tuning, persist],
   );
   const setToken = useCallback(
-    (token: TokenId, value: string) =>
+    (token: string, value: string) =>
       persist({ ...tuning, tokens: { ...tuning.tokens, [token]: value } }),
     [tuning, persist],
   );
   const clearToken = useCallback(
-    (token: TokenId) => {
+    (token: string) => {
       const tokens = { ...tuning.tokens };
       delete tokens[token];
       persist({ ...tuning, tokens });
@@ -117,7 +117,14 @@ export function useThemeTuning() {
               "material.morphism": "0",
             },
       );
-      persist({ ...tuning, tokens });
+      persist({
+        ...tuning,
+        // Transparency and the performance switches are mutually exclusive:
+        // enabling transparency is an explicit request to leave performance
+        // mode, not a no-op while the shell forces a solid material.
+        ...(enabled ? { performanceMode: false, ultraPerformance: false } : {}),
+        tokens,
+      });
     },
     [tuning, persist],
   );
@@ -152,8 +159,11 @@ export function useThemeTuning() {
     [tuning, persist],
   );
   const setGlassBackend = useCallback(
+    // Choosing a technique is an explicit request for glass. Keep it enabled
+    // and recover from a previous automatic reduction instead of letting the
+    // startup/performance guards silently turn the chosen renderer off.
     (glassBackend: "auto" | "svg" | "webgl" | "css") =>
-      persist({ ...tuning, glassBackend }),
+      persist({ ...enableGlass(tuning), glassBackend }),
     [tuning, persist],
   );
   const setGlassQuality = useCallback(
@@ -211,6 +221,11 @@ export function useThemeTuning() {
     },
     [tuning, persist],
   );
+  const setMobileNavSvgGlass = useCallback(
+    (mobileNavSvgGlass: boolean) =>
+      persist({ ...tuning, mobileNavSvgGlass }),
+    [tuning, persist],
+  );
   const reset = useCallback(() => persist(emptyAppearance), [persist]);
   const applyPreset = useCallback(
     (preset: AppearanceSettings) => persist(applyLook(tuning, preset)),
@@ -235,6 +250,7 @@ export function useThemeTuning() {
     setGlassBackend,
     setGlassQuality,
     setGlassReduced,
+    setMobileNavSvgGlass,
     setAdaptiveType,
     setFontScale,
     setAnimations,
@@ -255,6 +271,7 @@ export function applyTuning(
   tokens: Tokens,
   tuning: AppearanceSettings,
   systemMode: AppearanceMode = "light",
+  systemPrefersDark = systemMode === "dark",
 ): Tokens {
   const wallpaper =
     tuning.tokens["texture.wallpaper"] ?? tokens["texture.wallpaper"];
@@ -265,7 +282,7 @@ export function applyTuning(
   // "Auto" means follow the OS. Without an explicit mode and without a custom
   // seed the palette was previously left untouched, so system dark mode never
   // reached glass themes. Treat system-dark as a customization.
-  const followsSystemDark = tuning.mode === null && systemMode === "dark";
+  const followsSystemDark = tuning.mode === null && systemPrefersDark;
   const customized = seed !== null || tuning.mode !== null || followsSystemDark;
   const base = customized
     ? { ...tokens, ...paletteTokens(seed ?? tokens["color.accent"], { mode }) }
@@ -329,20 +346,51 @@ export function wallpaperSeed(wallpaper: string, canvas: string): string {
   );
 }
 
+/** Resolves the light/dark scheme a theme can actually render. */
+export function resolveThemeScheme(
+  theme: Theme,
+  mode: AppearanceMode | null,
+  systemMode: AppearanceMode,
+): AppearanceMode {
+  const supportsLight = theme.modes.includes("light");
+  const supportsDark = theme.modes.includes("dark");
+  if (!supportsDark) return "light";
+  if (!supportsLight) return "dark";
+  return mode ?? systemMode;
+}
+
 /** Apply appearance while preserving a theme's explicit material contract. */
 export function applyThemeTuning(
   theme: Theme,
   tuning: AppearanceSettings,
   systemMode: AppearanceMode = "light",
 ): Tokens {
+  // A locked theme is a fixed art direction. Device colour, font and material
+  // tuning never leak into it; only its own effect switches are honoured.
+  if (theme.locked) {
+    const tokens: Record<string, string> = { ...theme.tokens };
+    for (const [id, value] of Object.entries(tuning.tokens)) {
+      if (id.startsWith("effect.") && id in tokens) tokens[id] = value;
+    }
+    return tokens as Tokens;
+  }
   // Themes that do not declare dark support keep their own palette in auto mode.
-  const effectiveSystemMode = theme.modes.includes("dark") ? systemMode : "light";
+  // A theme that only declares dark stays dark even when the system is light.
+  const effectiveSystemMode: AppearanceMode = theme.modes.includes("light")
+    ? (theme.modes.includes("dark") ? systemMode : "light")
+    : theme.modes.includes("dark")
+      ? "dark"
+      : "light";
+  // Only a theme that supports dark may hand the system-dark palette to the
+  // colour engine; a dark-only theme already carries its own authored palette.
+  const systemPrefersDark = systemMode === "dark" && theme.modes.includes("dark");
   if (theme.material !== "solid")
-    return applyTuning(theme.tokens, tuning, effectiveSystemMode);
+    return applyTuning(theme.tokens, tuning, effectiveSystemMode, systemPrefersDark);
   const tuned = applyTuning(
     theme.tokens,
     { ...tuning, mode: tuning.mode ?? effectiveSystemMode },
     effectiveSystemMode,
+    systemPrefersDark,
   );
   return {
     ...tuned,

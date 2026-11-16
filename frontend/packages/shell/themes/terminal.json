@@ -1,7 +1,7 @@
 {
   "id": "com.example.terminal",
   "name": "Terminal (clean base)",
-  "base": "clean",
+  "base": "ground",
   "modes": [
     "dark"
   ],

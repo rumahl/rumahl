@@ -1,7 +1,7 @@
 {
   "id": "com.rumahl.core",
   "name": "rumahl UI Core",
-  "base": "clean",
+  "base": "ground",
   "modes": [
     "light",
     "dark"
