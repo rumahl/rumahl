@@ -1,6 +1,11 @@
 .rumahl-glass-host {
   position: relative;
   isolation: isolate;
+  /* The engine owns the glass on its effect layer. A backdrop-filter on the
+     host itself would create a backdrop root and make the child filter sample
+     the host instead of the desktop (SVG glass then looks flat). */
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
 }
 .rumahl-glass-surface {
   position: absolute;

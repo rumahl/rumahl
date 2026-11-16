@@ -195,7 +195,7 @@
   color: #fff;
   background: #14201ccc;
   backdrop-filter: blur(12px);
-  font-size: 11px;
+  font-size: 12px;
   white-space: nowrap;
   opacity: 0;
   pointer-events: none;
@@ -698,7 +698,7 @@
   height: 13px;
 }
 .desktop-icon__art.folder-preview .app-icon-glyph {
-  font-size: 0.52rem;
+  font-size: 0.75rem;
 }
 /* Classic taskbar shell variant (theme variant shell.layout = "taskbar"). */
 .shell .taskbar {

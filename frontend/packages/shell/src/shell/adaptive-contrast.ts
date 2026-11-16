@@ -201,6 +201,10 @@ export function useAdaptiveContrast(): void {
         const surface = glass ? element.querySelector<HTMLElement>(".rumahl-glass-surface") : null;
         const surfaceStyle = surface ? getComputedStyle(surface) : null;
         const surfaceColor = surfaceStyle ? parseColor(surfaceStyle.backgroundColor) : null;
+        // Solid mode hides the glass surface and paints the frame instead; the
+        // sampler has to read the surface that is actually visible.
+        const solidFrame = glass && solid ? element.querySelector<HTMLElement>(".rumahl-glass-frame") : null;
+        const solidColor = solidFrame ? parseColor(getComputedStyle(solidFrame).backgroundColor) : null;
         const filters = parseFilters(surfaceStyle?.getPropertyValue("backdrop-filter") || surfaceStyle?.getPropertyValue("-webkit-backdrop-filter") || "");
         const blur = glass ? filters.blur ?? materialBlur : 0;
         const saturation = glass ? filters.saturate ?? materialSaturation : 1;
@@ -220,8 +224,9 @@ export function useAdaptiveContrast(): void {
           if (glass) {
             background = adjustSaturation(background, saturation);
             background = adjustBrightness(background, brightness);
-            if (solid && surfaceColor) {
-              background = rgbHex(surfaceColor.r, surfaceColor.g, surfaceColor.b);
+            if (solid && (solidColor ?? surfaceColor)) {
+              const solidBase = solidColor ?? surfaceColor!;
+              background = rgbHex(solidBase.r, solidBase.g, solidBase.b);
             } else {
               if (surfaceColor && surfaceColor.a > 0) {
                 background = composite(background, rgbHex(surfaceColor.r, surfaceColor.g, surfaceColor.b), surfaceColor.a);

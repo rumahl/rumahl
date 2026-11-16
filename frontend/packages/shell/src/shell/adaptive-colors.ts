@@ -8,7 +8,7 @@ const SWITCH_MARGIN = 0.75;
 
 const MAIN_ON_DARK = ["#9fb1b6", "#b9c8cc", "#d3dfe2", "#eef3f4", "#ffffff"];
 const MAIN_ON_LIGHT = ["#5f6d73", "#48555b", "#303a40", "#1a2126", "#0b0d12"];
-const MUTED_ON_DARK = ["#93a5aa", "#a6b7bb", "#b9c8cc", "#ccd8db"];
+const MUTED_ON_DARK = ["#93a5aa", "#a6b7bb", "#b9c8cc", "#ccd8db", "#dbe6e8", "#eef3f4", "#ffffff"];
 const MUTED_ON_LIGHT = ["#6f7d83", "#5a676d", "#455158", "#303a40"];
 
 export interface ToneDecision {

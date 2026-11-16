@@ -9,6 +9,21 @@ import {WebGLWallpaper} from './webgl-wallpaper.js';
 // CSS. Probe here and release the context again.
 function probeWebgl(){try{const canvas=document.createElement('canvas');const gl=canvas.getContext('webgl')||canvas.getContext('experimental-webgl');if(!gl)return false;gl.getExtension('WEBGL_lose_context')?.loseContext();return true}catch{return false}}
 
+/**
+ * Resolves a filter technique for one surface. SVG refraction is only used
+ * when the browser really renders SVG backdrop filters. Falling back to WebGL
+ * is wrong for chrome that sits above app content: WebGL can only sample the
+ * wallpaper, not the DOM behind the surface. A CSS blur keeps sampling the
+ * actual backdrop.
+ */
+export function resolveBackendRenderer(backend,{svgAvailable=false,webglAvailable=false,reduced=false}={}){
+  if(reduced)return'css';
+  if(backend==='css')return'css';
+  if(backend==='svg')return svgAvailable?'svg':'css';
+  if(backend==='webgl')return webglAvailable?'webgl':'css';
+  return null;
+}
+
 class CssFrosted {
   constructor(host,material){this.host=host;this.layer=document.createElement('div');this.layer.className='rumahl-glass-surface';this.frame=mountSurface(host,this.layer);this.setMaterial(material)}
   setMaterial(material){const m=normalizeMaterial(material);this.layer.style.backdropFilter=`blur(${Math.max(8,m.blur*4)}px) saturate(${m.saturation}) brightness(${m.brightness})`;this.layer.style.webkitBackdropFilter=this.layer.style.backdropFilter;this.layer.style.background=m.tint}
@@ -30,17 +45,31 @@ export class GlassEngine extends EventTarget {
   get capability(){return {svgBackdrop:svgBackdropSupported(),webgl:this.webglAvailable,reducedTransparency:this.reduced.matches||this.contrast.matches}}
   get ladder(){const l=[];if(this.webglAvailable)l.push('webgl');l.push('css');return l;}
   get renderer(){if(this.reduced.matches||this.contrast.matches)return'css';
-    if(this.requestedBackend==='css')return'css';if(this.requestedBackend==='svg')return svgBackdropSupported()?'svg':'css';
+    if(this.requestedBackend==='css')return'css';
+    // Keep the SVG preference, but never degrade it to a flat CSS blur when
+    // the browser cannot run SVG backdrop filters and WebGL can still refract.
+    if(this.requestedBackend==='svg')return svgBackdropSupported()?'svg':this.capability.webgl?'webgl':'css';
     if(this.requestedBackend==='webgl')return this.capability.webgl?'webgl':'css';
     const l=this.ladder;return l[Math.min(this.backendIndex,l.length-1)];}
-  mount(element,material={}){
-    if(this.surfaces.has(element))return this.surfaces.get(element).handle;
-    const ownsHostClass=!element.classList.contains('rumahl-glass-host');element.classList.add('rumahl-glass-host');const record={element,ownsHostClass,material:normalizeMaterial(material),impl:null,kind:''};
+  mount(element,material={},backend=null){
+    const existing=this.surfaces.get(element);
+    if(existing){
+      if(backend!==existing.backend){existing.backend=backend;this.updateRecord(existing)}
+      return existing.handle;
+    }
+    const ownsHostClass=!element.classList.contains('rumahl-glass-host');element.classList.add('rumahl-glass-host');const record={element,ownsHostClass,backend,material:normalizeMaterial(material),impl:null,kind:''};
     const handle={update:(patch)=>{record.material=normalizeMaterial({...record.material,...patch});this.updateRecord(record)},destroy:()=>{this.removeRecord(record)}};
     record.handle=handle;this.surfaces.set(element,record);this.updateRecord(record);return handle;
   }
   removeRecord(record){record.impl?.destroy();this.surfaces.delete(record.element);if(record.ownsHostClass)record.element.classList.remove('rumahl-glass-host')}
-  updateRecord(record){const kind=this.renderer,profile=PROFILES[this.profile];
+  backendRenderer(backend){
+    return resolveBackendRenderer(backend,{
+      svgAvailable:svgBackdropSupported(),
+      webglAvailable:this.webglAvailable,
+      reduced:this.reduced.matches||this.contrast.matches
+    })??this.renderer;
+  }
+  updateRecord(record){const kind=record.backend?this.backendRenderer(record.backend):this.renderer,profile=PROFILES[this.profile];
     if(record.kind!==kind){record.impl?.destroy();record.impl=null;record.kind=kind;try{
       record.impl=kind==='svg'?new SvgBackdrop(record.element,record.material,profile):kind==='webgl'?new WebGLWallpaper(record.element,record.material,profile,this.source):new CssFrosted(record.element,record.material);
     }catch(e){console.warn('[rumahl/glass] renderer failed; CSS fallback',e);record.kind='css';record.impl=new CssFrosted(record.element,record.material)}

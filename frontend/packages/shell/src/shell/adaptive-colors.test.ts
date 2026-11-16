@@ -23,6 +23,11 @@ describe("adaptive ink tones", () => {
       expect(contrastRatio(muted, background).ratio).toBeGreaterThanOrEqual(4.5);
     }
   });
+
+  test("raises muted text on mid-dark glass instead of stopping at a washed tone", () => {
+    const muted = adaptiveMuted("#5e726e");
+    expect(contrastRatio(muted, "#5e726e").ratio).toBeGreaterThanOrEqual(4.5);
+  });
 });
 
 import { decideInk, ensureReadableTextColor, worstContrast } from "./adaptive-colors";

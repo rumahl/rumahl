@@ -1,21 +1,24 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent, type PointerEvent } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent, type PointerEvent } from "react";
 import { AnimatePresence, motion } from "motion/react";
 import { useLocation } from "react-router";
 import { useTheme } from "@rumahl/ui";
+import { MobileNavSlotContext, type MobileNavModel } from "@rumahl/ui/components";
+import { MobileAppNav } from "./MobileAppNav";
 import { ProtectedWindow } from "../components/ProtectedWindow";
 import { findFirstPartyApp } from "../apps/registry";
 import { describeRoute, ShellRoutes } from "../routing/routes";
 import { useI18n } from "../i18n";
-import { HomeIcon, WindowExitFullscreenIcon, WindowStackIcon } from "../icons";
+import { WindowExitFullscreenIcon } from "../icons";
 import { RouteBoundary } from "../routing/RouteBoundary";
 import { useShell } from "./ShellContext";
+import { useWorkspace } from "../preferences/Workspace";
 import type { ShellWindow } from "../shell-state";
 import { centeredRect, constrainRect, placedRect, type WindowPlacement, type WorkArea } from "./desktop/geometry";
 
 import { readWindowRect, writeWindowRect } from "./window-positions";
 
 /** Height of the flush top bar maximized/snapped windows sit below. */
-const TOPBAR_HEIGHT = 38;
+const TOPBAR_HEIGHT = 54;
 /** Desktop windows keep a small breathing room from the screen edges. */
 const WINDOW_GAP = 12;
 
@@ -69,13 +72,22 @@ export function DesktopWindows({ animations = true }: { animations?: boolean } =
 function HostedWindow({ item, area, zIndex, animations: motionEnabled = true }: { item: ShellWindow; area: WorkArea | null; zIndex: number; animations?: boolean }) {
   const { state, dispatch, open, mode } = useShell();
   const { t } = useI18n();
+  const workspace = useWorkspace();
   const { variants, tokens } = useTheme();
   const topbarInset = TOPBAR_HEIGHT * (Number.parseFloat(tokens["typography.scale"] ?? "1") || 1);
   const location = useLocation();
   const active = describeRoute(location.pathname + location.search + location.hash).id;
   const isLauncher = mode === "launcher" || mode === "mobile";
+  const mobileShell = mode === "mobile";
+  const [mobileNav, setMobileNav] = useState<MobileNavModel | null>(null);
+  const registerMobileNav = useCallback((windowId: string, model: MobileNavModel | null) => {
+    if (windowId === item.id) setMobileNav(model);
+  }, [item.id]);
+  const mobileNavSlot = useMemo(() => ({ windowId: item.id, register: registerMobileNav }), [item.id, registerMobileNav]);
   const flush = isInstalledAppWindow(item.id);
-  const customTopbar = active.startsWith("app:") && findFirstPartyApp(active.slice(4))?.customTopbar === true;
+  const topbarApp = active.startsWith("app:") ? findFirstPartyApp(active.slice(4)) : undefined;
+  const customTopbar = topbarApp?.customTopbar === true;
+  const customTopbarFullscreen = customTopbar && topbarApp?.customTopbarFullscreen === true;
   const isFullscreen = item.fullscreen === true;
   const hidden = item.minimized || (isLauncher && active !== item.id);
   const savedRect = readWindowRect(item.id);
@@ -99,8 +111,14 @@ function HostedWindow({ item, area, zIndex, animations: motionEnabled = true }: 
     if (item.rect) writeWindowRect(item.id, item.rect);
   }, [area, item.id, item.rect, dispatch]);
   const placement = item.placement ?? "floating";
-  const immersive = isLauncher || placement === "maximized";
-  const windowTopInset = immersive ? 10 : topbarInset;
+  // Maximized desktop windows sit below the 54px top bar; only the launcher
+  // fills the screen behind its own chrome. When the user hides the top bar,
+  // the window takes that space instead of leaving an empty strip behind it.
+  const chromeHidesTopbar = mode === "desktop" ? placement === "maximized" : mode === "launcher";
+  const hideTopbar = (workspace.userWorkspace?.fullscreenChrome ?? workspace.effective.fullscreenChrome).hideTopbar;
+  const windowTopInset = isFullscreen || (hideTopbar && chromeHidesTopbar)
+    ? 0
+    : topbarInset;
   const rect = area
     ? isFullscreen
       ? { x: 0, y: 0, width: area.width, height: area.height }
@@ -214,40 +232,38 @@ function HostedWindow({ item, area, zIndex, animations: motionEnabled = true }: 
     dispatch({ type: "set-window-rect", id: item.id, rect: constrainRect(next, area) });
   }
   const animate = motionEnabled && typeof window !== "undefined" && typeof window.matchMedia === "function" && !window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-  const enter = isLauncher ? { opacity: 0, y: 140 } : { opacity: 0 };
+  const enter = isLauncher ? { opacity: 0, y: 140, scale: 0.94 } : { opacity: 0, y: 10, scale: 0.985 };
   return <motion.div
     aria-hidden={hidden ? true : undefined}
     className={`window-position${moving ? " is-moving is-dragging" : ""}${hidden ? " is-hidden" : ""}`}
     data-fullscreen={isFullscreen ? "true" : undefined}
     style={{ zIndex }}
     {...(animate ? { initial: enter, exit: enter } : { initial: false })}
-    animate={{ opacity: 1, y: 0 }}
-    transition={isLauncher ? { type: "spring", stiffness: 320, damping: 30 } : { duration: 0.22, ease: [0.2, 0.7, 0.2, 1] }}
+    animate={{ opacity: 1, y: 0, scale: 1 }}
+    transition={isLauncher ? { type: "spring", stiffness: 320, damping: 30 } : { type: "spring", stiffness: 430, damping: 34, mass: 0.82 }}
     onPointerMove={move} onPointerUp={end} onPointerCancel={end} onLostPointerCapture={end}>
     {snap ? <div aria-hidden="true" className={`snap-preview snap-preview--${snap}`} /> : null}
-    <ProtectedWindow customTopbar={customTopbar} flush={flush} id={item.id} focused={state.focusedWindowId === item.id}
+    <MobileNavSlotContext.Provider value={mobileShell ? mobileNavSlot : null}>
+    <ProtectedWindow customTopbar={customTopbar} fullscreenTopbar={customTopbarFullscreen} flush={flush} id={item.id} focused={state.focusedWindowId === item.id}
       style={area ? { left: rect.x, top: rect.y, width: rect.width, height: rect.height } : undefined}
       onClose={() => { dispatch({ type: "close-window", id: item.id }); if (active === item.id) open("/"); }}
       onFocus={focus} onMinimize={() => { dispatch({ type: "toggle-minimize", id: item.id }); if (active === item.id) open("/"); }}
       onMaximize={isLauncher ? undefined : () => dispatch({ type: "set-window-placement", id: item.id, placement: placement !== "floating" ? "floating" : "maximized" })}
       onFullscreen={isLauncher ? undefined : () => dispatch({ type: "set-window-fullscreen", id: item.id, fullscreen: !isFullscreen })}
       onSnap={isLauncher ? undefined : (side) => dispatch({ type: "set-window-placement", id: item.id, placement: side })}
-      fullscreen={isFullscreen} frameless={isFullscreen}
+      fullscreen={isFullscreen} frameless={isFullscreen && !customTopbarFullscreen}
       maximized={placement !== "floating" || isFullscreen} {...(!isLauncher ? { onTitlePointerDown: (event: PointerEvent<HTMLElement>) => begin(event, false), onTitleKeyDown: (event: KeyboardEvent<HTMLElement>) => keyboard(event, false) } : {})}
       onResizePointerDown={(event) => begin(event, true)} onResizeKeyDown={(event) => keyboard(event, true)}
       subtitle={item.subtitle} title={item.title} stream={item.streamId !== undefined} variant={variants.windowChrome}>
       <RouteBoundary location={item.location ?? "/"}><ShellRoutes location={item.location ?? "/"} /></RouteBoundary>
     </ProtectedWindow>
+    </MobileNavSlotContext.Provider>
     {isFullscreen ? <button type="button" className="window-exit-fullscreen" onClick={() => dispatch({ type: "set-window-fullscreen", id: item.id, fullscreen: false })} aria-label={t("window.exitFullscreen")}>
       <WindowExitFullscreenIcon aria-hidden="true" /><span>{t("window.exitFullscreen")}</span>
     </button> : null}
-    {isLauncher ? <div className="window-launcher-controls">
-      <button type="button" className="window-launcher-home" aria-label={t("nav.home")} title={t("nav.home")} onClick={() => open("/")}>
-        <HomeIcon aria-hidden="true" /><span>{t("nav.home")}</span>
-      </button>
-      <button type="button" className="window-launcher-switcher" aria-label={t("switcher.title")} title={t("switcher.title")} onClick={() => dispatch({ type: "toggle-app-switcher" })}>
-        <WindowStackIcon aria-hidden="true" /><span>{t("switcher.title")}</span>
-      </button>
-    </div> : null}
+    {mobileShell ? <MobileAppNav
+      model={mobileNav}
+      onSwitcher={() => dispatch({ type: "toggle-app-switcher" })}
+    /> : null}
   </motion.div>;
 }
