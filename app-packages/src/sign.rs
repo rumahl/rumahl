@@ -355,6 +355,21 @@ fn manifest_value(manifest: &PackageManifest, files: &[Value]) -> Value {
                     "entrypoint": connector.entrypoint().as_str(),
                 }))
                 .collect::<Vec<_>>(),
+            "surfaces": manifest
+                .app()
+                .surfaces()
+                .iter()
+                .map(|surface| json!({
+                    "id": surface.id().as_str(),
+                    "slot": surface.slot().as_str(),
+                    "kind": surface.kind().as_str(),
+                    "size": surface.size().as_str(),
+                    "placement": surface.placement().as_str(),
+                    "tone": surface.tone().as_str(),
+                    "icon": surface.icon().as_str(),
+                    "entrypoint": surface.entrypoint().map(|value| value.as_str()),
+                }))
+                .collect::<Vec<_>>(),
         },
         "files": files,
     })
@@ -584,5 +599,32 @@ mod tests {
 
         assert_eq!(parsed.key_id(), "key-1");
         assert_eq!(parsed.seed(), generated.seed());
+    }
+    #[test]
+    fn signs_package_surfaces_into_the_manifest() {
+        let directory = tempfile::tempdir().unwrap();
+        fs::create_dir_all(directory.path().join("frontend")).unwrap();
+        fs::write(
+            directory.path().join("frontend/index.html"),
+            b"<html>clock</html>",
+        )
+        .unwrap();
+        let manifest = PackageManifest::from_bytes(
+            br#"{"formatVersion":1,"publisherId":"com.rumahl","app":{"appId":"com.rumahl.clock","version":"1.0.0","displayName":"Clock","runtime":{"kind":"web","entrypoints":[{"id":"main","kind":"web-asset","path":"frontend/index.html"}]},"surfaces":[{"id":"com.rumahl.clock.desktop","slot":"both","kind":"companion","size":"medium","placement":"bottom-right","tone":"accent","icon":"pulse","entrypoint":"main"}]},"files":[]}"#,
+        )
+        .unwrap();
+
+        key().sign(directory.path(), &manifest).unwrap();
+
+        let written = fs::read(directory.path().join(MANIFEST_FILE)).unwrap();
+        let reloaded = PackageManifest::from_bytes(&written).unwrap();
+        let app = reloaded.to_app_manifest().unwrap();
+        assert_eq!(app.surfaces().len(), 1);
+        assert_eq!(app.surfaces()[0].id().as_str(), "com.rumahl.clock.desktop");
+        assert_eq!(app.surfaces()[0].kind().as_str(), "companion");
+        assert_eq!(
+            app.surfaces()[0].entrypoint().map(|value| value.as_str()),
+            Some("main")
+        );
     }
 }

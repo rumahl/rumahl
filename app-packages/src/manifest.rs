@@ -4,9 +4,11 @@ use std::fmt;
 
 use rumahl_core::{
     AppId, AppManifest, AppSettingDeclaration, AppSettingKey, AppSettingKind, AppSettingOption,
-    AppVersion, CapabilityId, ConnectorDeclaration, ConnectorTarget, PackagePath, PermissionId,
-    PermissionRequest, PermissionScope, PublisherId, RuntimeDescriptor, RuntimeEndpointId,
-    RuntimeEntrypoint, RuntimeEntrypointId, RuntimeKind, RuntimeLifecycle,
+    AppVersion, CapabilityId, ConnectorDeclaration, ConnectorTarget, ContributionId, PackagePath,
+    PermissionId, PermissionRequest, PermissionScope, PublisherId, RuntimeDescriptor,
+    RuntimeEndpointId, RuntimeEntrypoint, RuntimeEntrypointId, RuntimeKind, RuntimeLifecycle,
+    SurfaceDeclaration, SurfaceIcon, SurfaceKind, SurfacePlacement, SurfaceSize, SurfaceSlot,
+    SurfaceTone,
 };
 use serde::Deserialize;
 
@@ -51,6 +53,7 @@ pub struct PackageAppManifest {
     provided_capabilities: Vec<CapabilityId>,
     connectors: Vec<ConnectorDeclaration>,
     settings: Vec<AppSettingDeclaration>,
+    surfaces: Vec<SurfaceDeclaration>,
 }
 
 /// One payload file authenticated by the signed manifest.
@@ -91,6 +94,7 @@ pub enum PackageManifestError {
     InvalidPermission,
     InvalidCapability,
     InvalidConnector,
+    InvalidSurface,
 }
 
 #[derive(Deserialize)]
@@ -120,6 +124,22 @@ struct RawApp {
     connectors: Vec<RawConnector>,
     #[serde(default)]
     settings: Vec<RawSetting>,
+    #[serde(default)]
+    surfaces: Vec<RawSurface>,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+struct RawSurface {
+    id: String,
+    slot: String,
+    kind: String,
+    size: String,
+    placement: String,
+    tone: String,
+    icon: String,
+    #[serde(default)]
+    entrypoint: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -319,6 +339,10 @@ impl PackageAppManifest {
         &self.settings
     }
 
+    pub fn surfaces(&self) -> &[SurfaceDeclaration] {
+        &self.surfaces
+    }
+
     fn from_raw(raw: RawApp) -> Result<Self, PackageManifestError> {
         let app_id = AppId::parse(raw.app_id).map_err(|_| PackageManifestError::InvalidAppId)?;
         let version =
@@ -381,6 +405,39 @@ impl PackageAppManifest {
             settings.push(setting);
         }
 
+        let mut surfaces = Vec::with_capacity(raw.surfaces.len());
+        let mut surface_ids = HashSet::new();
+        for surface in raw.surfaces {
+            let id = ContributionId::parse(&surface.id)
+                .map_err(|_| PackageManifestError::InvalidSurface)?;
+            if !surface_ids.insert(id.clone()) || surfaces.len() >= AppManifest::MAX_SURFACES {
+                return Err(PackageManifestError::InvalidSurface);
+            }
+            let slot =
+                SurfaceSlot::parse(&surface.slot).ok_or(PackageManifestError::InvalidSurface)?;
+            let kind =
+                SurfaceKind::parse(&surface.kind).ok_or(PackageManifestError::InvalidSurface)?;
+            let size =
+                SurfaceSize::parse(&surface.size).ok_or(PackageManifestError::InvalidSurface)?;
+            let placement = SurfacePlacement::parse(&surface.placement)
+                .ok_or(PackageManifestError::InvalidSurface)?;
+            let tone =
+                SurfaceTone::parse(&surface.tone).ok_or(PackageManifestError::InvalidSurface)?;
+            let icon =
+                SurfaceIcon::parse(&surface.icon).ok_or(PackageManifestError::InvalidSurface)?;
+            let entrypoint = match surface.entrypoint {
+                None => None,
+                Some(value) => Some(
+                    RuntimeEntrypointId::parse(value)
+                        .map_err(|_| PackageManifestError::InvalidSurface)?,
+                ),
+            };
+            surfaces.push(
+                SurfaceDeclaration::new(id, slot, kind, size, placement, tone, icon)
+                    .with_entrypoint(entrypoint),
+            );
+        }
+
         Ok(Self {
             app_id,
             version,
@@ -391,6 +448,7 @@ impl PackageAppManifest {
             provided_capabilities,
             connectors,
             settings,
+            surfaces,
         })
     }
 
@@ -426,6 +484,11 @@ impl PackageAppManifest {
             manifest
                 .add_setting(setting.clone())
                 .map_err(|_| PackageManifestError::InvalidSetting)?;
+        }
+        for surface in &self.surfaces {
+            manifest
+                .add_surface(surface.clone())
+                .map_err(|_| PackageManifestError::InvalidSurface)?;
         }
         Ok(manifest)
     }
@@ -668,6 +731,9 @@ impl fmt::Display for PackageManifestError {
             Self::InvalidConnector => {
                 write!(f, "package manifest declares an invalid connector")
             }
+            Self::InvalidSurface => {
+                write!(f, "package manifest declares an invalid app surface")
+            }
         }
     }
 }
@@ -702,7 +768,8 @@ impl Error for PackageManifestError {
             | Self::InvalidLifecycle
             | Self::InvalidPermission
             | Self::InvalidCapability
-            | Self::InvalidConnector => None,
+            | Self::InvalidConnector
+            | Self::InvalidSurface => None,
         }
     }
 }
@@ -710,6 +777,9 @@ impl Error for PackageManifestError {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use rumahl_core::{
+        SurfaceIcon, SurfaceKind, SurfacePlacement, SurfaceSize, SurfaceSlot, SurfaceTone,
+    };
 
     fn manifest_with_settings(settings: &str) -> String {
         format!(
@@ -827,5 +897,44 @@ mod tests {
 
         let bad = r#"{"formatVersion":1,"publisherId":"com.rumahl","app":{"appId":"com.rumahl.files","version":"1.0.0","displayName":"Files","runtime":{"kind":"web","entrypoints":[{"id":"main","kind":"web-asset","path":"index.html"}]},"providedCapabilities":["nope"]},"files":[]}"#;
         assert!(PackageManifest::from_bytes(bad.as_bytes()).is_err());
+    }
+    #[test]
+    fn parses_surfaces_into_the_app_manifest() {
+        let bytes = r#"{"formatVersion":1,"publisherId":"com.rumahl","app":{"appId":"com.rumahl.clock","version":"1.0.0","displayName":"Clock","runtime":{"kind":"web","entrypoints":[{"id":"main","kind":"web-asset","path":"index.html"}]},"surfaces":[{"id":"com.rumahl.clock.desktop","slot":"both","kind":"companion","size":"medium","placement":"bottom-right","tone":"accent","icon":"pulse","entrypoint":"main"}]},"files":[]}"#;
+        let manifest = PackageManifest::from_bytes(bytes.as_bytes()).unwrap();
+        assert_eq!(manifest.app().surfaces().len(), 1);
+        let app = manifest.to_app_manifest().unwrap();
+        assert_eq!(app.surfaces().len(), 1);
+        let surface = &app.surfaces()[0];
+        assert_eq!(surface.id().as_str(), "com.rumahl.clock.desktop");
+        assert_eq!(surface.slot(), SurfaceSlot::Both);
+        assert_eq!(surface.kind(), SurfaceKind::Companion);
+        assert_eq!(surface.size(), SurfaceSize::Medium);
+        assert_eq!(surface.placement(), SurfacePlacement::BottomRight);
+        assert_eq!(surface.tone(), SurfaceTone::Accent);
+        assert_eq!(surface.icon(), SurfaceIcon::Pulse);
+        assert_eq!(
+            surface.entrypoint().map(|value| value.as_str()),
+            Some("main")
+        );
+    }
+
+    #[test]
+    fn parses_optional_surface_entrypoints() {
+        let missing = r#"{"formatVersion":1,"publisherId":"com.rumahl","app":{"appId":"com.rumahl.clock","version":"1.0.0","displayName":"Clock","runtime":{"kind":"web","entrypoints":[{"id":"main","kind":"web-asset","path":"index.html"}]},"surfaces":[{"id":"com.rumahl.clock.desktop","slot":"both","kind":"companion","size":"medium","placement":"bottom-right","tone":"accent","icon":"pulse","entrypoint":"overlay"}]},"files":[]}"#;
+        let manifest = PackageManifest::from_bytes(missing.as_bytes()).unwrap();
+        assert!(manifest.to_app_manifest().is_ok());
+
+        let malformed = r#"{"formatVersion":1,"publisherId":"com.rumahl","app":{"appId":"com.rumahl.clock","version":"1.0.0","displayName":"Clock","runtime":{"kind":"web","entrypoints":[{"id":"main","kind":"web-asset","path":"index.html"}]},"surfaces":[{"id":"com.rumahl.clock.desktop","slot":"both","kind":"companion","size":"medium","placement":"bottom-right","tone":"accent","icon":"pulse","entrypoint":"Bad Entry"}]},"files":[]}"#;
+        assert!(PackageManifest::from_bytes(malformed.as_bytes()).is_err());
+    }
+
+    #[test]
+    fn rejects_invalid_or_duplicate_surfaces() {
+        let invalid = r#"{"formatVersion":1,"publisherId":"com.rumahl","app":{"appId":"com.rumahl.clock","version":"1.0.0","displayName":"Clock","runtime":{"kind":"web","entrypoints":[{"id":"main","kind":"web-asset","path":"index.html"}]},"surfaces":[{"id":"com.rumahl.clock.desktop","slot":"somewhere","kind":"companion","size":"medium","placement":"bottom-right","tone":"accent","icon":"pulse"}]},"files":[]}"#;
+        assert!(PackageManifest::from_bytes(invalid.as_bytes()).is_err());
+
+        let duplicate = r#"{"formatVersion":1,"publisherId":"com.rumahl","app":{"appId":"com.rumahl.clock","version":"1.0.0","displayName":"Clock","runtime":{"kind":"web","entrypoints":[{"id":"main","kind":"web-asset","path":"index.html"}]},"surfaces":[{"id":"com.rumahl.clock.desktop","slot":"both","kind":"companion","size":"medium","placement":"bottom-right","tone":"accent","icon":"pulse"},{"id":"com.rumahl.clock.desktop","slot":"both","kind":"badge","size":"small","placement":"top-left","tone":"mint","icon":"dot"}]},"files":[]}"#;
+        assert!(PackageManifest::from_bytes(duplicate.as_bytes()).is_err());
     }
 }
