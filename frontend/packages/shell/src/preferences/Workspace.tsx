@@ -8,6 +8,8 @@ export interface SavedWindow { location: string; rect: WindowRect; placement: Wi
 export interface DesktopArrangement { order: string[]; hidden: string[]; widgets: boolean }
 export type LauncherViewId = "grid" | "deck" | "canvas";
 export type AppearanceMode = "light" | "dark";
+/** User preference for desktop/launcher immersive chrome. */
+export interface FullscreenChrome { hideTopbar: boolean; hideDock: boolean }
 /** Device appearance customization: palette seed, light/dark mode, token overrides. */
 export type GlassEngine = "css" | "canvas";
 export type GlassBackend = "auto" | "svg" | "webgl" | "css";
@@ -27,14 +29,17 @@ export interface AppearanceSettings {
   glassTint?: string | null;
   glassBackend?: GlassBackend;
   glassQuality?: GlassQuality;
+  /** Phone-only: run the floating mobile nav bar through the SVG glass engine. */
+  mobileNavSvgGlass?: boolean;
   seed: string | null;
   mode: AppearanceMode | null;
   tokens: { [key: string]: string };
 }
-export interface Workspace { version: 1; windows: SavedWindow[]; folders: AppFolder[]; desktop: DesktopArrangement; launcherView: LauncherViewId | null; appearance: AppearanceSettings }
+export interface Workspace { version: 1; windows: SavedWindow[]; folders: AppFolder[]; desktop: DesktopArrangement; launcherView: LauncherViewId | null; appearance: AppearanceSettings; fullscreenChrome: FullscreenChrome }
 interface Record { ownerId: string; revision: number; user: Workspace | null; device: Workspace | null }
 export const emptyAppearance: AppearanceSettings = { seed: null, mode: null, tokens: {} };
-export const emptyWorkspace: Workspace = { version: 1, windows: [], folders: [], desktop: { order: [], hidden: [], widgets: true }, launcherView: null, appearance: emptyAppearance };
+export const defaultFullscreenChrome: FullscreenChrome = { hideTopbar: true, hideDock: true };
+export const emptyWorkspace: Workspace = { version: 1, windows: [], folders: [], desktop: { order: [], hidden: [], widgets: true }, launcherView: null, appearance: emptyAppearance, fullscreenChrome: defaultFullscreenChrome };
 export function parseWorkspace(value: unknown): Workspace {
   const w = value as Workspace | null;
   if (!w || w.version !== 1 || !Array.isArray(w.windows) || w.windows.length > 32 || !Array.isArray(w.folders) || w.folders.length > 32) throw Error("workspace");
@@ -56,7 +61,12 @@ export function parseWorkspace(value: unknown): Workspace {
     ids.add(f.id);
     for (const id of f.apps) { if (typeof id !== "string" || !/^[a-zA-Z0-9._-]{1,255}$/.test(id) || apps.has(id)) throw Error("app"); apps.add(id); }
   }
-  return { ...w, desktop, launcherView, appearance };
+  const chrome = w.fullscreenChrome && typeof w.fullscreenChrome === "object" ? w.fullscreenChrome : defaultFullscreenChrome;
+  const fullscreenChrome: FullscreenChrome = {
+    hideTopbar: chrome.hideTopbar !== false,
+    hideDock: chrome.hideDock !== false
+  };
+  return { ...w, desktop, launcherView, appearance, fullscreenChrome };
 }
 export function parseAppearance(value: unknown): AppearanceSettings {
   if (!value || typeof value !== "object" || Array.isArray(value)) return emptyAppearance;
@@ -69,6 +79,14 @@ export function parseAppearance(value: unknown): AppearanceSettings {
       if (typeof raw === "string" && raw.length > 0 && raw.length <= 256 && !/[;{}\\<>@]/.test(raw)) tokens[key] = raw;
     }
   }
+  const glassBackend = ["auto", "svg", "webgl", "css"].includes(record.glassBackend as string)
+    ? record.glassBackend as GlassBackend
+    : undefined;
+  // Choosing a technique is an explicit glass request. Older records stored
+  // only `glassBackend`; imply the master switch unless it was turned off.
+  const glassEnabled = typeof record.glassEnabled === "boolean"
+    ? record.glassEnabled
+    : glassBackend !== undefined ? true : undefined;
   return {
     seed, mode, tokens,
     ...(record.autoColor === true ? { autoColor: true } : {}),
@@ -80,14 +98,15 @@ export function parseAppearance(value: unknown): AppearanceSettings {
     ...(record.ultraPerformance === true ? { ultraPerformance: true } : {}),
     ...(record.adaptiveType === true ? { adaptiveType: true } : {}),
     ...(record.glassEngine === "css" || record.glassEngine === "canvas" ? { glassEngine: record.glassEngine } : {}),
-    ...(typeof record.glassEnabled === "boolean" ? { glassEnabled: record.glassEnabled } : {}),
+    ...(glassEnabled !== undefined ? { glassEnabled } : {}),
     ...(typeof record.glassColor === "boolean" ? { glassColor: record.glassColor } : {}),
     ...(typeof record.glassTint === "string" && /^#[0-9a-fA-F]{6}$/.test(record.glassTint) ? { glassTint: record.glassTint } : {}),
-    ...(["auto", "svg", "webgl", "css"].includes(record.glassBackend as string) ? { glassBackend: record.glassBackend as GlassBackend } : {}),
-    ...(["auto", "high", "balanced", "low"].includes(record.glassQuality as string) ? { glassQuality: record.glassQuality as GlassQuality } : {})
+    ...(glassBackend !== undefined ? { glassBackend } : {}),
+    ...(["auto", "high", "balanced", "low"].includes(record.glassQuality as string) ? { glassQuality: record.glassQuality as GlassQuality } : {}),
+    ...(typeof record.mobileNavSvgGlass === "boolean" ? { mobileNavSvgGlass: record.mobileNavSvgGlass } : {})
   };
 }
-interface ContextValue { record: Record | null; effective: Workspace; ready: boolean; busy: boolean; error: string | null; save: (scope: PreferenceScope, value: Workspace | null) => Promise<boolean>; restore: number; requestRestore: () => void }
+interface ContextValue { record: Record | null; effective: Workspace; userWorkspace: Workspace | null; ready: boolean; busy: boolean; error: string | null; save: (scope: PreferenceScope, value: Workspace | null) => Promise<boolean>; restore: number; requestRestore: () => void }
 const Context = createContext<ContextValue | null>(null);
 /** Seeds the device-scoped workspace from the server snapshot for first paint. */
 function snapshotRecord(initial: string | null | undefined): Record | null {
@@ -112,7 +131,7 @@ export function WorkspaceProvider({ live, initial, children }: PropsWithChildren
       const text=await response.text(); if(text.length>140000) throw Error("unavailable");
       const r=JSON.parse(text) as Record;
       if(typeof r.ownerId!=="string" || !Number.isSafeInteger(r.revision) || r.revision<0) throw Error("unavailable");
-      if(r.user!==null)parseWorkspace(r.user);if(r.device!==null)parseWorkspace(r.device); return r;
+      if(r.user!==null)r.user=parseWorkspace(r.user);if(r.device!==null)r.device=parseWorkspace(r.device); return r;
     }
     async function refresh() { if(writing || controller.signal.aborted)return; const gen=generation; try {const r=await request();if(gen===generation){apply(r);setError(previous=>previous==="unavailable"?null:previous);}}catch{if(!controller.signal.aborted)setError("unavailable");} }
     if(live) void refresh(); else { let value=null;try{const text=localStorage.getItem("rumahl.demo.workspace");if(text)value=parseWorkspace(JSON.parse(text));}catch{/* demo storage unavailable */}apply({ownerId:"demo",revision:0,user:value,device:null}); }
@@ -130,6 +149,6 @@ export function WorkspaceProvider({ live, initial, children }: PropsWithChildren
     const focus=()=>{if(live)void refresh();};window.addEventListener("focus",focus);
     return()=>{controller.abort();clearInterval(timer);window.removeEventListener("focus",focus);writer.current=async()=>false;};
   },[live]);
-  return <Context value={{record,effective:record?.device??record?.user??emptyWorkspace,ready:record!==null,busy,error,save:(scope,value)=>writer.current(scope,value),restore,requestRestore:()=>setRestore(v=>v+1)}}>{children}</Context>;
+  return <Context value={{record,effective:record?.device??record?.user??emptyWorkspace,userWorkspace:record?.user??null,ready:record!==null,busy,error,save:(scope,value)=>writer.current(scope,value),restore,requestRestore:()=>setRestore(v=>v+1)}}>{children}</Context>;
 }
 export function useWorkspace(){const value=useContext(Context);if(!value)throw Error("Workspace provider missing");return value;}

@@ -1,5 +1,9 @@
 import {
+  BRIDGE_CAPABILITIES,
   BRIDGE_METHODS,
+  BRIDGE_PET_ACTIONS,
+  BRIDGE_WARNING_LEVELS,
+  BRIDGE_PET_ICONS,
   RUMAHL_BRIDGE,
   RUMAHL_BRIDGE_VERSION,
   capabilityForMethod,
@@ -9,11 +13,21 @@ import {
   type BridgeEvent,
   type BridgeMessage,
   type BridgeNotification,
+  type BridgePetAction,
+  type BridgePetActionRegistration,
+  type BridgePetIcon,
+  type BridgePetState,
   type BridgeRequest,
   type BridgeResponse,
   type BridgeTheme,
+  type BridgeWarningClearResult,
+  type BridgeWarningLevel,
+  type BridgeWarningPublishResult,
+  type BridgeWarningRegistration,
+  type BridgeWeatherWarning,
   type BridgeWindowAction
 } from "@rumahl/contracts/bridge";
+import { sanitizePetActionLabel, validPetActionId } from "./pets/pet-actions";
 
 /** Everything the bridge needs from the shell realm to serve one app window. */
 export interface AppBridgeHandlers {
@@ -29,6 +43,20 @@ export interface AppBridgeHandlers {
   windowControl(action: BridgeWindowAction): void;
   /** Invokes a capability provided by another installed app, on behalf of the user. */
   invokeCapability(capability: string, resource?: BridgeCapabilityResource): Promise<BridgeCapabilityResult>;
+  /** Active pet state for apps with the `rumahl.pets.interact` capability. */
+  petState?: () => BridgePetState | null;
+  /** Triggers a built-in interaction; false when the action is unknown. */
+  petInteract?: (action: BridgePetAction) => boolean;
+  /** Registers an extra pet menu action for this app. */
+  petRegisterAction?: (action: BridgePetActionRegistration) => (() => void) | null;
+  /** Removes one previously registered pet action. */
+  petUnregisterAction?: (id: string) => boolean;
+  /** Registers this installed app as an OS weather-warning source. */
+  warningRegister?: () => Promise<BridgeWarningRegistration>;
+  /** Publishes or updates warnings; the server re-checks the app capability. */
+  warningPublish?: (warnings: BridgeWeatherWarning[]) => Promise<BridgeWarningPublishResult>;
+  /** Clears one warning, a set, or every warning of this app when omitted. */
+  warningClear?: (ids?: string[]) => Promise<BridgeWarningClearResult>;
 }
 
 /**
@@ -61,7 +89,10 @@ export function handleBridgeRequest(message: BridgeRequest, handlers: AppBridgeH
         return respond(true, { result: handlers.theme() });
       case "os.notification": {
         const notification = normalizeNotification(message.params);
-        if (!notification) return respond(false, { error: { code: "invalid-params", message: "a non-empty message is required" } });
+        if (!notification) return respond(false, { error: { code: "invalid-params", message: "a valid notification is required" } });
+        if (notification.emergency && !handlers.capabilities.includes(BRIDGE_CAPABILITIES.emergency)) {
+          return respond(false, { error: { code: "denied", message: `missing capability: ${BRIDGE_CAPABILITIES.emergency}` } });
+        }
         handlers.notify(notification);
         return respond(true, { result: { shown: true } });
       }
@@ -74,6 +105,26 @@ export function handleBridgeRequest(message: BridgeRequest, handlers: AppBridgeH
       case "os.window.focus":
         handlers.windowControl("focus");
         return respond(true, { result: null });
+      case "pets.state":
+        return respond(true, { result: { active: handlers.petState?.() ?? null } });
+      case "pets.interact": {
+        const action = normalizePetInteraction(message.params);
+        if (!action) return respond(false, { error: { code: "invalid-params", message: "an unknown pet action was requested" } });
+        if (!handlers.petInteract?.(action)) return respond(false, { error: { code: "denied", message: "pet interaction unavailable" } });
+        return respond(true, { result: { action } });
+      }
+      case "pets.action.register": {
+        const action = normalizePetActionRegistration(message.params);
+        if (!action) return respond(false, { error: { code: "invalid-params", message: "invalid pet action registration" } });
+        if (!handlers.petRegisterAction?.(action)) return respond(false, { error: { code: "denied", message: "pet action could not be registered" } });
+        return respond(true, { result: { registered: true, id: action.id } });
+      }
+      case "pets.action.unregister": {
+        const id = normalizePetActionId(message.params);
+        if (!id) return respond(false, { error: { code: "invalid-params", message: "invalid pet action id" } });
+        if (!handlers.petUnregisterAction?.(id)) return respond(false, { error: { code: "denied", message: "pet action not found" } });
+        return respond(true, { result: { unregistered: true, id } });
+      }
       default:
         return respond(false, { error: { code: "unknown-method", message: `unknown method: ${message.method}` } });
     }
@@ -87,9 +138,84 @@ function normalizeNotification(value: unknown): BridgeNotification | null {
   const record = value as Record<string, unknown>;
   if (typeof record.message !== "string" || record.message.length === 0 || record.message.length > 512) return null;
   const notification: BridgeNotification = { message: record.message };
-  if (typeof record.title === "string" && record.title.length > 0 && record.title.length <= 128) notification.title = record.title;
-  if (record.variant === "success" || record.variant === "warning" || record.variant === "info" || record.variant === "error") notification.variant = record.variant;
+  if (record.title !== undefined) {
+    if (typeof record.title !== "string" || record.title.length === 0 || record.title.length > 128) return null;
+    notification.title = record.title;
+  }
+  if (record.description !== undefined) {
+    if (typeof record.description !== "string" || record.description.length === 0 || record.description.length > 512) return null;
+    notification.description = record.description;
+  }
+  if (record.variant !== undefined) {
+    if (record.variant !== "success" && record.variant !== "warning" && record.variant !== "info" && record.variant !== "error" && record.variant !== "loading") return null;
+    notification.variant = record.variant;
+  }
+  if (record.meta !== undefined) {
+    if (typeof record.meta !== "string" || record.meta.length === 0 || record.meta.length > 64) return null;
+    notification.meta = record.meta;
+  }
+  if (record.image !== undefined) {
+    if (typeof record.image !== "string" || record.image.length > 2048 || !(record.image.startsWith("https://") || record.image.startsWith("data:image/"))) return null;
+    notification.image = record.image;
+  }
+  if (record.duration === null) notification.duration = null;
+  else if (record.duration !== undefined) {
+    if (typeof record.duration !== "number" || !Number.isFinite(record.duration) || record.duration < 0 || record.duration > 3_600_000) return null;
+    notification.duration = record.duration;
+  }
+  if (record.progress !== undefined) {
+    if (typeof record.progress !== "number" || !Number.isFinite(record.progress) || record.progress < 0 || record.progress > 1) return null;
+    notification.progress = record.progress;
+  }
+  if (record.emergency !== undefined) {
+    if (typeof record.emergency !== "boolean") return null;
+    if (record.emergency) notification.emergency = true;
+  }
+  if (Array.isArray(record.buttons)) {
+    if (record.buttons.length > 2) return null;
+    const buttons = [];
+    const ids = new Set<string>();
+    for (const value of record.buttons) {
+      if (typeof value !== "object" || value === null) return null;
+      const button = value as Record<string, unknown>;
+      if (typeof button.id !== "string" || !/^[A-Za-z0-9._-]{1,64}$/.test(button.id) || ids.has(button.id)) return null;
+      if (typeof button.label !== "string" || button.label.trim().length === 0 || button.label.length > 64) return null;
+      ids.add(button.id);
+      buttons.push({ id: button.id, label: button.label.trim() });
+    }
+    if (buttons.length) notification.buttons = buttons;
+  }
   return notification;
+}
+
+function normalizePetInteraction(value: unknown): BridgePetAction | null {
+  if (typeof value !== "object" || value === null) return null;
+  const action = (value as Record<string, unknown>).action;
+  return typeof action === "string" && (BRIDGE_PET_ACTIONS as readonly string[]).includes(action)
+    ? (action as BridgePetAction)
+    : null;
+}
+
+function normalizePetActionId(value: unknown): string | null {
+  if (typeof value !== "object" || value === null) return null;
+  const id = (value as Record<string, unknown>).id;
+  return validPetActionId(id) ? id : null;
+}
+
+function normalizePetActionRegistration(value: unknown): BridgePetActionRegistration | null {
+  if (typeof value !== "object" || value === null) return null;
+  const record = value as Record<string, unknown>;
+  if (!validPetActionId(record.id)) return null;
+  const label = sanitizePetActionLabel(record.label);
+  if (!label) return null;
+  if (record.icon !== undefined && (typeof record.icon !== "string" || !(BRIDGE_PET_ICONS as readonly string[]).includes(record.icon))) {
+    return null;
+  }
+  return {
+    id: record.id,
+    label,
+    ...(record.icon ? { icon: record.icon as BridgePetIcon } : {})
+  };
 }
 
 /**
@@ -97,8 +223,16 @@ function normalizeNotification(value: unknown): BridgeNotification | null {
  * resolve immediately; `os.capabilities.invoke` calls the OS on the user's
  * behalf and may take a round-trip.
  */
+const ASYNC_METHODS: ReadonlySet<string> = new Set([
+  "os.capabilities.invoke",
+  "os.warnings.register",
+  "os.warnings.publish",
+  "os.warnings.test",
+  "os.warnings.clear"
+]);
+
 export async function handleBridgeRequestAsync(message: BridgeRequest, handlers: AppBridgeHandlers): Promise<BridgeResponse> {
-  if (message.method !== "os.capabilities.invoke") return handleBridgeRequest(message, handlers);
+  if (!ASYNC_METHODS.has(message.method)) return handleBridgeRequest(message, handlers);
   const respond = (ok: boolean, extra: Partial<BridgeResponse>): BridgeResponse => ({
     bridge: RUMAHL_BRIDGE,
     kind: "response",
@@ -109,13 +243,103 @@ export async function handleBridgeRequestAsync(message: BridgeRequest, handlers:
   const capability = capabilityForMethod(message.method);
   if (capability === null) return respond(false, { error: { code: "unknown-method", message: `unknown method: ${message.method}` } });
   if (!handlers.capabilities.includes(capability)) return respond(false, { error: { code: "denied", message: `missing capability: ${capability}` } });
-  const invocation = normalizeCapabilityInvocation(message.params);
-  if (!invocation) return respond(false, { error: { code: "invalid-params", message: "a capability id is required" } });
   try {
-    return respond(true, { result: await handlers.invokeCapability(invocation.capability, invocation.resource) });
+    switch (message.method) {
+      case "os.capabilities.invoke": {
+        const invocation = normalizeCapabilityInvocation(message.params);
+        if (!invocation) return respond(false, { error: { code: "invalid-params", message: "a capability id is required" } });
+        return respond(true, { result: await handlers.invokeCapability(invocation.capability, invocation.resource) });
+      }
+      case "os.warnings.register": {
+        if (!handlers.warningRegister) return respond(false, { error: { code: "denied", message: "weather warnings unavailable" } });
+        return respond(true, { result: await handlers.warningRegister() });
+      }
+      case "os.warnings.publish":
+      case "os.warnings.test": {
+        const warnings = normalizeWarningPublish(message.params, message.method === "os.warnings.test");
+        if (!warnings) return respond(false, { error: { code: "invalid-params", message: "a valid warning batch is required" } });
+        if (!handlers.warningPublish) return respond(false, { error: { code: "denied", message: "weather warnings unavailable" } });
+        return respond(true, { result: await handlers.warningPublish(warnings) });
+      }
+      case "os.warnings.clear": {
+        const clear = normalizeWarningClear(message.params);
+        if (!clear) return respond(false, { error: { code: "invalid-params", message: "invalid warning ids" } });
+        if (!handlers.warningClear) return respond(false, { error: { code: "denied", message: "weather warnings unavailable" } });
+        return respond(true, { result: await handlers.warningClear(clear.ids) });
+      }
+      default:
+        return respond(false, { error: { code: "unknown-method", message: `unknown method: ${message.method}` } });
+    }
   } catch (error) {
     return respond(false, { error: { code: "failed", message: error instanceof Error ? error.message : String(error) } });
   }
+}
+
+const WARNING_ID = /^[A-Za-z0-9._:-]{1,64}$/;
+
+function normalizeWarningPublish(value: unknown, forceTest: boolean): BridgeWeatherWarning[] | null {
+  if (typeof value !== "object" || value === null) return null;
+  const record = value as Record<string, unknown>;
+  const keys = Object.keys(record);
+  if (keys.some((key) => key !== "warnings") || !Array.isArray(record.warnings)) return null;
+  if (record.warnings.length === 0 || record.warnings.length > 8) return null;
+  const ids = new Set<string>();
+  const warnings: BridgeWeatherWarning[] = [];
+  for (const entry of record.warnings) {
+    if (typeof entry !== "object" || entry === null) return null;
+    const warning = entry as Record<string, unknown>;
+    const allowed = new Set(["id", "level", "headline", "description", "region", "event", "severity", "sender", "instruction", "area", "effective", "expires", "test"]);
+    if (Object.keys(warning).some((key) => !allowed.has(key))) return null;
+    if (typeof warning.id !== "string" || !WARNING_ID.test(warning.id) || ids.has(warning.id)) return null;
+    if (typeof warning.level !== "string" || !(BRIDGE_WARNING_LEVELS as readonly string[]).includes(warning.level)) return null;
+    if (typeof warning.headline !== "string" || warning.headline.trim().length === 0 || warning.headline.length > 160) return null;
+    if (typeof warning.expires !== "number" || !Number.isFinite(warning.expires) || warning.expires <= 0) return null;
+    for (const key of ["description", "region", "event", "severity", "sender", "instruction", "area"] as const) {
+      if (warning[key] !== undefined && (typeof warning[key] !== "string" || warning[key].length > warningTextLimit(key))) return null;
+    }
+    if (warning.effective !== undefined && (typeof warning.effective !== "number" || !Number.isFinite(warning.effective) || warning.effective < 0)) return null;
+    if (warning.test !== undefined && typeof warning.test !== "boolean") return null;
+    ids.add(warning.id);
+    warnings.push({
+      id: warning.id,
+      level: warning.level as BridgeWarningLevel,
+      headline: warning.headline,
+      ...(typeof warning.description === "string" ? { description: warning.description } : {}),
+      ...(typeof warning.region === "string" ? { region: warning.region } : {}),
+      ...(typeof warning.event === "string" ? { event: warning.event } : {}),
+      ...(typeof warning.severity === "string" ? { severity: warning.severity } : {}),
+      ...(typeof warning.sender === "string" ? { sender: warning.sender } : {}),
+      ...(typeof warning.instruction === "string" ? { instruction: warning.instruction } : {}),
+      ...(typeof warning.area === "string" ? { area: warning.area } : {}),
+      ...(typeof warning.effective === "number" ? { effective: warning.effective } : {}),
+      expires: warning.expires,
+      ...(warning.test === true || forceTest ? { test: true } : {})
+    });
+  }
+  return warnings;
+}
+
+function warningTextLimit(key: "description" | "region" | "event" | "severity" | "sender" | "instruction" | "area"): number {
+  if (key === "description") return 2048;
+  if (key === "instruction") return 1024;
+  if (key === "area") return 512;
+  if (key === "region" || key === "event" || key === "sender") return 120;
+  return 64;
+}
+
+function normalizeWarningClear(value: unknown): { ids?: string[] } | null {
+  if (value === undefined) return {};
+  if (typeof value !== "object" || value === null) return null;
+  const record = value as Record<string, unknown>;
+  if (Object.keys(record).some((key) => key !== "ids")) return null;
+  if (record.ids === undefined) return {};
+  if (!Array.isArray(record.ids) || record.ids.length > 32) return null;
+  const ids: string[] = [];
+  for (const id of record.ids) {
+    if (typeof id !== "string" || !WARNING_ID.test(id)) return null;
+    ids.push(id);
+  }
+  return { ids };
 }
 
 function normalizeCapabilityInvocation(value: unknown): { capability: string; resource?: BridgeCapabilityResource } | null {
