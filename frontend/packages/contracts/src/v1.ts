@@ -8,6 +8,11 @@ export type WindowChromeVariant = "standard" | "compact";
 export type ShellLayoutVariant = "dock" | "taskbar";
 export type LauncherLayoutVariant = "springboard" | "drawer";
 export type ExtensionSlot = "dashboard_widgets";
+export type SurfaceSlot = "desktop" | "launcher" | "both";
+export type SurfaceKind = "companion" | "badge" | "panel";
+export type SurfacePlacement = "top-left" | "top-right" | "bottom-left" | "bottom-right";
+export type SurfaceTone = "accent" | "neutral" | "warm" | "cool" | "rose" | "mint";
+export type SurfaceIcon = "dot" | "star" | "bolt" | "leaf" | "moon" | "heart" | "orbit" | "pulse";
 export type ThemeTokenId =
   | "color.canvas.background"
   | "color.panel.background"
@@ -55,9 +60,12 @@ export interface ThemeManifestV1 {
   variants?: Partial<Record<ThemeVariantId, ThemeVariantValue>>;
 }
 
+export type ShellUserRole = "user" | "manager" | "administrator" | "owner";
+
 export interface ShellUser {
   displayName: string;
   locale: string;
+  role?: ShellUserRole;
 }
 
 export interface ShellApp {
@@ -104,6 +112,19 @@ export type ExtensionContribution =
       slot: ExtensionSlot;
       entrypoint: string;
       size?: "small" | "medium" | "large";
+    }
+  | {
+      kind: "surface";
+      id: string;
+      app: string;
+      title: string;
+      slot: SurfaceSlot;
+      surface: SurfaceKind;
+      size: "small" | "medium" | "large";
+      placement: SurfacePlacement;
+      tone: SurfaceTone;
+      icon: SurfaceIcon;
+      entrypoint?: string;
     };
 
 export interface ShellSnapshotV1 {
