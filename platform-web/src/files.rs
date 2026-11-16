@@ -8,7 +8,7 @@ use axum::{
     Router,
     body::Bytes,
     extract::{DefaultBodyLimit, Query, State},
-    http::{HeaderMap, StatusCode},
+    http::{HeaderMap, HeaderValue, StatusCode},
     response::{IntoResponse, Response},
     routing::get,
 };
@@ -61,10 +61,45 @@ async fn list(
     let Some(repo) = s.files.clone() else {
         return error(StatusCode::SERVICE_UNAVAILABLE);
     };
-    match tokio::task::spawn_blocking(move || repo.list(u, &p)).await {
-        Ok(Ok(items)) => {
-            let mut r=axum::Json(items.into_iter().map(|f|serde_json::json!({"id":f.id,"parent":f.parent,"name":f.name,"directory":f.directory,"size":f.size})).collect::<Vec<_>>()).into_response();
+    let limit = q
+        .get("limit")
+        .and_then(|value| value.parse::<usize>().ok())
+        .unwrap_or(200)
+        .clamp(1, 1000);
+    let offset = q
+        .get("offset")
+        .and_then(|value| value.parse::<usize>().ok())
+        .unwrap_or(0);
+    let search = q
+        .get("q")
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty() && value.len() <= 255);
+    match tokio::task::spawn_blocking(move || {
+        repo.list_page(u, &p, offset, limit, search.as_deref())
+    })
+    .await
+    {
+        Ok(Ok((items, total))) => {
+            let mut r = axum::Json(
+                items
+                    .into_iter()
+                    .map(|f| {
+                        serde_json::json!({
+                            "id": f.id,
+                            "parent": f.parent,
+                            "name": f.name,
+                            "directory": f.directory,
+                            "size": f.size,
+                            "children": f.children
+                        })
+                    })
+                    .collect::<Vec<_>>(),
+            )
+            .into_response();
             secure_headers(&mut r);
+            if let Ok(value) = HeaderValue::from_str(&total.to_string()) {
+                r.headers_mut().insert("x-total-count", value);
+            }
             r
         }
         Ok(Err(e)) => fail(e),

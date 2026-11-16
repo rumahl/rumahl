@@ -29,6 +29,27 @@ struct Workspace {
     launcher_view: Option<String>,
     #[serde(default)]
     appearance: Appearance,
+    #[serde(default)]
+    fullscreen_chrome: FullscreenChrome,
+}
+#[derive(Deserialize, Serialize)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+struct FullscreenChrome {
+    #[serde(default = "default_true")]
+    hide_topbar: bool,
+    #[serde(default = "default_true")]
+    hide_dock: bool,
+}
+impl Default for FullscreenChrome {
+    fn default() -> Self {
+        Self {
+            hide_topbar: true,
+            hide_dock: true,
+        }
+    }
+}
+fn default_true() -> bool {
+    true
 }
 #[derive(Deserialize, Serialize, Default)]
 #[serde(deny_unknown_fields, rename_all = "camelCase")]
@@ -53,6 +74,8 @@ struct Appearance {
     glass_quality: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     glass_reduced: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    mobile_nav_svg_glass: Option<bool>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     animations: Option<bool>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -304,6 +327,35 @@ mod appearance_tests {
         assert!(valid_appearance(&new));
         let stored = serde_json::to_value(&new).unwrap();
         assert_eq!(stored["autoColor"], true);
+    }
+
+    #[test]
+    fn fullscreen_chrome_defaults_on_and_roundtrips() {
+        let old: Workspace = serde_json::from_str(
+            r#"{"version":1,"windows":[],"folders":[],"appearance":{"tokens":{}}}"#,
+        )
+        .unwrap();
+        assert!(old.fullscreen_chrome.hide_topbar);
+        assert!(old.fullscreen_chrome.hide_dock);
+
+        let custom: Workspace = serde_json::from_str(
+            r#"{"version":1,"windows":[],"folders":[],"appearance":{"tokens":{}},"fullscreenChrome":{"hideTopbar":false,"hideDock":true}}"#,
+        )
+        .unwrap();
+        assert!(!custom.fullscreen_chrome.hide_topbar);
+        assert!(custom.fullscreen_chrome.hide_dock);
+        let stored = serde_json::to_value(&custom).unwrap();
+        assert_eq!(stored["fullscreenChrome"]["hideTopbar"], false);
+    }
+
+    #[test]
+    fn mobile_nav_svg_glass_roundtrips() {
+        let value: Appearance =
+            serde_json::from_str(r#"{"mobileNavSvgGlass":true,"tokens":{}}"#).unwrap();
+        assert_eq!(value.mobile_nav_svg_glass, Some(true));
+        assert!(valid_appearance(&value));
+        let stored = serde_json::to_value(&value).unwrap();
+        assert_eq!(stored["mobileNavSvgGlass"], true);
     }
 
     #[test]

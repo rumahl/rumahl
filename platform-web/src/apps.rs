@@ -157,6 +157,16 @@ pub trait AppProvider: Send + Sync + 'static {
         identity: ShellIdentity,
         installation: InstallationId,
     ) -> Result<String, AppAccessError>;
+    /// Resolves a Tier B surface declaration to its signed web entrypoint.
+    /// Fails closed when the app has no such surface or it is data-only.
+    fn surface_entrypoint(
+        &self,
+        _identity: ShellIdentity,
+        _installation: InstallationId,
+        _surface: &str,
+    ) -> Result<String, AppAccessError> {
+        Err(AppAccessError::Denied)
+    }
     fn asset(
         &self,
         identity: ShellIdentity,
@@ -232,6 +242,8 @@ pub trait AppProvider: Send + Sync + 'static {
 struct Lease {
     identity: ShellIdentity,
     installation: InstallationId,
+    /// `Some` for a Tier B surface lease; `None` for a normal window lease.
+    surface: Option<String>,
     expires: Instant,
 }
 pub struct AppAccess {
@@ -243,6 +255,12 @@ pub struct AppAccess {
 }
 pub struct AppLaunch {
     pub app: CatalogApp,
+    pub lease: String,
+    pub frame_url: String,
+}
+pub struct SurfaceLaunch {
+    pub app: CatalogApp,
+    pub surface: String,
     pub lease: String,
     pub frame_url: String,
 }
@@ -408,7 +426,9 @@ impl AppAccess {
             leases
                 .get(previous)
                 .filter(|lease| {
-                    lease.identity == identity && lease.installation == app.installation_id
+                    lease.identity == identity
+                        && lease.installation == app.installation_id
+                        && lease.surface.is_none()
                 })
                 .ok_or(AppAccessError::Denied)?;
             previous.to_owned()
@@ -431,6 +451,7 @@ impl AppAccess {
             Lease {
                 identity,
                 installation: app.installation_id,
+                surface: None,
                 expires: now + Duration::from_secs(90),
             },
         );
@@ -444,6 +465,74 @@ impl AppAccess {
             frame_url,
         })
     }
+    pub fn surface(
+        &self,
+        identity: ShellIdentity,
+        installation: &str,
+        surface_id: &str,
+        previous: Option<&str>,
+    ) -> Result<SurfaceLaunch, AppAccessError> {
+        rumahl_core::ContributionId::parse(surface_id).map_err(|_| AppAccessError::Denied)?;
+        let app = self
+            .catalog(identity)?
+            .into_iter()
+            .find(|app| app.installation_id.to_string() == installation && app.launchable)
+            .ok_or(AppAccessError::Denied)?;
+        let entry = self
+            .provider
+            .surface_entrypoint(identity, app.installation_id, surface_id)?;
+        PackagePath::parse(&entry).map_err(|_| AppAccessError::Unavailable)?;
+        let mut leases = self
+            .leases
+            .lock()
+            .map_err(|_| AppAccessError::Unavailable)?;
+        let now = Instant::now();
+        leases.retain(|_, lease| lease.expires > now);
+        let token = if let Some(previous) = previous {
+            leases
+                .get(previous)
+                .filter(|lease| {
+                    lease.identity == identity
+                        && lease.installation == app.installation_id
+                        && lease.surface.as_deref() == Some(surface_id)
+                })
+                .ok_or(AppAccessError::Denied)?;
+            previous.to_owned()
+        } else {
+            if leases.len() >= 1024
+                || leases
+                    .values()
+                    .filter(|lease| lease.identity == identity)
+                    .count()
+                    >= 32
+            {
+                return Err(AppAccessError::Unavailable);
+            }
+            let mut random = [0_u8; 32];
+            rand::rng().fill_bytes(&mut random);
+            random.iter().map(|byte| format!("{byte:02x}")).collect()
+        };
+        leases.insert(
+            token.clone(),
+            Lease {
+                identity,
+                installation: app.installation_id,
+                surface: Some(surface_id.to_owned()),
+                expires: now + Duration::from_secs(90),
+            },
+        );
+        let frame_url = format!(
+            "https://{}/launch/{token}/{entry}",
+            self.authority(app.installation_id)
+        );
+        Ok(SurfaceLaunch {
+            app,
+            surface: surface_id.to_owned(),
+            lease: token,
+            frame_url,
+        })
+    }
+
     pub fn resource(&self, host: &str, path: &str) -> Result<AppAsset, AppAccessError> {
         let rest = path
             .strip_prefix("/launch/")
@@ -577,6 +666,21 @@ mod tests {
             _: InstallationId,
         ) -> Result<String, AppAccessError> {
             Ok("web/index.html".into())
+        }
+        fn surface_entrypoint(
+            &self,
+            identity: ShellIdentity,
+            installation: InstallationId,
+            surface: &str,
+        ) -> Result<String, AppAccessError> {
+            if identity == self.owner
+                && installation == self.installation
+                && surface == "com.rumahl.test.desktop"
+            {
+                Ok("web/surface.html".into())
+            } else {
+                Err(AppAccessError::Denied)
+            }
         }
         fn asset(
             &self,
@@ -957,6 +1061,115 @@ mod tests {
                     },
                     "com.rumahl.test",
                     &installation.to_string()
+                )
+                .is_err()
+        );
+    }
+    #[test]
+    fn surface_leases_are_bound_to_the_surface_and_app() {
+        let owner = ShellIdentity {
+            user_id: UserId::new(),
+            session_id: SessionId::new(),
+        };
+        let installation = InstallationId::new();
+        let access = AppAccess::new(
+            Arc::new(Provider {
+                owner,
+                installation,
+            }),
+            &Url::parse("https://localhost:8443").unwrap(),
+            "apps.localhost",
+        )
+        .unwrap();
+
+        let launch = access
+            .launch(owner, "com.rumahl.test", &installation.to_string(), None)
+            .unwrap();
+        let surface = access
+            .surface(
+                owner,
+                &installation.to_string(),
+                "com.rumahl.test.desktop",
+                None,
+            )
+            .unwrap();
+        assert_eq!(surface.surface, "com.rumahl.test.desktop");
+        assert_eq!(surface.lease.len(), 64);
+        assert!(
+            surface
+                .frame_url
+                .ends_with(&format!("/launch/{}/web/surface.html", surface.lease)[..])
+        );
+
+        let renewed = access
+            .surface(
+                owner,
+                &installation.to_string(),
+                "com.rumahl.test.desktop",
+                Some(&surface.lease),
+            )
+            .unwrap();
+        assert_eq!(renewed.lease, surface.lease);
+
+        assert!(
+            access
+                .surface(
+                    owner,
+                    &installation.to_string(),
+                    "com.rumahl.test.desktop",
+                    Some(&launch.lease),
+                )
+                .is_err()
+        );
+        assert!(
+            access
+                .surface(
+                    owner,
+                    &installation.to_string(),
+                    "com.rumahl.test.missing",
+                    None
+                )
+                .is_err()
+        );
+    }
+
+    #[test]
+    fn surface_token_resolves_only_on_its_app_origin() {
+        let owner = ShellIdentity {
+            user_id: UserId::new(),
+            session_id: SessionId::new(),
+        };
+        let installation = InstallationId::new();
+        let access = AppAccess::new(
+            Arc::new(Provider {
+                owner,
+                installation,
+            }),
+            &Url::parse("https://localhost:8443").unwrap(),
+            "apps.localhost",
+        )
+        .unwrap();
+        let surface = access
+            .surface(
+                owner,
+                &installation.to_string(),
+                "com.rumahl.test.desktop",
+                None,
+            )
+            .unwrap();
+        let authority = format!("{installation}.apps.localhost:8443");
+        let asset = access
+            .resource(
+                &authority,
+                &format!("/launch/{}/web/surface.html", surface.lease),
+            )
+            .unwrap();
+        assert_eq!(asset.content_type, "text/html; charset=utf-8");
+        assert!(
+            access
+                .resource(
+                    "other.apps.localhost:8443",
+                    &format!("/launch/{}/web/surface.html", surface.lease)
                 )
                 .is_err()
         );
