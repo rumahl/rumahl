@@ -5,6 +5,7 @@
 //! the public core constructors before platform recovery can commit it.
 
 mod account_repository;
+mod account_roles;
 mod app_database_provider;
 mod app_operation_repository;
 mod audit_log;
@@ -26,6 +27,7 @@ mod session_credential_repository;
 mod wire;
 
 pub use account_repository::{SqliteAccountStateRepository, SqliteAccountStateRepositoryError};
+pub use account_roles::{AccountRoleError, SqliteAccountRoles};
 pub use app_database_provider::{SqliteAppDatabaseProvider, SqliteAppDatabaseProviderError};
 pub use app_operation_repository::{
     SqliteAppOperationRepository, SqliteAppOperationRepositoryError,
@@ -63,3 +65,5 @@ mod shell_preferences;
 pub use shell_preferences::SqliteShellPreferences;
 mod personal_files;
 pub use personal_files::SqlitePersonalFiles;
+mod weather_warnings;
+pub use weather_warnings::SqliteWeatherWarnings;

@@ -63,6 +63,35 @@ fn documents_are_owned_durable_bounded_and_moves_cannot_create_cycles() {
     assert!(repo.list(a, "root").unwrap().is_empty());
 }
 #[test]
+fn lists_paginated_and_filtered_pages() {
+    let temp = tempfile::tempdir().unwrap();
+    let repo = SqlitePersonalFiles::open(temp.path().join("files.sqlite")).unwrap();
+    let user = UserId::new();
+    for name in ["Alpha", "Beta", "Gamma", "Delta", "Epsilon"] {
+        repo.create(user, "root", name, Some(Vec::new())).unwrap();
+    }
+
+    let (first, total) = repo.list_page(user, "root", 0, 2, None).unwrap();
+    assert_eq!(total, 5);
+    assert_eq!(first.len(), 2);
+    assert_eq!(first[0].name, "Alpha");
+    assert_eq!(first[1].name, "Beta");
+
+    let (second, total) = repo.list_page(user, "root", 2, 2, None).unwrap();
+    assert_eq!(total, 5);
+    assert_eq!(second.len(), 2);
+    assert_eq!(second[0].name, "Delta");
+
+    let (filtered, filtered_total) = repo.list_page(user, "root", 0, 10, Some("A")).unwrap();
+    assert_eq!(filtered_total, 4);
+    assert!(
+        filtered
+            .iter()
+            .all(|file| file.name.to_lowercase().contains('a'))
+    );
+}
+
+#[test]
 fn workspaces_inherit_isolate_and_compare_revisions() {
     let temp = tempfile::tempdir().unwrap();
     let path = temp.path().join("prefs.sqlite");
