@@ -61,7 +61,7 @@
 }
 .rumahl-group__copy p {
   margin: 5px 0 0;
-  font-size: 10.5px;
+  font-size: 12px;
   line-height: 1.35;
   color: var(--rumahl-ui-color-text-muted);
 }
@@ -108,7 +108,7 @@
   color: var(--rumahl-ui-color-text-primary);
 }
 .rumahl-group__link-text small {
-  font-size: 11.5px;
+  font-size: 12px;
   color: var(--rumahl-ui-color-text-muted);
 }
 .rumahl-group__link-chevron { color: var(--rumahl-ui-color-text-muted); font-size: 17px; line-height: 1; }

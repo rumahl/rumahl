@@ -136,6 +136,15 @@ export function ShieldIcon(props: IconProps) {
   );
 }
 
+export function UserIcon(props: IconProps) {
+  return (
+    <IconBase {...props}>
+      <circle cx="12" cy="8" r="3.5" />
+      <path d="M5 20a7 7 0 0 1 14 0" />
+    </IconBase>
+  );
+}
+
 export function DesktopIcon(props: IconProps) {
   return <IconBase {...props}><rect x="3" y="4" width="18" height="13" rx="2" /><path d="M12 17v4M8 21h8" /></IconBase>;
 }

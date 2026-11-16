@@ -156,7 +156,7 @@
 }
 .rumahl-toggle-tile__icon svg { width: 18px; height: 18px; }
 .rumahl-toggle-tile__label { font-weight: 600; }
-.rumahl-toggle-tile__description { font-size: 11px; opacity: 0.8; }
+.rumahl-toggle-tile__description { font-size: 12px; opacity: 0.8; }
 
 /* Toolbar ------------------------------------------------------------------ */
 /* Toolbar uses the same island recipe as the top bar / menu bar. */
