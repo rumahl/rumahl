@@ -25,10 +25,21 @@ export function Breadcrumb({ nav, onNavigate }: { nav: Nav; onNavigate: (next: N
           next: { place: nav.place, trail: [ROOT], segments: nav.segments.slice(0, position + 1) } as Nav,
         }));
   return <nav className="files-crumbs" aria-label={t("files.path")}>
-    <button type="button" onClick={() => onNavigate(root)}>{t(placeLabelKey(nav.place))}</button>
-    {parts.map((part) => <span key={part.key} className="files-crumbs__item">
-      <ChevronRightIcon className="files-crumbs__sep" />
-      <button type="button" onClick={() => onNavigate(part.next)}>{part.name}</button>
-    </span>)}
+    <button
+      type="button"
+      className="files-crumbs__root"
+      aria-current={parts.length === 0 ? "page" : undefined}
+      onClick={() => onNavigate(root)}>{t(placeLabelKey(nav.place))}</button>
+    {parts.map((part, position) => {
+      const current = position === parts.length - 1;
+      return <span key={part.key} className={`files-crumbs__item${current ? " files-crumbs__item--current" : ""}`}>
+        <ChevronRightIcon className="files-crumbs__sep" />
+        <button
+          type="button"
+          title={part.name}
+          aria-current={current ? "page" : undefined}
+          onClick={() => onNavigate(part.next)}>{part.name}</button>
+      </span>;
+    })}
   </nav>;
 }

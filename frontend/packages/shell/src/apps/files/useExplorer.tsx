@@ -8,18 +8,27 @@ import { fetchHostList, hostContentUrl } from "../fsClient";
 import { extensionOf, fileAssociation } from "./fileTypes";
 import { freshStore, ROOT, type Item, type Nav } from "./types";
 
-export type ExplorerError = "conflict" | "limit" | "missing" | "unavailable";
+export type ExplorerError = "conflict" | "folderNotEmpty" | "limit" | "missing" | "unavailable";
 export interface OpenError { name: string; extension: string; program?: string }
 
 export interface DesktopSources { apps: readonly ShellApp[]; folders: readonly AppFolder[] }
-export interface ExplorerOptions { desktop?: DesktopSources; openApp?: (path: string) => void; desktopKey?: string }
+export interface ExplorerOptions {
+  desktop?: DesktopSources;
+  openApp?: (path: string) => void;
+  desktopKey?: string;
+  /** Zero-based page for the personal store (server-side) and local fallbacks. */
+  page?: number;
+  pageSize?: number;
+  /** Name filter; the personal store applies it server-side. */
+  search?: string;
+}
 
 function fail(status: number): ExplorerError {
   return status === 409 ? "conflict" : status === 413 ? "limit" : status === 404 ? "missing" : "unavailable";
 }
 function mapError(cause: unknown): ExplorerError {
   const message = cause instanceof Error ? cause.message : "";
-  return message === "conflict" || message === "limit" || message === "missing" ? message : "unavailable";
+  return message === "conflict" || message === "folderNotEmpty" || message === "limit" || message === "missing" ? message : "unavailable";
 }
 
 /**
@@ -30,6 +39,9 @@ function mapError(cause: unknown): ExplorerError {
  */
 export function useExplorer(request: ShellRequest | null, device: string, advanced: boolean, options: ExplorerOptions = {}) {
   const { desktop, openApp, desktopKey } = options;
+  const page = options.page ?? 0;
+  const pageSize = options.pageSize ?? 200;
+  const search = options.search ?? "";
   // The desktop sources are read through a ref so the listing effect can key on
   // the stable `desktopKey` string instead of the object identity (avoids loops).
   const desktopRef = useRef(desktop);
@@ -38,14 +50,18 @@ export function useExplorer(request: ShellRequest | null, device: string, advanc
   const [index, setIndex] = useState(0);
   const nav = history[Math.min(index, history.length - 1)]!;
   const [entries, setEntries] = useState<Item[]>([]);
+  const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<ExplorerError | null>(null);
   const [openError, setOpenError] = useState<OpenError | null>(null);
   const [busy, setBusy] = useState(false);
   const [revision, setRevision] = useState(0);
+  const [desktopFolderId, setDesktopFolderId] = useState<string | null>(null);
   const loadedView = useRef("");
 
   const isStore = nav.place.kind === "store";
+  const isDesktopRoot = nav.place.kind === "desktop" && nav.trail.length === 0;
+  const isWritable = isStore || isDesktopRoot;
   const storeParent = nav.trail.at(-1)?.id ?? "root";
 
   const go = useCallback((next: Nav) => {
@@ -67,7 +83,20 @@ export function useExplorer(request: ShellRequest | null, device: string, advanc
   }, [nav, go]);
 
   useEffect(() => {
-    if (!request || (nav.place.kind === "host" && !advanced)) {
+    if (nav.place.kind === "host" && !advanced) {
+      // Demoting out of advanced mode must never leave privileged host entries
+      // on screen. Rewind to the personal store root without adding history.
+      setEntries([]);
+      setTotal(0);
+      setError(null);
+      setOpenError(null);
+      setLoading(true);
+      loadedView.current = "";
+      setHistory([freshStore()]);
+      setIndex(0);
+      return;
+    }
+    if (!request) {
       setLoading(false);
       return;
     }
@@ -75,23 +104,34 @@ export function useExplorer(request: ShellRequest | null, device: string, advanc
     // A revision bump is an automatic background refresh (desktop polling or
     // a completed mutation). Keep the current listing visible and only swap it
     // once the fresh data arrives; only real view changes show the loader.
-    const view = `${JSON.stringify(nav)}|${advanced}|${device}|${desktopKey ?? ""}`;
+    const view = `${JSON.stringify(nav)}|${advanced}|${device}|${desktopKey ?? ""}|${page}|${pageSize}|${search}`;
     const background = loadedView.current === view;
     if (!background) {
       setLoading(true);
       setError(null);
       setEntries([]);
+      setTotal(0);
     }
     if (nav.place.kind === "store") {
       const parent = nav.trail.at(-1)?.id ?? "root";
-      void request(`/api/v1/files?parent=${parent}`, { signal: controller.signal, credentials: "same-origin", cache: "no-store" })
+      const params = new URLSearchParams({
+        parent,
+        limit: String(pageSize),
+        offset: String(page * pageSize),
+      });
+      const query = search.trim();
+      if (query) params.set("q", query);
+      void request(`/api/v1/files?${params}`, { signal: controller.signal, credentials: "same-origin", cache: "no-store" })
         .then(async (response) => {
           if (!response.ok) throw new Error(fail(response.status));
-          const value = (await response.json()) as { id: string; name: string; directory: boolean; size: number }[];
-          if (!Array.isArray(value) || value.length > 1000) throw new Error("unavailable");
+          const value = (await response.json()) as { id: string; name: string; directory: boolean; size: number; children?: number }[];
+          if (!Array.isArray(value)) throw new Error("unavailable");
           if (!controller.signal.aborted) {
             loadedView.current = view;
-            setEntries(value.map((file) => ({ key: file.id, name: file.name, directory: file.directory, size: file.size, modified: 0, host: false })));
+            const header = response.headers?.get("x-total-count") ?? null;
+            const parsed = header === null ? Number.NaN : Number(header);
+            setTotal(Number.isFinite(parsed) ? parsed : page * pageSize + value.length);
+            setEntries(value.map((file) => ({ key: file.id, name: file.name, directory: file.directory, size: file.size, children: file.children ?? 0, modified: 0, host: false })));
           }
         })
         .catch((cause) => { if (!controller.signal.aborted && !background) setError(mapError(cause)); })
@@ -103,8 +143,11 @@ export function useExplorer(request: ShellRequest | null, device: string, advanc
       void fetchHostList(request, area, base, device, controller.signal)
         .then((list) => {
           if (controller.signal.aborted) return;
+          const needle = search.trim().toLowerCase();
+          const filtered = needle ? list.filter((entry) => entry.name.toLowerCase().includes(needle)) : list;
           loadedView.current = view;
-          setEntries(list.map((entry) => {
+          setTotal(filtered.length);
+          setEntries(filtered.slice(page * pageSize, (page + 1) * pageSize).map((entry) => {
             const app = area === "apps" && !base && entry.directory ? appById.get(entry.name) : undefined;
             return {
               key: [base, entry.name].filter(Boolean).join("/"),
@@ -130,28 +173,49 @@ export function useExplorer(request: ShellRequest | null, device: string, advanc
           const app = sources?.apps.find((entry) => entry.id === id);
           if (app) virtual.push({ key: `app:${app.id}`, name: app.title, directory: false, size: 0, modified: 0, host: false, appPath: app.path, icon: <AppIcon app={app} /> });
         }
+        const needle = search.trim().toLowerCase();
+        const filtered = needle ? virtual.filter((entry) => entry.name.toLowerCase().includes(needle)) : virtual;
         loadedView.current = view;
-        setEntries(virtual);
+        setTotal(filtered.length);
+        setEntries(filtered.slice(page * pageSize, (page + 1) * pageSize));
         setLoading(false);
       } else {
         const filed = new Set((sources?.folders ?? []).flatMap((folderItem) => folderItem.apps));
-        for (const folderItem of sources?.folders ?? []) virtual.push({ key: `folder:${folderItem.id}`, name: folderItem.name, directory: true, size: 0, modified: 0, host: false, appFolder: true });
+        for (const folderItem of sources?.folders ?? []) virtual.push({ key: `folder:${folderItem.id}`, name: folderItem.name, directory: true, size: 0, children: folderItem.apps.length, modified: 0, host: false, appFolder: true });
         for (const app of sources?.apps ?? []) if (!filed.has(app.id)) virtual.push({ key: `app:${app.id}`, name: app.title, directory: false, size: 0, modified: 0, host: false, appPath: app.path, icon: <AppIcon app={app} /> });
         void ensureDesktopFolder(request).then(async (id) => {
+          if (id) setDesktopFolderId(id);
           let files: Item[] = [];
           if (id) {
-            const response = await request(`/api/v1/files?parent=${id}`, { signal: controller.signal, credentials: "same-origin", cache: "no-store" });
+            const response = await request(`/api/v1/files?parent=${id}&limit=1000&offset=0`, { signal: controller.signal, credentials: "same-origin", cache: "no-store" });
             if (response.ok) {
-              const value = (await response.json()) as { id: string; name: string; directory: boolean; size: number }[];
-              if (Array.isArray(value)) files = value.map((file) => ({ key: file.id, name: file.name, directory: file.directory, size: file.size, modified: 0, host: false }));
+              const value = (await response.json()) as { id: string; name: string; directory: boolean; size: number; children?: number }[];
+              if (Array.isArray(value)) files = value.map((file) => ({ key: file.id, name: file.name, directory: file.directory, size: file.size, children: file.children ?? 0, modified: 0, host: false }));
             }
           }
-          if (!controller.signal.aborted) { loadedView.current = view; setEntries([...virtual, ...files]); setLoading(false); }
-        }).catch(() => { if (!controller.signal.aborted) { loadedView.current = view; setEntries(virtual); setLoading(false); } });
+          if (!controller.signal.aborted) {
+            const needle = search.trim().toLowerCase();
+            const combined = [...virtual, ...files];
+            const filtered = needle ? combined.filter((entry) => entry.name.toLowerCase().includes(needle)) : combined;
+            loadedView.current = view;
+            setTotal(filtered.length);
+            setEntries(filtered.slice(page * pageSize, (page + 1) * pageSize));
+            setLoading(false);
+          }
+        }).catch(() => {
+          if (!controller.signal.aborted) {
+            const needle = search.trim().toLowerCase();
+            const filtered = needle ? virtual.filter((entry) => entry.name.toLowerCase().includes(needle)) : virtual;
+            loadedView.current = view;
+            setTotal(filtered.length);
+            setEntries(filtered.slice(page * pageSize, (page + 1) * pageSize));
+            setLoading(false);
+          }
+        });
       }
     }
     return () => controller.abort();
-  }, [request, nav, advanced, device, revision, desktopKey]);
+  }, [request, nav, advanced, device, revision, desktopKey, page, pageSize, search]);
 
   // Keep the real desktop files in sync while the desktop place is open.
   useEffect(() => {
@@ -160,16 +224,27 @@ export function useExplorer(request: ShellRequest | null, device: string, advanc
     return () => clearInterval(timer);
   }, [nav.place.kind]);
 
-  const mutate = useCallback(async (method: string, query: Record<string, string>, body?: File) => {
-    if (!request || busy) return;
+  const writeParent = useCallback(async (): Promise<string | null> => {
+    if (isStore) return storeParent;
+    if (!isDesktopRoot || !request) return null;
+    if (desktopFolderId) return desktopFolderId;
+    const id = await ensureDesktopFolder(request);
+    if (id) setDesktopFolderId(id);
+    return id;
+  }, [isStore, storeParent, isDesktopRoot, request, desktopFolderId]);
+
+  const mutate = useCallback(async (method: string, query: Record<string, string>, body?: File): Promise<boolean> => {
+    if (!request || busy) return false;
     setBusy(true);
     setError(null);
     try {
       const response = await request(`/api/v1/files?${new URLSearchParams(query)}`, { method, credentials: "same-origin", headers: { "Content-Type": "application/octet-stream" }, ...(body ? { body } : {}) });
       if (!response.ok) throw new Error(fail(response.status));
       setRevision((value) => value + 1);
+      return true;
     } catch (cause) {
       setError(mapError(cause));
+      return false;
     } finally {
       setBusy(false);
     }
@@ -208,9 +283,42 @@ export function useExplorer(request: ShellRequest | null, device: string, advanc
     link.click();
   }, [nav, device]);
 
+  const removeMany = useCallback(async (ids: readonly string[]): Promise<boolean> => {
+    if (!request || ids.length === 0) return false;
+    setBusy(true);
+    setError(null);
+    let removed = 0;
+    try {
+      // Serialized rather than fire-and-forget: every delete settles before the
+      // next request, so a mid-batch failure leaves a predictable partial state.
+      for (const id of ids) {
+        const response = await request(`/api/v1/files?${new URLSearchParams({ id })}`, {
+          method: "DELETE",
+          credentials: "same-origin",
+          headers: { "Content-Type": "application/octet-stream" }
+        });
+        if (!response.ok) {
+          // Deleting by id has no name conflict: a 409 on a directory means the
+          // folder still has children. Keep the generic conflict copy for files.
+          const directory = entries.some((entry) => entry.key === id && entry.directory);
+          throw new Error(response.status === 409 && directory ? "folderNotEmpty" : fail(response.status));
+        }
+        removed += 1;
+      }
+      return true;
+    } catch (cause) {
+      setError(mapError(cause));
+      return false;
+    } finally {
+      if (removed > 0) setRevision((value) => value + 1);
+      setBusy(false);
+    }
+  }, [request, entries]);
+
   return {
     nav,
     entries,
+    total,
     loading,
     error,
     openError,
@@ -229,12 +337,35 @@ export function useExplorer(request: ShellRequest | null, device: string, advanc
     up,
     clearError: () => setError(null),
     refresh: () => setRevision((value) => value + 1),
-    createFolder: (name: string) => mutate("POST", { parent: storeParent, name, directory: "true" }),
-    createFile: (name: string) => mutate("POST", { parent: storeParent, name, directory: "false" }),
-    upload: (file: File) => file.size > 16 * 1024 * 1024 ? setError("limit") : mutate("POST", { parent: storeParent, name: file.name, directory: "false" }, file),
-    rename: (id: string, name: string) => mutate("PUT", { id, parent: storeParent, name }),
-    remove: (id: string) => mutate("DELETE", { id }),
-    move: (id: string, name: string) => mutate("PUT", { id, parent: storeParent, name }),
+    isWritable,
+    createFolder: async (name: string) => {
+      const parent = await writeParent();
+      if (!parent) { setError("unavailable"); return false; }
+      return mutate("POST", { parent, name, directory: "true" });
+    },
+    createFile: async (name: string) => {
+      const parent = await writeParent();
+      if (!parent) { setError("unavailable"); return false; }
+      return mutate("POST", { parent, name, directory: "false" });
+    },
+    upload: async (file: File) => {
+      if (file.size > 16 * 1024 * 1024) return setError("limit");
+      const parent = await writeParent();
+      if (!parent) return setError("unavailable");
+      await mutate("POST", { parent, name: file.name, directory: "false" }, file);
+    },
+    rename: async (id: string, name: string) => {
+      const parent = await writeParent();
+      if (!parent) return setError("unavailable");
+      await mutate("PUT", { id, parent, name });
+    },
+    remove: (id: string) => removeMany([id]),
+    removeMany,
+    move: async (id: string, name: string) => {
+      const parent = await writeParent();
+      if (!parent) return setError("unavailable");
+      await mutate("PUT", { id, parent, name });
+    },
     relocate: (id: string, name: string, parent: string) => mutate("PUT", { id, parent, name }),
   };
 }

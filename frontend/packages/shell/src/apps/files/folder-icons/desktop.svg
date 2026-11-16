@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<svg width="847.11389" height="694.37866" viewBox="0 0 224.13221 183.72102" version="1.1" id="svg1" xml:space="preserve" xmlns:xlink="http://www.w3.org/1999/xlink" xmlns="http://www.w3.org/2000/svg" xmlns:svg="http://www.w3.org/2000/svg">
+  <defs id="defs1">
+    <linearGradient id="linearGradient2">
+      <stop style="stop-color:#2c7174;stop-opacity:1;" offset="0" id="stop2" />
+      <stop style="stop-color:#00404c;stop-opacity:1;" offset="1" id="stop3" />
+    </linearGradient>
+    <linearGradient id="swatch55"><stop style="stop-color:#cdcdcd;stop-opacity:1;" offset="0" id="stop56" /></linearGradient>
+    <linearGradient xlink:href="#linearGradient2" id="linearGradient3" x1="-965.24139" y1="503.02271" x2="-785.26208" y2="294.23175" gradientUnits="userSpaceOnUse" />
+  </defs>
+  <g id="layer1" transform="translate(514.80928,967.48639)">
+    <rect style="fill:url(#linearGradient3);fill-opacity:1;stroke-width:0.264583" id="rect16-0-68" width="183.72107" height="224.13222" x="-967.48645" y="290.67706" ry="38.136852" transform="rotate(90)" />
+    <rect style="fill:#f9f9f9;fill-opacity:1;stroke-width:0.0684059" id="rect16-0-68-8" width="18.413126" height="149.48456" x="-816.7442" y="327.12668" ry="7.089911" transform="rotate(90)" />
+    <rect style="fill:#f9f9f9;fill-opacity:1;stroke-width:0.0262073" id="rect16-0-68-8-5" width="20" height="20.200001" x="-940.85834" y="474.04166" ry="6.825418" transform="rotate(90)" />
+    <rect style="fill:#f9f9f9;fill-opacity:1;stroke-width:0.0262073" id="rect16-0-68-8-5-3" width="20" height="20.200001" x="-913.34167" y="474.04166" ry="6.825418" transform="rotate(90)" />
+    <rect style="fill:#f9f9f9;fill-opacity:1;stroke-width:0.0262073" id="rect16-0-68-8-5-3-3" width="20" height="20.200001" x="-883.1792" y="474.04166" ry="6.825418" transform="rotate(90)" />
+    <rect style="fill:#f9f9f9;fill-opacity:1;stroke-width:0.0262073" id="rect16-0-68-8-5-3-3-7" width="20" height="20.200001" x="-940.85834" y="444.40833" ry="6.825418" transform="rotate(90)" />
+    <rect style="fill:#f9f9f9;fill-opacity:1;stroke-width:0.0262073" id="rect16-0-68-8-5-3-3-7-9" width="20" height="20.200001" x="-913.34167" y="444.40833" ry="6.825418" transform="rotate(90)" />
+    <rect style="fill:#f9f9f9;fill-opacity:1;stroke-width:0.0262073" id="rect16-0-68-8-5-3-3-7-9-2" width="20" height="20.200001" x="-883.1792" y="444.40833" ry="6.825418" transform="rotate(90)" />
+  </g>
+</svg>

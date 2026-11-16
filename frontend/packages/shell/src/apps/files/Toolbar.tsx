@@ -1,9 +1,10 @@
-import { SearchIcon } from "../../icons";
 import { useI18n } from "../../i18n";
-import { ArrowLeftIcon, ArrowRightIcon, ArrowUpIcon, FilePlusIcon, GridViewIcon, ListViewIcon, MoveIcon, PlusIcon, UploadIcon } from "./icons";
+import { ArrowLeftIcon, ArrowRightIcon, ArrowUpIcon, FilePlusIcon, MoveIcon, PlusIcon, UploadIcon } from "./icons";
+import { SearchField } from "./SearchField";
+import { ViewSwitch } from "./ViewSwitch";
 
 export interface ToolbarProps {
-  isStore: boolean;
+  writable: boolean;
   canBack: boolean;
   canForward: boolean;
   canUp: boolean;
@@ -30,7 +31,7 @@ export function Toolbar(props: ToolbarProps) {
       <button className="btn files-icon-btn" type="button" disabled={!props.canForward} onClick={props.onForward} aria-label={t("files.forward")} title={t("files.forward")}><ArrowRightIcon /></button>
       <button className="btn files-icon-btn" type="button" disabled={!props.canUp} onClick={props.onUp} aria-label={t("files.up")} title={t("files.up")}><ArrowUpIcon /></button>
     </div>
-    {props.isStore
+    {props.writable
       ? <div className="files-toolbar__group files-toolbar__group--actions">
           <button className="btn files-icon-btn files-action-btn" type="button" disabled={props.busy} onClick={props.onNewFolder} aria-label={t("files.newFolder")} title={t("files.newFolder")}><PlusIcon /><span className="files-action-label">{t("files.newFolder")}</span></button>
           <button className="btn files-icon-btn files-action-btn" type="button" disabled={props.busy} onClick={props.onNewFile} aria-label={t("files.newFile")} title={t("files.newFile")}><FilePlusIcon /><span className="files-action-label">{t("files.newFile")}</span></button>
@@ -42,17 +43,7 @@ export function Toolbar(props: ToolbarProps) {
         </div>
       : <span className="files-readonly">{t("files.readOnly")}</span>}
     <span className="files-toolbar__spacer" />
-    <label className="files-search">
-      <SearchIcon className="files-search__icon" />
-      <input aria-label={t("files.search")} value={props.search} onChange={(event) => props.onSearch(event.target.value)} placeholder={t("files.search")} maxLength={255} />
-    </label>
-    <label className="files-view-switch" title={`${t("files.grid")} / ${t("files.list")}`}>
-      <input type="checkbox" role="switch" aria-label={`${t("files.grid")} / ${t("files.list")}`} checked={props.view === "list"} onChange={event => props.onView(event.target.checked ? "list" : "grid")} />
-      <span className="files-view-switch__track">
-        <span className="files-view-switch__thumb" aria-hidden="true" />
-        <span className="files-view-switch__icon files-view-switch__icon--grid"><GridViewIcon /></span>
-        <span className="files-view-switch__icon files-view-switch__icon--list"><ListViewIcon /></span>
-      </span>
-    </label>
+    <SearchField className="files-search" value={props.search} onChange={props.onSearch} />
+    <ViewSwitch view={props.view} onView={props.onView} />
   </div>;
 }
