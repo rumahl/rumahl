@@ -1,0 +1,1728 @@
+/*
+ * Abyss — the Jellyfin theme by AumGupta, translated to rumahl OS.
+ * https://github.com/AumGupta/abyss-jellyfin
+ *
+ * The signatures of Abyss, kept together here:
+ *   - the backdrop artwork is blurred hard and dimmed to a murky room
+ *   - smoked-glass panels (tint 42,42,42) with one hairline of light
+ *   - white interactive fills: hover and active states turn near-white with
+ *     dark text, never a coloured smear
+ *   - pill-shaped tabs and a floating, heavily rounded labelled dock bar
+ *   - 23px backdrop blur, 12px cards, 24px dialogs, 32px dock
+ *   - the pink #f92672 reserved for favourites and errors
+ */
+
+.shell[data-theme="com.rumahl.abyss"] {
+  --abyss-accent: 245, 245, 247;
+  --abyss-glass-tint: 42, 42, 42;
+  --abyss-radius: 12px;
+  --abyss-blur: 23px;
+  --abyss-ease: cubic-bezier(0.16, 1, 0.3, 1);
+  --line: rgb(245 245 247 / 0.12);
+
+  /* Abyss blurs and darkens the artwork behind the UI. The theme uses the
+     system wallpaper as that artwork; `.wallpaper` filters the backdrop and
+     paints the smoked scrim, so the room always has depth instead of a flat
+     black fill. */
+  background-color: #050505;
+  background-image: var(--rumahl-ui-texture-wallpaper, linear-gradient(160deg, #101010, #030303 72%));
+  background-position: center;
+  background-size: cover;
+  background-repeat: no-repeat;
+  font-family: var(--rumahl-ui-typography-family, "Google Sans", "Outfit Variable", system-ui, sans-serif);
+  font-optical-sizing: auto;
+  letter-spacing: 0.005em;
+}
+
+/* The room: Abyss blurs whatever artwork is behind the UI and drops it to a
+   quarter brightness, so the glass has something to drink without competing. */
+.shell[data-theme="com.rumahl.abyss"] .wallpaper-image,
+.shell[data-theme="com.rumahl.abyss"] .wallpaper-video {
+  filter: blur(var(--abyss-blur)) saturate(1.2) contrast(1.2) brightness(0.3);
+  transform: scale(1.14);
+}
+
+.shell[data-theme="com.rumahl.abyss"] .wallpaper {
+  background: rgb(5 6 8 / 0.1);
+  backdrop-filter: blur(var(--abyss-blur)) saturate(1.2) contrast(1.2) brightness(0.85);
+  -webkit-backdrop-filter: blur(var(--abyss-blur)) saturate(1.2) contrast(1.2) brightness(0.85);
+}
+
+.shell[data-theme="com.rumahl.abyss"] .wallpaper::before {
+  background:
+    linear-gradient(180deg, rgb(0 0 0 / 0.5), transparent 18%),
+    linear-gradient(0deg, rgb(0 0 0 / 0.42), transparent 24%);
+}
+
+.shell[data-theme="com.rumahl.abyss"] .wallpaper::after {
+  background:
+    radial-gradient(ellipse at 26% 12%, rgb(245 245 247 / 0.06), transparent 48%),
+    radial-gradient(ellipse at 82% 80%, rgb(245 245 247 / 0.04), transparent 46%),
+    linear-gradient(0deg, rgb(0 0 0 / 0.62), transparent 46%),
+    linear-gradient(180deg, rgb(0 0 0 / 0.35), transparent 22%);
+}
+
+/* Menubar: transparent over the artwork; the islands are the glass. */
+.shell[data-theme="com.rumahl.abyss"] .menubar.topbar {
+  background: transparent;
+  border: 0;
+  box-shadow: none;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  color: #f5f5f7;
+}
+
+.shell[data-theme="com.rumahl.abyss"] .topbar__island {
+  border: 1px solid rgb(245 245 247 / 0.16);
+  border-radius: 999px;
+  background: rgba(var(--abyss-glass-tint), 0.42);
+  backdrop-filter: blur(15px) saturate(1.2);
+  -webkit-backdrop-filter: blur(15px) saturate(1.2);
+  box-shadow:
+    inset 0 1px 0 rgb(245 245 247 / 0.08),
+    0 4px 30px rgb(0 0 0 / 0.1);
+}
+
+/* Every interactive pill in the bar reads white on hover, like Abyss. */
+.shell[data-theme="com.rumahl.abyss"] :is(
+  .topbar__button,
+  .topbar__anchor,
+  .menubar__item,
+  .menubar__user
+) {
+  border-radius: 999px;
+  color: rgb(245 245 247 / 0.82);
+  transition:
+    background 0.37s var(--abyss-ease),
+    color 0.37s var(--abyss-ease),
+    border-color 0.37s var(--abyss-ease);
+}
+
+.shell[data-theme="com.rumahl.abyss"] :is(
+  .topbar__button,
+  .topbar__anchor,
+  .menubar__item,
+  .menubar__user
+):hover {
+  color: #121212;
+  background: rgb(var(--abyss-accent));
+}
+
+.shell[data-theme="com.rumahl.abyss"] .topbar__button:hover svg,
+.shell[data-theme="com.rumahl.abyss"] .menubar__item:hover svg {
+  color: #121212;
+}
+
+.shell[data-theme="com.rumahl.abyss"] .topbar__mode .topbar__button[aria-pressed="true"] {
+  color: #121212;
+  background: rgb(var(--abyss-accent));
+}
+
+/* Floating dock bar: Abyss' heavily rounded glass bar, pinned over the room
+   with a light border and the same smoked fill as dialogs. */
+.shell[data-theme="com.rumahl.abyss"] .os-dock,
+.shell[data-theme="com.rumahl.abyss"] .os-dock.dock {
+  border: 1px solid rgb(245 245 247 / 0.2);
+  border-radius: var(--rumahl-ui-shape-radius-dock, 32px);
+  background: rgba(var(--abyss-glass-tint), 0.69);
+  backdrop-filter: blur(var(--abyss-blur)) saturate(1.2);
+  -webkit-backdrop-filter: blur(var(--abyss-blur)) saturate(1.2);
+  box-shadow:
+    inset 0 1px 0 rgb(245 245 247 / 0.08),
+    0 4px 30px rgb(0 0 0 / 0.1);
+}
+
+.shell[data-theme="com.rumahl.abyss"] .os-dock :is(.dock-item, button, a) {
+  border-radius: var(--rumahl-ui-shape-radius-icon, 12px);
+  transition:
+    background 0.37s var(--abyss-ease),
+    color 0.37s var(--abyss-ease);
+}
+
+.shell[data-theme="com.rumahl.abyss"] .os-dock :is(.dock-item, button, a):hover {
+  color: #121212;
+  background: rgb(var(--abyss-accent));
+}
+
+.shell[data-theme="com.rumahl.abyss"] .os-dock :is(.dock-item, button, a):hover svg {
+  color: #121212;
+}
+
+.shell[data-theme="com.rumahl.abyss"] .os-dock .dock-start {
+  color: #f5f5f7;
+  background: rgb(245 245 247 / 0.08);
+  box-shadow: inset 0 1px 0 rgb(245 245 247 / 0.12);
+}
+
+.shell[data-theme="com.rumahl.abyss"] .os-dock .dock-start:hover {
+  color: #121212;
+  background: rgb(var(--abyss-accent));
+}
+
+.shell[data-theme="com.rumahl.abyss"] .dock-separator {
+  background: rgb(245 245 247 / 0.18);
+}
+
+/* Windows are Abyss dialogs: 24px corners, smoked glass, one hairline. */
+.shell[data-theme="com.rumahl.abyss"] .shell-window {
+  border: 1px solid rgb(245 245 247 / 0.2);
+  border-radius: var(--rumahl-ui-shape-radius-window, 24px);
+  background: rgba(var(--abyss-glass-tint), 0.82);
+  --window-background: rgba(var(--abyss-glass-tint), 0.86);
+  --window-background-solid: #2a2a2a;
+  --window-sheen: linear-gradient(180deg, rgb(245 245 247 / 0.05), transparent 40%);
+  --window-border: 1px solid rgb(245 245 247 / 0.2);
+  --window-radius: var(--rumahl-ui-shape-radius-window, 24px);
+  --window-shadow: 0 4px 30px rgb(0 0 0 / 0.1);
+  --window-backdrop: blur(var(--abyss-blur)) saturate(1.2);
+  box-shadow:
+    inset 0 1px 0 rgb(245 245 247 / 0.06),
+    0 30px 90px rgb(0 0 0 / 0.55);
+}
+
+.shell[data-theme="com.rumahl.abyss"] .shell-window.is-focused {
+  border-color: rgb(245 245 247 / 0.24);
+  box-shadow:
+    inset 0 1px 0 rgb(245 245 247 / 0.09),
+    0 38px 100px rgb(0 0 0 / 0.62);
+}
+
+.shell[data-theme="com.rumahl.abyss"] .shell-window__titlebar {
+  color: #f5f5f7;
+  border-bottom: 1px solid rgb(245 245 247 / 0.1);
+  background: linear-gradient(180deg, rgb(245 245 247 / 0.05), transparent), rgba(var(--abyss-glass-tint), 0.55);
+  backdrop-filter: blur(var(--abyss-blur)) saturate(1.2);
+  -webkit-backdrop-filter: blur(var(--abyss-blur)) saturate(1.2);
+}
+
+.shell[data-theme="com.rumahl.abyss"] .shell-window__titlebar p {
+  color: rgb(245 245 247 / 0.5);
+  letter-spacing: 0.1em;
+}
+
+.shell[data-theme="com.rumahl.abyss"] .shell-window__titlebar h2 {
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+.shell[data-theme="com.rumahl.abyss"] .shell-window__content {
+  background: rgb(30 30 30 / 0.94);
+  backdrop-filter: blur(var(--abyss-blur)) saturate(1.2);
+  -webkit-backdrop-filter: blur(var(--abyss-blur)) saturate(1.2);
+}
+
+/* Settings sidebar: the Abyss drawer pane inside the window. */
+.shell[data-theme="com.rumahl.abyss"] .settings-sidebar {
+  background: rgb(var(--abyss-glass-tint) / 0.35);
+  border-right: 1px solid rgb(245 245 247 / 0.12);
+  backdrop-filter: blur(var(--abyss-blur)) saturate(1.2);
+  -webkit-backdrop-filter: blur(var(--abyss-blur)) saturate(1.2);
+}
+
+.shell[data-theme="com.rumahl.abyss"] .settings-sidebar a {
+  border-radius: 12px;
+  color: rgb(245 245 247 / 0.72);
+  transition:
+    background 0.37s var(--abyss-ease),
+    color 0.37s var(--abyss-ease);
+}
+
+.shell[data-theme="com.rumahl.abyss"] .settings-sidebar a:hover {
+  color: #121212;
+  background: rgb(var(--abyss-accent));
+}
+
+.shell[data-theme="com.rumahl.abyss"] .settings-sidebar a:hover svg {
+  color: #121212;
+}
+
+.shell[data-theme="com.rumahl.abyss"] .settings-sidebar a[aria-current="page"] {
+  color: #121212;
+  background: rgb(var(--abyss-accent));
+}
+
+/* Window controls: quiet glass squares; close turns Abyss pink. */
+.shell[data-theme="com.rumahl.abyss"] .shell-window__controls button {
+  color: rgb(245 245 247 / 0.72);
+  border-radius: 10px;
+  background: rgb(245 245 247 / 0.08);
+}
+
+.shell[data-theme="com.rumahl.abyss"] .shell-window__controls button:hover {
+  color: #121212;
+  background: rgb(var(--abyss-accent));
+}
+
+.shell[data-theme="com.rumahl.abyss"] .shell-window__controls button:last-child:hover {
+  color: #fff;
+  background: #f92672;
+}
+
+/* Menus, popovers, dialogs and toasts: the same smoked pane. */
+.shell[data-theme="com.rumahl.abyss"] :is(
+  .desktop-menu,
+  .menubar__dropdown,
+  .files-menu,
+  .rumahl-menu,
+  .rumahl-select__menu,
+  .rumahl-color-picker__popover,
+  .rumahl-calendar-popover,
+  .rumahl-modal,
+  .rumahl-dialog,
+  .toast
+) {
+  color: #f5f5f7;
+  border: 1px solid rgb(245 245 247 / 0.2);
+  border-radius: 24px;
+  background: rgba(var(--abyss-glass-tint), 0.69);
+  backdrop-filter: blur(var(--abyss-blur)) saturate(1.2);
+  -webkit-backdrop-filter: blur(var(--abyss-blur)) saturate(1.2);
+  box-shadow:
+    inset 0 1px 0 rgb(245 245 247 / 0.08),
+    0 4px 30px rgb(0 0 0 / 0.1);
+}
+
+.shell[data-theme="com.rumahl.abyss"] .start-menu,
+.shell[data-theme="com.rumahl.abyss"] .command-palette {
+  color: #f5f5f7;
+  border: 1px solid rgb(245 245 247 / 0.2);
+  border-radius: 24px;
+  background: rgba(var(--abyss-glass-tint), 0.82);
+  backdrop-filter: blur(var(--abyss-blur)) saturate(1.2);
+  -webkit-backdrop-filter: blur(var(--abyss-blur)) saturate(1.2);
+}
+
+.shell[data-theme="com.rumahl.abyss"] .start-menu::backdrop {
+  background: rgb(0 0 0 / 0.5);
+  backdrop-filter: blur(6px);
+}
+
+.shell[data-theme="com.rumahl.abyss"] .toast--error {
+  border-color: rgb(249 38 114 / 0.6);
+  box-shadow:
+    inset 0 1px 0 rgb(249 38 114 / 0.2),
+    0 4px 30px rgb(0 0 0 / 0.1);
+}
+
+.shell[data-theme="com.rumahl.abyss"] .toast__message {
+  color: rgb(245 245 247 / 0.66);
+}
+
+/* Rows and menu entries: hover becomes a white pill with dark text. */
+.shell[data-theme="com.rumahl.abyss"] :is(
+  .desktop-menu,
+  .menubar__dropdown,
+  .files-menu,
+  .rumahl-menu,
+  .rumahl-select__menu,
+  .start-menu,
+  .command-palette
+) :is(button, a, [role="option"], [role="menuitem"]):hover {
+  color: #121212;
+  background: rgb(var(--abyss-accent));
+}
+
+.shell[data-theme="com.rumahl.abyss"] .rumahl-select__option:focus-visible {
+  color: #121212;
+  background: rgb(var(--abyss-accent));
+  box-shadow: none;
+}
+
+/* Buttons: dark raised glass that turns white on hover, exactly like `.raised`
+   in Abyss. Primary stays the white pill (Abyss' Resume button). */
+.shell[data-theme="com.rumahl.abyss"] .btn {
+  border-radius: 12px;
+  border-color: rgb(245 245 247 / 0.2);
+  background: rgb(40 40 40 / 0.8);
+  box-shadow: inset 0 1px 0 rgb(245 245 247 / 0.08);
+  color: #f5f5f7;
+  transition:
+    background 0.37s var(--abyss-ease),
+    color 0.37s var(--abyss-ease),
+    border-color 0.37s var(--abyss-ease),
+    box-shadow 0.37s var(--abyss-ease);
+}
+
+.shell[data-theme="com.rumahl.abyss"] .btn:not(.btn--primary):not(.btn--danger):hover:not(:disabled) {
+  color: #121212;
+  border-color: rgb(var(--abyss-accent));
+  background: rgb(var(--abyss-accent));
+}
+
+.shell[data-theme="com.rumahl.abyss"] .btn:not(.btn--primary):not(.btn--danger):hover:not(:disabled) svg {
+  color: #121212;
+}
+
+.shell[data-theme="com.rumahl.abyss"] .btn--primary {
+  border-color: rgb(var(--abyss-accent));
+  border-radius: 999px;
+  background: rgb(var(--abyss-accent));
+  color: #121212;
+  box-shadow: 0 0 24px 2px rgba(var(--abyss-accent), 0.16);
+}
+
+.shell[data-theme="com.rumahl.abyss"] .btn--primary:hover:not(:disabled) {
+  background: #fff;
+  border-color: #fff;
+  color: #121212;
+}
+
+.shell[data-theme="com.rumahl.abyss"] .btn--ghost {
+  border-color: transparent;
+  background: transparent;
+  box-shadow: none;
+  color: rgb(245 245 247 / 0.66);
+}
+
+.shell[data-theme="com.rumahl.abyss"] .btn--ghost:hover:not(:disabled) {
+  color: #121212;
+  background: rgb(var(--abyss-accent));
+}
+
+.shell[data-theme="com.rumahl.abyss"] .btn--danger {
+  color: #f92672;
+  border-color: rgb(249 38 114 / 0.4);
+  background: rgb(249 38 114 / 0.12);
+}
+
+.shell[data-theme="com.rumahl.abyss"] .btn--danger:hover:not(:disabled) {
+  color: #fff;
+  border-color: #f92672;
+  background: #f92672;
+}
+
+/* Inputs: dark fields with a faint edge, an accent edge on focus. */
+.shell[data-theme="com.rumahl.abyss"] :is(
+  .rumahl-input,
+  .rumahl-textarea,
+  .rumahl-input-group,
+  .rumahl-select__trigger
+) {
+  border: 1px solid rgb(245 245 247 / 0.14);
+  border-radius: 8px;
+  background: rgb(0 0 0 / 0.35);
+  box-shadow: none;
+  backdrop-filter: blur(15px);
+  -webkit-backdrop-filter: blur(15px);
+  color: #f5f5f7;
+}
+
+.shell[data-theme="com.rumahl.abyss"] :is(
+  .rumahl-input,
+  .rumahl-textarea,
+  .rumahl-input-group,
+  .rumahl-select__trigger
+):focus-within {
+  border-color: rgba(var(--abyss-accent), 0.4);
+  outline: 2px solid rgba(var(--abyss-accent), 0.3);
+  outline-offset: 1px;
+}
+
+.shell[data-theme="com.rumahl.abyss"] :is(
+  .rumahl-input,
+  .rumahl-textarea
+)::placeholder {
+  color: rgb(245 245 247 / 0.42);
+}
+
+/* Abyss rounds checkboxes to 8px and fills them with the accent. */
+.shell[data-theme="com.rumahl.abyss"] .rumahl-choice input:is(.rumahl-checkbox, .rumahl-radio) {
+  border-radius: 8px;
+  border-color: rgba(var(--abyss-accent), 0.3);
+}
+
+.shell[data-theme="com.rumahl.abyss"] .rumahl-choice input:is(.rumahl-checkbox, .rumahl-radio):checked {
+  border-color: rgb(var(--abyss-accent));
+  background: rgb(var(--abyss-accent));
+}
+
+/* Switches: translucent white track, solid accent thumb. */
+.shell[data-theme="com.rumahl.abyss"] :is(.appearance-switch input, input[role="switch"]):checked {
+  border-color: transparent;
+  background: rgba(var(--abyss-accent), 0.5);
+}
+
+.shell[data-theme="com.rumahl.abyss"] :is(.appearance-switch input, input[role="switch"]):checked::before {
+  background: rgb(var(--abyss-accent));
+}
+
+/* Sliders: white thumb and a white filled track, per Abyss' mdl-slider. */
+.shell[data-theme="com.rumahl.abyss"] input[type="range"] {
+  accent-color: rgb(var(--abyss-accent));
+}
+
+.shell[data-theme="com.rumahl.abyss"] input[type="range"]::-webkit-slider-thumb {
+  border-radius: 50%;
+  background: rgb(var(--abyss-accent));
+}
+
+.shell[data-theme="com.rumahl.abyss"] input[type="range"]::-webkit-slider-runnable-track {
+  border-radius: 999px;
+  background: rgb(245 245 247 / 0.22);
+}
+
+/* Segmented controls and tab bars: no box, just a pill for the active tab. */
+.shell[data-theme="com.rumahl.abyss"] :is(.segmented, .settings-tabs, .launcher-views, .rumahl-tabs) {
+  gap: 2px;
+  padding: 3px;
+  border: 1px solid rgb(87 87 87 / 0.18);
+  border-radius: 999px;
+  background: rgba(var(--abyss-glass-tint), 0.9);
+  box-shadow: 0 4px 30px rgb(0 0 0 / 0.1);
+  backdrop-filter: blur(15px);
+  -webkit-backdrop-filter: blur(15px);
+}
+
+.shell[data-theme="com.rumahl.abyss"] :is(.segmented, .settings-tabs, .launcher-views, .rumahl-tabs)
+  :is(button, a) {
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: rgb(245 245 247 / 0.62);
+  box-shadow: none;
+  transition:
+    background 0.37s var(--abyss-ease),
+    color 0.37s var(--abyss-ease);
+}
+
+.shell[data-theme="com.rumahl.abyss"] :is(.segmented, .settings-tabs, .launcher-views, .rumahl-tabs)
+  :is(button, a):hover {
+  color: #121212;
+  background: rgb(var(--abyss-accent));
+}
+
+.shell[data-theme="com.rumahl.abyss"] :is(.segmented, .settings-tabs, .launcher-views, .rumahl-tabs)
+  :is(button[aria-pressed="true"], a[aria-current="page"], [aria-selected="true"]) {
+  color: #121212;
+  background: rgb(var(--abyss-accent));
+  box-shadow: none;
+}
+
+/* Settings: grouped rows are glass; hovering a row turns it white like a nav
+   entry in the Abyss drawer. */
+.shell[data-theme="com.rumahl.abyss"] .settings-group {
+  border: 1px solid rgb(245 245 247 / 0.14);
+  border-radius: 16px;
+  background: rgba(var(--abyss-glass-tint), 0.5);
+  backdrop-filter: blur(var(--abyss-blur)) saturate(1.2);
+  -webkit-backdrop-filter: blur(var(--abyss-blur)) saturate(1.2);
+}
+
+.shell[data-theme="com.rumahl.abyss"] .settings-nav__row {
+  transition:
+    background 0.37s var(--abyss-ease),
+    color 0.37s var(--abyss-ease);
+}
+
+.shell[data-theme="com.rumahl.abyss"] .settings-nav__row:hover {
+  color: #121212;
+  background: rgb(var(--abyss-accent));
+}
+
+.shell[data-theme="com.rumahl.abyss"] .settings-nav__row:hover :is(strong, small, svg, span) {
+  color: #121212;
+}
+
+.shell[data-theme="com.rumahl.abyss"] .settings-nav__icon {
+  border-radius: 999px;
+  color: #f5f5f7;
+  background: rgb(204 204 207 / 0.32);
+}
+
+.shell[data-theme="com.rumahl.abyss"] .settings-nav__row:hover .settings-nav__icon {
+  color: #121212;
+  background: rgb(18 18 18 / 0.16);
+}
+
+/* Cards and app tiles: no shadow, hairline appears on hover. */
+.shell[data-theme="com.rumahl.abyss"] :is(.app-tile, .theme-card, .card) {
+  border-radius: 12px;
+  box-shadow: none;
+  transition:
+    border-color 0.2s var(--abyss-ease),
+    background 0.2s var(--abyss-ease);
+}
+
+.shell[data-theme="com.rumahl.abyss"] :is(.app-tile, .theme-card, .card):hover {
+  border-color: rgb(245 245 247 / 0.2);
+  background: transparent;
+}
+
+.shell[data-theme="com.rumahl.abyss"] .app-tile__icon {
+  border-radius: 12px;
+  box-shadow: 0 0 3px rgb(200 200 200 / 0.35) inset;
+}
+
+/* The stock app glyph is a light plate; Abyss reads as dark glass with a light
+   glyph, so only the untouched default art is inverted (real app icons, which
+   are photos/illustrations, stay exactly as the app shipped them). */
+.shell[data-theme="com.rumahl.abyss"] .app-icon-default {
+  filter: grayscale(1) invert(1) brightness(2) contrast(1.1);
+}
+
+.shell[data-theme="com.rumahl.abyss"] .app-tile {
+  color: #f5f5f7;
+}
+
+.shell[data-theme="com.rumahl.abyss"] .app-tile small {
+  color: rgb(245 245 247 / 0.46);
+}
+
+/* Desktop furniture follows the smoked glass, not a bright panel. */
+.shell[data-theme="com.rumahl.abyss"] :is(.desktop-widget, .desktop-search) {
+  color: #f5f5f7;
+  border: 1px solid rgb(245 245 247 / 0.14);
+  border-radius: 16px;
+  background: rgba(var(--abyss-glass-tint), 0.42);
+  backdrop-filter: blur(var(--abyss-blur)) saturate(1.2);
+  -webkit-backdrop-filter: blur(var(--abyss-blur)) saturate(1.2);
+  box-shadow: inset 0 1px 0 rgb(245 245 247 / 0.07);
+}
+
+.shell[data-theme="com.rumahl.abyss"] .desktop-widget > span,
+.shell[data-theme="com.rumahl.abyss"] .desktop-widget :is(p, small) {
+  color: rgb(245 245 247 / 0.56);
+}
+
+.shell[data-theme="com.rumahl.abyss"] .desktop-widget :is(strong, h2, h3) {
+  color: #f5f5f7;
+}
+
+.shell[data-theme="com.rumahl.abyss"] .desktop-icon {
+  color: #f5f5f7;
+  border-radius: 12px;
+}
+
+.shell[data-theme="com.rumahl.abyss"] .desktop-icon:hover {
+  border-color: rgb(245 245 247 / 0.2);
+  background: rgb(0 0 0 / 0.3);
+}
+
+.shell[data-theme="com.rumahl.abyss"] .desktop-wordmark {
+  color: rgb(245 245 247 / 0.82);
+}
+
+.shell[data-theme="com.rumahl.abyss"] .desktop-wordmark > small {
+  color: rgb(245 245 247 / 0.46);
+}
+
+/* Launcher surfaces. */
+.shell[data-theme="com.rumahl.abyss"] .launcher-workspace {
+  border-radius: 24px;
+  background: rgb(10 10 10 / 0.55);
+}
+
+.shell[data-theme="com.rumahl.abyss"] :is(.launcher-row, .launcher-card, .launcher-deck-hero) {
+  border-color: rgb(245 245 247 / 0.12);
+  background: rgba(var(--abyss-glass-tint), 0.42);
+  backdrop-filter: blur(15px);
+  -webkit-backdrop-filter: blur(15px);
+}
+
+.shell[data-theme="com.rumahl.abyss"] :is(.launcher-row, .launcher-card, .launcher-deck-hero):hover {
+  border-color: rgb(245 245 247 / 0.2);
+}
+
+.shell[data-theme="com.rumahl.abyss"] .launcher-heading,
+.shell[data-theme="com.rumahl.abyss"] .launcher-wordmark {
+  color: #f5f5f7;
+  font-family: var(--rumahl-ui-typography-display, "Google Sans", "Outfit Variable", system-ui, sans-serif);
+}
+
+/* Native selection, focus and scrollbars carry the accent, as in Abyss. */
+.shell[data-theme="com.rumahl.abyss"] {
+  accent-color: rgb(var(--abyss-accent));
+  scrollbar-color: rgba(var(--abyss-accent), 0.8) transparent;
+}
+
+.shell[data-theme="com.rumahl.abyss"] ::selection {
+  color: rgb(var(--abyss-accent));
+  background: rgba(var(--abyss-accent), 0.25);
+}
+
+.shell[data-theme="com.rumahl.abyss"] :is(button, a, input, select, textarea, [tabindex]):focus-visible {
+  outline-color: rgba(var(--abyss-accent), 0.6);
+}
+
+.shell[data-theme="com.rumahl.abyss"] ::-webkit-scrollbar-track,
+.shell[data-theme="com.rumahl.abyss"] ::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+.shell[data-theme="com.rumahl.abyss"] ::-webkit-scrollbar-thumb {
+  border: 0;
+  border-radius: 999px;
+  background: rgba(var(--abyss-accent), 0.8);
+}
+
+.shell[data-theme="com.rumahl.abyss"] ::-webkit-scrollbar-thumb:hover {
+  background: rgb(var(--abyss-accent));
+}
+
+/* Abyss easing on the chrome; switched off by the global motion policy. */
+@media (prefers-reduced-motion: no-preference) {
+  .shell[data-theme="com.rumahl.abyss"]:not([data-animations="off"]) :is(
+    .os-dock *,
+    .topbar__island *,
+    .settings-nav__row,
+    .shell-window__controls button,
+    .btn
+  ) {
+    transition-timing-function: var(--abyss-ease);
+  }
+}
+
+/* ---------------------------------------------------------------------------
+ * Structure: the floating header and the labelled dock bar
+ *
+ * Abyss is built from floating chrome: a transparent header with a centred
+ * pill tab bar, and heavily rounded glass bars over the content. The shell
+ * keeps its full-width desktop; the dock becomes a bottom glass bar with
+ * labelled pills and a white pill for the active app. These are pure layout
+ * changes on the existing markup, so the shell and the theme contract stay
+ * untouched.
+ * ------------------------------------------------------------------------- */
+
+@media (min-width: 761px) {
+  /* The brand stays as the compact logo tab at the start of the pill bar. */
+  .shell[data-theme="com.rumahl.abyss"] .topbar__island--left .menubar__menu:has(.menubar__brand) > .menubar__item {
+    width: 36px !important;
+    padding: 0 !important;
+    justify-content: center;
+  }
+
+  .shell[data-theme="com.rumahl.abyss"] .menubar__brand {
+    width: 15px;
+    height: 24px;
+    color: inherit;
+  }
+
+  .shell[data-theme="com.rumahl.abyss"] .topbar__island--left {
+    position: absolute;
+    left: 50%;
+    top: 8px;
+    height: 42px;
+    padding: 3px 5px;
+    transform: translateX(-50%);
+    border: 1px solid rgb(245 245 247 / 0.16);
+    border-radius: 999px;
+    background: rgb(var(--abyss-glass-tint) / 0.5);
+    box-shadow:
+      inset 0 1px 0 rgb(245 245 247 / 0.08),
+      0 4px 30px rgb(0 0 0 / 0.1);
+  }
+
+  .shell[data-theme="com.rumahl.abyss"] .topbar__island--left .menubar__menus {
+    gap: 2px;
+    height: 100%;
+  }
+
+  .shell[data-theme="com.rumahl.abyss"] .menubar__item {
+    height: 34px;
+    padding: 0 16px !important;
+    border-radius: 999px;
+    font-size: 13px !important;
+    font-weight: 500;
+    letter-spacing: 0;
+  }
+
+  .shell[data-theme="com.rumahl.abyss"] .menubar__item[aria-expanded="true"] {
+    color: #121212;
+    background: rgb(var(--abyss-accent));
+  }
+
+  .shell[data-theme="com.rumahl.abyss"] .topbar__island--right {
+    height: 42px;
+    padding: 0 4px;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+    box-shadow: none;
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+  }
+
+  .shell[data-theme="com.rumahl.abyss"] .topbar__island--right .topbar__button {
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+  }
+
+  .shell[data-theme="com.rumahl.abyss"] .topbar__button svg {
+    width: 17px;
+    height: 17px;
+  }
+
+  /* The dock: a floating horizontal glass bar with labelled pills, matching
+     the Abyss header and its bottom playing bar instead of a side navigation.
+     The desktop content keeps the full width; the bar only overlays it. */
+  .shell[data-theme="com.rumahl.abyss"] .os-dock {
+    left: 50% !important;
+    right: auto !important;
+    top: auto;
+    bottom: 18px;
+    width: auto;
+    max-width: calc(100% - 36px);
+    margin: 0 !important;
+    padding: 6px 8px !important;
+    transform: translateX(-50%);
+    flex-direction: row;
+    align-items: center;
+    gap: 4px !important;
+    border-radius: 999px !important;
+    background: rgba(var(--abyss-glass-tint), 0.8) !important;
+    backdrop-filter: blur(var(--abyss-blur)) saturate(1.2) !important;
+    -webkit-backdrop-filter: blur(var(--abyss-blur)) saturate(1.2) !important;
+    box-shadow:
+      inset 0 1px 0 rgb(245 245 247 / 0.1),
+      0 18px 50px rgb(0 0 0 / 0.5);
+    overflow: visible;
+  }
+
+  .shell[data-theme="com.rumahl.abyss"] .os-dock .dock-item,
+  .shell[data-theme="com.rumahl.abyss"] .os-dock > a,
+  .shell[data-theme="com.rumahl.abyss"] .os-dock > button {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    width: auto !important;
+    height: 40px !important;
+    min-height: 40px;
+    padding: 0 14px !important;
+    border: 0;
+    border-radius: 999px !important;
+    background: transparent;
+    box-shadow: none;
+    color: rgb(245 245 247 / 0.74);
+    transform: none;
+    transition:
+      background 0.37s var(--abyss-ease),
+      color 0.37s var(--abyss-ease);
+  }
+
+  .shell[data-theme="com.rumahl.abyss"] .os-dock .dock-item svg {
+    width: 21px;
+    height: 21px;
+    flex: none;
+  }
+
+  /* App artwork sits inside the pill instead of filling the whole tile. */
+  .shell[data-theme="com.rumahl.abyss"] .os-dock .dock-item:has(img.icon) > span {
+    position: static;
+    display: grid;
+    place-items: center;
+    width: 23px;
+    height: 23px;
+    flex: none;
+  }
+
+  .shell[data-theme="com.rumahl.abyss"] .os-dock .dock-item:has(img.icon) img.icon {
+    width: 23px;
+    height: 23px;
+    object-fit: contain;
+  }
+
+  /* The aria-label becomes the visible label next to the icon. */
+  .shell[data-theme="com.rumahl.abyss"] .os-dock .dock-item::after {
+    content: attr(aria-label);
+    position: static;
+    display: block;
+    flex: 0 1 auto;
+    min-width: 0;
+    max-width: 140px;
+    overflow: hidden;
+    padding: 0;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+    box-shadow: none;
+    transform: none;
+    opacity: 1;
+    color: inherit;
+    font-size: 12.5px;
+    font-weight: 500;
+    line-height: 1.2;
+    text-align: left;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    pointer-events: none;
+  }
+
+  /* Brand tile at the head of the bar. */
+  .shell[data-theme="com.rumahl.abyss"] .os-dock .dock-start {
+    width: 42px !important;
+    height: 42px !important;
+    min-height: 42px;
+    margin: 0 4px 0 0;
+    padding: 0 !important;
+    justify-content: center;
+    border-radius: 15px !important;
+    color: #121212;
+    background: rgb(var(--abyss-accent));
+    box-shadow:
+      inset 0 1px 0 #fff,
+      0 8px 22px rgb(0 0 0 / 0.35);
+  }
+
+  .shell[data-theme="com.rumahl.abyss"] .os-dock .dock-start::after {
+    display: none;
+  }
+
+  .shell[data-theme="com.rumahl.abyss"] .os-dock .dock-start:hover {
+    color: #121212;
+    background: #fff;
+  }
+
+  /* Active/focused app: the white Abyss pill with dark text. */
+  .shell[data-theme="com.rumahl.abyss"] .os-dock .dock-item[data-focused="true"],
+  .shell[data-theme="com.rumahl.abyss"] .os-dock .dock-item[aria-current="page"] {
+    color: #121212;
+    background: rgb(var(--abyss-accent));
+  }
+
+  .shell[data-theme="com.rumahl.abyss"] .os-dock .dock-item[data-open="true"]:not([data-focused="true"]) {
+    color: #f5f5f7;
+    background: rgb(245 245 247 / 0.09);
+  }
+
+  .shell[data-theme="com.rumahl.abyss"] .os-dock .dock-item:hover {
+    color: #121212;
+    background: rgb(var(--abyss-accent));
+    transform: none;
+  }
+
+  /* No magnification in a bar of pills. */
+  .shell[data-theme="com.rumahl.abyss"] .os-dock--desktop .dock-item.is-hovered,
+  .shell[data-theme="com.rumahl.abyss"] .os-dock--desktop .dock-item.is-neighbor {
+    transform: none;
+  }
+
+  /* Running state is carried by the tinted pill; the dot would clutter a label. */
+  .shell[data-theme="com.rumahl.abyss"] .os-dock .dock-dot {
+    width: 0;
+    height: 0;
+    background: transparent;
+    box-shadow: none;
+  }
+
+  /* Extra windows stay in the same bar as the other labelled pills. */
+  .shell[data-theme="com.rumahl.abyss"] .os-dock .dock-windows {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    gap: 4px;
+    width: auto;
+    max-width: 40vw;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+
+  .shell[data-theme="com.rumahl.abyss"] .os-dock .dock-windows::-webkit-scrollbar {
+    width: 0;
+    height: 0;
+  }
+
+  .shell[data-theme="com.rumahl.abyss"] .os-dock .dock-separator {
+    width: 1px;
+    height: 24px;
+    margin: 0 6px;
+    flex: none;
+    background: rgb(245 245 247 / 0.16);
+  }
+
+  /* Auto-hide tucks the bar down as before. */
+  .shell[data-theme="com.rumahl.abyss"] .os-dock.is-auto-hide {
+    transform: translate(-50%, calc(100% + 18px));
+  }
+
+  .shell[data-theme="com.rumahl.abyss"] .os-dock.is-auto-hide.is-revealed {
+    transform: translateX(-50%);
+  }
+}
+
+/* Narrow desktop: labels no longer fit, so the same bottom bar turns into a
+   compact icon dock. It stays at the bottom; there is no side navigation. */
+@media (min-width: 761px) and (max-width: 1100px) {
+  .shell[data-theme="com.rumahl.abyss"] .os-dock .dock-item,
+  .shell[data-theme="com.rumahl.abyss"] .os-dock > a,
+  .shell[data-theme="com.rumahl.abyss"] .os-dock > button {
+    width: 42px !important;
+    padding: 0 !important;
+    justify-content: center;
+  }
+
+  .shell[data-theme="com.rumahl.abyss"] .os-dock .dock-item::after {
+    display: none;
+  }
+
+  .shell[data-theme="com.rumahl.abyss"] .os-dock .dock-start {
+    margin-inline: 0;
+  }
+}
+
+/* Narrow desktop: keep the tab bar off the right-hand control island. */
+@media (min-width: 761px) and (max-width: 980px) {
+  .shell[data-theme="com.rumahl.abyss"] .topbar__island--left {
+    left: 14px;
+    transform: none;
+  }
+
+  .shell[data-theme="com.rumahl.abyss"] .menubar__item {
+    padding-inline: 11px !important;
+  }
+}
+
+
+/* ---------------------------------------------------------------------------
+ * Portalled menus
+ *
+ * The shell renders menu popovers on `body` instead of inside `.shell`, so the
+ * scoped rules above cannot reach them. `body:has(...)` keeps the styling tied
+ * to this theme while reaching the portal, and gives Abyss' action-sheet
+ * treatment: smoked glass, 24px corners, a light hairline and a white hover
+ * row with dark text.
+ * ------------------------------------------------------------------------- */
+body:has(.shell[data-theme="com.rumahl.abyss"]) :is(
+  .menubar__dropdown,
+  .desktop-menu,
+  .files-menu,
+  .rumahl-menu,
+  .rumahl-select__menu,
+  .rumahl-color-picker__popover,
+  .rumahl-calendar-popover,
+  .rumahl-modal
+) {
+  color: #f5f5f7;
+  border: 1px solid rgb(245 245 247 / 0.2);
+  border-radius: 24px;
+  background: rgba(42 42 42 / 0.86);
+  backdrop-filter: blur(23px) saturate(1.2);
+  -webkit-backdrop-filter: blur(23px) saturate(1.2);
+  box-shadow:
+    inset 0 1px 0 rgb(245 245 247 / 0.08),
+    0 4px 30px rgb(0 0 0 / 0.1);
+}
+
+body:has(.shell[data-theme="com.rumahl.abyss"]) :is(
+  .menubar__dropdown,
+  .desktop-menu,
+  .files-menu,
+  .rumahl-menu
+) :is(button, a, [role="menuitem"], [role="option"]) {
+  border-radius: 12px;
+  color: rgb(245 245 247 / 0.84);
+  transition:
+    background 0.37s cubic-bezier(0.16, 1, 0.3, 1),
+    color 0.37s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+body:has(.shell[data-theme="com.rumahl.abyss"]) :is(
+  .menubar__dropdown,
+  .desktop-menu,
+  .files-menu,
+  .rumahl-menu
+) :is(button, a, [role="menuitem"], [role="option"]):hover:not(:disabled) {
+  color: #121212;
+  background: #f5f5f7;
+}
+
+body:has(.shell[data-theme="com.rumahl.abyss"]) :is(
+  .menubar__dropdown,
+  .desktop-menu,
+  .files-menu,
+  .rumahl-menu
+) :is(hr, .menu-separator, [role="separator"]) {
+  margin-block: 4px;
+  border: 0;
+  border-top: 1px solid rgb(245 245 247 / 0.12);
+  background: transparent;
+}
+
+body:has(.shell[data-theme="com.rumahl.abyss"]) .rumahl-select__option:hover {
+  color: #121212;
+  background: #f5f5f7;
+}
+
+body:has(.shell[data-theme="com.rumahl.abyss"]) .rumahl-select__option.is-active {
+  color: #121212;
+  background: rgb(245 245 247 / 0.88);
+}
+
+/* ---------------------------------------------------------------------------
+ * Jellyfin home
+ *
+ * Abyss' Jellyfin home is a cinematic billboard plus rows of 16:9 cards with
+ * the title underneath. The shell markup stays as it is; the theme turns every
+ * app tile into such a card, gives the launcher a full-bleed hero with
+ * metadata chips, and leaves the rest of the Abyss chrome intact.
+ * ------------------------------------------------------------------------- */
+
+/* Card artwork palette. Six gradients repeat across the shelves. */
+.shell[data-theme="com.rumahl.abyss"] .app-tile,
+.shell[data-theme="com.rumahl.abyss"] .desktop-icon {
+  --abyss-poster:
+    radial-gradient(circle at 30% 18%, rgb(255 255 255 / 0.12), transparent 55%),
+    linear-gradient(155deg, #303a48, #0c1015);
+}
+
+.shell[data-theme="com.rumahl.abyss"] :is(
+  .springboard-cell:nth-child(6n+1) .app-tile,
+  .app-grid > *:nth-child(6n+1) .app-tile,
+  .desktop-grid > .desktop-icon:nth-child(6n+1)
+) {
+  --abyss-poster:
+    radial-gradient(circle at 30% 18%, rgb(255 255 255 / 0.12), transparent 55%),
+    linear-gradient(155deg, #303a48, #0c1015);
+}
+
+.shell[data-theme="com.rumahl.abyss"] :is(
+  .springboard-cell:nth-child(6n+2) .app-tile,
+  .app-grid > *:nth-child(6n+2) .app-tile,
+  .desktop-grid > .desktop-icon:nth-child(6n+2)
+) {
+  --abyss-poster:
+    radial-gradient(circle at 28% 16%, rgb(255 255 255 / 0.12), transparent 55%),
+    linear-gradient(155deg, #4a2f3a, #140d12);
+}
+
+.shell[data-theme="com.rumahl.abyss"] :is(
+  .springboard-cell:nth-child(6n+3) .app-tile,
+  .app-grid > *:nth-child(6n+3) .app-tile,
+  .desktop-grid > .desktop-icon:nth-child(6n+3)
+) {
+  --abyss-poster:
+    radial-gradient(circle at 30% 18%, rgb(255 255 255 / 0.11), transparent 55%),
+    linear-gradient(155deg, #2f4a3e, #0d1512);
+}
+
+.shell[data-theme="com.rumahl.abyss"] :is(
+  .springboard-cell:nth-child(6n+4) .app-tile,
+  .app-grid > *:nth-child(6n+4) .app-tile,
+  .desktop-grid > .desktop-icon:nth-child(6n+4)
+) {
+  --abyss-poster:
+    radial-gradient(circle at 28% 16%, rgb(255 255 255 / 0.12), transparent 55%),
+    linear-gradient(155deg, #3a3550, #120f1a);
+}
+
+.shell[data-theme="com.rumahl.abyss"] :is(
+  .springboard-cell:nth-child(6n+5) .app-tile,
+  .app-grid > *:nth-child(6n+5) .app-tile,
+  .desktop-grid > .desktop-icon:nth-child(6n+5)
+) {
+  --abyss-poster:
+    radial-gradient(circle at 30% 18%, rgb(255 255 255 / 0.11), transparent 55%),
+    linear-gradient(155deg, #4a3f2f, #15120d);
+}
+
+.shell[data-theme="com.rumahl.abyss"] :is(
+  .springboard-cell:nth-child(6n+6) .app-tile,
+  .app-grid > *:nth-child(6n+6) .app-tile,
+  .desktop-grid > .desktop-icon:nth-child(6n+6)
+) {
+  --abyss-poster:
+    radial-gradient(circle at 28% 16%, rgb(255 255 255 / 0.12), transparent 55%),
+    linear-gradient(155deg, #2f444a, #0d1417);
+}
+
+/* Jellyfin card: a 16:9 thumbnail with the title underneath, no frame. */
+.shell[data-theme="com.rumahl.abyss"] .springboard-cell .app-tile,
+.shell[data-theme="com.rumahl.abyss"] .app-grid .app-tile {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 6px;
+  width: 100%;
+  height: auto;
+  padding: 0;
+  overflow: visible;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  color: #f5f5f7;
+  text-align: left;
+  transform: none;
+}
+
+.shell[data-theme="com.rumahl.abyss"] .desktop-icon {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 6px;
+  width: 96px;
+  height: auto;
+  padding: 0;
+  overflow: visible;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  color: #f5f5f7;
+  text-align: left;
+  transform: none;
+}
+
+/* The thumbnail itself. */
+.shell[data-theme="com.rumahl.abyss"] :is(
+  .springboard-cell .app-tile,
+  .app-grid .app-tile
+) .app-tile__icon,
+.shell[data-theme="com.rumahl.abyss"] .desktop-icon__art {
+  position: relative;
+  inset: auto;
+  display: grid;
+  place-items: center;
+  width: 100%;
+  height: auto;
+  aspect-ratio: 16 / 9;
+  overflow: hidden;
+  border: 1px solid rgb(245 245 247 / 0.1);
+  border-radius: 10px;
+  background: var(--abyss-poster);
+  box-shadow: 0 6px 16px rgb(0 0 0 / 0.25);
+  color: #f5f5f7;
+  transition:
+    transform 0.2s var(--abyss-ease),
+    border-color 0.2s var(--abyss-ease),
+    filter 0.2s var(--abyss-ease);
+}
+
+.shell[data-theme="com.rumahl.abyss"] .springboard-cell > .app-tile-item {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+/* The app logo is the artwork of the thumbnail. */
+.shell[data-theme="com.rumahl.abyss"] :is(
+  .springboard-cell .app-tile,
+  .app-grid .app-tile
+) .app-tile__icon img,
+.shell[data-theme="com.rumahl.abyss"] .desktop-icon__art img {
+  width: 40px;
+  height: 40px;
+  object-fit: contain;
+}
+
+.shell[data-theme="com.rumahl.abyss"] :is(
+  .springboard-cell .app-tile,
+  .app-grid .app-tile
+) .app-tile__icon svg,
+.shell[data-theme="com.rumahl.abyss"] .desktop-icon__art svg {
+  width: 34px;
+  height: 34px;
+}
+
+/* The stock app plate is already light; on the thumbnail it reads as a logo. */
+.shell[data-theme="com.rumahl.abyss"] :is(
+  .springboard-cell .app-tile,
+  .app-grid .app-tile
+) .app-tile__icon :is(.app-icon-default, .app-icon-folder__art),
+.shell[data-theme="com.rumahl.abyss"] .desktop-icon__art > :is(.app-icon-default, img.icon),
+.shell[data-theme="com.rumahl.abyss"] .desktop-icon__art .app-icon-folder__art {
+  filter: none;
+  width: 40px !important;
+  height: 40px !important;
+}
+
+.shell[data-theme="com.rumahl.abyss"] .desktop-icon__art :is(.folder-artwork, .desktop-file-art) {
+  width: 38px !important;
+  height: 38px !important;
+}
+
+/* Titles sit under the image, exactly like Jellyfin card text. */
+.shell[data-theme="com.rumahl.abyss"] .springboard-cell .app-tile > span:not(.app-tile__icon),
+.shell[data-theme="com.rumahl.abyss"] .app-grid .app-tile > span:not(.app-tile__icon) {
+  position: static;
+  display: block;
+  width: 100%;
+  padding: 0;
+  overflow: hidden;
+  background: none;
+  color: #f5f5f7;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.25;
+  text-align: left;
+  text-overflow: ellipsis;
+  text-shadow: 0 1px 2px rgb(0 0 0 / 0.5);
+  white-space: nowrap;
+}
+
+.shell[data-theme="com.rumahl.abyss"] .app-grid .app-tile > span:not(.app-tile__icon) {
+  font-size: 12px;
+}
+
+.shell[data-theme="com.rumahl.abyss"] .desktop-icon__label {
+  position: static;
+  display: block;
+  width: 100%;
+  max-width: 100%;
+  min-height: 27px;
+  padding: 0;
+  overflow: visible;
+  background: none;
+  color: #f5f5f7;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.25;
+  text-align: left;
+  text-overflow: ellipsis;
+  text-shadow: 0 1px 2px rgb(0 0 0 / 0.5);
+  white-space: nowrap;
+}
+
+/* Jellyfin cards carry a muted second line (year/episode). The app catalog has
+   no such metadata, so the line simply reads "App". */
+.shell[data-theme="com.rumahl.abyss"] .springboard-cell .app-tile > span:not(.app-tile__icon)::after,
+.shell[data-theme="com.rumahl.abyss"] .desktop-icon__label::after {
+  display: block;
+  margin-top: 3px;
+  color: rgb(245 245 247 / 0.46);
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.1;
+  letter-spacing: 0;
+  text-shadow: none;
+  content: "App";
+}
+
+/* Non-launchable caption becomes the muted second line of the card. */
+.shell[data-theme="com.rumahl.abyss"] .app-grid .app-tile > small {
+  position: static;
+  display: block;
+  margin: 0;
+  overflow: hidden;
+  color: rgb(245 245 247 / 0.5);
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.2;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Status and settings affordances sit on the thumbnail. */
+.shell[data-theme="com.rumahl.abyss"] .app-tile__status {
+  top: 6px;
+  right: auto;
+  left: 6px;
+  width: 8px;
+  height: 8px;
+  box-shadow: 0 0 0 2px rgb(5 6 8 / 0.55);
+}
+
+.shell[data-theme="com.rumahl.abyss"] .app-tile__settings {
+  top: 5px;
+  right: 5px;
+  background: rgb(10 12 14 / 0.6);
+  border-color: rgb(245 245 247 / 0.16);
+  color: #f5f5f7;
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+}
+
+.shell[data-theme="com.rumahl.abyss"] .app-tile__settings:hover {
+  color: #121212;
+  background: rgb(var(--abyss-accent));
+}
+
+/* Abyss/Jellyfin hover: the artwork lights up and lifts a touch. */
+.shell[data-theme="com.rumahl.abyss"] .springboard-cell .app-tile:hover,
+.shell[data-theme="com.rumahl.abyss"] .app-grid .app-tile:hover,
+.shell[data-theme="com.rumahl.abyss"] .desktop-icon:hover {
+  background: transparent;
+  border-color: transparent;
+  transform: none;
+  filter: none;
+}
+
+.shell[data-theme="com.rumahl.abyss"] :is(
+  .springboard-cell .app-tile,
+  .app-grid .app-tile,
+  .desktop-icon
+):hover :is(.app-tile__icon, .desktop-icon__art) {
+  border-color: rgb(245 245 247 / 0.28);
+  transform: translateY(-2px) scale(1.02);
+  filter: brightness(1.08);
+}
+
+.shell[data-theme="com.rumahl.abyss"] .desktop-icon.is-selected .desktop-icon__art {
+  border-color: rgb(var(--abyss-accent));
+  box-shadow:
+    0 0 0 2px rgb(var(--abyss-accent) / 0.7),
+    0 6px 16px rgb(0 0 0 / 0.25);
+}
+
+.shell[data-theme="com.rumahl.abyss"] :is(
+  .springboard-cell .app-tile,
+  .app-grid .app-tile
+):focus-visible :is(.app-tile__icon) {
+  outline: 2px solid rgb(var(--abyss-accent) / 0.8);
+  outline-offset: 2px;
+}
+
+/* Launcher: full-bleed billboard, Jellyfin-style metadata chips and shelf. */
+@media (min-width: 761px) {
+  .shell[data-theme="com.rumahl.abyss"] .launcher-workspace {
+    padding: 0;
+    border-radius: 0;
+    background: transparent;
+  }
+
+  .shell[data-theme="com.rumahl.abyss"] .launcher-home {
+    --abyss-hero: clamp(400px, 52vh, 460px);
+    position: relative;
+    width: 100%;
+    max-width: none;
+    gap: 0;
+    padding: 0;
+  }
+
+  .shell[data-theme="com.rumahl.abyss"] .launcher-top {
+    position: relative;
+    align-items: flex-start;
+    justify-content: flex-start;
+    min-height: var(--abyss-hero);
+    padding: 128px 8vw 44px;
+    overflow: hidden;
+    border: 0;
+    border-bottom: 1px solid rgb(245 245 247 / 0.08);
+    border-radius: 0;
+    background:
+      linear-gradient(90deg, rgb(5 6 8 / 0.94) 0%, rgb(5 6 8 / 0.62) 46%, rgb(5 6 8 / 0.12) 100%),
+      linear-gradient(0deg, rgb(5 6 8 / 0.92) 0%, rgb(5 6 8 / 0) 42%);
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    box-shadow: none;
+  }
+
+  .shell[data-theme="com.rumahl.abyss"] .launcher-top::after {
+    content: "rumahl";
+    position: absolute;
+    right: 7vw;
+    bottom: 18px;
+    color: rgb(245 245 247 / 0.055);
+    font-family: var(--rumahl-ui-typography-display, "Google Sans", "Outfit Variable", system-ui, sans-serif);
+    font-size: clamp(96px, 16vw, 210px);
+    font-weight: 700;
+    letter-spacing: -0.065em;
+    line-height: 0.8;
+    pointer-events: none;
+  }
+
+  .shell[data-theme="com.rumahl.abyss"] .launcher-heading {
+    align-items: flex-start;
+    gap: 14px;
+    text-align: left;
+  }
+
+  .shell[data-theme="com.rumahl.abyss"] .launcher-greeting {
+    align-items: flex-start;
+    color: rgb(245 245 247 / 0.62);
+    font-size: 13px;
+    font-weight: 600;
+    letter-spacing: 0.16em;
+    line-height: 1.2;
+    text-transform: uppercase;
+  }
+
+  .shell[data-theme="com.rumahl.abyss"] .launcher-greeting > span {
+    margin-top: 6px;
+    color: #f5f5f7;
+    font-size: clamp(56px, 8vw, 112px);
+    font-weight: 600;
+    letter-spacing: -0.05em;
+    line-height: 0.96;
+    text-transform: none;
+  }
+
+  /* Time and date become the metadata pills of the billboard. */
+  .shell[data-theme="com.rumahl.abyss"] .launcher-clock {
+    display: flex;
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+    text-shadow: none;
+  }
+
+  .shell[data-theme="com.rumahl.abyss"] .launcher-clock strong,
+  .shell[data-theme="com.rumahl.abyss"] .launcher-clock span {
+    display: inline-flex;
+    align-items: center;
+    min-height: 26px;
+    padding: 5px 12px;
+    border: 1px solid rgb(245 245 247 / 0.18);
+    border-radius: 8px;
+    background: rgb(0 0 0 / 0.35);
+    color: #f5f5f7;
+    font-size: 12px;
+    font-weight: 500;
+    line-height: 1;
+  }
+
+  .shell[data-theme="com.rumahl.abyss"] .launcher-clock span {
+    color: rgb(245 245 247 / 0.66);
+  }
+
+  /* Jellyfin section heading over the card row. */
+  .shell[data-theme="com.rumahl.abyss"] .launcher-board {
+    position: relative;
+    margin: 46px 8vw 0;
+  }
+
+  .shell[data-theme="com.rumahl.abyss"] .launcher-board::before {
+    content: "Apps";
+    position: absolute;
+    top: -32px;
+    left: 0;
+    color: #f5f5f7;
+    font-size: 20px;
+    font-weight: 600;
+    letter-spacing: -0.02em;
+    line-height: 1.2;
+    text-shadow: 0 1px 3px rgb(0 0 0 / 0.55);
+  }
+
+  .shell[data-theme="com.rumahl.abyss"] .launcher-pages {
+    margin: 10px 8vw 0;
+  }
+
+  /* The launcher search moves into the billboard as the white action pill,
+     the way Jellyfin puts Resume under the metadata. */
+  .shell[data-theme="com.rumahl.abyss"] .launcher-footer {
+    position: absolute;
+    top: calc(var(--abyss-hero) - 82px);
+    left: 8vw;
+    z-index: 3;
+    width: min(360px, 36vw);
+    margin: 0;
+    padding: 0;
+  }
+
+  .shell[data-theme="com.rumahl.abyss"] .launcher-search {
+    width: 100%;
+  }
+
+  .shell[data-theme="com.rumahl.abyss"] .launcher-search .rumahl-input-group {
+    border: 1px solid #f5f5f7;
+    border-radius: 999px;
+    background: #f5f5f7;
+    box-shadow: 0 12px 32px rgb(0 0 0 / 0.35);
+    color: #121212;
+  }
+
+  .shell[data-theme="com.rumahl.abyss"] .launcher-search .rumahl-input,
+  .shell[data-theme="com.rumahl.abyss"] .launcher-search .rumahl-input-group > .rumahl-input {
+    border: 0 !important;
+    background: transparent !important;
+    box-shadow: none !important;
+    color: #121212;
+  }
+
+  .shell[data-theme="com.rumahl.abyss"] .launcher-search .rumahl-input::placeholder {
+    color: rgb(18 18 18 / 0.6);
+  }
+
+  .shell[data-theme="com.rumahl.abyss"] .launcher-search .rumahl-input-group__affix,
+  .shell[data-theme="com.rumahl.abyss"] .launcher-search svg {
+    color: #121212;
+  }
+}
+
+/* Jellyfin header: the brand moves to the far left like the hamburger/logo,
+   while the pill tab bar stays centred. */
+@media (min-width: 981px) {
+  .shell[data-theme="com.rumahl.abyss"] .topbar__island--left .menubar__menu:has(.menubar__brand) {
+    position: absolute;
+    top: 0;
+    left: calc(-50vw + 50% + 16px);
+  }
+
+  .shell[data-theme="com.rumahl.abyss"] .topbar__island--left .menubar__menu:has(.menubar__brand) > .menubar__item {
+    width: 40px !important;
+    height: 40px;
+    padding: 0 !important;
+    border-radius: 50%;
+    background: transparent;
+    color: #f5f5f7;
+  }
+
+  .shell[data-theme="com.rumahl.abyss"] .topbar__island--left .menubar__menu:has(.menubar__brand) > .menubar__item:hover,
+  .shell[data-theme="com.rumahl.abyss"] .topbar__island--left .menubar__menu:has(.menubar__brand) > .menubar__item[aria-expanded="true"] {
+    color: #121212;
+    background: rgb(var(--abyss-accent));
+  }
+
+  .shell[data-theme="com.rumahl.abyss"] .menubar__brand {
+    width: 18px;
+    height: 26px;
+    color: inherit;
+  }
+}
+
+/* App-provided artwork normally strips the shell frame so the artwork is the
+   icon. A Jellyfin/Abyss card is the opposite: the artwork is a logo on a 16:9
+   thumbnail, so restore the thumbnail surface for those tiles. */
+.shell[data-theme="com.rumahl.abyss"] :is(
+  .springboard-cell .app-tile,
+  .app-grid .app-tile
+) .app-tile__icon:is(:has(> img.icon), :has(> .app-icon-default)),
+.shell[data-theme="com.rumahl.abyss"] .desktop-icon__art:is(:has(> img.icon), :has(> .app-icon-default)),
+.shell[data-theme="com.rumahl.abyss"] .app-tile[data-app-id="files"] .app-tile__icon,
+.shell[data-theme="com.rumahl.abyss"] .desktop-icon[data-app-id="files"] .desktop-icon__art {
+  border: 1px solid rgb(245 245 247 / 0.1) !important;
+  border-radius: 10px !important;
+  background: var(--abyss-poster) !important;
+  box-shadow: 0 6px 16px rgb(0 0 0 / 0.25) !important;
+}
+
+.shell[data-theme="com.rumahl.abyss"] :is(
+  .springboard-cell .app-tile,
+  .app-grid .app-tile
+) .app-tile__icon:has(img.icon) > span,
+.shell[data-theme="com.rumahl.abyss"] .desktop-icon__art:has(img.icon) > span {
+  position: static;
+  display: grid;
+  place-items: center;
+  width: 100%;
+  height: 100%;
+}
+
+.shell[data-theme="com.rumahl.abyss"] :is(
+  .springboard-cell .app-tile,
+  .app-grid .app-tile
+) .app-tile__icon:has(img.icon) img.icon,
+.shell[data-theme="com.rumahl.abyss"] .desktop-icon__art:has(img.icon) img.icon {
+  width: 40px !important;
+  height: 40px !important;
+  object-fit: contain;
+}
+
+
+/* Jellyfin's home has no bottom dock; the launcher shows the apps themselves.
+   Tuck the themed dock away while the launcher is open; the desktop keeps it
+   for app switching. */
+@media (min-width: 761px) {
+  .shell[data-theme="com.rumahl.abyss"][data-shell-mode="launcher"] .os-dock {
+    transform: translate(-50%, 200%) !important;
+  }
+}
+
+/* ---------------------------------------------------------------------------
+ * Netflix-sized artwork
+ *
+ * The shell's free grids place 92/96px cells from script. For a real streaming
+ * shelf the cards must be large, so the theme stops using those pixel
+ * positions on desktop and lets the same elements flow as artwork rows: a
+ * horizontally scrolling shelf in the launcher and a responsive poster grid
+ * on the desktop. Links and hover stay intact; only the free-grid placement is
+ * replaced by the theme layout.
+ * ------------------------------------------------------------------------- */
+@media (min-width: 761px) {
+  .shell[data-theme="com.rumahl.abyss"] .springboard-grid {
+    position: static;
+    display: flex;
+    gap: 16px;
+    align-items: flex-start;
+    overflow-x: auto;
+    overflow-y: hidden;
+    padding-bottom: 4px;
+    scrollbar-width: none;
+  }
+
+  .shell[data-theme="com.rumahl.abyss"] .springboard-grid::-webkit-scrollbar {
+    width: 0;
+    height: 0;
+  }
+
+  .shell[data-theme="com.rumahl.abyss"] .springboard-cell {
+    position: static !important;
+    display: block;
+    width: clamp(210px, 20vw, 280px) !important;
+    height: auto !important;
+    min-height: 0;
+    flex: 0 0 auto;
+  }
+
+  /* Larger card typography and logos for the larger artwork. */
+  .shell[data-theme="com.rumahl.abyss"] .springboard-cell .app-tile > span:not(.app-tile__icon) {
+    font-size: 14px;
+  }
+
+  .shell[data-theme="com.rumahl.abyss"] .springboard-cell .app-tile > span:not(.app-tile__icon)::after {
+    margin-top: 4px;
+    font-size: 12px;
+  }
+
+  .shell[data-theme="com.rumahl.abyss"] .springboard-cell .app-tile__icon img,
+  .shell[data-theme="com.rumahl.abyss"] .springboard-cell .app-tile__icon :is(.app-icon-default, .app-icon-folder__art) {
+    width: 56px !important;
+    height: 56px !important;
+  }
+
+  .shell[data-theme="com.rumahl.abyss"] .springboard-cell .app-tile__icon svg {
+    width: 46px;
+    height: 46px;
+  }
+
+  /* Desktop: a responsive library of landscape cards instead of pixel cells. */
+  .shell[data-theme="com.rumahl.abyss"] .desktop-grid {
+    position: static;
+    display: grid;
+    grid-auto-flow: row;
+    grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+    gap: 16px;
+    align-content: start;
+  }
+
+  /* Widgets float over the right edge; reserve their gutter in the library. */
+  .shell[data-theme="com.rumahl.abyss"]:has(.desktop-widgets) .desktop-grid {
+    padding-right: 250px;
+  }
+
+  .shell[data-theme="com.rumahl.abyss"] .desktop-grid > .desktop-icon {
+    position: static !important;
+    width: 100% !important;
+    height: auto;
+  }
+
+  .shell[data-theme="com.rumahl.abyss"] .desktop-icon__label {
+    font-size: 13px;
+  }
+
+  .shell[data-theme="com.rumahl.abyss"] .desktop-icon__label::after {
+    font-size: 12px;
+  }
+
+  .shell[data-theme="com.rumahl.abyss"] .desktop-icon__art img,
+  .shell[data-theme="com.rumahl.abyss"] .desktop-icon__art :is(.app-icon-default, .app-icon-folder__art) {
+    width: 48px !important;
+    height: 48px !important;
+  }
+
+  .shell[data-theme="com.rumahl.abyss"] .desktop-icon__art svg {
+    width: 42px;
+    height: 42px;
+  }
+
+  /* Bigger cards in the start menu, search results and folders too. */
+  .shell[data-theme="com.rumahl.abyss"] .app-grid {
+    grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+    gap: 18px 16px;
+  }
+
+  .shell[data-theme="com.rumahl.abyss"] .app-grid .app-tile > span:not(.app-tile__icon) {
+    font-size: 14px;
+  }
+
+  .shell[data-theme="com.rumahl.abyss"] .app-grid .app-tile__icon img,
+  .shell[data-theme="com.rumahl.abyss"] .app-grid .app-tile__icon :is(.app-icon-default, .app-icon-folder__art) {
+    width: 48px !important;
+    height: 48px !important;
+  }
+}

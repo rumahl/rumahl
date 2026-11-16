@@ -1,0 +1,261 @@
+/* Classic owns its skin; shared components still own behavior and accessibility.
+   All colours come from the live rumahl palette, including dark-mode surfaces. */
+.shell[data-theme="com.rumahl.classic"] {
+  --classic-panel: var(--rumahl-ui-color-panel-background);
+  --classic-paper: var(--rumahl-ui-color-surface-strong);
+  --classic-ink: var(--rumahl-ui-color-text-primary);
+  --classic-line: color-mix(
+    in srgb,
+    var(--classic-ink) 32%,
+    var(--classic-panel)
+  );
+  --control-base: var(--classic-panel);
+  --control-fill: var(--classic-paper);
+  --control-hover: color-mix(
+    in srgb,
+    var(--rumahl-ui-color-accent) 10%,
+    var(--classic-paper)
+  );
+  --control-raised: var(--classic-panel);
+  --control-border: var(--classic-line);
+  --control-border-hover: var(--rumahl-ui-color-accent);
+  --control-popup: var(--classic-paper);
+  --control-recess: linear-gradient(transparent, transparent);
+  --control-inset: inset 0 1px 2px #00000012;
+  --control-button-shadow: inset 0 1px 0 #ffffff30;
+  --control-popup-shadow: 3px 3px 0 #00000024;
+  --control-filter: none;
+  --surface-filter: none;
+  --surface-fill: var(--classic-panel);
+  --surface-tint: linear-gradient(transparent, transparent);
+  --surface-sheen: linear-gradient(transparent, transparent);
+  --material-overlay: var(--classic-panel);
+  --material-rim: inset 0 1px 0 #ffffff30;
+  --material-shadow: 4px 4px 0 #00000028;
+  --material-line: var(--classic-line);
+  --nd-ink: var(--classic-ink);
+  --nd-muted: var(--rumahl-ui-color-text-muted);
+  --nd-button: var(--classic-panel);
+  --nd-window: var(--classic-panel);
+  --nd-side: var(--classic-panel);
+  --nd-divider: var(--classic-line);
+  color: var(--classic-ink);
+  font-family: var(--rumahl-ui-typography-family);
+}
+/* No optical glass, regardless of inherited presentation rules or backend. */
+.shell[data-theme="com.rumahl.classic"] *,
+.shell[data-theme="com.rumahl.classic"] *::before,
+.shell[data-theme="com.rumahl.classic"] *::after {
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+.shell[data-theme="com.rumahl.classic"] .shell-glass-surface__material {
+  background: var(--classic-panel);
+  filter: none;
+}
+.shell[data-theme="com.rumahl.classic"] :is(.shell-window, .rumahl-modal) {
+  background: var(--classic-panel);
+  border: 1px solid var(--classic-line);
+  border-radius: var(--rumahl-ui-shape-radius-window);
+  box-shadow: 4px 4px 0 #00000028;
+}
+.shell[data-theme="com.rumahl.classic"]
+  :is(.shell-window__titlebar, .rumahl-modal__titlebar) {
+  min-height: 34px;
+  padding: 4px 8px 4px 12px;
+  background: var(--classic-panel);
+  border-bottom: 1px solid var(--classic-line);
+}
+.shell[data-theme="com.rumahl.classic"]
+  .shell-window.is-focused
+  > .shell-window__titlebar {
+  background: var(--rumahl-ui-color-accent);
+  color: var(--rumahl-ui-color-on-accent);
+}
+.shell[data-theme="com.rumahl.classic"]
+  .shell-window.is-focused
+  > .shell-window__titlebar
+  :is(h2, p, button) {
+  color: inherit;
+}
+.shell[data-theme="com.rumahl.classic"]
+  :is(.shell-window__content, .settings-layout, .settings-sidebar) {
+  background: var(--classic-panel);
+  color: var(--classic-ink);
+}
+.shell[data-theme="com.rumahl.classic"]
+  :is(
+    .btn,
+    .files-icon-btn,
+    .rumahl-select__trigger,
+    .rumahl-color-picker__trigger,
+    .rumahl-input,
+    .rumahl-textarea,
+    .rumahl-input-group,
+    .rumahl-field-group,
+    .rumahl-notice,
+    .rumahl-profile-card,
+    .rumahl-calendar,
+    .rumahl-tabs > [role="tabpanel"],
+    .rumahl-range,
+    .rumahl-file,
+    .rumahl-badge
+  ) {
+  border-radius: 3px;
+  border-color: var(--classic-line);
+}
+.shell[data-theme="com.rumahl.classic"] :is(.btn, .files-icon-btn) {
+  background: var(--classic-panel);
+  color: var(--classic-ink);
+  border: 1px solid var(--classic-line);
+  box-shadow:
+    inset 0 1px 0 #ffffff30,
+    0 1px 0 #00000020;
+}
+.shell[data-theme="com.rumahl.classic"] .btn--primary {
+  background: var(--rumahl-ui-color-accent);
+  color: var(--rumahl-ui-color-on-accent);
+  border-color: var(--rumahl-ui-color-accent-strong);
+}
+.shell[data-theme="com.rumahl.classic"] .btn--danger {
+  color: var(--control-error);
+  border-color: var(--control-error);
+}
+.shell[data-theme="com.rumahl.classic"]
+  :is(.btn, .files-icon-btn):hover:not(:disabled) {
+  filter: brightness(0.96);
+}
+.shell[data-theme="com.rumahl.classic"]
+  :is(
+    .segmented,
+    .rumahl-button-group,
+    .files-toolbar__group,
+    .files-view-switch__track
+  ) {
+  border-radius: 3px;
+  background: var(--classic-panel);
+}
+.shell[data-theme="com.rumahl.classic"]
+  :is(.segmented, .rumahl-button-group)
+  > button {
+  border-radius: 2px;
+  box-shadow: none;
+}
+.shell[data-theme="com.rumahl.classic"]
+  :is(.segmented, .rumahl-button-group)
+  > button:is([aria-pressed="true"], [aria-selected="true"]) {
+  background: var(--rumahl-ui-color-accent);
+  color: var(--rumahl-ui-color-on-accent);
+}
+.shell[data-theme="com.rumahl.classic"]
+  :is(
+    .rumahl-select__menu,
+    .rumahl-color-picker__popover,
+    .rumahl-calendar-popover,
+    .rumahl-tooltip,
+    .desktop-menu,
+    .menubar__dropdown,
+    .command-palette,
+    .start-menu,
+    .desktop-widget
+  ) {
+  border: 1px solid var(--classic-line);
+  border-radius: 3px;
+  background: var(--classic-paper);
+  color: var(--classic-ink);
+  box-shadow: 3px 3px 0 #00000024;
+}
+.shell[data-theme="com.rumahl.classic"] .menubar {
+  background: var(--classic-panel);
+  color: var(--classic-ink);
+  border: 0;
+  border-bottom: 1px solid var(--classic-line);
+  border-radius: 0;
+  box-shadow: none;
+}
+.shell[data-theme="com.rumahl.classic"] .slot-taskbar {
+  position: fixed;
+  inset: auto 0 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 42px;
+  padding: 4px 8px;
+  border: 0;
+  border-top: 1px solid var(--classic-line);
+  border-radius: 0;
+  background: var(--classic-panel);
+  color: var(--classic-ink);
+  box-shadow: none;
+}
+.shell[data-theme="com.rumahl.classic"] :is(.taskbar__apps, .taskbar__windows) {
+  display: flex;
+  gap: 4px;
+  min-width: 0;
+  overflow-x: auto;
+}
+.shell[data-theme="com.rumahl.classic"] :is(.taskbar__button, .taskbar__start) {
+  min-height: 30px;
+  padding: 5px 12px;
+  border: 1px solid var(--classic-line);
+  border-radius: 2px;
+  background: var(--classic-paper);
+  color: var(--classic-ink);
+  white-space: nowrap;
+  text-decoration: none;
+}
+.shell[data-theme="com.rumahl.classic"] .taskbar__button[data-focused="true"] {
+  background: var(--rumahl-ui-color-accent);
+  color: var(--rumahl-ui-color-on-accent);
+}
+.shell[data-theme="com.rumahl.classic"] .taskbar__clock {
+  margin-left: auto;
+  padding-inline: 10px;
+  white-space: nowrap;
+}
+.shell[data-theme="com.rumahl.classic"]
+  :is(
+    input[role="switch"],
+    .files-view-switch__thumb,
+    .rumahl-password__toggle,
+    .rumahl-modal__close
+  ) {
+  border-radius: 3px;
+}
+.shell[data-theme="com.rumahl.classic"] input[role="switch"]::before {
+  border-radius: 2px;
+}
+.shell[data-theme="com.rumahl.classic"]
+  :is(
+    .rumahl-input,
+    .rumahl-textarea,
+    .rumahl-input-group,
+    .rumahl-select__trigger,
+    .rumahl-field-group
+  )[data-status="error"] {
+  background: color-mix(
+    in srgb,
+    var(--control-error) 10%,
+    var(--classic-paper)
+  );
+  border-color: var(--control-error);
+}
+.shell[data-theme="com.rumahl.classic"]
+  :is(
+    .rumahl-input,
+    .rumahl-textarea,
+    .rumahl-input-group,
+    .rumahl-select__trigger,
+    .rumahl-field-group
+  )[data-status="success"] {
+  background: color-mix(
+    in srgb,
+    var(--control-success) 10%,
+    var(--classic-paper)
+  );
+  border-color: var(--control-success);
+}
+.shell[data-theme="com.rumahl.classic"] .rumahl-input-group > .rumahl-input {
+  background: transparent;
+  border: 0;
+}
