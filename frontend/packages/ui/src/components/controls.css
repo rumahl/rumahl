@@ -41,7 +41,7 @@
   --control-h: calc(26px * var(--rumahl-ui-typography-scale, 1));
   --control-pad-x: calc(10px * var(--rumahl-ui-typography-scale, 1));
   --control-pad-y: calc(4px * var(--rumahl-ui-typography-scale, 1));
-  --control-font: calc(11px * var(--rumahl-ui-typography-scale, 1));
+  --control-font: calc(12px * var(--rumahl-ui-typography-scale, 1));
   --control-icon: calc(12px * var(--rumahl-ui-typography-scale, 1));
   --control-gap: calc(5px * var(--rumahl-ui-typography-scale, 1));
 }
@@ -49,7 +49,7 @@
   --control-h: calc(30px * var(--rumahl-ui-typography-scale, 1));
   --control-pad-x: calc(12px * var(--rumahl-ui-typography-scale, 1));
   --control-pad-y: calc(6px * var(--rumahl-ui-typography-scale, 1));
-  --control-font: calc(11px * var(--rumahl-ui-typography-scale, 1));
+  --control-font: calc(12px * var(--rumahl-ui-typography-scale, 1));
   --control-icon: calc(13px * var(--rumahl-ui-typography-scale, 1));
   --control-gap: calc(6px * var(--rumahl-ui-typography-scale, 1));
 }
@@ -557,7 +557,7 @@
 .shell .setting .visual--range output {
   min-width: 38px;
   text-align: right;
-  font-size: 11px;
+  font-size: 12px;
   color: var(--nd-muted, var(--rumahl-ui-color-text-muted));
   font-variant-numeric: tabular-nums;
 }
@@ -740,7 +740,7 @@
   background: var(--control-fill);
   box-shadow: var(--control-inset);
   color: var(--rumahl-ui-color-text-muted);
-  font-size: 11px;
+  font-size: 12px;
 }
 .shell
   :is(.settings-content, .rumahl-file)
@@ -793,7 +793,7 @@
 .shell .menubar__mode .rumahl-select__trigger {
   min-height: 24px;
   padding: 3px 9px;
-  font-size: 11px;
+  font-size: 12px;
 }
 
 /* Popup fields use the same capsule proportions at a compact, secondary size. */
@@ -806,7 +806,7 @@
   ) {
   min-height: 30px;
   padding-block: 5px;
-  font-size: 11px;
+  font-size: 12px;
 }
 .shell .rumahl-color-picker__format-row {
   grid-template-columns: 72px minmax(0, 1fr);
@@ -901,7 +901,7 @@
   --control-h: 26px;
   --control-pad-x: 10px;
   --control-pad-y: 4px;
-  --control-font: 11px;
+  --control-font: 12px;
   --control-icon: 12px;
   --control-gap: 5px;
 }
@@ -909,7 +909,7 @@
   --control-h: 30px;
   --control-pad-x: 12px;
   --control-pad-y: 6px;
-  --control-font: 11px;
+  --control-font: 12px;
   --control-icon: 13px;
   --control-gap: 6px;
 }
@@ -1146,7 +1146,7 @@
 .shell .rumahl-tooltip {
   padding: 7px 10px;
   border-radius: 8px;
-  font-size: 11px;
+  font-size: 12px;
   line-height: 1.45;
   max-width: min(260px, calc(100vw - 24px));
   white-space: normal;
@@ -1179,7 +1179,7 @@
 .rumahl-calendar__week {
   margin-bottom: 5px;
   text-align: center;
-  font-size: 10px;
+  font-size: 12px;
   color: var(--rumahl-ui-color-text-muted);
 }
 .shell .rumahl-calendar button {
@@ -1192,7 +1192,7 @@
   background: transparent;
   color: var(--rumahl-ui-color-text-primary);
   font: inherit;
-  font-size: 11px;
+  font-size: 12px;
   box-shadow: none;
   backdrop-filter: none;
 }
@@ -1363,14 +1363,14 @@
 }
 .rumahl-profile-card strong,
 .rumahl-profile-option strong {
-  font-family: Inter, system-ui, sans-serif;
+  font-family: var(--rumahl-ui-typography-family, Inter, system-ui, sans-serif);
   font-size: 12px;
   font-weight: 600;
 }
 .rumahl-profile-card small,
 .rumahl-profile-option small,
 .rumahl-profile-card__status {
-  font-size: 10px;
+  font-size: 12px;
   color: var(--rumahl-ui-color-text-muted);
 }
 .shell .rumahl-select__trigger .rumahl-profile-option {
@@ -1461,7 +1461,7 @@
 }
 .rumahl-avatar-change small,
 .rumahl-password small {
-  font-size: 11px;
+  font-size: 12px;
   color: var(--rumahl-ui-color-text-muted);
 }
 .rumahl-avatar-change [role="alert"] {
@@ -1642,7 +1642,7 @@
   border-radius: var(--badge-radius);
   background: var(--badge-background);
   box-shadow: var(--badge-shadow);
-  font-size: calc(var(--control-h) * 0.3056);
+  font-size: var(--control-font);
 }
 .rumahl-badge::before {
   content: "";
@@ -1652,10 +1652,10 @@
   background: var(--badge-color, currentColor);
 }
 .rumahl-badge--success {
-  --badge-color: #39a77b;
+  --badge-color: var(--rumahl-ui-color-success, #39a77b);
 }
 .rumahl-badge--warning {
-  --badge-color: #d5a347;
+  --badge-color: var(--rumahl-ui-color-warning, #d5a347);
 }
 .rumahl-badge--danger {
   --badge-color: var(--rumahl-ui-color-danger, #e5484d);
@@ -1697,7 +1697,7 @@
   font-weight: 700;
 }
 .rumahl-notice--warning .rumahl-notice__symbol {
-  color: #d5a347;
+  color: var(--rumahl-ui-color-warning, #d5a347);
 }
 .rumahl-notice--danger .rumahl-notice__symbol {
   color: var(--rumahl-ui-color-danger, #e5484d);
@@ -1998,7 +1998,7 @@
 }
 .shell .rumahl-input-feedback__message {
   color: var(--control-error);
-  font-size: 11px;
+  font-size: 12px;
   line-height: 1.45;
   overflow-wrap: anywhere;
 }
@@ -2049,7 +2049,7 @@
   align-items: center;
   gap: 10px;
   min-width: 0;
-  font-size: 11px;
+  font-size: 12px;
   color: var(--rumahl-ui-color-text-muted);
 }
 .rumahl-modal__identity > svg {
@@ -2244,10 +2244,10 @@
     scale: 0.96;
   }
   .shell:not([data-animations="off"]) .rumahl-input-feedback__message {
-    animation: rumahl-control-feedback-in 180ms ease both;
+    animation: rumahl-control-feedback-in 180ms ease backwards;
   }
   .shell:not([data-animations="off"]) .rumahl-modal[open] {
-    animation: rumahl-dialog-in 200ms cubic-bezier(0.2, 0.7, 0.2, 1) both;
+    animation: rumahl-dialog-in 200ms cubic-bezier(0.2, 0.7, 0.2, 1) backwards;
   }
   .shell:not([data-animations="off"]) input[role="switch"]::before {
     transition: transform 180ms cubic-bezier(0.2, 0.7, 0.2, 1);
@@ -2383,7 +2383,7 @@
 .rumahl-empty-state .eyebrow {
   margin: 0 0 12px;
   color: var(--rumahl-ui-color-accent);
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 700;
   letter-spacing: 0.12em;
   text-transform: uppercase;
@@ -2574,10 +2574,12 @@
   box-shadow: var(--control-button-shadow);
   color: var(--rumahl-ui-color-text-primary);
 }
+/* The shell's motion policy (shell/motion.css) disables animations globally and
+   keeps the spinner arc alive; here only the decorative fill transition stops. */
 .shell[data-animations="off"] .rumahl-progress__fill,
-.shell[data-animations="off"] .rumahl-spinner__arc { animation: none; transition: none; }
+body.animations-off .rumahl-progress__fill { transition: none; }
 @media (prefers-reduced-motion: reduce) {
-  .rumahl-progress__fill, .rumahl-spinner__arc { animation: none !important; transition: none; }
+  .rumahl-progress__fill { transition: none; }
 }
 
 /* Multiline fields use restrained corners, even inside settings forms. */
@@ -2642,7 +2644,7 @@
   content: ""; width: 12px; height: 12px; border: 1px solid currentColor; border-radius: 3px;
 }
 .shell .rumahl-toggle-group[data-selection="multiple"] > button[aria-pressed="true"]::before {
-  content: "✓"; display: grid; place-items: center; font-size: 10px; line-height: 1;
+  content: "✓"; display: grid; place-items: center; font-size: 12px; line-height: 1;
 }
 .shell .rumahl-toggle-group[data-selection="multiple"] > button[aria-pressed="true"] {
   /* The same coloured tint as the buttons and the switch, over the shared

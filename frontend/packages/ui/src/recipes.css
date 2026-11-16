@@ -68,14 +68,15 @@
     color-mix(in srgb, var(--rumahl-ui-color-text-primary) 10%, transparent);
   --window-title-size: 12px;
   --window-title-weight: 700;
-  --window-subtitle-size: 11px;
+  --window-subtitle-size: 12px;
   --window-control-width: 33px;
   --window-control-height: 30px;
   --window-control-radius: 8px;
   --window-background: var(--rumahl-ui-color-window-background);
   --window-background-solid: var(--rumahl-ui-color-window-background-solid);
   --window-border: 1px solid rgba(255, 255, 255, 0.12);
-  --window-radius: 23px;
+  --window-radius: var(--rumahl-ui-shape-radius-window, 23px);
+  --window-content-radius: 12px;
   --window-shadow: 0 30px 85px rgba(3, 8, 26, 0.43),
     0 4px 15px rgba(0, 0, 0, 0.11), inset 0 1px 0 rgba(255, 255, 255, 0.1);
   --window-backdrop: blur(45px) saturate(1.65);
@@ -186,7 +187,7 @@
   --island-backdrop: blur(24px) saturate(1.4);
   --island-item-radius: 20px;
   --island-item-height: 48px;
-  --island-item-font-size: 9px;
+  --island-item-font-size: 12px;
   --island-ink: rgb(255 255 255 / 0.64);
   --island-hover: rgb(255 255 255 / 0.08);
   --island-active-background: var(--rumahl-ui-color-accent);

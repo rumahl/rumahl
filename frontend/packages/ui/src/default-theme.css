@@ -117,11 +117,11 @@
     color: var(--rumahl-ui-color-on-accent);
   }
   .shell-window {
-    border-radius: var(--rumahl-ui-shape-radius-window);
+    border-radius: var(--window-radius, var(--rumahl-ui-shape-radius-window));
   }
   .shell-window__content {
-    border-radius: 0 0 var(--rumahl-ui-shape-radius-window)
-      var(--rumahl-ui-shape-radius-window);
+    border-radius: 0 0 var(--window-content-radius, 12px)
+      var(--window-content-radius, 12px);
   }
   .shell-window__titlebar {
     min-height: 46px;
@@ -289,7 +289,7 @@
   border-radius: 20px;
 }
 .shell[data-theme="com.rumahl.default"] .desktop-widget__eyebrow {
-  font-size: 10px;
+  font-size: 12px;
   letter-spacing: 0.09em;
   margin-bottom: 12px;
 }
