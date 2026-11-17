@@ -58,6 +58,22 @@ const scenarios = [
   { id: "com.rumahl.core", name: "core", install: "core.json", base: "ground", accent: "#1a73e8", window: "0px", dock: "0px", menuRadius: "0px" },
   { id: "com.example.dashboard", name: "dashboard", install: "dashboard.json", base: "ground", accent: "#4f46e5", window: "18px", dock: "18px", menuRadius: "0px" },
   { id: "com.example.terminal", name: "terminal", install: "terminal.json", base: "ground", accent: "#39ff14", window: "0px", dock: "0px", menuRadius: "0px" },
+  {
+    id: "com.example.retro",
+    name: "retro",
+    install: "retro.json",
+    base: "ground",
+    accent: "#b23a2b",
+    window: "0px",
+    dock: "0px",
+    menuRadius: "0px",
+    menuBackground: "rgb(255, 248, 231)",
+    widgetBackground: "rgb(255, 248, 231)",
+    dockBackground: "rgb(243, 228, 196)",
+    windowShadow: /6px 6px 0px/,
+    bodyFont: /Courier New/i,
+    displayFont: /Instrument Serif/i
+  },
   { id: custom.id, name: "custom", install: "__custom__", base: "ground", accent: "#ff5500", window: "10px", dock: "14px", menuRadius: "4px" }
 ];
 
@@ -167,6 +183,15 @@ try {
       await page.waitForTimeout(120);
     }
     await page.waitForTimeout(350);
+    // Session restore is timing dependent once several themes have run. Open a
+    // window deterministically so every scenario audits real window chrome.
+    if (!(await page.locator(".shell-window").count())) {
+      const icon = page.locator(".desktop-icon", { hasText: "Files" }).first();
+      if (await icon.count()) {
+        await icon.dblclick().catch(() => {});
+        await page.waitForTimeout(1100);
+      }
+    }
 
     const desktop = await page.evaluate(() => {
       const root = getComputedStyle(document.documentElement);
@@ -190,6 +215,7 @@ try {
         base: shell?.dataset.themeBase,
         accent: root.getPropertyValue("--rumahl-ui-color-accent").trim(),
         font: root.getPropertyValue("--rumahl-ui-typography-family").trim(),
+        displayFont: root.getPropertyValue("--rumahl-ui-typography-display").trim(),
         shapeWindow: root.getPropertyValue("--rumahl-ui-shape-radius-window").trim(),
         shapeDock: root.getPropertyValue("--rumahl-ui-shape-radius-dock").trim(),
         window: pick(".shell-window"),
@@ -197,6 +223,14 @@ try {
         topbar: pick(".topbar__island"),
         widget: pick(".desktop-widget"),
         bodyFont: getComputedStyle(document.body).fontFamily,
+        labelInk: (() => {
+          const element = document.querySelector(".desktop-icon__label");
+          return element ? getComputedStyle(element).color : null;
+        })(),
+        widgetEyebrow: (() => {
+          const element = document.querySelector(".desktop-widget__eyebrow");
+          return element ? getComputedStyle(element).color : null;
+        })(),
         overflow: document.documentElement.scrollWidth - window.innerWidth
       };
     });
@@ -252,6 +286,20 @@ try {
       check("terminal-accent", desktop.accent === "#39ff14", desktop.accent);
       check("terminal-menu-material", menu?.background === "rgb(0, 0, 0)", menu);
       check("terminal-widget-material", desktop.widget?.background === "rgb(0, 0, 0)", desktop.widget);
+    }
+    if (scenario.name === "retro") {
+      check("retro-type", scenario.bodyFont.test(desktop.bodyFont), desktop.bodyFont);
+      check("retro-display-type", scenario.displayFont.test(desktop.displayFont), desktop.displayFont);
+      check("retro-opaque", desktop.window?.backdrop === "none", desktop.window);
+      check("retro-window-shadow", scenario.windowShadow.test(desktop.window?.shadow ?? ""), desktop.window);
+      check("retro-dock-background", desktop.dock?.background === scenario.dockBackground, desktop.dock);
+      check("retro-widget-material", desktop.widget?.background === scenario.widgetBackground, desktop.widget);
+      check("retro-menu-material", menu?.background === scenario.menuBackground, menu);
+      check("retro-menu-shadow", /4px 4px 0px/.test(menu?.shadow ?? ""), menu);
+      // A theme-owned opaque label surface must replace the wallpaper ink,
+      // and the widget eyebrow must stay readable on the solid widget.
+      check("retro-label-ink", desktop.labelInk === "rgb(44, 36, 27)", desktop.labelInk);
+      check("retro-widget-eyebrow", desktop.widgetEyebrow === "rgb(107, 93, 79)", desktop.widgetEyebrow);
     }
     if (scenario.name === "custom") {
       check("custom-type", /Georgia/i.test(desktop.bodyFont), desktop.bodyFont);
