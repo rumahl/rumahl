@@ -263,13 +263,23 @@ function HostedWindow({ item, area, dockReserve, zIndex, animations: motionEnabl
     const next = resize ? { ...rect, width: rect.width + delta[0]! * step, height: rect.height + delta[1]! * step } : { ...rect, x: rect.x + delta[0]! * step, y: rect.y + delta[1]! * step };
     dispatch({ type: "set-window-rect", id: item.id, rect: constrain(next, workArea) });
   }
+  const position = useRef<HTMLDivElement>(null);
+  // Write the focus z-index through CSSOM as well as the style prop. React's
+  // initial style string is not always parsed for numeric z-index in a freshly
+  // hydrated tree, which left a newly focused window behind the old one.
+  useLayoutEffect(() => { if (position.current) position.current.style.zIndex = String(zIndex); }, [zIndex]);
   const animate = motionEnabled && typeof window !== "undefined" && typeof window.matchMedia === "function" && !window.matchMedia("(prefers-reduced-motion: reduce)").matches;
   const enter = isLauncher ? { opacity: 0, y: 140, scale: 0.94 } : { opacity: 0, y: 10, scale: 0.985 };
-  return <motion.div
+  // The focus z-index lives on a plain wrapper: motion owns the inner element's
+  // style for its entrance animation and drops foreign style props.
+  return <div
     aria-hidden={hidden ? true : undefined}
+    ref={position}
     className={`window-position${moving ? " is-moving is-dragging" : ""}${hidden ? " is-hidden" : ""}`}
     data-fullscreen={isFullscreen ? "true" : undefined}
-    style={{ zIndex }}
+    style={{ zIndex }}>
+  <motion.div
+    className="window-motion"
     {...(animate ? { initial: enter, exit: enter } : { initial: false })}
     animate={{ opacity: 1, y: 0, scale: 1 }}
     transition={isLauncher ? { type: "spring", stiffness: 320, damping: 30 } : { type: "spring", stiffness: 430, damping: 34, mass: 0.82 }}
@@ -297,5 +307,6 @@ function HostedWindow({ item, area, dockReserve, zIndex, animations: motionEnabl
       model={mobileNav}
       onSwitcher={() => dispatch({ type: "toggle-app-switcher" })}
     /> : null}
-  </motion.div>;
+  </motion.div>
+  </div>;
 }

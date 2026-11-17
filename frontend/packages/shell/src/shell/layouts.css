@@ -152,6 +152,8 @@
 .start-menu__footer button { padding: 9px 16px; border: 1px solid var(--line); border-radius: 10px; background: var(--rumahl-ui-color-canvas-background, var(--rumahl-color-canvas-background)); }
 .shell .window-layer { position: absolute; inset: 0; z-index: 10; pointer-events: none; }
 .window-position { position: absolute; inset: 0; pointer-events: none; }
+/* Entrance animation lives on an inner layer; the outer wrapper owns focus z-index. */
+.shell .window-position > .window-motion { position: absolute; inset: 0; pointer-events: none; }
 .window-position[hidden] { display: none; }
 .shell .shell-window, .shell .shell-window.is-focused { position: absolute; display: flex; flex-direction: column; min-width: 0; min-height: 0; max-width: 100%; max-height: 100%; transform: none; opacity: 1; transition: none; }
 .shell .shell-window { border: 1px solid var(--line); box-shadow: 0 14px 40px #0005; }
