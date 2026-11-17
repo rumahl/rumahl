@@ -203,6 +203,7 @@ export function exportThemePackage(theme: Theme): string {
       tokens: theme.tokens,
       parameters: theme.parameters,
       ...(theme.preview ? { preview: theme.preview } : {}),
+      ...(theme.icons && Object.keys(theme.icons).length ? { icons: theme.icons } : {}),
       ...(theme.css ? { css: theme.css } : {}),
       ...(theme.code ? { code: theme.code } : {})
     },

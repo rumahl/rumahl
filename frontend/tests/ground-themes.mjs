@@ -243,6 +243,12 @@ try {
           const rect = element.getBoundingClientRect();
           return { top: rect.top, height: rect.height };
         })(),
+        spotlight: (() => {
+          const element = document.querySelector(".menubar__spotlight svg");
+          return element
+            ? { viewBox: element.getAttribute("viewBox"), html: element.innerHTML.slice(0, 200) }
+            : null;
+        })(),
         overflow: document.documentElement.scrollWidth - window.innerWidth
       };
     });
@@ -324,6 +330,8 @@ try {
       // and the widget eyebrow must stay readable on the solid widget.
       check("retro-label-ink", desktop.labelInk === "rgb(44, 36, 27)", desktop.labelInk);
       check("retro-widget-eyebrow", desktop.widgetEyebrow === "rgb(107, 93, 79)", desktop.widgetEyebrow);
+      // The retro icon pack replaces the stroked circle with a square lens.
+      check("retro-icon-pack", /<rect/.test(desktop.spotlight?.html ?? ""), desktop.spotlight);
     }
     if (scenario.name === "custom") {
       check("custom-type", /Georgia/i.test(desktop.bodyFont), desktop.bodyFont);

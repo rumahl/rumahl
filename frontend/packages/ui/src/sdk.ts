@@ -9,6 +9,7 @@ import {
   type ThemeParameter,
 } from "./themes";
 import { sanitizeSlots, type SlotName, type SlotTemplate } from "./slots";
+import { sanitizeIconPack, type IconPackInput } from "./icon-pack";
 
 /**
  * Developer SDK. Third-party code authors themes as data; the shell keeps
@@ -24,6 +25,8 @@ export interface ThemeInput {
   modes?: readonly AppearanceMode[] | undefined;
   /** Optional per-region markup (validated safe templates). */
   slots?: Partial<Record<SlotName, SlotTemplate>> | undefined;
+  /** Optional artwork for the shell's system icons (validated safe shapes). */
+  icons?: IconPackInput | undefined;
   /** Optional theme stylesheet (applied CSP-safely). */
   css?: string | undefined;
   material?: "solid" | undefined;
@@ -60,6 +63,7 @@ export function defineTheme(input: ThemeInput): Theme {
     parameters: (input.parameters ?? []).map(normalizeParameter),
     modes: input.modes ?? ["light"],
     ...(input.slots ? { slots: sanitizeSlots(input.slots) } : {}),
+    ...(input.icons ? { icons: sanitizeIconPack(input.icons) } : {}),
     ...(input.material ? { material: input.material } : {}),
     ...(input.locked ? { locked: true } : {}),
     ...(typeof input.paletteTuning === "boolean" ? { paletteTuning: input.paletteTuning } : {}),

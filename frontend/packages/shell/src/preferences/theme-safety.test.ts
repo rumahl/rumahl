@@ -47,6 +47,30 @@ describe("validateTheme", () => {
     expect(report.issues.some((issue) => issue.level === "warning")).toBe(true);
   });
 
+  it("rejects icon markup that could escape the icon frame", () => {
+    const report = validateTheme({
+      ...base,
+      icons: {
+        search: { shapes: [{ tag: "image", attrs: { href: "https://example.com/a.svg" } }] }
+      }
+    });
+    expect(report.ok).toBe(false);
+    expect(report.issues.some((issue) => issue.code === "unsafe-icons")).toBe(true);
+  });
+
+  it("warns about an unknown icon name without blocking", () => {
+    const report = validateTheme({
+      ...base,
+      icons: {
+        "not-an-icon": {
+          shapes: [{ tag: "path", attrs: { d: "M4 4h16v16H4z" } }]
+        }
+      }
+    });
+    expect(report.ok).toBe(true);
+    expect(report.issues.some((issue) => issue.code === "icons" && issue.level === "warning")).toBe(true);
+  });
+
   it("rejects unsafe code", () => {
     const report = validateTheme({ ...base, code: "eval('1')" });
     expect(report.ok).toBe(false);

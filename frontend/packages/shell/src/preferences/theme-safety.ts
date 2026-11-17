@@ -1,6 +1,7 @@
 import { contrastRatio } from "@rumahl/ui/color";
 import { composite } from "@rumahl/ui/palette";
 import { defineTheme, type ThemeInput } from "@rumahl/ui/sdk";
+import { readIconPack } from "@rumahl/ui/icon-pack";
 import { TOKEN_IDS, type Tokens } from "@rumahl/ui/tokens";
 
 /**
@@ -158,6 +159,10 @@ export function validateTheme(raw: unknown): SafetyReport {
       );
     }
   }
+
+  const iconReport = readIconPack((raw as { icons?: unknown }).icons);
+  for (const message of iconReport.errors) issues.push(issue("error", "unsafe-icons", message));
+  for (const message of iconReport.warnings) issues.push(issue("warning", "icons", message));
 
   const schemaVersion = (raw as { schemaVersion?: unknown }).schemaVersion;
   if (schemaVersion !== undefined && schemaVersion !== 1) {

@@ -2,6 +2,7 @@ import { paletteTokens } from "./palette";
 import { defaultTokens, FONT_STACKS, mergeTokens, tokensForBase, type TokenId, type Tokens } from "./tokens";
 import { defaultVariants, resolveVariants, type VariantSelection } from "./variants";
 import { sanitizeSlots, type SlotName, type SlotTemplate } from "./slots";
+import { sanitizeIconPack, type IconPack } from "./icon-pack";
 
 
 /**
@@ -88,6 +89,8 @@ export interface Theme {
   modes: readonly AppearanceMode[];
   /** Optional per-region markup the theme provides as safe templates. */
   slots?: Partial<Record<SlotName, SlotTemplate>> | undefined;
+  /** Optional artwork for the shell's system icons. */
+  icons?: IconPack | undefined;
   /** Optional theme stylesheet (applied CSP-safely, first-party themes). */
   css?: string | undefined;
   /** Optional built-in preset families. These are curated by the theme, not a
@@ -351,6 +354,7 @@ export interface ThemePackageManifest {
   parameters?: readonly ThemeParameter[] | undefined;
   preview?: string | undefined;
   slots?: Partial<Record<SlotName, SlotTemplate>> | undefined;
+  icons?: unknown;
   material?: "solid" | undefined;
   base?: ThemeBase | "rumahl" | "clean" | undefined;
 }
@@ -372,6 +376,7 @@ export function themeFromPackage(manifest: ThemePackageManifest, css?: string, c
     ...(typeof manifest.paletteTuning === "boolean" ? { paletteTuning: manifest.paletteTuning } : {}),
     ...(typeof manifest.schemaVersion === "number" ? { schemaVersion: manifest.schemaVersion } : {}),
     ...(manifest.slots ? { slots: sanitizeSlots(manifest.slots) } : {}),
+    ...(manifest.icons ? { icons: sanitizeIconPack(manifest.icons) } : {}),
     ...(manifest.material ? { material: manifest.material } : {}),
     ...(base === "iris" && !manifest.base ? {} : { base }),
     ...(css ? { css } : {}),

@@ -24,6 +24,13 @@ describe("bundled theme packages", () => {
     expect(theme.paletteTuning).toBe(true);
   });
 
+  test("retro ships a sanitized icon pack", () => {
+    const theme = loadTheme("retro");
+    expect(theme.icons?.search?.shapes?.[0]?.tag).toBe("rect");
+    expect(theme.icons?.["window-close"]?.shapes?.[0]?.attrs.d).toBe("M6 6L18 18M18 6L6 18");
+    expect(theme.icons?.home?.viewBox).toBe("0 0 24 24");
+  });
+
   test("terminal keeps its explicit Ground values and stylesheet", () => {
     const theme = loadTheme("terminal");
     expect(theme.base).toBe("ground");
