@@ -758,8 +758,10 @@
   white-space: nowrap;
 }
 .taskbar__button > span:last-child {
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .taskbar__button:hover,
 .taskbar__button[aria-pressed="true"] {
@@ -768,7 +770,28 @@
 .taskbar__button svg {
   width: 18px;
   height: 18px;
+  flex: none;
   stroke: currentColor;
+}
+/* Ground bases underline links globally; taskbar buttons are chrome, not links. */
+.shell .taskbar__button {
+  text-decoration: none;
+}
+/* Running-window entries wrap the app icon in a span. Size that frame and any
+   artwork inside it so third-party app images cannot overflow the button. */
+.taskbar__button > span:first-child:not(:last-child) {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 18px;
+  height: 18px;
+  overflow: hidden;
+  border-radius: var(--rumahl-ui-shape-radius-icon, 4px);
+}
+.taskbar__button > span:first-child:not(:last-child) :is(img, svg) {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
 }
 .taskbar__window.is-minimized {
   opacity: 0.6;
