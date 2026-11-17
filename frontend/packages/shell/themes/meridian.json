@@ -1,0 +1,724 @@
+{
+  "id": "com.example.meridian",
+  "name": "Meridian",
+  "description": "A dark editorial OS: deep ink, warm ivory and brass rules with a classic taskbar.",
+  "version": "1.0.0",
+  "author": "rumahl examples",
+  "base": "ground",
+  "paletteTuning": false,
+  "modes": [
+    "dark"
+  ],
+  "material": "solid",
+  "variants": {
+    "shellLayout": "taskbar",
+    "launcherLayout": "springboard",
+    "windowChrome": "compact"
+  },
+  "tokens": {
+    "color.accent": "#c6a15b",
+    "color.accent.strong": "#e2bd7d",
+    "color.on.accent": "#12100b",
+    "color.canvas.background": "#070a0e",
+    "color.panel.background": "#0d1219",
+    "color.surface": "#121820",
+    "color.surface.strong": "#171f29",
+    "color.outline": "#2c3541",
+    "color.shadow": "rgba(0, 0, 0, 0.6)",
+    "color.text.primary": "#f4efe6",
+    "color.text.muted": "#9ba6b2",
+    "color.on.wallpaper": "#f4efe6",
+    "color.wallpaper.tint": "transparent",
+    "color.success": "#63b48c",
+    "color.success.surface": "#12241d",
+    "color.warning": "#dcae62",
+    "color.warning.surface": "#2a2113",
+    "color.danger": "#e07f74",
+    "color.danger.surface": "#2b1614",
+    "color.info": "#7fb2d6",
+    "color.info.surface": "#111f2b",
+    "color.window.titlebar.background": "#0d1219",
+    "color.window.titlebar.foreground": "#f4efe6",
+    "material.blur": "0px",
+    "material.saturation": "1",
+    "material.opacity": "1",
+    "material.morphism": "0",
+    "app.inputs": "solid",
+    "shape.radius.window": "3px",
+    "shape.radius.dock": "2px",
+    "shape.radius.icon": "2px",
+    "shape.icon.size": "52px",
+    "shape.icon.size.large": "64px",
+    "typography.family": "\"Manrope Variable\", \"SF Pro Text\", system-ui, sans-serif",
+    "typography.display": "\"Playfair Display Variable\", Georgia, serif",
+    "typography.scale": "1",
+    "motion.duration": "240ms",
+    "motion.duration.fast": "150ms",
+    "motion.easing.spring": "cubic-bezier(0.22, 1, 0.36, 1)",
+    "layout.dock.offset": "14px",
+    "icon.gradient": "linear-gradient(150deg, #e2bd7d, #8a6430)",
+    "texture.wallpaper": "radial-gradient(1200px 820px at 78% -12%, rgba(198, 161, 91, 0.17), transparent 60%), radial-gradient(900px 720px at -8% 108%, rgba(86, 128, 150, 0.2), transparent 62%), linear-gradient(160deg, #0a0e13, #070a0e 55%, #0b0f14)"
+  },
+  "icons": {
+    "search": {
+      "viewBox": "0 0 24 24",
+      "filled": false,
+      "shapes": [
+        {
+          "tag": "circle",
+          "attrs": {
+            "cx": 10.5,
+            "cy": 10.5,
+            "r": 6.5,
+            "strokeWidth": 1.4
+          }
+        },
+        {
+          "tag": "line",
+          "attrs": {
+            "x1": 15.4,
+            "y1": 15.4,
+            "x2": 21,
+            "y2": 21
+          }
+        }
+      ]
+    },
+    "home": {
+      "viewBox": "0 0 24 24",
+      "filled": false,
+      "shapes": [
+        {
+          "tag": "path",
+          "attrs": {
+            "d": "M3 11L12 3l9 8"
+          }
+        },
+        {
+          "tag": "path",
+          "attrs": {
+            "d": "M5 11v10h14V11"
+          }
+        },
+        {
+          "tag": "rect",
+          "attrs": {
+            "x": 10,
+            "y": 15,
+            "width": 4,
+            "height": 6,
+            "rx": 0
+          }
+        }
+      ]
+    },
+    "settings": {
+      "viewBox": "0 0 24 24",
+      "filled": false,
+      "shapes": [
+        {
+          "tag": "circle",
+          "attrs": {
+            "cx": 12,
+            "cy": 12,
+            "r": 3.2
+          }
+        },
+        {
+          "tag": "path",
+          "attrs": {
+            "d": "M12 2.5v3M12 18.5v3M2.5 12h3M18.5 12h3M5.3 5.3l2.1 2.1M16.6 16.6l2.1 2.1M18.7 5.3l-2.1 2.1M7.4 16.6l-2.1 2.1"
+          }
+        }
+      ]
+    },
+    "grid": {
+      "viewBox": "0 0 24 24",
+      "filled": false,
+      "shapes": [
+        {
+          "tag": "rect",
+          "attrs": {
+            "x": 3,
+            "y": 3,
+            "width": 7.4,
+            "height": 7.4,
+            "rx": 1
+          }
+        },
+        {
+          "tag": "rect",
+          "attrs": {
+            "x": 13.6,
+            "y": 3,
+            "width": 7.4,
+            "height": 7.4,
+            "rx": 1
+          }
+        },
+        {
+          "tag": "rect",
+          "attrs": {
+            "x": 3,
+            "y": 13.6,
+            "width": 7.4,
+            "height": 7.4,
+            "rx": 1
+          }
+        },
+        {
+          "tag": "rect",
+          "attrs": {
+            "x": 13.6,
+            "y": 13.6,
+            "width": 7.4,
+            "height": 7.4,
+            "rx": 1
+          }
+        }
+      ]
+    },
+    "pulse": {
+      "viewBox": "0 0 24 24",
+      "filled": false,
+      "shapes": [
+        {
+          "tag": "path",
+          "attrs": {
+            "d": "M2 12h4.2l2.4-6.2 4.6 12.4 2.4-6.2H22"
+          }
+        }
+      ]
+    },
+    "store": {
+      "viewBox": "0 0 24 24",
+      "filled": false,
+      "shapes": [
+        {
+          "tag": "path",
+          "attrs": {
+            "d": "M5 8h14l-1.2 12H6.2L5 8Z"
+          }
+        },
+        {
+          "tag": "path",
+          "attrs": {
+            "d": "M9 10V6.3a3 3 0 0 1 6 0V10"
+          }
+        }
+      ]
+    },
+    "desktop": {
+      "viewBox": "0 0 24 24",
+      "filled": false,
+      "shapes": [
+        {
+          "tag": "rect",
+          "attrs": {
+            "x": 3,
+            "y": 4,
+            "width": 18,
+            "height": 12.5,
+            "rx": 0
+          }
+        },
+        {
+          "tag": "path",
+          "attrs": {
+            "d": "M12 16.5V21M8 21h8"
+          }
+        }
+      ]
+    },
+    "document": {
+      "viewBox": "0 0 24 24",
+      "filled": false,
+      "shapes": [
+        {
+          "tag": "path",
+          "attrs": {
+            "d": "M6 3h7l5 5v13H6z"
+          }
+        },
+        {
+          "tag": "path",
+          "attrs": {
+            "d": "M13 3v5h5"
+          }
+        },
+        {
+          "tag": "path",
+          "attrs": {
+            "d": "M9 13h6M9 17h6"
+          }
+        }
+      ]
+    },
+    "info": {
+      "viewBox": "0 0 24 24",
+      "filled": false,
+      "shapes": [
+        {
+          "tag": "circle",
+          "attrs": {
+            "cx": 12,
+            "cy": 12,
+            "r": 9
+          }
+        },
+        {
+          "tag": "path",
+          "attrs": {
+            "d": "M12 11v5.5"
+          }
+        },
+        {
+          "tag": "path",
+          "attrs": {
+            "d": "M12 7.4v.2"
+          }
+        }
+      ]
+    },
+    "arrow": {
+      "viewBox": "0 0 24 24",
+      "filled": false,
+      "shapes": [
+        {
+          "tag": "path",
+          "attrs": {
+            "d": "M4 12h16"
+          }
+        },
+        {
+          "tag": "path",
+          "attrs": {
+            "d": "M14.5 6.5L20 12l-5.5 5.5"
+          }
+        }
+      ]
+    },
+    "arrow-left": {
+      "viewBox": "0 0 24 24",
+      "filled": false,
+      "shapes": [
+        {
+          "tag": "path",
+          "attrs": {
+            "d": "M20 12H4"
+          }
+        },
+        {
+          "tag": "path",
+          "attrs": {
+            "d": "M9.5 6.5L4 12l5.5 5.5"
+          }
+        }
+      ]
+    },
+    "check": {
+      "viewBox": "0 0 24 24",
+      "filled": false,
+      "shapes": [
+        {
+          "tag": "path",
+          "attrs": {
+            "d": "M4.5 12.5L9.5 17.5 20 6.5"
+          }
+        }
+      ]
+    },
+    "window-minimize": {
+      "viewBox": "0 0 24 24",
+      "filled": false,
+      "shapes": [
+        {
+          "tag": "line",
+          "attrs": {
+            "x1": 5,
+            "y1": 12,
+            "x2": 19,
+            "y2": 12
+          }
+        }
+      ]
+    },
+    "window-maximize": {
+      "viewBox": "0 0 24 24",
+      "filled": false,
+      "shapes": [
+        {
+          "tag": "rect",
+          "attrs": {
+            "x": 6,
+            "y": 6,
+            "width": 12,
+            "height": 12,
+            "rx": 1
+          }
+        }
+      ]
+    },
+    "window-restore": {
+      "viewBox": "0 0 24 24",
+      "filled": false,
+      "shapes": [
+        {
+          "tag": "rect",
+          "attrs": {
+            "x": 9,
+            "y": 9,
+            "width": 9,
+            "height": 9,
+            "rx": 1
+          }
+        },
+        {
+          "tag": "path",
+          "attrs": {
+            "d": "M6 15V8.5A2.5 2.5 0 0 1 8.5 6H15"
+          }
+        }
+      ]
+    },
+    "window-close": {
+      "viewBox": "0 0 24 24",
+      "filled": false,
+      "shapes": [
+        {
+          "tag": "path",
+          "attrs": {
+            "d": "M6 6L18 18"
+          }
+        },
+        {
+          "tag": "path",
+          "attrs": {
+            "d": "M18 6L6 18"
+          }
+        }
+      ]
+    },
+    "refresh": {
+      "viewBox": "0 0 24 24",
+      "filled": false,
+      "shapes": [
+        {
+          "tag": "path",
+          "attrs": {
+            "d": "M20 11.5a8 8 0 1 0-2.4 5.8"
+          }
+        },
+        {
+          "tag": "path",
+          "attrs": {
+            "d": "M20 4.5v7h-7"
+          }
+        }
+      ]
+    },
+    "play": {
+      "viewBox": "0 0 24 24",
+      "filled": true,
+      "shapes": [
+        {
+          "tag": "path",
+          "attrs": {
+            "d": "M8 5.2v13.6L19 12z"
+          }
+        }
+      ]
+    },
+    "stop": {
+      "viewBox": "0 0 24 24",
+      "filled": true,
+      "shapes": [
+        {
+          "tag": "rect",
+          "attrs": {
+            "x": 6.5,
+            "y": 6.5,
+            "width": 11,
+            "height": 11,
+            "rx": 1
+          }
+        }
+      ]
+    },
+    "edit": {
+      "viewBox": "0 0 24 24",
+      "filled": false,
+      "shapes": [
+        {
+          "tag": "path",
+          "attrs": {
+            "d": "M4 20h4L19.5 8.5 15.5 4.5 4 16z"
+          }
+        },
+        {
+          "tag": "path",
+          "attrs": {
+            "d": "M13.5 6.5l4 4"
+          }
+        }
+      ]
+    },
+    "shield": {
+      "viewBox": "0 0 24 24",
+      "filled": false,
+      "shapes": [
+        {
+          "tag": "path",
+          "attrs": {
+            "d": "M12 3 5 6v5.2c0 4.6 2.8 8.2 7 10 4.2-1.8 7-5.4 7-10V6z"
+          }
+        },
+        {
+          "tag": "path",
+          "attrs": {
+            "d": "M8.8 12l2.2 2.2 4.2-4.4"
+          }
+        }
+      ]
+    },
+    "user": {
+      "viewBox": "0 0 24 24",
+      "filled": false,
+      "shapes": [
+        {
+          "tag": "circle",
+          "attrs": {
+            "cx": 12,
+            "cy": 8,
+            "r": 3.6
+          }
+        },
+        {
+          "tag": "path",
+          "attrs": {
+            "d": "M4.8 20.2a7.2 7.2 0 0 1 14.4 0"
+          }
+        }
+      ]
+    },
+    "moon": {
+      "viewBox": "0 0 24 24",
+      "filled": false,
+      "shapes": [
+        {
+          "tag": "path",
+          "attrs": {
+            "d": "M19.5 14.8A8 8 0 0 1 9.2 4.5a8 8 0 1 0 10.3 10.3Z"
+          }
+        }
+      ]
+    },
+    "spark": {
+      "viewBox": "0 0 24 24",
+      "filled": false,
+      "shapes": [
+        {
+          "tag": "path",
+          "attrs": {
+            "d": "M12 3v5M12 16v5M3 12h5M16 12h5M6.2 6.2l3 3M14.8 14.8l3 3M17.8 6.2l-3 3M9.2 14.8l-3 3"
+          }
+        },
+        {
+          "tag": "circle",
+          "attrs": {
+            "cx": 12,
+            "cy": 12,
+            "r": 2.6
+          }
+        }
+      ]
+    },
+    "bolt": {
+      "viewBox": "0 0 24 24",
+      "filled": false,
+      "shapes": [
+        {
+          "tag": "path",
+          "attrs": {
+            "d": "M13 2.5 5 13.5h6l-1 8 8-11.5h-6z"
+          }
+        }
+      ]
+    },
+    "sliders": {
+      "viewBox": "0 0 24 24",
+      "filled": false,
+      "shapes": [
+        {
+          "tag": "path",
+          "attrs": {
+            "d": "M4 7h16M4 12h16M4 17h16"
+          }
+        },
+        {
+          "tag": "circle",
+          "attrs": {
+            "cx": 9,
+            "cy": 7,
+            "r": 2
+          }
+        },
+        {
+          "tag": "circle",
+          "attrs": {
+            "cx": 15,
+            "cy": 12,
+            "r": 2
+          }
+        },
+        {
+          "tag": "circle",
+          "attrs": {
+            "cx": 8,
+            "cy": 17,
+            "r": 2
+          }
+        }
+      ]
+    },
+    "terminal": {
+      "viewBox": "0 0 24 24",
+      "filled": false,
+      "shapes": [
+        {
+          "tag": "rect",
+          "attrs": {
+            "x": 3,
+            "y": 4,
+            "width": 18,
+            "height": 16,
+            "rx": 2
+          }
+        },
+        {
+          "tag": "path",
+          "attrs": {
+            "d": "M7 9l3 3-3 3M13 15h4"
+          }
+        }
+      ]
+    },
+    "external-link": {
+      "viewBox": "0 0 24 24",
+      "filled": false,
+      "shapes": [
+        {
+          "tag": "path",
+          "attrs": {
+            "d": "M14 4h6v6"
+          }
+        },
+        {
+          "tag": "path",
+          "attrs": {
+            "d": "M20 4 11 13"
+          }
+        },
+        {
+          "tag": "path",
+          "attrs": {
+            "d": "M18 14v4a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4"
+          }
+        }
+      ]
+    },
+    "phone": {
+      "viewBox": "0 0 24 24",
+      "filled": false,
+      "shapes": [
+        {
+          "tag": "rect",
+          "attrs": {
+            "x": 7,
+            "y": 3,
+            "width": 10,
+            "height": 18,
+            "rx": 2.5
+          }
+        },
+        {
+          "tag": "path",
+          "attrs": {
+            "d": "M11 18h2"
+          }
+        }
+      ]
+    },
+    "warning": {
+      "viewBox": "0 0 24 24",
+      "filled": false,
+      "shapes": [
+        {
+          "tag": "path",
+          "attrs": {
+            "d": "M10.4 4.3 2.7 17.8A2 2 0 0 0 4.4 20.8h15.2a2 2 0 0 0 1.7-3L13.6 4.3a2 2 0 0 0-3.2 0Z"
+          }
+        },
+        {
+          "tag": "path",
+          "attrs": {
+            "d": "M12 9.6v4.4"
+          }
+        },
+        {
+          "tag": "path",
+          "attrs": {
+            "d": "M12 17.3h.01"
+          }
+        }
+      ]
+    },
+    "window-stack": {
+      "viewBox": "0 0 24 24",
+      "filled": false,
+      "shapes": [
+        {
+          "tag": "rect",
+          "attrs": {
+            "x": 4,
+            "y": 8,
+            "width": 12,
+            "height": 12,
+            "rx": 2
+          }
+        },
+        {
+          "tag": "path",
+          "attrs": {
+            "d": "M8 8V4h12v12h-4"
+          }
+        }
+      ]
+    },
+    "window-fullscreen": {
+      "viewBox": "0 0 24 24",
+      "filled": false,
+      "shapes": [
+        {
+          "tag": "path",
+          "attrs": {
+            "d": "M8 3H4v4M16 3h4v4M20 16v4h-4M4 16v4h4"
+          }
+        }
+      ]
+    },
+    "window-exit-fullscreen": {
+      "viewBox": "0 0 24 24",
+      "filled": false,
+      "shapes": [
+        {
+          "tag": "path",
+          "attrs": {
+            "d": "M4 8h4V4M20 8h-4V4M16 20v-4h4M4 16h4v4"
+          }
+        }
+      ]
+    }
+  },
+  "css": "/* Meridian \u2014 a dark editorial OS. Deep ink, warm ivory, brass rules. */\n:root, .shell {\n  --ground-radius: 2px;\n  --window-radius: 3px;\n  --window-content-radius: 0 0 3px 3px;\n  --window-control-radius: 2px;\n  --dock-radius: 2px;\n  --dock-item-radius: 2px;\n  --group-radius: 3px;\n  --toolbar-radius: 2px;\n  --command-palette-radius: 3px;\n  --menu-radius: 3px;\n  --menu-item-radius: 2px;\n  --menu-background: var(--rumahl-ui-color-panel-background);\n  --menu-border: 1px solid var(--rumahl-ui-color-outline);\n  --menu-shadow: 0 24px 56px rgb(0 0 0 / 0.55);\n  --menu-backdrop: none;\n  --menu-item-hover: color-mix(in srgb, var(--rumahl-ui-color-accent) 14%, transparent);\n  --widget-background: var(--rumahl-ui-color-surface);\n  --widget-border: 1px solid var(--rumahl-ui-color-outline);\n  --widget-shadow: none;\n  --widget-ink: var(--rumahl-ui-color-text-primary);\n  --widget-muted: var(--rumahl-ui-color-text-muted);\n  --dock-background: var(--rumahl-ui-color-panel-background);\n  --dock-surface: var(--rumahl-ui-color-panel-background);\n  --dock-surface-border: 1px solid var(--rumahl-ui-color-outline);\n  --dock-surface-shadow: none;\n  --dock-sheen: none;\n  --label-ink: var(--rumahl-ui-color-text-primary);\n  --glass-solid-background: var(--rumahl-ui-color-panel-background);\n  --adaptive-color-duration: 0ms;\n  --control-fill: var(--rumahl-ui-color-surface);\n  --control-border: var(--rumahl-ui-color-outline);\n  --motion-easing-standard: cubic-bezier(0.22, 1, 0.36, 1);\n}\n.shell {\n  background: var(--rumahl-ui-color-canvas-background);\n  color: var(--rumahl-ui-color-text-primary);\n  letter-spacing: 0.01em;\n}\n.shell .wallpaper {\n  background: var(--rumahl-ui-texture-wallpaper);\n}\n\n/* Floating chrome: opaque ink panels with a brass hairline. */\n.shell[data-material=\"solid\"] .topbar__island.topbar__island {\n  background: var(--rumahl-ui-color-panel-background);\n  border: 1px solid var(--rumahl-ui-color-outline);\n  border-radius: 2px;\n  box-shadow: inset 0 1px 0 color-mix(in srgb, var(--rumahl-ui-color-accent) 34%, transparent);\n}\n.shell .shell-window {\n  background: var(--rumahl-ui-color-surface-strong);\n  border: 1px solid var(--rumahl-ui-color-outline);\n  border-radius: 3px;\n  box-shadow: 0 30px 80px rgb(0 0 0 / 0.55);\n}\n.shell .shell-window__titlebar {\n  background: var(--rumahl-ui-color-panel-background);\n  border-bottom: 1px solid var(--rumahl-ui-color-outline);\n  color: var(--rumahl-ui-color-text-primary);\n}\n.shell .shell-window__titlebar p {\n  color: var(--rumahl-ui-color-accent);\n  letter-spacing: 0.18em;\n  text-transform: uppercase;\n}\n.shell .shell-window__titlebar h2 {\n  font-family: var(--rumahl-ui-typography-display);\n  font-weight: 500;\n  letter-spacing: 0.01em;\n}\n.shell .shell-window__controls button {\n  border-radius: 2px;\n  background: color-mix(in srgb, var(--rumahl-ui-color-text-primary) 7%, transparent);\n}\n.shell .shell-window__controls button:hover {\n  background: color-mix(in srgb, var(--rumahl-ui-color-accent) 24%, transparent);\n}\n\n/* Classic taskbar: ink bar, brass controls, uppercase labels. */\n.shell .taskbar {\n  background: var(--rumahl-ui-color-panel-background);\n  color: var(--rumahl-ui-color-text-primary);\n  border-top: 1px solid var(--rumahl-ui-color-outline);\n  box-shadow: 0 -18px 44px rgb(0 0 0 / 0.4);\n  min-height: 44px;\n  letter-spacing: 0.05em;\n}\n.shell .taskbar__start {\n  background: var(--rumahl-ui-color-accent);\n  color: var(--rumahl-ui-color-on-accent);\n  border: 0;\n  border-radius: 2px;\n}\n.shell .taskbar__start:hover {\n  background: var(--rumahl-ui-color-accent-strong);\n}\n.shell .taskbar__button {\n  background: transparent;\n  border: 1px solid transparent;\n  border-radius: 2px;\n  color: var(--rumahl-ui-color-text-primary);\n}\n.shell .taskbar__button:hover,\n.shell .taskbar__button[aria-pressed=\"true\"],\n.shell .taskbar__button[data-focused=\"true\"] {\n  background: color-mix(in srgb, var(--rumahl-ui-color-accent) 16%, transparent);\n  border-color: color-mix(in srgb, var(--rumahl-ui-color-accent) 34%, transparent);\n}\n.shell .taskbar__windows,\n.shell .taskbar__tray {\n  border-left-color: var(--rumahl-ui-color-outline);\n}\n.shell .taskbar__clock {\n  color: var(--rumahl-ui-color-accent);\n  letter-spacing: 0.08em;\n  text-transform: uppercase;\n}\n\n/* Desktop */\n.shell .desktop-icon__label {\n  padding: 1px 4px;\n  border: 1px solid color-mix(in srgb, var(--rumahl-ui-color-outline) 82%, transparent);\n  border-radius: 2px;\n  background: color-mix(in srgb, var(--rumahl-ui-color-panel-background) 86%, transparent);\n  text-shadow: none;\n}\n.shell .desktop-icon.is-selected {\n  background: color-mix(in srgb, var(--rumahl-ui-color-accent) 14%, transparent);\n  border-color: color-mix(in srgb, var(--rumahl-ui-color-accent) 42%, transparent);\n}\n\n/* Settings, files, store share the same ink card language. */\n.shell :is(.settings-group, .rumahl-group) {\n  background: var(--rumahl-ui-color-surface);\n  border: 1px solid var(--rumahl-ui-color-outline);\n  border-radius: 3px;\n  box-shadow: none;\n}\n.shell :is(.section-title, .settings-section-title, .settings-content .section-title) {\n  font-family: var(--rumahl-ui-typography-display);\n  font-weight: 500;\n  color: var(--rumahl-ui-color-accent);\n  letter-spacing: 0.04em;\n  text-transform: none;\n}\n.shell .files-app__sidebar {\n  background: var(--rumahl-ui-color-panel-background);\n  border-right: 1px solid var(--rumahl-ui-color-outline);\n}\n.shell :is(.files-nav, .settings-nav__row) {\n  border-radius: 2px;\n}\n.shell :is(.files-nav.is-active, .settings-nav__row.is-active, .settings-sidebar a[aria-current=\"page\"]) {\n  background: color-mix(in srgb, var(--rumahl-ui-color-accent) 15%, transparent);\n  color: var(--rumahl-ui-color-text-primary);\n  box-shadow: inset 2px 0 0 var(--rumahl-ui-color-accent);\n}\n.shell :is(.store-grid-card, .store-card, .store-edit-card, .store-product-hero) {\n  background: var(--rumahl-ui-color-surface);\n  border: 1px solid var(--rumahl-ui-color-outline);\n  border-radius: 3px;\n  box-shadow: none;\n}\n.shell :is(.store-grid-card__media, .store-shot, .store-art, .store-cover, .store-icon) {\n  border-radius: 2px;\n}\n.shell .btn {\n  border-radius: 2px;\n}\n.shell .btn.btn--primary {\n  background: var(--rumahl-ui-color-accent);\n  border-color: var(--rumahl-ui-color-accent);\n  color: var(--rumahl-ui-color-on-accent);\n}\n.shell .btn.btn--primary:hover {\n  background: var(--rumahl-ui-color-accent-strong);\n  border-color: var(--rumahl-ui-color-accent-strong);\n}\n.shell :focus-visible {\n  outline: 2px solid var(--rumahl-ui-color-accent);\n  outline-offset: 2px;\n}\n.shell ::selection {\n  background: color-mix(in srgb, var(--rumahl-ui-color-accent) 30%, transparent);\n  color: var(--rumahl-ui-color-text-primary);\n}"
+}

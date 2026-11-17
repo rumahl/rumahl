@@ -24,6 +24,17 @@ describe("bundled theme packages", () => {
     expect(theme.paletteTuning).toBe(true);
   });
 
+  test("meridian ships a dark editorial identity with a taskbar layout", () => {
+    const theme = loadTheme("meridian");
+    expect(theme.base).toBe("ground");
+    expect(theme.modes).toEqual(["dark"]);
+    expect(theme.variants.shellLayout).toBe("taskbar");
+    expect(theme.variants.windowChrome).toBe("compact");
+    expect(theme.tokens["typography.family"]).toContain("Manrope");
+    expect(theme.tokens["typography.display"]).toContain("Playfair");
+    expect(theme.icons?.search?.shapes?.length).toBe(2);
+  });
+
   test("retro ships a sanitized icon pack", () => {
     const theme = loadTheme("retro");
     expect(theme.icons?.search?.shapes?.[0]?.tag).toBe("rect");

@@ -59,6 +59,22 @@ const scenarios = [
   { id: "com.example.dashboard", name: "dashboard", install: "dashboard.json", base: "ground", accent: "#4f46e5", window: "18px", dock: "18px", menuRadius: "0px" },
   { id: "com.example.terminal", name: "terminal", install: "terminal.json", base: "ground", accent: "#39ff14", window: "0px", dock: "0px", menuRadius: "0px" },
   {
+    id: "com.example.meridian",
+    name: "meridian",
+    install: "meridian.json",
+    base: "ground",
+    accent: "#c6a15b",
+    window: "3px",
+    dock: "2px",
+    menuRadius: "3px",
+    menuBackground: "rgb(13, 18, 25)",
+    widgetBackground: "rgb(23, 31, 41)",
+    windowShadow: /30px 80px/,
+    bodyFont: /Manrope/,
+    displayFont: /Playfair/,
+    taskbar: true
+  },
+  {
     id: "com.example.retro",
     name: "retro",
     install: "retro.json",
@@ -219,6 +235,7 @@ try {
         shapeWindow: root.getPropertyValue("--rumahl-ui-shape-radius-window").trim(),
         shapeDock: root.getPropertyValue("--rumahl-ui-shape-radius-dock").trim(),
         window: pick(".shell-window"),
+        taskbar: pick(".taskbar"),
         dock: pick(".os-dock"),
         topbar: pick(".topbar__island"),
         widget: pick(".desktop-widget"),
@@ -316,6 +333,15 @@ try {
       check("terminal-accent", desktop.accent === "#39ff14", desktop.accent);
       check("terminal-menu-material", menu?.background === "rgb(0, 0, 0)", menu);
       check("terminal-widget-material", desktop.widget?.background === "rgb(0, 0, 0)", desktop.widget);
+    }
+    if (scenario.name === "meridian") {
+      check("meridian-type", scenario.bodyFont.test(desktop.bodyFont), desktop.bodyFont);
+      check("meridian-display-type", scenario.displayFont.test(desktop.displayFont), desktop.displayFont);
+      check("meridian-taskbar", desktop.taskbar !== null, desktop.taskbar);
+      check("meridian-window-shadow", scenario.windowShadow.test(desktop.window?.shadow ?? ""), desktop.window);
+      check("meridian-dock-absent", desktop.dock === null, desktop.dock);
+      check("meridian-widget-material", desktop.widget?.background === scenario.widgetBackground, desktop.widget);
+      check("meridian-menu-material", menu?.background === scenario.menuBackground, menu);
     }
     if (scenario.name === "retro") {
       check("retro-type", scenario.bodyFont.test(desktop.bodyFont), desktop.bodyFont);
