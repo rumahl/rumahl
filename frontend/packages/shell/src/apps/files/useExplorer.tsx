@@ -273,7 +273,17 @@ export function useExplorer(request: ShellRequest | null, device: string, advanc
       setOpenError({ name: item.name, extension, program: handler.label });
       return;
     }
-    openApp?.(handler.appPath);
+    // Tell the handler which file to open. Personal files are addressed by id;
+    // host files by their read-only root, area and path.
+    const params = new URLSearchParams({ name: item.name });
+    if (item.host && nav.place.kind === "host") {
+      params.set("source", "host");
+      params.set("area", nav.place.area);
+      params.set("path", item.key);
+    } else {
+      params.set("id", item.key);
+    }
+    openApp?.(`${handler.appPath}?${params.toString()}`);
   }, [nav, go, openApp]);
 
   const download = useCallback((item: Item) => {

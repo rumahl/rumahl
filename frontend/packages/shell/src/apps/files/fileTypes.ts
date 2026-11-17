@@ -24,7 +24,7 @@ export interface FileHandler {
 
 /** Programs a file type can be opened with. More are added as apps arrive. */
 export const fileHandlers: readonly FileHandler[] = [
-  { id: "text", label: "Text editor", kind: "editor", installed: false },
+  { id: "text", label: "Text editor", kind: "editor", installed: true, appPath: "/app/editor" },
   { id: "image", label: "Image viewer", kind: "viewer", installed: false },
   { id: "media", label: "Media player", kind: "viewer", installed: false },
   { id: "pdf", label: "PDF viewer", kind: "viewer", installed: false }
@@ -39,16 +39,24 @@ export function handlerById(id: string | undefined): FileHandler | undefined {
  * program behind it can be swapped later without changing this table's shape.
  */
 export const defaultAssociations: Readonly<Record<string, string>> = {
-  txt: "text", text: "text", md: "text", markdown: "text", json: "text", csv: "text",
-  ts: "text", tsx: "text", js: "text", jsx: "text", mjs: "text", cjs: "text",
-  yml: "text", yaml: "text", toml: "text", ini: "text", conf: "text", log: "text",
-  xml: "text", html: "text", htm: "text", css: "text", sh: "text", rs: "text", py: "text",
+  txt: "text", text: "text", md: "text", markdown: "text", mdx: "text", rst: "text", adoc: "text",
+  json: "text", jsonc: "text", json5: "text", csv: "text", tsv: "text", properties: "text",
+  ts: "text", tsx: "text", js: "text", jsx: "text", mjs: "text", cjs: "text", vue: "text", svelte: "text",
+  yml: "text", yaml: "text", toml: "text", ini: "text", conf: "text", cfg: "text", env: "text", log: "text",
+  xml: "text", html: "text", htm: "text", css: "text", scss: "text", less: "text",
+  sh: "text", bash: "text", zsh: "text", fish: "text", rs: "text", py: "text", rb: "text", go: "text",
+  java: "text", kt: "text", swift: "text", c: "text", h: "text", cpp: "text", hpp: "text", cs: "text",
+  php: "text", sql: "text", graphql: "text", gql: "text", diff: "text", patch: "text", tex: "text",
   png: "image", jpg: "image", jpeg: "image", gif: "image", webp: "image", svg: "image",
   bmp: "image", avif: "image", heic: "image",
   mp3: "media", wav: "media", flac: "media", ogg: "media", m4a: "media", opus: "media",
   mp4: "media", mkv: "media", webm: "media", mov: "media", avi: "media",
   pdf: "pdf"
 };
+
+/** Well-known extensionless text files (dotfiles and plain names). */
+const TEXT_DOTFILES = new Set(["gitignore", "gitattributes", "editorconfig", "env", "npmrc", "prettierrc", "eslintrc", "dockerignore"]);
+const TEXT_PLAIN_NAMES = new Set(["makefile", "dockerfile", "license", "licence", "readme", "changelog", "procfile", "justfile"]);
 
 /** The lowercase extension of a file name, or "" when it has none. */
 export function extensionOf(name: string): string {
@@ -90,7 +98,13 @@ function persist(next: Overrides): void {
 /** Resolve the registered program for a file name, honouring overrides. */
 export function fileAssociation(name: string, overrides: Overrides = load()): FileHandler | undefined {
   const extension = extensionOf(name);
-  return handlerById(overrides[extension]) ?? handlerById(defaultAssociations[extension]);
+  if (extension) return handlerById(overrides[extension]) ?? handlerById(defaultAssociations[extension]);
+  const trimmed = name.trim().toLowerCase();
+  const dotfile = /^\.[a-z0-9_-]{1,64}$/.exec(trimmed)?.[0].slice(1);
+  if ((dotfile && TEXT_DOTFILES.has(dotfile)) || TEXT_PLAIN_NAMES.has(trimmed)) {
+    return handlerById(overrides[dotfile ?? trimmed]) ?? handlerById("text");
+  }
+  return undefined;
 }
 
 /** Change (or clear) the program that opens a given extension. */

@@ -6,11 +6,12 @@ const state = vi.hoisted(() => ({
   apps: [] as { id: string; title: string; path: string; launchable: boolean; system: boolean; kind: "app" }[],
   topbarHost: null as HTMLElement | null,
   live: { request: vi.fn(async (url: string, init?: RequestInit): Promise<{ ok: boolean; headers?: Headers; json: () => Promise<unknown> }> => { void url; void init; return { ok: true, headers: new Headers(), json: async () => [] }; }) },
+  open: vi.fn(),
   fetchHostList: vi.fn(async () => [] as { name: string; directory: boolean; size: number; modified: number }[]),
 }));
 
 vi.mock("../../i18n", () => ({ useI18n: () => ({ t: (key: string) => key }) }));
-vi.mock("../../shell/ShellContext", () => ({ useShell: () => ({ live: state.live, open: vi.fn() }) }));
+vi.mock("../../shell/ShellContext", () => ({ useShell: () => ({ live: state.live, open: state.open }) }));
 vi.mock("../../preferences/OsMode", () => ({ useOsModePolicy: () => ({ advancedSettings: state.advanced, browseSystemFiles: state.advanced, terminal: false, ssh: false, webConsole: false }) }));
 vi.mock("../../preferences/storage", () => ({ browserProfile: () => ({ id: "01990000-0000-7000-8000-000000000001", persistence: "memory" }) }));
 vi.mock("../../preferences/Workspace", () => ({ useWorkspace: () => ({ effective: { folders: [] } }) }));
@@ -45,6 +46,7 @@ beforeEach(() => {
   state.topbarHost = null;
   state.fetchHostList.mockClear();
   state.live.request.mockReset();
+  state.open.mockReset();
   state.live.request.mockImplementation(async () => ({ ok: true, json: async () => [] }));
   document.body.querySelectorAll("[data-test-titlebar]").forEach((element) => element.remove());
 });
@@ -158,14 +160,27 @@ test("does not download a file without a registered program", async () => {
 test("does not download a file whose program is not installed", async () => {
   state.live.request.mockImplementation(async (url: string) => {
     if (String(url).startsWith("/api/v1/files?")) {
-      return { ok: true, json: async () => [{ id: "file-2", name: "notes.txt", directory: false, size: 12 }] };
+      return { ok: true, json: async () => [{ id: "file-2", name: "manual.pdf", directory: false, size: 12 }] };
+    }
+    return { ok: true, json: async () => [] };
+  });
+  render(<FilesApp />);
+  const file = await screen.findByText("manual.pdf");
+  fireEvent.doubleClick(file);
+  expect(await screen.findByText("files.programMissing")).toBeInTheDocument();
+});
+
+test("opens a text file in the native text editor", async () => {
+  state.live.request.mockImplementation(async (url: string) => {
+    if (String(url).startsWith("/api/v1/files?")) {
+      return { ok: true, json: async () => [{ id: "file-3", name: "notes.txt", directory: false, size: 12 }] };
     }
     return { ok: true, json: async () => [] };
   });
   render(<FilesApp />);
   const file = await screen.findByText("notes.txt");
   fireEvent.doubleClick(file);
-  expect(await screen.findByText("files.programMissing")).toBeInTheDocument();
+  await waitFor(() => expect(state.open).toHaveBeenCalledWith("/app/editor?name=notes.txt&id=file-3"));
 });
 
 test("shows application packages with their app identity", async () => {

@@ -1,0 +1,546 @@
+/* Native text editor with a document view for Markdown. Theme-token driven. */
+.shell-window__content:has(> .editor) {
+  padding: 0;
+  overflow: hidden;
+}
+
+.editor {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  background: var(--rumahl-ui-color-surface-strong, #ffffff);
+  color: var(--rumahl-ui-color-text-primary, #111111);
+}
+
+/* Toolbar ------------------------------------------------------------------ */
+.editor__bar {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex: none;
+  min-height: 56px;
+  padding: 9px 14px;
+  background: var(--rumahl-ui-color-panel-background, #f5f5f7);
+  border-bottom: 1px solid var(--rumahl-ui-color-outline, rgba(0, 0, 0, 0.14));
+}
+
+.editor__identity {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.editor__glyph {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--rumahl-ui-color-accent, #28694c) 16%, transparent);
+  color: var(--rumahl-ui-color-accent, #28694c);
+  font-family: var(--rumahl-ui-typography-display, inherit);
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.editor__titles {
+  display: grid;
+  gap: 1px;
+  min-width: 0;
+}
+
+.editor__titles strong {
+  overflow: hidden;
+  font-size: 13px;
+  font-weight: 620;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.editor__titles small {
+  color: var(--rumahl-ui-color-text-muted, #6b6b70);
+  font-size: 11.5px;
+}
+
+.editor__actions {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  margin-left: auto;
+}
+
+.editor__modes {
+  display: inline-flex;
+  padding: 2px;
+  gap: 2px;
+  border: 1px solid var(--rumahl-ui-color-outline, rgba(0, 0, 0, 0.16));
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--rumahl-ui-color-text-primary, #000) 5%, transparent);
+}
+
+.editor__mode {
+  min-height: 26px;
+  padding: 0 11px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--rumahl-ui-color-text-muted, #6b6b70);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 560;
+  cursor: pointer;
+}
+
+.editor__mode:hover {
+  color: var(--rumahl-ui-color-text-primary, #111111);
+}
+
+.editor__mode.is-active {
+  background: var(--rumahl-ui-color-surface-strong, #ffffff);
+  color: var(--rumahl-ui-color-text-primary, #111111);
+  box-shadow: 0 1px 2px rgb(0 0 0 / 0.16);
+}
+
+.editor__toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--rumahl-ui-color-text-muted, #6b6b70);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.editor__toggle input {
+  accent-color: var(--rumahl-ui-color-accent, #28694c);
+}
+
+/* Markdown ribbon ---------------------------------------------------------- */
+.editor__format {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  flex: none;
+  padding: 4px 12px;
+  background: color-mix(in srgb, var(--rumahl-ui-color-panel-background, #f5f5f7) 70%, var(--rumahl-ui-color-surface-strong, #fff));
+  border-bottom: 1px solid var(--rumahl-ui-color-outline, rgba(0, 0, 0, 0.12));
+}
+
+.editor__tool {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 26px;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--rumahl-ui-color-text-muted, #55555c);
+  font: inherit;
+  font-size: 12.5px;
+  cursor: pointer;
+}
+
+.editor__tool.is-bold { font-weight: 760; }
+.editor__tool.is-italic { font-style: italic; }
+.editor__tool.is-code { font-family: ui-monospace, monospace; font-size: 11px; }
+
+.editor__tool:hover {
+  background: color-mix(in srgb, var(--rumahl-ui-color-accent, #28694c) 14%, transparent);
+  color: var(--rumahl-ui-color-text-primary, #111111);
+}
+
+.editor__tool.is-strike {
+  text-decoration: line-through;
+}
+
+.editor__tool.is-active {
+  background: color-mix(in srgb, var(--rumahl-ui-color-accent, #28694c) 20%, transparent);
+  color: var(--rumahl-ui-color-text-primary, #111111);
+}
+
+.editor__block {
+  height: 26px;
+  padding: 0 6px;
+  border: 1px solid var(--rumahl-ui-color-outline, rgba(0, 0, 0, 0.16));
+  border-radius: 5px;
+  background: var(--rumahl-ui-color-surface-strong, #ffffff);
+  color: var(--rumahl-ui-color-text-primary, #111111);
+  font: inherit;
+  font-size: 12px;
+}
+
+.editor__link {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: 6px;
+}
+
+.editor__link input {
+  width: 220px;
+  height: 26px;
+  padding: 0 8px;
+  border: 1px solid var(--rumahl-ui-color-outline, rgba(0, 0, 0, 0.18));
+  border-radius: 5px;
+  background: var(--rumahl-ui-color-surface-strong, #ffffff);
+  color: var(--rumahl-ui-color-text-primary, #111111);
+  font: inherit;
+  font-size: 12px;
+}
+
+.editor__tool-sep {
+  width: 1px;
+  height: 16px;
+  margin: 0 5px;
+  background: var(--rumahl-ui-color-outline, rgba(0, 0, 0, 0.14));
+}
+
+/* Panes -------------------------------------------------------------------- */
+.editor__panes {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+}
+
+.editor__pane {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+}
+
+.editor__panes.is-split .editor__pane--write {
+  flex: 1 1 50%;
+  border-right: 1px solid var(--rumahl-ui-color-outline, rgba(0, 0, 0, 0.14));
+}
+
+.editor__panes.is-split .editor__pane--preview {
+  flex: 1 1 50%;
+}
+
+.editor__pane--write {
+  background: var(--rumahl-ui-color-surface-strong, #ffffff);
+}
+
+.editor__rich {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 26px 30px 42px;
+  outline: 0;
+  font-size: 14.5px;
+  line-height: 1.72;
+  caret-color: var(--rumahl-ui-color-accent, #28694c);
+}
+
+.editor__rich:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--rumahl-ui-color-accent, #28694c) 45%, transparent);
+  outline-offset: -2px;
+}
+
+.editor__rich:empty::before {
+  color: var(--rumahl-ui-color-text-muted, #6b6b70);
+  content: attr(data-placeholder);
+  pointer-events: none;
+}
+
+.editor__rich[contenteditable="false"] {
+  color: var(--rumahl-ui-color-text-muted, #6b6b70);
+}
+
+.editor__rich .md-task-line {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin: 0.35em 0;
+}
+
+.editor__rich .md-task-line input {
+  margin-top: 0.42em;
+  accent-color: var(--rumahl-ui-color-accent, #28694c);
+}
+
+.editor__area {
+  flex: 1;
+  min-height: 0;
+  width: 100%;
+  margin: 0;
+  padding: 22px 26px 32px;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: inherit;
+  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+  font-size: 13px;
+  line-height: 1.7;
+  tab-size: 2;
+  resize: none;
+}
+
+.editor__area.is-wrapped { white-space: pre-wrap; overflow-wrap: anywhere; }
+.editor__area:not(.is-wrapped) { white-space: pre; overflow: auto; }
+
+.editor__area:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--rumahl-ui-color-accent, #28694c) 55%, transparent);
+  outline-offset: -2px;
+}
+
+.editor__area[readonly] {
+  color: var(--rumahl-ui-color-text-muted, #6b6b70);
+}
+
+.editor__pane--preview {
+  overflow: auto;
+  background:
+    radial-gradient(circle at 20% 0%, color-mix(in srgb, var(--rumahl-ui-color-accent, #28694c) 7%, transparent), transparent 46%),
+    color-mix(in srgb, var(--rumahl-ui-color-canvas-background, #e8ece7) 55%, var(--rumahl-ui-color-surface-strong, #ffffff));
+}
+
+.editor__sheet {
+  box-sizing: border-box;
+  width: min(780px, calc(100% - 40px));
+  min-height: calc(100% - 44px);
+  margin: 22px auto;
+  padding: 42px 50px 56px;
+  background: var(--rumahl-ui-color-surface-strong, #ffffff);
+  border: 1px solid var(--rumahl-ui-color-outline, rgba(0, 0, 0, 0.12));
+  border-radius: 4px;
+  box-shadow: 0 16px 44px rgb(0 0 0 / 0.08);
+}
+
+/* Markdown document -------------------------------------------------------- */
+.markdown {
+  color: var(--rumahl-ui-color-text-primary, #111111);
+  font-size: 14px;
+  line-height: 1.72;
+  overflow-wrap: anywhere;
+}
+
+.markdown > :first-child { margin-top: 0; }
+.markdown > :last-child { margin-bottom: 0; }
+
+.markdown h1,
+.markdown h2,
+.markdown h3,
+.markdown h4,
+.markdown h5,
+.markdown h6 {
+  margin: 1.35em 0 0.5em;
+  font-family: var(--rumahl-ui-typography-display, inherit);
+  font-weight: 560;
+  line-height: 1.18;
+  letter-spacing: -0.01em;
+}
+
+.markdown h1 { font-size: 30px; }
+.markdown h2 { font-size: 22px; }
+.markdown h3 { font-size: 17.5px; }
+.markdown h4,
+.markdown h5,
+.markdown h6 { font-size: 15px; }
+
+.markdown p { margin: 0 0 0.9em; }
+
+.markdown a {
+  color: var(--rumahl-ui-color-accent, #28694c);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.markdown strong { font-weight: 700; }
+.markdown del { opacity: 0.72; }
+
+.markdown code {
+  padding: 0.12em 0.35em;
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--rumahl-ui-color-text-primary, #000) 7%, transparent);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.88em;
+}
+
+.markdown pre {
+  margin: 0 0 1.1em;
+  padding: 14px 16px;
+  overflow: auto;
+  border: 1px solid var(--rumahl-ui-color-outline, rgba(0, 0, 0, 0.14));
+  border-radius: 6px;
+  background: var(--rumahl-ui-color-panel-background, #f5f5f7);
+}
+
+.markdown pre code {
+  padding: 0;
+  background: transparent;
+  font-size: 12.5px;
+  line-height: 1.6;
+}
+
+.markdown ul,
+.markdown ol {
+  margin: 0 0 1em;
+  padding-left: 1.45em;
+}
+
+.markdown li { margin: 0.25em 0; }
+
+.markdown li::marker { color: var(--rumahl-ui-color-text-muted, #6b6b70); }
+
+.markdown ul.md-tasks {
+  padding-left: 0.2em;
+  list-style: none;
+}
+
+.markdown .md-task {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.markdown .md-task input {
+  margin-top: 0.42em;
+  accent-color: var(--rumahl-ui-color-accent, #28694c);
+}
+
+.markdown blockquote {
+  margin: 0 0 1em;
+  padding: 0.15em 0 0.15em 16px;
+  border-left: 3px solid var(--rumahl-ui-color-accent, #28694c);
+  color: var(--rumahl-ui-color-text-muted, #55555c);
+}
+
+.markdown blockquote > :last-child { margin-bottom: 0; }
+
+.markdown hr {
+  height: 1px;
+  margin: 1.6em 0;
+  border: 0;
+  background: var(--rumahl-ui-color-outline, rgba(0, 0, 0, 0.16));
+}
+
+.markdown table {
+  width: 100%;
+  margin: 0 0 1.1em;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.markdown th,
+.markdown td {
+  padding: 7px 10px;
+  border: 1px solid var(--rumahl-ui-color-outline, rgba(0, 0, 0, 0.16));
+  text-align: start;
+}
+
+.markdown th {
+  background: var(--rumahl-ui-color-panel-background, #f5f5f7);
+  font-weight: 660;
+}
+
+.markdown img {
+  max-width: 100%;
+  height: auto;
+  border-radius: 4px;
+}
+
+/* States ------------------------------------------------------------------- */
+.editor__state {
+  display: grid;
+  place-content: center;
+  gap: 10px;
+  flex: 1;
+  padding: 32px;
+  text-align: center;
+}
+
+.editor__state h2 { margin: 0; font-size: 17px; }
+
+.editor__state p {
+  max-width: 46ch;
+  margin: 0 auto;
+  color: var(--rumahl-ui-color-text-muted, #6b6b70);
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+.editor--empty {
+  display: grid;
+  place-content: center;
+  justify-items: center;
+  gap: 12px;
+  height: 100%;
+  padding: 32px;
+  text-align: center;
+}
+
+.editor__empty-mark {
+  display: grid;
+  place-items: center;
+  width: 52px;
+  height: 52px;
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--rumahl-ui-color-accent, #28694c) 15%, transparent);
+  color: var(--rumahl-ui-color-accent, #28694c);
+  font-family: var(--rumahl-ui-typography-display, inherit);
+  font-size: 21px;
+}
+
+.editor--empty h1 {
+  margin: 0;
+  font-family: var(--rumahl-ui-typography-display, inherit);
+  font-size: 24px;
+  font-weight: 560;
+}
+
+.editor--empty p {
+  max-width: 48ch;
+  margin: 0;
+  color: var(--rumahl-ui-color-text-muted, #6b6b70);
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+/* Status ------------------------------------------------------------------- */
+.editor__status {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex: none;
+  padding: 6px 14px;
+  background: var(--rumahl-ui-color-panel-background, #f5f5f7);
+  border-top: 1px solid var(--rumahl-ui-color-outline, rgba(0, 0, 0, 0.14));
+  color: var(--rumahl-ui-color-text-muted, #6b6b70);
+  font-size: 11.5px;
+  font-variant-numeric: tabular-nums;
+}
+
+.editor__save-state { margin-left: auto; }
+
+.editor__path {
+  max-width: 32%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+@media (max-width: 860px) {
+  .editor__modes { order: 2; }
+  .editor__toggle { display: none; }
+  .editor__sheet {
+    width: calc(100% - 24px);
+    padding: 30px 26px 42px;
+  }
+}
+
+@media (max-width: 700px) {
+  .editor__bar { flex-wrap: wrap; }
+  .editor__actions { width: 100%; justify-content: flex-end; flex-wrap: wrap; }
+  .editor__panes.is-split { flex-direction: column; }
+  .editor__panes.is-split .editor__pane--write {
+    flex: 1 1 50%;
+    border-right: 0;
+    border-bottom: 1px solid var(--rumahl-ui-color-outline, rgba(0, 0, 0, 0.14));
+  }
+  .editor__status { gap: 10px; }
+  .editor__path { display: none; }
+}

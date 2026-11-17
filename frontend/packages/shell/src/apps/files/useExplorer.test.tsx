@@ -77,6 +77,28 @@ test("desktop shows app folders and writes real files into the desktop folder", 
   );
 });
 
+test("opens personal and host text files in the editor route", async () => {
+  state.request.mockImplementation(async (url: string) => {
+    if (url.startsWith("/api/v1/files?parent=root")) return { ok: true, json: async () => [file("abc", "notes.txt")] };
+    return { ok: true, json: async () => [] };
+  });
+  const openApp = vi.fn();
+  const { result } = renderHook(() => useExplorer(
+    state.request as unknown as ShellRequest,
+    "device",
+    true,
+    { openApp }
+  ));
+  await waitFor(() => expect(result.current.entries).toHaveLength(1));
+  act(() => result.current.open(result.current.entries[0]!));
+  expect(openApp).toHaveBeenCalledWith("/app/editor?name=notes.txt&id=abc");
+
+  act(() => result.current.navigate(freshHost("system")));
+  await waitFor(() => expect(result.current.nav.place.kind).toBe("host"));
+  act(() => result.current.open({ key: "etc/rumahl.conf", name: "rumahl.conf", directory: false, size: 1, modified: 0, host: true }));
+  expect(openApp).toHaveBeenLastCalledWith("/app/editor?name=rumahl.conf&source=host&area=system&path=etc%2Frumahl.conf");
+});
+
 test("returns a very large listing for client-side pagination", async () => {
   const files = Array.from({ length: 1005 }, (_, index) => file(`id-${index}`, `file-${index}.txt`));
   state.request.mockImplementation(async (url: string) => {
