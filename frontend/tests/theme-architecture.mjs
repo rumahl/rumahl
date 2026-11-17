@@ -34,6 +34,25 @@ function check(name, condition, detail) {
   if (!condition) failures.push({ name, detail });
 }
 
+function channel(value) {
+  const v = value / 255;
+  return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4;
+}
+
+function contrast(color, background) {
+  const parse = (value) => {
+    const match = /^rgba?\(([^)]+)\)$/i.exec(value);
+    if (!match) return null;
+    return match[1].split(/[,\s/]+/).filter(Boolean).slice(0, 3).map(Number);
+  };
+  const [r, g, b] = parse(color) ?? [];
+  const [br, bg, bb] = parse(background) ?? [];
+  if ([r, g, b, br, bg, bb].some((value) => !Number.isFinite(value))) return 0;
+  const foreground = 0.2126 * channel(r) + 0.7152 * channel(g) + 0.0722 * channel(b);
+  const behind = 0.2126 * channel(br) + 0.7152 * channel(bg) + 0.0722 * channel(bb);
+  return (Math.max(foreground, behind) + 0.05) / (Math.min(foreground, behind) + 0.05);
+}
+
 const browser = await chromium.launch({
   headless: true,
   ...(existsSync(executablePath) ? { executablePath } : {}),
@@ -95,6 +114,32 @@ try {
   });
   check("iris-window-token", irisTokens?.after.windowRadius === "5px", irisTokens);
   check("iris-dock-token", irisTokens?.after.dockRadius === "6px", irisTokens);
+
+  const scaledText = await page.evaluate(() => {
+    const root = document.documentElement;
+    root.style.setProperty("--rumahl-ui-typography-scale", "1.25");
+    const overflow = Math.max(
+      document.documentElement.scrollWidth - window.innerWidth,
+      document.body.scrollWidth - window.innerWidth
+    );
+    root.style.removeProperty("--rumahl-ui-typography-scale");
+    return { overflow };
+  });
+  check("text-scale-overflow", scaledText.overflow <= 1, scaledText);
+
+  const motion = await page.evaluate(() => {
+    const shell = document.querySelector(".shell");
+    if (!(shell instanceof HTMLElement)) return null;
+    const button = document.createElement("button");
+    button.className = "btn";
+    shell.append(button);
+    shell.style.setProperty("--motion-control-duration", "40ms");
+    const duration = getComputedStyle(button).transitionDuration;
+    shell.style.removeProperty("--motion-control-duration");
+    button.remove();
+    return { duration };
+  });
+  check("motion-role", motion !== null && motion.duration.includes("0.04s"), motion);
 
   await page.keyboard.press("Tab");
   const focus = await page.evaluate(() => {
@@ -162,7 +207,17 @@ try {
     shell.style.removeProperty("--menu-background");
     shell.style.removeProperty("--menu-radius");
 
-    const result = { before, afterRadius, afterTokenRadius, afterRecipeRadius, afterMaterial };
+    // Menus live in a body portal. They must receive the same recipe context
+    // through :root, not only through the .shell subtree.
+    const portalMenu = document.createElement("div");
+    portalMenu.className = "desktop-menu theme-architecture-portal";
+    document.body.append(portalMenu);
+    root.style.setProperty("--menu-background", "rgb(4, 5, 6)");
+    const portalBackground = getComputedStyle(portalMenu).backgroundColor;
+    root.style.removeProperty("--menu-background");
+    portalMenu.remove();
+
+    const result = { before, afterRadius, afterTokenRadius, afterRecipeRadius, afterMaterial, portalBackground };
     probe.remove();
     menu.remove();
     windowElement.style.transition = previousTransition;
@@ -177,6 +232,41 @@ try {
   check("ground-window-recipe", ground.afterRecipeRadius?.windowRadius === "9px", ground);
   check("ground-material-override", ground.afterMaterial?.menuBackground === "rgb(1, 2, 3)", ground);
   check("ground-material-radius", ground.afterMaterial?.menuRadius === "4px", ground);
+  check("ground-portal-menu", ground.portalBackground === "rgb(4, 5, 6)", ground);
+
+  // With a CSS-gradient wallpaper there is no image to sample. Labels must
+  // fall back to the semantic on-wallpaper ink instead of hard-coded white.
+  const labelPrepared = await page.evaluate(() => {
+    document.querySelectorAll(".wallpaper-image, .wallpaper-video").forEach((element) => element.remove());
+    const root = document.documentElement;
+    const shell = document.querySelector(".shell");
+    root.dataset.themeBase = "ground";
+    if (shell instanceof HTMLElement) shell.dataset.themeBase = "ground";
+    root.style.setProperty("--rumahl-ui-color-on-wallpaper", "#000000");
+    const wallpaper = document.querySelector(".wallpaper");
+    if (wallpaper instanceof HTMLElement) {
+      wallpaper.style.backgroundImage = "linear-gradient(rgb(255, 255, 255), rgb(255, 255, 255))";
+      wallpaper.style.backgroundColor = "#ffffff";
+    }
+    const label = document.querySelector(".desktop-icon__label");
+    if (!(label instanceof HTMLElement)) return false;
+    label.style.setProperty("--rumahl-ui-color-on-wallpaper", "#000000");
+    label.style.removeProperty("--adaptive-ink");
+    label.style.removeProperty("--adaptive-muted");
+    label.style.removeProperty("--adaptive-shadow");
+    return true;
+  });
+  // One sampler tick plus the deliberate 1.4s adaptive-colour transition.
+  await page.waitForTimeout(2800);
+  const labelFallback = await page.evaluate(() => {
+    const label = document.querySelector(".desktop-icon__label");
+    return label instanceof HTMLElement ? { color: getComputedStyle(label).color } : null;
+  });
+  check(
+    "ground-label-fallback-contrast",
+    labelPrepared && labelFallback !== null && contrast(labelFallback.color, "rgb(255, 255, 255)") >= 4.5,
+    labelFallback
+  );
 
   await context.close();
 } finally {

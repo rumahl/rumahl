@@ -13,19 +13,19 @@ export function Sidebar({ nav, advanced, onNavigate, onOpenDesktop, inert = fals
     <h2 className="files-app__heading">{t("files.locations")}</h2>
     <nav>
       <button type="button" className={item(isStore)} aria-current={isStore ? "page" : undefined} onClick={() => onNavigate(freshStore())}>
-        <FolderIcon className="files-nav__icon" />{t("files.root")}
+        <FolderIcon className="files-nav__icon" /><span className="files-nav__label">{t("files.root")}</span>
       </button>
       <button type="button" className={item(isDesktop)} aria-current={isDesktop ? "page" : undefined} onClick={onOpenDesktop}>
-        <DesktopArtwork className="files-nav__icon files-nav__icon--art" />{t("files.desktop")}
+        <DesktopArtwork className="files-nav__icon files-nav__icon--art" /><span className="files-nav__label">{t("files.desktop")}</span>
       </button>
       {advanced
         ? <>
             <span className="files-nav__divider" aria-hidden="true" />
             <button type="button" className={item(isHost("apps"))} aria-current={isHost("apps") ? "page" : undefined} onClick={() => onNavigate(freshHost("apps"))}>
-              <GridIcon className="files-nav__icon" />{t("files.applications")}
+              <GridIcon className="files-nav__icon" /><span className="files-nav__label">{t("files.applications")}</span>
             </button>
             <button type="button" className={item(isHost("system"))} aria-current={isHost("system") ? "page" : undefined} onClick={() => onNavigate(freshHost("system"))}>
-              <SettingsIcon className="files-nav__icon" />{t("files.system")}
+              <SettingsIcon className="files-nav__icon" /><span className="files-nav__label">{t("files.system")}</span>
             </button>
           </>
         : null}

@@ -72,6 +72,7 @@
   --widget-background: var(--rumahl-ui-color-panel-background, #ffffff);
   --widget-border: 1px solid var(--rumahl-ui-color-outline, #767676);
   --widget-shadow: none;
+  --glass-solid-background: var(--rumahl-ui-color-panel-background, #ffffff);
   --widget-ink: var(--rumahl-ui-color-text-primary, #000000);
   --widget-muted: var(--rumahl-ui-color-text-muted, #5f6368);
 

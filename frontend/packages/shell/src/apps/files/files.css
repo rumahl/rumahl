@@ -125,7 +125,7 @@
   min-width: 34px;
   gap: 7px;
   padding: 0 12px;
-  color: var(--rumahl-ui-color-text-secondary, var(--rumahl-ui-color-text-primary));
+  color: var(--rumahl-ui-color-text-muted);
   font-size: 12px;
   font-weight: 600;
   white-space: nowrap;
@@ -275,9 +275,12 @@ body.light .files-menu {
   display: flex;
   align-items: center;
   gap: 10px;
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
   min-height: 38px;
   padding: 0 12px;
-  color: var(--rumahl-ui-color-text-secondary, var(--rumahl-ui-color-text-primary));
+  color: var(--rumahl-ui-color-text-muted);
   font: inherit;
   font-size: 13px;
   font-weight: 520;
@@ -292,6 +295,12 @@ body.light .files-menu {
     border-color 0.15s ease,
     color 0.15s ease,
     scale 0.14s ease;
+}
+.files-nav__label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .files-nav:hover {
   color: var(--rumahl-ui-color-text-primary);
@@ -456,7 +465,7 @@ body.light .files-menu {
   min-width: 34px;
   gap: 7px;
   padding: 0 12px;
-  color: var(--rumahl-ui-color-text-secondary, var(--rumahl-ui-color-text-primary));
+  color: var(--rumahl-ui-color-text-muted);
   font-size: 12px;
   font-weight: 600;
   white-space: nowrap;
@@ -720,7 +729,7 @@ body.light .files-menu {
   max-width: 100%;
   padding: 5px 8px;
   overflow: hidden;
-  color: var(--rumahl-ui-color-text-secondary, var(--rumahl-ui-color-text-primary));
+  color: var(--rumahl-ui-color-text-muted);
   font: inherit;
   font-size: 12.5px;
   text-overflow: ellipsis;
@@ -1040,8 +1049,8 @@ body.light .files-menu {
   display: -webkit-box;
   overflow: hidden;
   color: var(--rumahl-ui-color-text-primary);
-  font-size: 12.5px;
-  font-weight: 520;
+  font-size: var(--type-compact-size, 12.5px);
+  font-weight: var(--type-compact-weight, 520);
   line-height: 1.35;
   text-align: center;
   overflow-wrap: anywhere;
@@ -1084,7 +1093,7 @@ body.light .files-menu {
 .files-empty p {
   max-width: 34ch;
   margin: 0;
-  color: var(--rumahl-ui-color-text-secondary, inherit);
+  color: var(--rumahl-ui-color-text-muted, inherit);
   font-size: 13px;
   line-height: 1.5;
 }

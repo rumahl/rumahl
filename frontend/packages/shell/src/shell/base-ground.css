@@ -43,6 +43,7 @@
   --divider: var(--rumahl-ui-color-outline, #767676);
   --wall-dim: transparent;
 }
+@layer reference {
 [data-theme-base="ground"] *,
 [data-theme-base="ground"] *::before,
 [data-theme-base="ground"] *::after {
@@ -69,7 +70,10 @@
 [data-theme-base="ground"] .os-dock :is(.dock-item, .dock-icon, button, a) {
   border-radius: var(--dock-item-radius, var(--ground-radius, 0px)) !important;
 }
-[data-theme-base="ground"] :is(.desktop-widget, .widget) {
+/* `[class]` keeps this at the same specificity as the reference solid-surface
+   rule, which lists a two-class member inside :is(). Ground's material still
+   wins because this layer is appended after the reference stylesheet. */
+.shell[data-theme-base="ground"] :is(.desktop-widget[class], .widget[class]) {
   background: var(--widget-background, var(--rumahl-ui-color-panel-background, #ffffff)) !important;
   border: var(--widget-border, 1px solid var(--rumahl-ui-color-outline, #767676)) !important;
   color: var(--widget-ink, var(--rumahl-ui-color-text-primary, #000000)) !important;
@@ -113,4 +117,5 @@
 }
 [data-theme-base="ground"] :is(.desktop-menu, .menubar__dropdown) :is(button, [role="menuitem"]):hover:not(:disabled) {
   background: var(--menu-item-hover, color-mix(in srgb, var(--rumahl-ui-color-text-primary) 8%, transparent));
+}
 }
