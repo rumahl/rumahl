@@ -19,23 +19,23 @@
 
 [data-theme-base="ground"] {
   /* Controls */
-  --control-fill: #efefef;
+  --control-fill: var(--rumahl-ui-color-surface, #efefef);
   --control-hover: #e5e5e5;
   --control-raised: #efefef;
   --control-border: #767676;
-  --control-border-hover: #1a73e8;
+  --control-border-hover: var(--rumahl-ui-color-accent, #1a73e8);
   --control-inset: none;
   --control-button-shadow: none;
   --control-pressed-shadow: none;
   --control-popup-shadow: none;
   --control-recess: none;
   --control-filter: none;
-  --control-thumb: #ffffff;
-  --control-tint: #1a73e8;
-  --control-tint-ink: #ffffff;
+  --control-thumb: var(--rumahl-ui-color-surface-strong, #ffffff);
+  --control-tint: var(--rumahl-ui-color-accent, #1a73e8);
+  --control-tint-ink: var(--rumahl-ui-color-on-accent, #ffffff);
 
   /* Surfaces */
-  --surface-fill: #ffffff;
+  --surface-fill: var(--rumahl-ui-color-surface-strong, #ffffff);
   --surface-sheen: none;
   --surface-rim: none;
   --surface-filter: none;
@@ -110,10 +110,10 @@
   --island-item-height: 42px;
   --island-item-font-size: 12px;
   --island-ink: #767676;
-  --island-hover: #e8f0fe;
-  --island-active-background: #1a73e8;
-  --island-active-ink: #ffffff;
-  --toolbar-background: #f2f2f2;
+  --island-hover: color-mix(in srgb, var(--rumahl-ui-color-accent, #1a73e8) 12%, transparent);
+  --island-active-background: var(--rumahl-ui-color-accent, #1a73e8);
+  --island-active-ink: var(--rumahl-ui-color-on-accent, #ffffff);
+  --toolbar-background: var(--rumahl-ui-color-surface, #f2f2f2);
   --toolbar-border: 1px solid #767676;
   --toolbar-shadow: none;
   --toolbar-backdrop: none;
@@ -140,24 +140,24 @@
   /* Switch / choice */
   --switch-border-width: 1px;
   --switch-border-color: #767676;
-  --switch-background: #ffffff;
-  --switch-background-checked: #1a73e8;
-  --switch-border-checked: #1a73e8;
+  --switch-background: var(--rumahl-ui-color-surface-strong, #ffffff);
+  --switch-background-checked: var(--rumahl-ui-color-accent, #1a73e8);
+  --switch-border-checked: var(--rumahl-ui-color-accent, #1a73e8);
   --switch-thumb: #767676;
-  --switch-thumb-checked: #ffffff;
+  --switch-thumb-checked: var(--rumahl-ui-color-on-accent, #ffffff);
   --switch-thumb-radius: var(--ground-radius, 0px);
   --switch-radius: var(--ground-radius, 0px);
   --switch-thumb-shadow: none;
   --choice-border: 1px solid #767676;
   --choice-radius: var(--ground-radius, 0px);
-  --choice-background: #ffffff;
+  --choice-background: var(--rumahl-ui-color-surface-strong, #ffffff);
   --choice-shadow: none;
-  --choice-checked-background: #1a73e8;
-  --choice-checked-border: #1a73e8;
-  --choice-mark: #ffffff;
+  --choice-checked-background: var(--rumahl-ui-color-accent, #1a73e8);
+  --choice-checked-border: var(--rumahl-ui-color-accent, #1a73e8);
+  --choice-mark: var(--rumahl-ui-color-on-accent, #ffffff);
 
   /* Command palette / phone / toast / skeleton */
-  --command-palette-background: #ffffff;
+  --command-palette-background: var(--rumahl-ui-color-surface-strong, #ffffff);
   --command-palette-border: 1px solid #767676;
   --command-palette-radius: var(--ground-radius, 0px);
   --command-palette-shadow: none;
@@ -165,26 +165,26 @@
   --phone-radius: var(--ground-radius, 0px);
   --phone-border: 1px solid #767676;
   --phone-shadow: none;
-  --toast-background: #ffffff;
+  --toast-background: var(--rumahl-ui-color-surface-strong, #ffffff);
   --toast-border: 1px solid #767676;
   --toast-radius: var(--ground-radius, 0px);
   --toast-shadow: none;
-  --skeleton-background: #f2f2f2;
+  --skeleton-background: var(--rumahl-ui-color-surface, #f2f2f2);
   --tipseen-shadow: none;
 
   /* Icon tiles / indicators / range */
   --icon-tile-size: 30px;
   --icon-tile-radius: var(--ground-radius, 0px);
-  --icon-tile-background: #efefef;
+  --icon-tile-background: var(--rumahl-ui-color-surface, #efefef);
   --icon-tile-color: #000000;
-  --indicator-track: #efefef;
-  --indicator-fill: #1a73e8;
+  --indicator-track: var(--rumahl-ui-color-surface, #efefef);
+  --indicator-fill: var(--rumahl-ui-color-accent, #1a73e8);
   --range-radius: var(--ground-radius, 0px);
-  --range-track: #efefef;
-  --range-fill: #1a73e8;
+  --range-track: var(--rumahl-ui-color-surface, #efefef);
+  --range-fill: var(--rumahl-ui-color-accent, #1a73e8);
   --range-thumb-radius: var(--ground-radius, 0px);
   --range-thumb-border: 1px solid #767676;
-  --range-thumb-background: #ffffff;
+  --range-thumb-background: var(--rumahl-ui-color-surface-strong, #ffffff);
 }
 
 /* Shell-owned chrome: plain and square, no theme CSS required. */
@@ -220,30 +220,34 @@
 }
 [data-theme-base="ground"] a,
 [data-theme-base="ground"] .rumahl-link {
-  color: #0645ad;
+  color: var(--rumahl-ui-color-accent, #0645ad);
   text-decoration: underline;
 }
 [data-theme-base="ground"] :focus-visible {
-  outline: 2px solid #1a73e8;
+  outline: 2px solid var(--rumahl-ui-color-accent, #1a73e8);
   outline-offset: 1px;
 }
 [data-theme-base="ground"] ::selection {
-  background: #b3d4fc;
-  color: #000;
+  background: color-mix(
+    in srgb,
+    var(--rumahl-ui-color-accent, #1a73e8) 26%,
+    transparent
+  );
+  color: var(--rumahl-ui-color-text-primary, #000000);
 }
 
 /* Shell settings: plain in the code-free core base. */
 [data-theme-base="ground"] .settings-sidebar {
-  background: #ffffff;
-  border-right: 1px solid #767676;
+  background: var(--rumahl-ui-color-panel-background, #ffffff);
+  border-right: 1px solid var(--rumahl-ui-color-outline, #767676);
 }
 [data-theme-base="ground"] .settings-sidebar :is(a, button) {
   border-radius: var(--ground-radius, 0px);
   box-shadow: none;
 }
 [data-theme-base="ground"] .settings-sidebar :is(a, button)[aria-current="page"] {
-  background: #1a73e8;
-  color: #ffffff;
+  background: var(--rumahl-ui-color-accent, #1a73e8);
+  color: var(--rumahl-ui-color-on-accent, #ffffff);
 }
 [data-theme-base="ground"] .settings-content :is(button, select, input, textarea) {
   border-radius: var(--ground-radius, 0px);
