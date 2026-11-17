@@ -191,6 +191,8 @@
 .launcher-home .app-tile small {
   display: block;
   margin-top: 2px;
+  /* Keep the UA's smaller <small> from dropping below the 12px OS floor. */
+  font-size: var(--type-label-size, 12px);
   opacity: 0.72;
 }
 .launcher-home a {

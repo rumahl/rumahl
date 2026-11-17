@@ -85,6 +85,69 @@ export function decideMuted(backgrounds: readonly string[], current?: string, ta
   return { color: current, ratio: currentRatio, currentRatio, critical: false };
 }
 
+/**
+ * Extracts the opaque colour stops from a CSS background value. Wallpaper
+ * gradients are rendered as CSS, not as an <img>, so the adaptive engine needs
+ * their stops to reason about label contrast without a canvas readback.
+ */
+export function colorsInCssBackground(value: string): string[] {
+  const colors: string[] = [];
+  const matches = value.match(/#[0-9a-f]{3,8}\b|rgba?\([^)]*\)/gi) ?? [];
+  for (const match of matches) {
+    const color = match.trim();
+    if (/^#(?:[0-9a-f]{2}){3}00$/i.test(color)) continue;
+    const rgba = /^rgba\(([^)]*)\)$/i.exec(color);
+    if (rgba) {
+      const parts = rgba[1]!.split(/[,\s/]+/).filter(Boolean);
+      if (parts.length >= 4 && Number(parts[3]) === 0) continue;
+    }
+    if (!colors.some((existing) => existing.toLowerCase() === color.toLowerCase())) colors.push(color);
+  }
+  return colors;
+}
+
+function parseCssColor(value: string): [number, number, number] | null {
+  const text = value.trim();
+  const hex = /^#([0-9a-f]{3}|[0-9a-f]{6}|[0-9a-f]{8})$/i.exec(text);
+  if (hex) {
+    const raw = hex[1]!;
+    const expanded = raw.length === 3 ? raw.split("").map((part) => part + part).join("") : raw.slice(0, 6);
+    return [
+      Number.parseInt(expanded.slice(0, 2), 16),
+      Number.parseInt(expanded.slice(2, 4), 16),
+      Number.parseInt(expanded.slice(4, 6), 16)
+    ];
+  }
+  const rgb = /^rgba?\(([^)]+)\)$/i.exec(text);
+  if (!rgb) return null;
+  const parts = rgb[1]!.split(/[,\s/]+/).filter(Boolean).map(Number);
+  if (parts.length < 3 || !parts.slice(0, 3).every(Number.isFinite)) return null;
+  return [parts[0]!, parts[1]!, parts[2]!];
+}
+
+/**
+ * The representative colour of a CSS wallpaper layer. Unlike a photo, a
+ * gradient cannot be sampled per element; its average gives labels a stable
+ * local-enough tone while the halo covers mixed stops.
+ */
+export function averageColor(backgrounds: readonly string[]): string {
+  let count = 0;
+  let red = 0;
+  let green = 0;
+  let blue = 0;
+  for (const background of backgrounds) {
+    const rgb = parseCssColor(background);
+    if (!rgb) continue;
+    red += rgb[0];
+    green += rgb[1];
+    blue += rgb[2];
+    count += 1;
+  }
+  if (!count) return "#808080";
+  const channel = (value: number) => Math.round(value / count).toString(16).padStart(2, "0");
+  return `#${channel(red)}${channel(green)}${channel(blue)}`;
+}
+
 /** Picks a readable ink for a single effective backdrop. */
 export function adaptiveInk(background: string): string {
   return decideInk([background]).color;
@@ -117,13 +180,21 @@ export function ensureReadableTextColor(backgrounds: readonly string[], desired:
 }
 
 /**
- * One stable, subtle shadow only. It never toggles to a stronger variant while
- * the scene moves; that was both distracting and made glyphs look muddy.
+ * One stable, subtle halo whose polarity follows the ink, not the wallpaper.
+ * When the sampled scene cannot give the ink a safe worst-case contrast, the
+ * halo becomes stronger so labels stay legible on patterned backdrops.
  */
-export function adaptiveShadow(background: string): string {
-  const light = luminance(background) > 0.35;
-  return light
-    ? "0 1px 1px rgba(255, 255, 255, 0.55)"
-    : "0 1px 1px rgba(0, 0, 0, 0.58)";
+export function adaptiveShadow(ink: string, worst = 21): string {
+  // The softer light inks on dark glass sit around 0.39 luminance; the old
+  // 0.45 cutoff gave them a light halo, which is exactly backwards.
+  const lightInk = luminance(ink) > 0.35;
+  if (worst >= CRITICAL_TARGET) {
+    return lightInk
+      ? "0 1px 1px rgba(0, 0, 0, 0.58)"
+      : "0 1px 1px rgba(255, 255, 255, 0.7)";
+  }
+  return lightInk
+    ? "0 1px 2px rgba(0, 0, 0, 0.9), 0 0 6px rgba(0, 0, 0, 0.55)"
+    : "0 1px 2px rgba(255, 255, 255, 0.95), 0 0 6px rgba(255, 255, 255, 0.65)";
 }
 

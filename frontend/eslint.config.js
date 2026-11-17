@@ -37,6 +37,7 @@ export default tseslint.config(
         document: "readonly",
         getComputedStyle: "readonly",
         localStorage: "readonly",
+        fetch: "readonly",
         Node: "readonly",
         HTMLElement: "readonly"
       }

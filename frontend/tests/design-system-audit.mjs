@@ -125,6 +125,18 @@ async function inspect(page, name, mobile = false) {
         document.documentElement.scrollWidth - window.innerWidth,
         document.body.scrollWidth - window.innerWidth
       ),
+      reducedMotion: window.matchMedia("(prefers-reduced-motion: reduce)").matches,
+      reducedTransparency: window.matchMedia("(prefers-reduced-transparency: reduce)").matches,
+      chromeBlur: (() => {
+        const element = document.querySelector(".topbar__island, .menubar");
+        return element ? getComputedStyle(element).backdropFilter : null;
+      })(),
+      windowMotion: (() => {
+        const element = document.querySelector(".shell-window, .os-dock");
+        if (!element) return null;
+        const style = getComputedStyle(element);
+        return { animation: style.animationName, transition: style.transitionDuration };
+      })(),
       tooSmallText: textNodes.filter((item) => item.size > 0 && item.size < 12),
       tooSmallTargets: mobile ? targets.filter((item) => item.width < 44 || item.height < 44) : [],
       invalidLinkAria: [...document.querySelectorAll('a[href][aria-pressed]')].map((element) => ({
@@ -141,6 +153,14 @@ async function inspect(page, name, mobile = false) {
   if (result.overflow > 1) fail(name, "horizontal-overflow", `${result.overflow}px`);
   if (result.tooSmallText.length) fail(name, "text-floor", JSON.stringify(result.tooSmallText.slice(0, 8)));
   if (result.tooSmallTargets.length) fail(name, "target-size", JSON.stringify(result.tooSmallTargets.slice(0, 10)));
+  if (
+    result.reducedMotion &&
+    result.windowMotion &&
+    result.windowMotion.animation !== "none" &&
+    result.windowMotion.transition !== "0s"
+  ) {
+    fail(name, "reduced-motion", JSON.stringify(result.windowMotion));
+  }
   if (result.invalidLinkAria.length) fail(name, "link-aria", JSON.stringify(result.invalidLinkAria));
   if (name.startsWith("mobile-settings") && result.resizer !== "none") {
     fail(name, "mobile-settings-resizer", `display=${result.resizer ?? "missing"}`);
@@ -246,14 +266,22 @@ const browser = await chromium.launch({
 
 try {
   const surfaces = [
-    { name: "desktop-root", route: "/", mobile: false },
-    { name: "settings", route: "/settings", mobile: false },
-    { name: "files", route: "/app/files", mobile: false },
-    { name: "store", route: "/app/store", mobile: false },
-    { name: "mobile-root", route: "/", mobile: true },
-    { name: "mobile-settings", route: "/settings/mobile", mobile: true },
-    { name: "mobile-files", route: "/app/files", mobile: true },
-    { name: "mobile-store", route: "/app/store", mobile: true }
+    { name: "desktop-root", route: "/", mobile: false, colorScheme: "light" },
+    { name: "desktop-dark", route: "/", mobile: false, colorScheme: "dark" },
+    { name: "desktop-reduced-transparency", route: "/", mobile: false, colorScheme: "dark", reducedTransparency: true },
+    { name: "desktop-contrast-more", route: "/", mobile: false, colorScheme: "dark", contrast: "more" },
+    { name: "desktop-forced-colors", route: "/", mobile: false, colorScheme: "dark", forcedColors: "active" },
+    { name: "launcher", route: "/", mobile: false, colorScheme: "light", launcher: true },
+    { name: "settings", route: "/settings", mobile: false, colorScheme: "light" },
+    { name: "settings-dark", route: "/settings", mobile: false, colorScheme: "dark" },
+    { name: "files", route: "/app/files", mobile: false, colorScheme: "light" },
+    { name: "files-dark", route: "/app/files", mobile: false, colorScheme: "dark" },
+    { name: "store", route: "/app/store", mobile: false, colorScheme: "light" },
+    { name: "mobile-root", route: "/", mobile: true, colorScheme: "light" },
+    { name: "mobile-root-dark", route: "/", mobile: true, colorScheme: "dark" },
+    { name: "mobile-settings", route: "/settings/mobile", mobile: true, colorScheme: "light" },
+    { name: "mobile-files", route: "/app/files", mobile: true, colorScheme: "light" },
+    { name: "mobile-store", route: "/app/store", mobile: true, colorScheme: "light" }
   ];
 
   for (const surface of surfaces) {
@@ -266,15 +294,30 @@ try {
         userAgent: "Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Mobile Safari/537.36"
       } : {}),
       reducedMotion: "reduce",
+      colorScheme: surface.colorScheme ?? "light",
+      ...(surface.contrast ? { contrast: surface.contrast } : {}),
+      ...(surface.forcedColors ? { forcedColors: surface.forcedColors } : {}),
       ignoreHTTPSErrors: insecure
     });
     const page = await login(context);
+    if (surface.reducedTransparency) {
+      const cdp = await context.newCDPSession(page);
+      await cdp.send("Emulation.setEmulatedMedia", {
+        media: "",
+        features: [{ name: "prefers-reduced-transparency", value: "reduce" }]
+      });
+      await page.waitForTimeout(300);
+    }
     if (surface.mobile) {
       await page.evaluate(() => localStorage.setItem("rumahl.mobile.tour.v1", "done"));
       await page.reload({ waitUntil: "domcontentloaded" });
       await page.waitForTimeout(1400);
     }
     await page.goto(`${base}${surface.route}`, { waitUntil: "domcontentloaded" });
+    if (surface.launcher) {
+      await page.locator('button[aria-label="Open launcher"]').click();
+      await page.waitForTimeout(900);
+    }
     if (surface.route.startsWith("/app/files")) {
       await page.waitForFunction(() => {
         const surface = document.querySelector(".files-surface");
@@ -284,7 +327,7 @@ try {
     }
     await inspect(page, surface.name, surface.mobile);
     await axe(page, surface.name);
-    if (surface.name === "desktop-root") {
+    if (surface.name === "desktop-root" || surface.name.startsWith("desktop-")) {
       await widgetContrast(page, surface.name);
       await focusWalk(page, surface.name);
     }

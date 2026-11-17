@@ -900,6 +900,11 @@
   position: relative;
   display: flex;
 }
+/* App launchers use the native <small>; keep its UA size above the OS floor. */
+.shell .app-tile small,
+.shell .app-tile-item small {
+  font-size: var(--type-label-size, 12px);
+}
 .app-tile-item > .app-tile {
   flex: 1 1 auto;
 }
@@ -1070,6 +1075,57 @@ html[data-settings-transition] .settings-content { view-transition-name: setting
   ::view-transition-new(*) { animation: none; }
 }
 
+/* High contrast / forced colours: chrome becomes an opaque, border-led surface.
+   We keep the theme's semantic roles instead of a fixed navy so Ground themes
+   do not inherit Iris colours in an accessibility mode. */
+@media (prefers-contrast: more), (forced-colors: active) {
+  .shell
+    :is(
+      .topbar__island,
+      .menubar,
+      .shell-window,
+      .desktop-menu,
+      .menubar__dropdown,
+      .topbar__dropdown,
+      .command-palette
+    ) {
+    background: var(--rumahl-ui-color-panel-background) !important;
+    border-color: var(--rumahl-ui-color-text-primary) !important;
+    box-shadow: none !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+  }
+
+  /* Adaptive wallpaper text yields to an opaque, semantic treatment when the
+     user asks for more contrast. */
+  .shell .desktop-icon__label[data-adaptive-text] {
+    color: var(--rumahl-ui-color-text-primary) !important;
+    background: var(--rumahl-ui-color-panel-background) !important;
+    padding: 1px 4px;
+    text-shadow: none !important;
+  }
+  .shell .desktop-widget {
+    background: var(--rumahl-ui-color-panel-background) !important;
+    border: 1px solid var(--rumahl-ui-color-text-primary) !important;
+    box-shadow: none !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+  }
+  .shell .desktop-widget :is(.rumahl-glass-frame, .rumahl-glass-surface) {
+    display: none !important;
+  }
+  .shell .desktop-widget[data-adaptive-text] {
+    color: var(--rumahl-ui-color-text-primary) !important;
+    text-shadow: none !important;
+  }
+  .shell .desktop-widget[data-adaptive-text] :is(p, strong, small, span) {
+    color: inherit !important;
+  }
+  .shell .desktop-widget[data-adaptive-text][class] .desktop-widget__eyebrow {
+    color: var(--rumahl-ui-color-text-primary) !important;
+  }
+}
+
 /* Popovers, menus and dialogs use the same material as the OS windows: the
    translucent window surface, its sheen, border, radius, shadow and blur. */
 .shell
@@ -1146,7 +1202,7 @@ html[data-settings-transition] .settings-content { view-transition-name: setting
   }
 }
 .desktop-icon__label[data-adaptive-text] {
-  color: var(--adaptive-ink, #eef5f6);
+  color: var(--adaptive-ink, var(--rumahl-ui-color-on-wallpaper, #eef5f6));
   text-shadow: var(--adaptive-shadow, none);
 }
 .shell .desktop-widget[data-adaptive-text] {

@@ -789,8 +789,8 @@ body.light .about-identity__mark {
   color: var(--rumahl-ui-color-text-primary);
   box-shadow: var(--control-inset);
   transition:
-    background 150ms ease,
-    border-color 150ms ease;
+    background var(--motion-control-duration, 150ms) ease,
+    border-color var(--motion-control-duration, 150ms) ease;
 }
 .settings-back:hover {
   background: var(--control-hover);

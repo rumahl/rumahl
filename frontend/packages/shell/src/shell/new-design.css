@@ -356,7 +356,7 @@
   border-radius: 50%;
   background: #fff;
   box-shadow: 0 1px 4px rgba(0, 0, 0, 0.27);
-  transition: transform 0.2s;
+  transition: transform var(--motion-hover-duration, 0.2s);
   transform: none;
 }
 .shell .appearance-switch input:checked {
@@ -872,17 +872,15 @@
   box-shadow:
     inset 0 1px 1px #ffffff82,
     0 8px 17px #0003;
-  transition: transform 0.2s;
+  transition: transform var(--motion-hover-duration, 0.2s);
 }
 .shell .desktop-icon:hover .desktop-icon__art {
   transform: translateY(-3px);
 }
 .shell .desktop-icon__label {
-  color: #fff;
+  color: var(--adaptive-ink, var(--rumahl-ui-color-on-wallpaper, #fff));
   font-size: 12px;
-  text-shadow:
-    0 1px 8px rgba(18, 42, 73, 0.63),
-    0 0 12px #0009;
+  text-shadow: var(--adaptive-shadow, none);
 }
 
 /* Settings rows inside the reference groups */
@@ -957,7 +955,7 @@
   border-radius: 50%;
   background: #fff;
   box-shadow: 0 1px 4px rgba(0, 0, 0, 0.27);
-  transition: transform 0.2s;
+  transition: transform var(--motion-hover-duration, 0.2s);
 }
 .shell .setting .visual input[role="switch"]:checked {
   background: var(--nd-accent);

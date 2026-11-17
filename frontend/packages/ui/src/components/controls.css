@@ -2434,8 +2434,12 @@
 
 /* Press into the material without moving the button's layout. */
 .shell .btn {
-  transition: background 150ms ease, border-color 150ms ease, color 150ms ease,
-    box-shadow 140ms ease, scale 140ms ease;
+  transition:
+    background var(--motion-control-duration, 150ms) ease,
+    border-color var(--motion-control-duration, 150ms) ease,
+    color var(--motion-control-duration, 150ms) ease,
+    box-shadow var(--motion-press-duration, 140ms) ease,
+    scale var(--motion-press-duration, 140ms) ease;
 }
 .shell .btn:active:not(:disabled):not([aria-disabled="true"]) {
   transform: none;

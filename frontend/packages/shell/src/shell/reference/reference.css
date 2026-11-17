@@ -1477,7 +1477,8 @@ body.light .menubar.topbar-glass {
 }
 @media (prefers-contrast: more), (prefers-reduced-transparency: reduce) {
   .rumahl-glass-surface {
-    background: rgba(23, 31, 48, 0.92) !important;
+    background: var(--glass-solid-background, var(--rumahl-ui-color-panel-background, #262e36)) !important;
+    border-color: var(--rumahl-ui-color-text-primary, #f5f7f6) !important;
     backdrop-filter: none !important;
     -webkit-backdrop-filter: none !important;
   }
