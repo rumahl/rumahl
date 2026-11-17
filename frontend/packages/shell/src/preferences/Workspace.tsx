@@ -9,7 +9,12 @@ export interface DesktopArrangement { order: string[]; hidden: string[]; widgets
 export type LauncherViewId = "grid" | "deck" | "canvas";
 export type AppearanceMode = "light" | "dark";
 /** User preference for desktop/launcher immersive chrome. */
-export interface FullscreenChrome { hideTopbar: boolean; hideDock: boolean }
+export interface FullscreenChrome {
+  hideTopbar: boolean;
+  hideDock: boolean;
+  /** When the dock is not hidden, keep window bottoms above it. */
+  dockClearance: boolean;
+}
 /** Device appearance customization: palette seed, light/dark mode, token overrides. */
 export type GlassEngine = "css" | "canvas";
 export type GlassBackend = "auto" | "svg" | "webgl" | "css";
@@ -38,7 +43,7 @@ export interface AppearanceSettings {
 export interface Workspace { version: 1; windows: SavedWindow[]; folders: AppFolder[]; desktop: DesktopArrangement; launcherView: LauncherViewId | null; appearance: AppearanceSettings; fullscreenChrome: FullscreenChrome }
 interface Record { ownerId: string; revision: number; user: Workspace | null; device: Workspace | null }
 export const emptyAppearance: AppearanceSettings = { seed: null, mode: null, tokens: {} };
-export const defaultFullscreenChrome: FullscreenChrome = { hideTopbar: true, hideDock: true };
+export const defaultFullscreenChrome: FullscreenChrome = { hideTopbar: true, hideDock: true, dockClearance: false };
 export const emptyWorkspace: Workspace = { version: 1, windows: [], folders: [], desktop: { order: [], hidden: [], widgets: true }, launcherView: null, appearance: emptyAppearance, fullscreenChrome: defaultFullscreenChrome };
 export function parseWorkspace(value: unknown): Workspace {
   const w = value as Workspace | null;
@@ -64,7 +69,8 @@ export function parseWorkspace(value: unknown): Workspace {
   const chrome = w.fullscreenChrome && typeof w.fullscreenChrome === "object" ? w.fullscreenChrome : defaultFullscreenChrome;
   const fullscreenChrome: FullscreenChrome = {
     hideTopbar: chrome.hideTopbar !== false,
-    hideDock: chrome.hideDock !== false
+    hideDock: chrome.hideDock !== false,
+    dockClearance: chrome.dockClearance === true
   };
   return { ...w, desktop, launcherView, appearance, fullscreenChrome };
 }

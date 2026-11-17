@@ -13,7 +13,7 @@ export function FullscreenChromeSettings() {
   const workspace = useWorkspace();
   const chrome = workspace.userWorkspace?.fullscreenChrome ?? workspace.effective.fullscreenChrome;
   const busy = !workspace.ready || workspace.busy;
-  const updateChrome = (next: Partial<{ hideTopbar: boolean; hideDock: boolean }>) =>
+  const updateChrome = (next: Partial<typeof chrome>) =>
     // Creating the account record must not wipe an arrangement that only
     // exists as a device override: seed it from the visible workspace.
     void workspace.save("user", {
@@ -38,6 +38,13 @@ export function FullscreenChromeSettings() {
             onChange={(event) => updateChrome({ hideDock: event.target.checked })} />
         </div>
       </div>
+      {chrome.hideDock ? null : <div className="setting">
+        <div className="copy"><strong>{t("workspace.dockClearance")}</strong><p>{t("workspace.dockClearanceHelp")}</p></div>
+        <div className="visual">
+          <input type="checkbox" role="switch" aria-label={t("workspace.dockClearance")} checked={chrome.dockClearance} disabled={busy}
+            onChange={(event) => updateChrome({ dockClearance: event.target.checked })} />
+        </div>
+      </div>}
     </div>
 
     <p className="settings-section-help">{t("workspace.fullscreenAccount")}</p>

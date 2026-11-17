@@ -13,7 +13,7 @@ import { RouteBoundary } from "../routing/RouteBoundary";
 import { useShell } from "./ShellContext";
 import { useWorkspace } from "../preferences/Workspace";
 import type { ShellWindow } from "../shell-state";
-import { centeredRect, constrainRect, placedRect, type WindowPlacement, type WorkArea } from "./desktop/geometry";
+import { centeredRect, constrainRect, placedRect, type WindowPlacement, type WindowRect, type WorkArea } from "./desktop/geometry";
 
 import { readWindowRect, writeWindowRect } from "./window-positions";
 
@@ -32,8 +32,31 @@ export function isInstalledAppWindow(id: string): boolean {
 }
 
 export function DesktopWindows({ animations = true }: { animations?: boolean } = {}) {
-  const { state } = useShell();
+  const { state, mode } = useShell();
+  const workspace = useWorkspace();
   const layer = useRef<HTMLDivElement>(null);
+  const chrome = workspace.userWorkspace?.fullscreenChrome ?? workspace.effective.fullscreenChrome;
+  const clearance = mode === "desktop" && chrome.hideDock === false && chrome.dockClearance === true;
+  // Space reserved at the bottom of the window layer so windows end above the
+  // visible dock instead of running behind it. Measured from the real dock so
+  // theme-specific dock sizes and offsets are respected.
+  const [dockReserve, setDockReserve] = useState(0);
+  useEffect(() => {
+    if (!clearance) { setDockReserve(0); return; }
+    const dock = document.querySelector<HTMLElement>(".os-dock");
+    if (!dock) { setDockReserve(0); return; }
+    const measure = () => {
+      const layerRect = layer.current?.getBoundingClientRect();
+      const dockRect = dock.getBoundingClientRect();
+      if (!layerRect || !dockRect.height) { setDockReserve(0); return; }
+      setDockReserve(Math.max(0, Math.round(layerRect.bottom - dockRect.top)));
+    };
+    measure();
+    const observer = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(measure);
+    observer?.observe(dock);
+    window.addEventListener("resize", measure);
+    return () => { observer?.disconnect(); window.removeEventListener("resize", measure); };
+  }, [clearance]);
   // `null` until the layer is measured; until then the server-rendered nonce
   // position style stays in effect (no jump from a default work area).
   const [area, setArea] = useState<WorkArea | null>(null);
@@ -65,11 +88,11 @@ export function DesktopWindows({ animations = true }: { animations?: boolean } =
   }, [state.windows, state.focusedWindowId]);
   return <div ref={layer} className="window-layer">
     <AnimatePresence initial={false}>{state.windows.map((item) =>
-      <HostedWindow key={item.id} item={item} area={area} zIndex={zIndex[item.id] ?? 1} animations={animations} />
+      <HostedWindow key={item.id} item={item} area={area} dockReserve={dockReserve} zIndex={zIndex[item.id] ?? 1} animations={animations} />
     )}</AnimatePresence>
   </div>;
 }
-function HostedWindow({ item, area, zIndex, animations: motionEnabled = true }: { item: ShellWindow; area: WorkArea | null; zIndex: number; animations?: boolean }) {
+function HostedWindow({ item, area, dockReserve, zIndex, animations: motionEnabled = true }: { item: ShellWindow; area: WorkArea | null; dockReserve: number; zIndex: number; animations?: boolean }) {
   const { state, dispatch, open, mode } = useShell();
   const { t } = useI18n();
   const workspace = useWorkspace();
@@ -90,26 +113,35 @@ function HostedWindow({ item, area, zIndex, animations: motionEnabled = true }: 
   const customTopbarFullscreen = customTopbar && topbarApp?.customTopbarFullscreen === true;
   const isFullscreen = item.fullscreen === true;
   const hidden = item.minimized || (isLauncher && active !== item.id);
+  // The usable desktop ends above the dock when clearance is on. Fullscreen
+  // windows still own the whole screen; everything else respects the reserve.
+  const workArea = area ? { width: area.width, height: Math.max(1, area.height - dockReserve) } : null;
+  // With a reserved dock row, even floating windows keep their bottom edge
+  // inside the usable desktop instead of hanging behind the dock.
+  const constrain = (rect: WindowRect, target: WorkArea): WindowRect => {
+    const next = constrainRect(rect, target);
+    return dockReserve > 0 ? { ...next, y: Math.min(next.y, Math.max(0, target.height - next.height)) } : next;
+  };
   const savedRect = readWindowRect(item.id);
   // Ignore the old generic frame and the Store's superseded 1040×720 default
   // so a wider preferred size is adopted without discarding user resizes.
   const supersededDefault = savedRect?.width === 1040 && savedRect.height === 720 && item.preferredSize && (item.preferredSize.width !== 1040 || item.preferredSize.height !== 720);
   const effectiveSaved = item.preferredSize && (supersededDefault || (savedRect?.width === 760 && savedRect.height === 540)) ? undefined : savedRect;
-  const stored = item.rect ?? effectiveSaved ?? centeredRect(area ?? { width: 760, height: 540 }, item.preferredSize);
+  const stored = item.rect ?? effectiveSaved ?? centeredRect(workArea ?? { width: 760, height: 540 }, item.preferredSize);
   const positionReady = useRef(false);
   useLayoutEffect(() => {
-    if (!area) return;
+    if (!workArea) return;
     if (!positionReady.current) {
       positionReady.current = true;
       // The latest position takes precedence over the initial workspace preset.
-      const initial = item.rect ?? effectiveSaved ?? centeredRect(area, item.preferredSize);
+      const initial = item.rect ?? effectiveSaved ?? centeredRect(workArea, item.preferredSize);
       if (initial !== item.rect) {
         dispatch({ type: "set-window-rect", id: item.id, rect: initial });
         return;
       }
     }
     if (item.rect) writeWindowRect(item.id, item.rect);
-  }, [area, item.id, item.rect, dispatch]);
+  }, [area, dockReserve, item.id, item.rect, dispatch]);
   const placement = item.placement ?? "floating";
   // Maximized desktop windows sit below the 54px top bar; only the launcher
   // fills the screen behind its own chrome. When the user hides the top bar,
@@ -119,10 +151,10 @@ function HostedWindow({ item, area, zIndex, animations: motionEnabled = true }: 
   const windowTopInset = isFullscreen || (hideTopbar && chromeHidesTopbar)
     ? 0
     : topbarInset;
-  const rect = area
+  const rect = area && workArea
     ? isFullscreen
       ? { x: 0, y: 0, width: area.width, height: area.height }
-      : placedRect(stored, isLauncher ? "maximized" : placement, area, windowTopInset, isLauncher ? 0 : WINDOW_GAP)
+      : constrain(placedRect(stored, isLauncher ? "maximized" : placement, workArea, windowTopInset, isLauncher ? 0 : WINDOW_GAP), workArea)
     : stored;
   useEffect(() => {
     if (!isFullscreen) return;
@@ -140,7 +172,7 @@ function HostedWindow({ item, area, zIndex, animations: motionEnabled = true }: 
     if (active !== item.id && item.location) open(item.location);
   }
   function begin(event: PointerEvent<HTMLElement>, resize: boolean) {
-    if (!area || isLauncher || event.button !== 0 || (!resize && (event.target as HTMLElement).closest("button, input, a, select"))) return;
+    if (!workArea || isLauncher || event.button !== 0 || (!resize && (event.target as HTMLElement).closest("button, input, a, select"))) return;
     if (resize && placement !== "floating") return;
     event.preventDefault(); event.stopPropagation(); focus();
     const wrapper = event.currentTarget.closest(".window-position") as HTMLElement | null;
@@ -161,12 +193,12 @@ function HostedWindow({ item, area, zIndex, animations: motionEnabled = true }: 
   }
   function move(event: PointerEvent) {
     const start = gesture.current;
-    if (!start || start.pointer !== event.pointerId || !area) return;
+    if (!start || start.pointer !== event.pointerId || !workArea) return;
     const dx = event.clientX - start.x, dy = event.clientY - start.y;
     if (start.pending) {
       if (Math.abs(dx) + Math.abs(dy) < 4) return;
       const under = start.pending;
-      const next = constrainRect({ ...under.stored, x: event.clientX - under.stored.width * under.ratio, y: event.clientY - under.offsetY }, area);
+      const next = constrain({ ...under.stored, x: event.clientX - under.stored.width * under.ratio, y: event.clientY - under.offsetY }, workArea);
       start.pending = null; start.rect = next; start.live = next; start.moved = true;
       start.x = event.clientX; start.y = event.clientY;
       dispatch({ type: "set-window-placement", id: item.id, placement: "floating" });
@@ -174,13 +206,13 @@ function HostedWindow({ item, area, zIndex, animations: motionEnabled = true }: 
       return;
     }
     if (start.resize) {
-      const next = constrainRect({ ...start.rect, width: start.rect.width + dx, height: start.rect.height + dy }, area);
+      const next = constrain({ ...start.rect, width: start.rect.width + dx, height: start.rect.height + dy }, workArea);
       start.live = next; start.moved = true;
       const element = start.element;
       if (element) { element.style.left = `${next.x}px`; element.style.top = `${next.y}px`; element.style.width = `${next.width}px`; element.style.height = `${next.height}px`; }
       return;
     }
-    const next = constrainRect({ ...start.rect, x: start.rect.x + dx, y: start.rect.y + dy }, area);
+    const next = constrain({ ...start.rect, x: start.rect.x + dx, y: start.rect.y + dy }, workArea);
     start.live = next; start.moved = true;
     // Move with a composited transform (no layout thrash); commit the rect on release.
     if (start.element) start.element.style.transform = `translate3d(${next.x - start.rect.x}px, ${next.y - start.rect.y}px, 0)`;
@@ -189,8 +221,8 @@ function HostedWindow({ item, area, zIndex, animations: motionEnabled = true }: 
     if (target !== start.snap) { start.snap = target; setSnap(target); }
   }
   function snapTarget(x: number, y: number): WindowPlacement | null {
-    if (!area) return null;
-    return y <= 16 ? "maximized" : x <= 20 ? "left" : x >= area.width - 20 ? "right" : null;
+    if (!workArea) return null;
+    return y <= 16 ? "maximized" : x <= 20 ? "left" : x >= workArea.width - 20 ? "right" : null;
   }
   function end() {
     const start = gesture.current;
@@ -219,7 +251,7 @@ function HostedWindow({ item, area, zIndex, animations: motionEnabled = true }: 
     gesture.current = null; setMoving(false); setSnap(null);
   }
   function keyboard(event: KeyboardEvent, resize: boolean) {
-    if (!area || event.target !== event.currentTarget || isLauncher) return;
+    if (!workArea || event.target !== event.currentTarget || isLauncher) return;
     if (event.altKey && ["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown"].includes(event.key)) {
       event.preventDefault();
       dispatch({ type: "set-window-placement", id: item.id, placement: event.key === "ArrowLeft" ? "left" : event.key === "ArrowRight" ? "right" : event.key === "ArrowUp" ? "maximized" : "floating" }); return;
@@ -229,7 +261,7 @@ function HostedWindow({ item, area, zIndex, animations: motionEnabled = true }: 
     if (!delta) return;
     event.preventDefault(); const step = event.shiftKey ? 40 : 10;
     const next = resize ? { ...rect, width: rect.width + delta[0]! * step, height: rect.height + delta[1]! * step } : { ...rect, x: rect.x + delta[0]! * step, y: rect.y + delta[1]! * step };
-    dispatch({ type: "set-window-rect", id: item.id, rect: constrainRect(next, area) });
+    dispatch({ type: "set-window-rect", id: item.id, rect: constrain(next, workArea) });
   }
   const animate = motionEnabled && typeof window !== "undefined" && typeof window.matchMedia === "function" && !window.matchMedia("(prefers-reduced-motion: reduce)").matches;
   const enter = isLauncher ? { opacity: 0, y: 140, scale: 0.94 } : { opacity: 0, y: 10, scale: 0.985 };

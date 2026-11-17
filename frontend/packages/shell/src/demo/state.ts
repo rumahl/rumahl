@@ -107,7 +107,7 @@ function seedWorkspace(): Workspace {
     desktop: { order: [], hidden: [], widgets: true },
     launcherView: null,
     appearance: { ...emptyAppearance },
-    fullscreenChrome: { hideTopbar: true, hideDock: true }
+    fullscreenChrome: { hideTopbar: true, hideDock: true, dockClearance: false }
   };
 }
 

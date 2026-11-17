@@ -163,6 +163,8 @@ export const german = {
   "workspace.hideTopbarHelp": "Die Topbar bei maximierten Fenstern nach oben aus dem Bild fahren. Das Fenster nutzt den frei gewordenen Platz.",
   "workspace.hideDock": "Dock ausblenden",
   "workspace.hideDockHelp": "Das Dock bei maximierten Fenstern und geöffneten Launcher-Apps nach unten aus dem Bild fahren. Das Fenster reicht dann bis an den unteren Rand.",
+  "workspace.dockClearance": "Fenster über dem Dock enden lassen",
+  "workspace.dockClearanceHelp": "Fenster enden oberhalb des sichtbaren Docks, statt dahinter zu laufen. Nur verfügbar, solange das Dock nicht ausgeblendet wird.",
   "workspace.scope": "Geltungsbereich",
   "workspace.scopeHelp": "Gespeicherte Fenster und App-Ordner unten verwenden diesen Scope. Gerätewerte haben Vorrang vor dem Konto.",
   "workspace.layout": "Fensteranordnung",

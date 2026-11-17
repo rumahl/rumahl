@@ -168,6 +168,8 @@ export const english = {
   "workspace.hideTopbarHelp": "Slide the top bar out of the screen when a window is maximized. The window then uses the freed space.",
   "workspace.hideDock": "Hide dock",
   "workspace.hideDockHelp": "Slide the dock out while a maximized window is open, or while a launcher app is open. The window then extends to the bottom edge.",
+  "workspace.dockClearance": "Keep windows above the dock",
+  "workspace.dockClearanceHelp": "Windows end above the visible dock instead of running behind it. Only available while the dock is not hidden.",
   "workspace.scope": "Scope",
   "workspace.scopeHelp": "The saved windows and app folders below use this scope. A device setting takes precedence over the account.",
   "workspace.layout": "Window arrangement",

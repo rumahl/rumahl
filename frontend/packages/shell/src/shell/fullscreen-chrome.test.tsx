@@ -36,6 +36,57 @@ describe("fullscreen chrome", () => {
     expect(document.querySelector(".menubar.topbar")).not.toHaveClass("is-auto-hide");
   });
 
+  test("keeps window bottoms above a visible dock when the account opts in", async () => {
+    localStorage.setItem("rumahl.demo.workspace", JSON.stringify({
+      version: 1,
+      windows: [],
+      folders: [],
+      fullscreenChrome: { hideTopbar: true, hideDock: false, dockClearance: true }
+    }));
+    render(<App snapshot={demoSnapshot} initialLocation="/app/files" />);
+    await screen.findByRole("region", { name: "Files" });
+    maximizeFiles();
+    const shell = document.querySelector(".shell");
+    await waitFor(() => expect(shell).toHaveAttribute("data-dock-clearance", "true"));
+    expect(shell).not.toHaveAttribute("data-dock-auto-hide");
+  });
+
+  test("ignores the clearance while the dock hides itself", async () => {
+    localStorage.setItem("rumahl.demo.workspace", JSON.stringify({
+      version: 1,
+      windows: [],
+      folders: [],
+      fullscreenChrome: { hideTopbar: true, hideDock: true, dockClearance: true }
+    }));
+    render(<App snapshot={demoSnapshot} initialLocation="/app/files" />);
+    await screen.findByRole("region", { name: "Files" });
+    maximizeFiles();
+    const shell = document.querySelector(".shell");
+    await waitFor(() => expect(shell).toHaveAttribute("data-dock-auto-hide", "true"));
+    expect(shell).not.toHaveAttribute("data-dock-clearance");
+  });
+
+  test("offers the clearance switch only while the dock stays visible", async () => {
+    localStorage.setItem("rumahl.demo.workspace", JSON.stringify({
+      version: 1,
+      windows: [],
+      folders: [],
+      fullscreenChrome: { hideTopbar: true, hideDock: false, dockClearance: false }
+    }));
+    const first = render(<App snapshot={demoSnapshot} initialLocation="/settings/display/windows" />);
+    expect(await screen.findByRole("switch", { name: "Keep windows above the dock" })).toBeInTheDocument();
+    first.unmount();
+    localStorage.setItem("rumahl.demo.workspace", JSON.stringify({
+      version: 1,
+      windows: [],
+      folders: [],
+      fullscreenChrome: { hideTopbar: true, hideDock: true, dockClearance: false }
+    }));
+    render(<App snapshot={demoSnapshot} initialLocation="/settings/display/windows" />);
+    expect(await screen.findByRole("switch", { name: "Hide dock" })).toBeInTheDocument();
+    expect(screen.queryByRole("switch", { name: "Keep windows above the dock" })).toBeNull();
+  });
+
   test("an open launcher app releases the dock row", async () => {
     render(<App snapshot={demoSnapshot} initialLocation="/app/files" />);
     await screen.findByRole("region", { name: "Files" });
