@@ -1190,15 +1190,19 @@ html[data-settings-transition] .settings-content { view-transition-name: setting
    is a readability aid, so it keeps its cross-fade even when decorative
    animations are disabled by the Iris profile. Reduced-motion still opts out. */
 [data-adaptive-text] {
-  transition: color 1.4s cubic-bezier(0.4, 0, 0.2, 1), text-shadow 1.4s cubic-bezier(0.4, 0, 0.2, 1);
+  transition: color var(--adaptive-color-duration, 1.4s) cubic-bezier(0.4, 0, 0.2, 1),
+    text-shadow var(--adaptive-color-duration, 1.4s) cubic-bezier(0.4, 0, 0.2, 1);
 }
 [data-adaptive-text] :is(strong, p, small, span, h1, h2) {
-  transition: color 1.4s cubic-bezier(0.4, 0, 0.2, 1), text-shadow 1.4s cubic-bezier(0.4, 0, 0.2, 1);
+  transition: color var(--adaptive-color-duration, 1.4s) cubic-bezier(0.4, 0, 0.2, 1),
+    text-shadow var(--adaptive-color-duration, 1.4s) cubic-bezier(0.4, 0, 0.2, 1);
 }
 @media (prefers-reduced-motion: no-preference) {
   .shell [data-adaptive-text],
   .shell [data-adaptive-text] :is(strong, p, small, span, h1, h2) {
-    transition: color 1.4s cubic-bezier(0.4, 0, 0.2, 1), text-shadow 1.4s cubic-bezier(0.4, 0, 0.2, 1) !important;
+    transition:
+      color var(--adaptive-color-duration, 1.4s) cubic-bezier(0.4, 0, 0.2, 1),
+      text-shadow var(--adaptive-color-duration, 1.4s) cubic-bezier(0.4, 0, 0.2, 1) !important;
   }
 }
 .desktop-icon__label[data-adaptive-text] {
@@ -1210,15 +1214,15 @@ html[data-settings-transition] .settings-content { view-transition-name: setting
   text-shadow: var(--adaptive-shadow, none);
   /* Readability outranks the decorative tone fade: a wallpaper change must
      settle before the user needs to read the clock. */
-  transition-duration: 0.28s !important;
+  transition-duration: var(--adaptive-color-duration, 0.28s) !important;
 }
 .shell .desktop-widget[data-adaptive-text] :is(p, strong, small, span) {
   color: inherit;
-  transition-duration: 0.28s !important;
+  transition-duration: var(--adaptive-color-duration, 0.28s) !important;
 }
 .shell .desktop-widget[data-adaptive-text] .desktop-widget__eyebrow {
   color: var(--adaptive-muted, currentColor) !important;
-  transition-duration: 0.28s !important;
+  transition-duration: var(--adaptive-color-duration, 0.28s) !important;
 }
 .desktop-wordmark[data-adaptive-text] {
   color: var(--adaptive-ink, #eef5f6);
@@ -1244,7 +1248,7 @@ html[data-settings-transition] .settings-content { view-transition-name: setting
    dock and make it diverge from the widget colour. */
 .shell .os-dock,
 .shell .os-dock.dock {
-  background: transparent !important;
+  background: var(--dock-background, transparent) !important;
 }
 .shell .os-dock .rumahl-glass-surface,
 .shell .os-dock .rumahl-glass-surface.rumahl-glass-webgl {
