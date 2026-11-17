@@ -8,9 +8,9 @@
  */
 :root,
 .shell {
-  --rumahl-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
-  --rumahl-spring-soft: cubic-bezier(0.22, 1, 0.36, 1);
-  --rumahl-spring-snap: cubic-bezier(0.2, 0.9, 0.2, 1);
+  --rumahl-spring: var(--motion-spring-bouncy, cubic-bezier(0.34, 1.56, 0.64, 1));
+  --rumahl-spring-soft: var(--motion-spring-soft, cubic-bezier(0.22, 1, 0.36, 1));
+  --rumahl-spring-snap: var(--motion-spring-snap, cubic-bezier(0.2, 0.9, 0.2, 1));
 }
 
 @keyframes rumahl-spring-surface {
