@@ -56,6 +56,8 @@ pub trait PersonalFiles: Send + Sync {
         data: Option<Vec<u8>>,
     ) -> Result<(), FileError>;
     fn read(&self, user: UserId, id: &str) -> Result<(String, Vec<u8>), FileError>;
+    /// Replaces a file's content in place. Directories are never writable.
+    fn write(&self, user: UserId, id: &str, data: Vec<u8>) -> Result<(), FileError>;
     fn relocate(&self, user: UserId, id: &str, parent: &str, name: &str) -> Result<(), FileError>;
     /// Directories must be empty; deletion never follows paths or recursively deletes.
     fn delete(&self, user: UserId, id: &str) -> Result<(), FileError>;

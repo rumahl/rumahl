@@ -49,9 +49,26 @@ fn documents_are_owned_durable_bounded_and_moves_cannot_create_cycles() {
     repo.relocate(a, &file.id, "root", "renamed.txt").unwrap();
     drop(repo);
     let repo = SqlitePersonalFiles::open(path).unwrap();
+    repo.write(a, &file.id, b"edited text".to_vec()).unwrap();
     assert_eq!(
         repo.read(a, &file.id).unwrap(),
-        ("renamed.txt".into(), b"hello".to_vec())
+        ("renamed.txt".into(), b"edited text".to_vec())
+    );
+    assert_eq!(
+        repo.write(b, &file.id, b"stolen".to_vec()),
+        Err(FileError::Missing)
+    );
+    assert_eq!(
+        repo.write(a, &folder.id, b"not a file".to_vec()),
+        Err(FileError::Missing)
+    );
+    assert_eq!(
+        repo.write(a, &file.id, vec![0; 16 * 1024 * 1024 + 1]),
+        Err(FileError::Limit)
+    );
+    assert_eq!(
+        repo.read(a, &file.id).unwrap(),
+        ("renamed.txt".into(), b"edited text".to_vec())
     );
     assert_eq!(
         repo.create(a, "root", "renamed.txt", Some(vec![])),

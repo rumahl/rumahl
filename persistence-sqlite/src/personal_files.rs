@@ -247,6 +247,44 @@ impl PersonalFiles for SqlitePersonalFiles {
         };
         Ok((name, content))
     }
+    fn write(&self, u: UserId, id: &str, data: Vec<u8>) -> Result<(), E> {
+        if data.len() > 16 * 1024 * 1024 {
+            return Err(E::Limit);
+        }
+        let mut c = self.connect().map_err(db)?;
+        let tx = c
+            .transaction_with_behavior(TransactionBehavior::Immediate)
+            .map_err(db)?;
+        let previous: Option<i64> = tx
+            .query_row(
+                "SELECT size FROM personal_files WHERE owner=?1 AND id=?2 AND directory=0",
+                params![u.to_string(), id],
+                |r| r.get(0),
+            )
+            .optional()
+            .map_err(db)?;
+        let Some(previous) = previous else {
+            return Err(E::Missing);
+        };
+        let stored_total: i64 = tx
+            .query_row(
+                "SELECT COALESCE(SUM(size),0) FROM personal_files WHERE owner=?1",
+                [u.to_string()],
+                |r| r.get(0),
+            )
+            .map_err(db)?;
+        let size = data.len() as i64;
+        if stored_total - previous + size > 128 * 1024 * 1024 {
+            return Err(E::Limit);
+        }
+        let (stored, encrypted) = self.encrypt(u, id, data)?;
+        tx.execute(
+            "UPDATE personal_files SET data=?3,size=?4,encrypted=?5 WHERE owner=?1 AND id=?2",
+            params![u.to_string(), id, stored, size, encrypted],
+        )
+        .map_err(db)?;
+        tx.commit().map_err(db)
+    }
     fn relocate(&self, u: UserId, id: &str, p: &str, n: &str) -> Result<(), E> {
         if !name_valid(n) {
             return Err(E::Invalid);

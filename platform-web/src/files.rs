@@ -20,7 +20,7 @@ pub(crate) fn routes() -> Router<Arc<GatewayState>> {
             "/api/v1/files",
             get(list).post(create).put(relocate).delete(remove),
         )
-        .route("/api/v1/files/content", get(download))
+        .route("/api/v1/files/content", get(download).put(write))
         .layer(DefaultBodyLimit::max(16 * 1024 * 1024))
 }
 fn fail(e: FileError) -> Response {
@@ -187,6 +187,30 @@ async fn remove(
         return error(StatusCode::SERVICE_UNAVAILABLE);
     };
     completed(tokio::task::spawn_blocking(move || repo.delete(u, &id)).await)
+}
+async fn write(
+    State(s): State<Arc<GatewayState>>,
+    Query(q): Query<HashMap<String, String>>,
+    h: HeaderMap,
+    b: Bytes,
+) -> Response {
+    if !valid_origin(&h, &s.config.public_origin) {
+        return error(StatusCode::FORBIDDEN);
+    }
+    let u = match user(&s, &h).await {
+        Ok(v) => v,
+        Err(r) => return r,
+    };
+    let Some(id) = key(&q, "id") else {
+        return error(StatusCode::BAD_REQUEST);
+    };
+    if h.get("content-type").and_then(|v| v.to_str().ok()) != Some("application/octet-stream") {
+        return error(StatusCode::UNSUPPORTED_MEDIA_TYPE);
+    }
+    let Some(repo) = s.files.clone() else {
+        return error(StatusCode::SERVICE_UNAVAILABLE);
+    };
+    completed(tokio::task::spawn_blocking(move || repo.write(u, &id, b.to_vec())).await)
 }
 async fn download(
     State(s): State<Arc<GatewayState>>,
