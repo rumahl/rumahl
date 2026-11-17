@@ -104,7 +104,15 @@ describe("theme packages", () => {
     const data = {
       id: "com.example.origin",
       name: "Origin",
-      tokens: { "color.accent": "#c81d1d", "color.canvas.background": "#020101", "color.text.primary": "#ffffff", "color.surface.strong": "#111111", "color.panel.background": "#111111" },
+      tokens: {
+        "color.accent": "#ff5f5f",
+        "color.on.accent": "#111111",
+        "color.canvas.background": "#020101",
+        "color.text.primary": "#ffffff",
+        "color.surface": "#ffffff1a",
+        "color.surface.strong": "#111111",
+        "color.panel.background": "#111111"
+      },
       css: "/* noop */",
       modes: ["dark"]
     };

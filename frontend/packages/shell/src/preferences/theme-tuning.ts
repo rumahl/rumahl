@@ -272,6 +272,7 @@ export function applyTuning(
   tuning: AppearanceSettings,
   systemMode: AppearanceMode = "light",
   systemPrefersDark = systemMode === "dark",
+  palette = true,
 ): Tokens {
   const wallpaper =
     tuning.tokens["texture.wallpaper"] ?? tokens["texture.wallpaper"];
@@ -283,7 +284,7 @@ export function applyTuning(
   // seed the palette was previously left untouched, so system dark mode never
   // reached glass themes. Treat system-dark as a customization.
   const followsSystemDark = tuning.mode === null && systemPrefersDark;
-  const customized = seed !== null || tuning.mode !== null || followsSystemDark;
+  const customized = palette && (seed !== null || tuning.mode !== null || followsSystemDark);
   const base = customized
     ? { ...tokens, ...paletteTokens(seed ?? tokens["color.accent"], { mode }) }
     : tokens;
@@ -384,13 +385,15 @@ export function applyThemeTuning(
   // Only a theme that supports dark may hand the system-dark palette to the
   // colour engine; a dark-only theme already carries its own authored palette.
   const systemPrefersDark = systemMode === "dark" && theme.modes.includes("dark");
+  const palette = theme.paletteTuning !== false;
   if (theme.material !== "solid")
-    return applyTuning(theme.tokens, tuning, effectiveSystemMode, systemPrefersDark);
+    return applyTuning(theme.tokens, tuning, effectiveSystemMode, systemPrefersDark, palette);
   const tuned = applyTuning(
     theme.tokens,
     { ...tuning, mode: tuning.mode ?? effectiveSystemMode },
     effectiveSystemMode,
     systemPrefersDark,
+    palette,
   );
   return {
     ...tuned,

@@ -21,6 +21,7 @@ describe("bundled theme packages", () => {
     expect(theme.tokens["shape.radius.dock"]).toBe("0px");
     expect(theme.tokens["shape.radius.icon"]).toBe("0px");
     expect(theme.tokens["material.morphism"]).toBe("0");
+    expect(theme.paletteTuning).toBe(true);
   });
 
   test("terminal keeps its explicit Ground values and stylesheet", () => {
@@ -29,6 +30,7 @@ describe("bundled theme packages", () => {
     expect(theme.tokens["color.accent"]).toBe("#39ff14");
     expect(theme.tokens["typography.family"]).toContain("Courier New");
     expect(theme.tokens["shape.radius.window"]).toBe("0px");
+    expect(theme.paletteTuning).toBe(false);
     expect(theme.css).toContain("Terminal");
   });
 
@@ -40,6 +42,7 @@ describe("bundled theme packages", () => {
     expect(theme.tokens["shape.radius.dock"]).toBe("18px");
     expect(theme.tokens["shape.radius.icon"]).toBe("14px");
     expect(theme.tokens["typography.family"]).toContain("Manrope");
+    expect(theme.paletteTuning).toBe(false);
     expect(theme.css).toContain("dash__panel");
   });
 

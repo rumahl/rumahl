@@ -61,6 +61,18 @@ test("Ground defaults are brand-independent", () => {
   expect(ground.tokens["material.morphism"]).toBe("0");
 });
 
+test("Ground themes can opt out of generated light/dark palettes", () => {
+  const fixed = themeFromPackage({
+    id: "com.example.fixed",
+    name: "Fixed",
+    base: "ground",
+    paletteTuning: false
+  });
+  expect(fixed.paletteTuning).toBe(false);
+  const automatic = themeFromPackage({ id: "com.example.auto", name: "Auto", base: "ground" });
+  expect(automatic.paletteTuning).toBeUndefined();
+});
+
 test("Ground themes can replace neutral defaults without losing their own identity", () => {
   const ground = themeFromPackage({
     id: "com.example.ground-custom",

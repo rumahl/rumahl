@@ -30,5 +30,6 @@
     "motion.duration": "0ms",
     "motion.duration.fast": "0ms",
     "texture.wallpaper": "linear-gradient(#ffffff, #ffffff)"
-  }
+  },
+  "paletteTuning": true
 }

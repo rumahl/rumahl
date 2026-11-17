@@ -196,6 +196,7 @@ export function exportThemePackage(theme: Theme): string {
       id: theme.id,
       name: theme.name,
       version: "1.0.0",
+      ...(theme.schemaVersion ? { schemaVersion: theme.schemaVersion } : {}),
       locked: theme.locked === true,
       modes: theme.modes,
       variants: theme.variants,

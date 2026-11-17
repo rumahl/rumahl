@@ -1,3 +1,5 @@
+import { readFileSync, readdirSync, statSync } from "node:fs";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { validateTheme } from "./theme-safety";
 
@@ -75,5 +77,75 @@ describe("validateTheme", () => {
 
   it("allows bundled / data resources", () => {
     expect(validateTheme({ ...base, css: ".a { background: url('data:image/png;base64,AA') }" }).ok).toBe(true);
+  });
+
+  it("warns, but does not block, muted text below AA", () => {
+    const report = validateTheme({ ...base, tokens: { ...base.tokens, "color.text.muted": "#888888" } });
+    expect(report.ok).toBe(true);
+    expect(report.issues.some((issue) => issue.code === "contrast-muted" && issue.level === "warning")).toBe(true);
+  });
+
+  it("blocks muted text below the hard readability floor", () => {
+    const report = validateTheme({ ...base, tokens: { ...base.tokens, "color.text.muted": "#aaaaaa" } });
+    expect(report.ok).toBe(false);
+    expect(report.issues.some((issue) => issue.code === "contrast-muted" && issue.level === "error")).toBe(true);
+  });
+
+  it("warns about accent ink below AA without breaking legacy themes", () => {
+    const report = validateTheme({ ...base, tokens: { ...base.tokens, "color.accent": "#111111", "color.on.accent": "#767676" } });
+    expect(report.ok).toBe(true);
+    expect(report.issues.some((issue) => issue.code === "contrast-on-accent" && issue.level === "warning")).toBe(true);
+  });
+
+  it("blocks an accent that disappears into the surface", () => {
+    const report = validateTheme({ ...base, tokens: { ...base.tokens, "color.accent": "#f8f8f8" } });
+    expect(report.ok).toBe(false);
+    expect(report.issues.some((issue) => issue.code === "contrast-ui")).toBe(true);
+  });
+
+  it("composites translucent surfaces before checking contrast", () => {
+    const report = validateTheme({ ...base, tokens: { ...base.tokens, "color.surface": "#000000aa" } });
+    expect(report.ok).toBe(false);
+    expect(report.issues.some((issue) => issue.code === "contrast-muted" && issue.level === "error")).toBe(true);
+  });
+
+  it("warns about custom tokens without blocking them", () => {
+    const report = validateTheme({ ...base, tokens: { ...base.tokens, "custom.brand.channel": "#123456" } });
+    expect(report.ok).toBe(true);
+    expect(report.issues.some((issue) => issue.code === "custom-tokens")).toBe(true);
+  });
+
+  it("warns about a newer portable schema without blocking", () => {
+    const report = validateTheme({ ...base, schemaVersion: 2 });
+    expect(report.ok).toBe(true);
+    expect(report.issues.some((issue) => issue.code === "schema-version" && issue.level === "warning")).toBe(true);
+  });
+
+  it("accepts the current portable schema", () => {
+    expect(validateTheme({ ...base, schemaVersion: 1 }).issues.some((issue) => issue.code === "schema-version")).toBe(false);
+  });
+
+  it("warns about legacy base names", () => {
+    const report = validateTheme({ ...base, base: "clean" });
+    expect(report.ok).toBe(true);
+    expect(report.issues.some((issue) => issue.code === "legacy-base")).toBe(true);
+  });
+
+  it("keeps all bundled theme packages installable", () => {
+    const files: string[] = [];
+    const walk = (root: string) => {
+      for (const entry of readdirSync(root)) {
+        const path = join(root, entry);
+        if (statSync(path).isDirectory()) walk(path);
+        else if (entry.endsWith(".json")) files.push(path);
+      }
+    };
+    walk("themes");
+    walk("../../../examples/themes");
+    expect(files.length).toBeGreaterThan(0);
+    for (const file of files) {
+      const report = validateTheme(JSON.parse(readFileSync(file, "utf8")));
+      expect(report.ok, `${file}: ${report.issues.map((issue) => issue.message).join(" ")}`).toBe(true);
+    }
   });
 });

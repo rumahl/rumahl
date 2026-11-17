@@ -29,6 +29,10 @@ export interface ThemeInput {
   material?: "solid" | undefined;
   /** Fixed art direction: device colour/material tuning is ignored. */
   locked?: boolean | undefined;
+  /** Disable generated light/dark palettes; the theme owns every scheme token. */
+  paletteTuning?: boolean | undefined;
+  /** Portable package schema version. Omitted means v1. */
+  schemaVersion?: number | undefined;
   /** Base look: Iris (native default) or Ground (open foundation). Legacy
    * `rumahl` and `clean` values are accepted and normalized. */
   base?: "iris" | "ground" | "rumahl" | "clean" | undefined;
@@ -58,6 +62,8 @@ export function defineTheme(input: ThemeInput): Theme {
     ...(input.slots ? { slots: sanitizeSlots(input.slots) } : {}),
     ...(input.material ? { material: input.material } : {}),
     ...(input.locked ? { locked: true } : {}),
+    ...(typeof input.paletteTuning === "boolean" ? { paletteTuning: input.paletteTuning } : {}),
+    ...(typeof input.schemaVersion === "number" ? { schemaVersion: input.schemaVersion } : {}),
     ...(input.base ? { base } : {}),
     ...(input.capabilities?.length ? { capabilities: input.capabilities.slice(0, 32) } : {}),
     ...(input.code ? { code: input.code.slice(0, 500_000) } : {}),

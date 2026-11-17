@@ -99,6 +99,14 @@ export interface Theme {
   base?: ThemeBase | undefined;
   /** Fixed art direction: device colour/material tuning is ignored. */
   locked?: boolean | undefined;
+  /**
+   * Whether device colour tuning may generate a light/dark palette from the
+   * theme accent. Set `false` for a Ground theme that owns every scheme token.
+   * Defaults to `true` to keep existing packages compatible.
+   */
+  paletteTuning?: boolean | undefined;
+  /** Portable package schema version (omitted means v1). */
+  schemaVersion?: number | undefined;
   /** Declared capabilities for code themes (`network`, `storage`, …). */
   capabilities?: readonly string[] | undefined;
   /** Custom code (module source) the shell applies for a trusted theme. */
@@ -335,6 +343,8 @@ export interface ThemePackageManifest {
   version?: string | undefined;
   author?: string | undefined;
   locked?: boolean | undefined;
+  paletteTuning?: boolean | undefined;
+  schemaVersion?: number | undefined;
   modes?: readonly AppearanceMode[] | undefined;
   variants?: Partial<VariantSelection> | undefined;
   tokens?: Partial<Tokens> | undefined;
@@ -359,6 +369,8 @@ export function themeFromPackage(manifest: ThemePackageManifest, css?: string, c
     parameters: (manifest.parameters ?? []).map(normalizeParameter),
     modes: manifest.modes ?? ["light"],
     ...(manifest.locked ? { locked: true } : {}),
+    ...(typeof manifest.paletteTuning === "boolean" ? { paletteTuning: manifest.paletteTuning } : {}),
+    ...(typeof manifest.schemaVersion === "number" ? { schemaVersion: manifest.schemaVersion } : {}),
     ...(manifest.slots ? { slots: sanitizeSlots(manifest.slots) } : {}),
     ...(manifest.material ? { material: manifest.material } : {}),
     ...(base === "iris" && !manifest.base ? {} : { base }),
