@@ -2561,10 +2561,11 @@ body.animations-off *::after {
 }
 /* Transparency off: force opaque chrome even where backgrounds are hard-coded
    or provided by the glass engine (inline tint). */
+/* The top bar is a transparent strip with floating islands; only the islands
+   paint a surface. Painting `.menubar` here would leave an opaque bar between
+   the islands and cut the wallpaper off below the top of the screen. */
 .shell[data-material="solid"]
   :is(
-    .menubar,
-    .menubar.topbar-glass,
     .os-dock,
     .start-menu,
     .desktop-menu,

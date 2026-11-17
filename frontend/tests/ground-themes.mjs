@@ -231,6 +231,18 @@ try {
           const element = document.querySelector(".desktop-widget__eyebrow");
           return element ? getComputedStyle(element).color : null;
         })(),
+        menubar: (() => {
+          const element = document.querySelector(".menubar.topbar");
+          if (!element) return null;
+          const style = getComputedStyle(element);
+          return { background: style.backgroundColor, border: style.borderTopWidth };
+        })(),
+        wallpaper: (() => {
+          const element = document.querySelector(".wallpaper");
+          if (!element) return null;
+          const rect = element.getBoundingClientRect();
+          return { top: rect.top, height: rect.height };
+        })(),
         overflow: document.documentElement.scrollWidth - window.innerWidth
       };
     });
@@ -263,6 +275,18 @@ try {
     check(`${scenario.name}-window-radius`, desktop.window?.radius === scenario.window || desktop.window === null, desktop.window);
     check(`${scenario.name}-dock-radius`, desktop.dock?.radius === scenario.dock || desktop.dock === null, desktop.dock);
     check(`${scenario.name}-overflow`, desktop.overflow <= 1, desktop.overflow);
+    // The floating top bar is a transparent strip: only its islands paint.
+    // An opaque bar would leave a dead strip above the wallpaper.
+    check(
+      `${scenario.name}-topbar-transparent`,
+      desktop.menubar?.background === "rgba(0, 0, 0, 0)" && desktop.menubar?.border === "0px",
+      desktop.menubar
+    );
+    check(
+      `${scenario.name}-wallpaper-full`,
+      desktop.wallpaper?.top === 0 && Math.round(desktop.wallpaper?.height ?? 0) === 900,
+      desktop.wallpaper
+    );
     check(`${scenario.name}-menu`, menu !== null && (scenario.name === "iris" || menu.radius === scenario.menuRadius), menu);
 
     if (scenario.base === "ground") {
