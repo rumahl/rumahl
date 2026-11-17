@@ -7,8 +7,9 @@ import { useTheme } from "@rumahl/ui";
  * Motion roles. Durations and the spring easing are tokens so a theme (or a
  * reduced-motion preference) can tune or disable animation consistently.
  *
- * - `--rumahl-ui-motion-duration-fast` (~120ms) — hover / focus colour changes
- * - the spring easing drives scale / slide (windows, popovers, menus)
+ * - `--motion-feedback-duration` (~120ms) — hover / focus colour changes
+ * - `--motion-surface-duration` (~180ms) — surface enter/exit
+ * - `--motion-spring-{bouncy,soft,snap}` — launcher, dock and window gestures
  *
  * ## Rules
  *
@@ -70,7 +71,14 @@ export const Duration: Story = {
       source: {
         code: `/* Motion tokens — collapse under prefers-reduced-motion. */
 --rumahl-ui-motion-duration-fast: 120ms;  /* hover / focus colour */
---rumahl-ui-motion-duration: 200ms;       /* state change */`
+--rumahl-ui-motion-duration: 180ms;       /* surface state change */
+
+/* Component motion roles — the override surface. */
+--motion-feedback-duration: var(--rumahl-ui-motion-duration-fast, 120ms);
+--motion-surface-duration: var(--rumahl-ui-motion-duration, 180ms);
+--motion-hover-duration: 200ms;
+--motion-easing-standard: cubic-bezier(0.2, 0.7, 0.2, 1);
+--motion-spring-bouncy: cubic-bezier(0.34, 1.56, 0.64, 1);`
       }
     }
   }

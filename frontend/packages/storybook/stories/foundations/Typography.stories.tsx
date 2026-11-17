@@ -5,14 +5,18 @@ import { useTheme } from "@rumahl/ui";
  * # Typography
  *
  * Typography roles. `typography.family` is the UI face and `typography.display`
- * the statement face; both are font-stack tokens a theme can override. Sizes are
- * tokenised and shared across the shell; the UI uses tight tracking
- * (−0.01…−0.03em) as sizes grow.
+ * the statement face; both are font-stack tokens a theme can override. The
+ * approved Iris role map is 12px chrome/labels, 12.5px compact, 13px body,
+ * 14px controls, 15px window titles and 30px page titles. The UI uses tight
+ * tracking (−0.01…−0.03em) as sizes grow.
  *
  * ## Rules
  *
- * - **Use the text roles** (`Text`, `Heading`) and the type scale — avoid ad-hoc
- *   `font-size`.
+ * - **Use the text roles** (`Text`, `Heading`) and `--type-*` roles — avoid
+ *   ad-hoc `font-size`.
+ * - **12px is the floor.** A `<small>` default may not shrink functional text.
+ *   Global `space.*` tokens are layout-level; optical component spacing stays
+ *   in the component recipe.
  * - **`display` is for statement headings only**; body and controls use
  *   `family`.
  * - **Muted, not lighter.** Secondary text uses
@@ -75,12 +79,15 @@ export const Specimens: Story = {
 };
 
 const SCALE = [
-  { name: "xl", px: 30 },
-  { name: "lg", px: 24 },
-  { name: "md", px: 20 },
-  { name: "sm", px: 16 },
-  { name: "base", px: 14 },
-  { name: "xs", px: 12 }
+  { name: "title", px: 30 },
+  { name: "xl", px: 24 },
+  { name: "lg", px: 20 },
+  { name: "md", px: 16 },
+  { name: "window", px: 15 },
+  { name: "control", px: 14 },
+  { name: "body", px: 13 },
+  { name: "compact", px: 12.5 },
+  { name: "label", px: 12 }
 ];
 
 function Scale() {
@@ -115,7 +122,17 @@ export const Scale_: Story = {
       source: {
         code: `/* Typography tokens */
 --rumahl-ui-typography-family: ...;   /* UI face */
---rumahl-ui-typography-display: ...;  /* statement face */`
+--rumahl-ui-typography-display: ...;  /* statement face */
+
+/* Component type roles — themes may replace the role, not every use. */
+--type-chrome-size: 12px;
+--type-label-size: 12px;
+--type-compact-size: 12.5px;
+--type-body-size: 13px;
+--type-window-title-size: 15px;
+--type-title-size: 30px;
+
+/* 12px is a floor, not a suggestion. */`
       }
     }
   }

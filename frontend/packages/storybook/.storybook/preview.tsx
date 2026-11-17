@@ -34,6 +34,7 @@ import "./preview.css";
 import "@rumahl/ui/materials.css";
 import "@rumahl/ui/recipes.css";
 import "@rumahl/ui/base.css";
+import "../../shell/src/shell/base-ground.css";
 import "@rumahl/ui/default-theme.css";
 import "@rumahl/ui/components/controls.css";
 import "@rumahl/ui/components/scrollbars.css";
