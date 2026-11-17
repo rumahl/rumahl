@@ -1,7 +1,11 @@
 import { startShell } from "../runtime";
 import { DemoBackend } from "./backend";
+import { seedDemoThemes } from "./seed-themes";
 
 declare const __RUMAHL_DEMO_WIDGET_ORIGIN__: string;
+
+// Seed the demo's installed theme before the shell resolves the first paint.
+seedDemoThemes();
 
 const widgetOrigin = __RUMAHL_DEMO_WIDGET_ORIGIN__ || window.location.origin;
 const backend = new DemoBackend({ widgetOrigin });
