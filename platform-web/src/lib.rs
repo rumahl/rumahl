@@ -42,10 +42,11 @@ pub use browser_auth::{BrowserSessions, LoginAccount, SESSION_SECONDS};
 
 mod apps;
 pub use apps::{
-    AppAccess, AppAccessError, AppAsset, AppData, AppDataEntry, AppProvider, AppSettingInfo,
-    AppSettingOptionInfo, AppSettingsInfo, BrowserDelivery, CapabilityOutcome, CapabilityResource,
-    CapabilityResult, CatalogApp, ImportedApp, PackageUploadFile, RuntimeAction, RuntimeState,
-    app_error,
+    AppAccess, AppAccessError, AppAsset, AppData, AppDataEntry, AppFileAccess, AppFileAction,
+    AppFileDeny, AppFileOutcome, AppGrantInfo, AppGrantState, AppPermissionRequestInfo,
+    AppProvider, AppSettingInfo, AppSettingOptionInfo, AppSettingsInfo, BrowserDelivery,
+    CapabilityOutcome, CapabilityResource, CapabilityResult, CatalogApp, GrantIssue,
+    GrantValidityChoice, ImportedApp, PackageUploadFile, RuntimeAction, RuntimeState, app_error,
 };
 
 mod app_channel;
@@ -61,6 +62,7 @@ pub use host_files::{HostArea, HostEntry, HostError, HostFiles};
 
 mod os_mode;
 
+mod app_grants;
 mod files;
 mod weather_warnings;
 mod workspace;

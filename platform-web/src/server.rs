@@ -276,6 +276,7 @@ pub fn router(state: GatewayState) -> Router {
         .merge(crate::weather_warnings::routes())
         .merge(crate::workspace::routes())
         .merge(crate::files::routes())
+        .merge(crate::app_grants::routes())
         .merge(crate::browser_auth::routes())
         .merge(crate::admin::routes())
         .merge(crate::offline::routes())

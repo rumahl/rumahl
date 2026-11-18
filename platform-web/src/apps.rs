@@ -30,6 +30,88 @@ pub struct CatalogApp {
     /// External services this app ships a connector bundle for.
     pub connectors: Vec<String>,
 }
+/// One permission an app's manifest requests, typed for the shell's consent view.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AppPermissionRequestInfo {
+    pub permission: String,
+    /// `user-selected`, `explicit`, `user-own`, `app-private`, `family-shared`
+    /// or `system`.
+    pub scope: String,
+    pub required: bool,
+    pub reason: Option<String>,
+}
+/// A live grant: what the app may do, on which resources, for how long.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AppGrantInfo {
+    pub id: String,
+    pub permission: String,
+    pub scope: String,
+    pub resources: Vec<String>,
+    /// `durable` (persisted, optionally with an expiry) or `session`
+    /// (dies with the consenting browser session).
+    pub validity: String,
+    /// Unix seconds; `None` means "until revoked".
+    pub expires_at: Option<u64>,
+}
+/// The consent state of one installed app as the calling user sees it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AppGrantState {
+    pub requests: Vec<AppPermissionRequestInfo>,
+    pub grants: Vec<AppGrantInfo>,
+}
+/// A user's consent decision, as submitted by the shell.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct GrantIssue {
+    pub permission: String,
+    /// Personal-file resource keys the consent covers. Filesystem consent is
+    /// always explicit: it names exactly what the app may touch.
+    pub resources: Vec<String>,
+    pub validity: GrantValidityChoice,
+}
+/// How long a consented grant stays usable.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum GrantValidityChoice {
+    /// Bound to the calling user's current browser session.
+    Session,
+    /// Persisted; `expires_in` bounds it in seconds, `None` keeps it until
+    /// the user revokes it.
+    Durable { expires_in: Option<u64> },
+}
+/// One app file access request, authorized per call.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AppFileAccess {
+    pub action: AppFileAction,
+    /// Personal-file id of the calling user.
+    pub key: String,
+}
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum AppFileAction {
+    Read,
+    Write { bytes: Vec<u8> },
+}
+/// The outcome of an app file access request.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum AppFileOutcome {
+    /// The grant covered this file; `name` is the stored file name.
+    Allowed { name: String, size: u64 },
+    /// The grant covered this file and the content was read.
+    Content { name: String, bytes: Vec<u8> },
+    /// No file with this id exists in the calling user's personal files.
+    Missing,
+    /// The authorization engine said no, with the reason the shell needs to
+    /// decide between prompting for consent and reporting a hard denial.
+    Denied(AppFileDeny),
+}
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AppFileDeny {
+    /// The app never asked for this permission; there is nothing to consent to.
+    NoGrant,
+    /// The app asked for this permission in its manifest but no grant covers
+    /// the file yet — the shell should ask the user for consent.
+    ApprovalRequired,
+    /// A grant exists, but this specific file is outside its scope.
+    OutsideScope,
+}
 /// One rendered setting declared by an app manifest, typed for the shell.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AppSettingInfo {
@@ -237,6 +319,49 @@ pub trait AppProvider: Send + Sync + 'static {
     ) -> Result<CapabilityResult, AppAccessError> {
         Err(AppAccessError::Unavailable)
     }
+    /// The consent state of one installed app for the calling user: what the
+    /// manifest requests and which grants currently apply.
+    fn app_grants(
+        &self,
+        _identity: ShellIdentity,
+        _installation: InstallationId,
+    ) -> Result<AppGrantState, AppAccessError> {
+        Err(AppAccessError::Unavailable)
+    }
+    /// Issues a grant from an explicit user consent. The provider validates
+    /// the request against the app's manifest and the OS permission catalog,
+    /// binds session grants to the calling session and persists durable
+    /// grants in the platform snapshot. Fails closed when no grant store is
+    /// wired.
+    fn issue_app_grant(
+        &self,
+        _identity: ShellIdentity,
+        _installation: InstallationId,
+        _issue: &GrantIssue,
+    ) -> Result<AppGrantInfo, AppAccessError> {
+        Err(AppAccessError::Unavailable)
+    }
+    /// Revokes a grant the calling user issued. Fails closed when no grant
+    /// store is wired.
+    fn revoke_app_grant(
+        &self,
+        _identity: ShellIdentity,
+        _installation: InstallationId,
+        _grant_id: &str,
+    ) -> Result<(), AppAccessError> {
+        Err(AppAccessError::Unavailable)
+    }
+    /// Reads or writes one personal file of the calling user on an app's
+    /// behalf, authorized per call against the app's grants. Fails closed
+    /// when no personal-files store is wired.
+    fn app_file(
+        &self,
+        _identity: ShellIdentity,
+        _installation: InstallationId,
+        _access: &AppFileAccess,
+    ) -> Result<AppFileOutcome, AppAccessError> {
+        Err(AppAccessError::Unavailable)
+    }
 }
 #[derive(Clone)]
 struct Lease {
@@ -265,6 +390,66 @@ pub struct SurfaceLaunch {
     pub frame_url: String,
 }
 impl AppAccess {
+    fn installed(
+        &self,
+        identity: ShellIdentity,
+        id: &str,
+        installation: &str,
+    ) -> Result<CatalogApp, AppAccessError> {
+        AppId::parse(id).map_err(|_| AppAccessError::Denied)?;
+        self.catalog(identity)?
+            .into_iter()
+            .find(|app| app.id == id && app.installation_id.to_string() == installation)
+            .ok_or(AppAccessError::Denied)
+    }
+    /// The consent state of one installed app: what its manifest requests and
+    /// which grants the calling user has issued.
+    pub fn app_grants(
+        &self,
+        identity: ShellIdentity,
+        id: &str,
+        installation: &str,
+    ) -> Result<AppGrantState, AppAccessError> {
+        let app = self.installed(identity, id, installation)?;
+        self.provider.app_grants(identity, app.installation_id)
+    }
+    /// Issues a grant from an explicit user consent.
+    pub fn issue_app_grant(
+        &self,
+        identity: ShellIdentity,
+        id: &str,
+        installation: &str,
+        issue: &GrantIssue,
+    ) -> Result<AppGrantInfo, AppAccessError> {
+        let app = self.installed(identity, id, installation)?;
+        self.provider
+            .issue_app_grant(identity, app.installation_id, issue)
+    }
+    /// Revokes one of the calling user's grants for an installed app.
+    pub fn revoke_app_grant(
+        &self,
+        identity: ShellIdentity,
+        id: &str,
+        installation: &str,
+        grant_id: &str,
+    ) -> Result<(), AppAccessError> {
+        let app = self.installed(identity, id, installation)?;
+        self.provider
+            .revoke_app_grant(identity, app.installation_id, grant_id)
+    }
+    /// Reads or writes one personal file on an app's behalf, authorized per
+    /// call against the app's grants.
+    pub fn app_file(
+        &self,
+        identity: ShellIdentity,
+        id: &str,
+        installation: &str,
+        access: &AppFileAccess,
+    ) -> Result<AppFileOutcome, AppAccessError> {
+        let app = self.installed(identity, id, installation)?;
+        self.provider
+            .app_file(identity, app.installation_id, access)
+    }
     pub fn new(
         provider: Arc<dyn AppProvider>,
         shell_origin: &Url,
