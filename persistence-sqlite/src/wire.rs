@@ -5,14 +5,14 @@ use rumahl_core::{
     AppDatabaseDeclaration, AppDatabaseId, AppId, AppIdentity, AppManifest, AppSettingDeclaration,
     AppSettingKey, AppSettingKind, AppSettingOption, AppVersion, CapabilityId, CommandAction,
     CommandContributionDeclaration, ConnectorDeclaration, ConnectorTarget, ContributionDeclaration,
-    ContributionId, EventName, GrantId, Identity, InstallationId, InstalledAppSnapshot,
-    OidcCallbackPath, OidcClientDeclaration, OidcClientType, OidcScope, PackagePath,
-    PermissionGrantSnapshot, PermissionId, PermissionRequest, PermissionScope, PlatformSnapshot,
-    PreferredStreamSize, PublisherId, ResourceKey, ResourceKind, ResourceNamespace, ResourceRef,
-    RuntimeDescriptor, RuntimeEndpointId, RuntimeEntrypoint, RuntimeEntrypointId,
-    RuntimeEntrypointTarget, RuntimeKind, RuntimeLifecycle, ServiceId, ServiceIdentity,
-    StreamPresentation, SurfaceDeclaration, SurfaceIcon, SurfaceKind, SurfacePlacement,
-    SurfaceSize, SurfaceSlot, SurfaceTone, UserId, UserIdentity,
+    ContributionId, EventName, GrantId, GrantValidity, Identity, InstallationId,
+    InstalledAppSnapshot, OidcCallbackPath, OidcClientDeclaration, OidcClientType, OidcScope,
+    PackagePath, PermissionGrantSnapshot, PermissionId, PermissionRequest, PermissionScope,
+    PlatformSnapshot, PreferredStreamSize, PublisherId, ResourceKey, ResourceKind,
+    ResourceNamespace, ResourceRef, RuntimeDescriptor, RuntimeEndpointId, RuntimeEntrypoint,
+    RuntimeEntrypointId, RuntimeEntrypointTarget, RuntimeKind, RuntimeLifecycle, ServiceId,
+    ServiceIdentity, StreamPresentation, SurfaceDeclaration, SurfaceIcon, SurfaceKind,
+    SurfacePlacement, SurfaceSize, SurfaceSlot, SurfaceTone, UnixTimestamp, UserId, UserIdentity,
 };
 use serde::{Deserialize, Serialize};
 
@@ -898,6 +898,10 @@ struct WireGrant {
     scope: WirePermissionScope,
     resources: Vec<WireResource>,
     granted_by: WireIdentity,
+    /// Unix seconds after which the durable grant stops working. Absent on
+    /// older payloads and on grants without an expiry.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    expires_at: Option<u64>,
 }
 
 impl WireGrant {
@@ -913,11 +917,19 @@ impl WireGrant {
                 .map(WireResource::capture)
                 .collect(),
             granted_by: WireIdentity::capture(snapshot.granted_by()),
+            expires_at: snapshot
+                .validity()
+                .expires_at()
+                .map(|expires_at| expires_at.as_seconds()),
         }
     }
 
     fn into_domain(self) -> Result<PermissionGrantSnapshot, WireSnapshotError> {
-        PermissionGrantSnapshot::new(
+        let validity = match self.expires_at {
+            Some(seconds) => GrantValidity::durable_until(UnixTimestamp::from_seconds(seconds)),
+            None => GrantValidity::durable(),
+        };
+        PermissionGrantSnapshot::new_with_validity(
             GrantId::parse(&self.id)
                 .map_err(|error| WireSnapshotError::invalid("grant id", error))?,
             self.subject.into_domain()?,
@@ -929,6 +941,7 @@ impl WireGrant {
                 .map(WireResource::into_domain)
                 .collect::<Result<Vec<_>, _>>()?,
             self.granted_by.into_domain()?,
+            validity,
         )
         .map_err(|error| WireSnapshotError::invalid("grant", error))
     }
