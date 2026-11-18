@@ -565,6 +565,8 @@ export const english = {
   "settings.system.revision": "Revision",
   "settings.system.language": "Language",
   "settings.system.hardware": "Hardware and runtime",
+  "settings.system.config": "Platform configuration",
+  "settings.system.configSource": "Deployment environment",
   "settings.system.hostname": "Host name",
   "settings.system.cpuCores": "CPU cores",
   "settings.system.uptime": "Uptime",

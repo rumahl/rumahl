@@ -560,6 +560,8 @@ export const german = {
   "settings.system.revision": "Revision",
   "settings.system.language": "Sprache",
   "settings.system.hardware": "Hardware und Laufzeit",
+  "settings.system.config": "Plattform-Konfiguration",
+  "settings.system.configSource": "Deployment-Umgebung",
   "settings.system.hostname": "Hostname",
   "settings.system.cpuCores": "CPU-Kerne",
   "settings.system.uptime": "Laufzeit",

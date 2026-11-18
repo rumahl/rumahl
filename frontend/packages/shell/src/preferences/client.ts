@@ -87,3 +87,32 @@ export async function requestOsMode(request: ShellRequest, device: string, signa
   if (body.length > 4096) throw new Error("os mode too large");
   return parseOsModeSettings(JSON.parse(body));
 }
+
+export interface PlatformConfigEntry { name: string; value: string }
+export interface PlatformConfig { entries: PlatformConfigEntry[] }
+
+function parsePlatformConfig(value: unknown): PlatformConfig {
+  const record = value as Partial<PlatformConfig> & { configVersion?: unknown };
+  if (record.configVersion !== 1 || !Array.isArray(record.entries)) throw new Error("invalid platform config");
+  const entries: PlatformConfigEntry[] = [];
+  for (const entry of record.entries) {
+    const item = entry as Partial<PlatformConfigEntry>;
+    if (typeof item.name !== "string" || typeof item.value !== "string" || !/^RUMAHL_[A-Z0-9_]+$/.test(item.name) ||
+        item.name.length > 64 || item.value.length > 512) throw new Error("invalid platform config entry");
+    entries.push({ name: item.name, value: item.value });
+  }
+  if (entries.length > 64) throw new Error("invalid platform config");
+  return { entries };
+}
+
+/** The extended, advanced-gated platform configuration from the deployment environment. */
+export async function requestPlatformConfig(request: ShellRequest, device: string, signal: AbortSignal): Promise<PlatformConfig> {
+  const response = await request(`/api/v1/shell/config?device=${encodeURIComponent(device)}`, {
+    method: "GET", credentials: "same-origin", cache: "no-store", signal,
+    headers: { Accept: "application/json" }
+  });
+  if (!response.ok) throw new PreferencesHttpError(response.status);
+  const body = await response.text();
+  if (body.length > 4096) throw new Error("platform config too large");
+  return parsePlatformConfig(JSON.parse(body));
+}

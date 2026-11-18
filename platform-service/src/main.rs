@@ -275,6 +275,9 @@ async fn run() -> Result<(), ServiceError> {
         oidc: None,
         audit: Some(audit.clone()),
         state_dir: Some(state_dir.clone()),
+        platform_config: Some(Arc::new(
+            rumahl_platform_web::PlatformConfig::from_environment(),
+        )),
     };
     // Serve every built-in theme stylesheet so the account theme renders on the
     // first paint without a flash of the default theme.
