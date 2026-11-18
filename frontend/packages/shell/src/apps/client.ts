@@ -488,6 +488,26 @@ export async function revokeAppGrant(request: ShellRequest, app: AppRuntimeTarge
   );
   if (!response.ok && response.status !== 204) throw new Error(response.status === 403 ? "denied" : "unavailable");
 }
+export interface AppStorage {
+  usedBytes: number;
+  quotaBytes: number;
+}
+export function parseAppStorage(value: unknown, app: AppRuntimeTarget): AppStorage {
+  const object = record(value);
+  if (object.id !== app.id || object.installationId !== app.installationId ||
+      typeof object.usedBytes !== "number" || !Number.isSafeInteger(object.usedBytes) || object.usedBytes < 0 ||
+      typeof object.quotaBytes !== "number" || !Number.isSafeInteger(object.quotaBytes) || object.quotaBytes <= 0 ||
+      object.usedBytes > object.quotaBytes * 1024)
+    throw new Error("invalid app storage");
+  return { usedBytes: object.usedBytes, quotaBytes: object.quotaBytes };
+}
+export async function fetchAppStorage(request: ShellRequest, app: AppRuntimeTarget, device: string, signal: AbortSignal): Promise<AppStorage> {
+  const query = new URLSearchParams({ installationId: app.installationId, device });
+  return parseAppStorage(await payload(await request(
+    `/api/v1/shell/apps/${encodeURIComponent(app.id)}/storage?${query.toString()}`,
+    { cache: "no-store", credentials: "same-origin", headers: { Accept: "application/json" }, signal }
+  ), 4096), app);
+}
 /** Reads one personal file through the app's grants. */
 export async function readAppFileContent(request: ShellRequest, app: AppRuntimeTarget, key: string, signal: AbortSignal): Promise<{ name: string; bytes: Uint8Array }> {
   const response = await request(

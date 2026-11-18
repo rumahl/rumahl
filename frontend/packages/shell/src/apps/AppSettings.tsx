@@ -10,6 +10,7 @@ import { useAppCatalog } from "./AppCatalog";
 import { AppDataBrowser } from "./AppDataBrowser";
 import { AppImageEnvironmentView } from "./AppImageEnvironmentView";
 import { AppPermissions } from "./AppPermissions";
+import { AppStorage } from "./AppStorage";
 import { fetchAppSettings, type AppSetting, type AppSettings, type InstalledApp } from "./client";
 
 /**
@@ -63,6 +64,7 @@ function AppSettingsBody({ app }: { app: InstalledApp }) {
             <p>{t("appSettings.extendedEmpty")}</p>
           </section>
           {app.runtime === "container" ? <AppImageEnvironmentView app={app} /> : null}
+          <AppStorage app={app} />
           <AppDataBrowser app={app} />
         </>
       : null}

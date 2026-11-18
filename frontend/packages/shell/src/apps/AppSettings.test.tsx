@@ -41,6 +41,7 @@ vi.mock("./client", () => ({
     entries: [],
   }),
   fetchAppGrantState: vi.fn(async () => ({ ...state.grants, id: "com.rumahl.notes", installationId: "01990000-0000-7000-8000-000000000001" })),
+  fetchAppStorage: vi.fn(async () => ({ usedBytes: 2 * 1024 * 1024, quotaBytes: 256 * 1024 * 1024 })),
   revokeAppGrant: vi.fn(async (_request: unknown, _app: unknown, grantId: string) => { state.revoked.push(grantId); }),
 }));
 vi.mock("../shell/ShellContext", () => ({ useShell: () => ({ live: { request: () => {} } }) }));
@@ -85,6 +86,22 @@ test("shows the extended configuration and app data sections once in advanced mo
   expect(await screen.findByText("notes.db · 12")).toBeInTheDocument();
   // Web apps have no container image section to render.
   expect(screen.queryByText("appSettings.imageTitle")).toBeNull();
+});
+
+test("advanced mode reports measured app storage against the quota", async () => {
+  state.advanced = true;
+  renderPage();
+  expect(await screen.findByText("appSettings.storageTitle")).toBeInTheDocument();
+  expect(await screen.findByText("appSettings.storageUsage")).toBeInTheDocument();
+  const progress = screen.getByRole("progressbar", { name: "appSettings.storageTitle" });
+  expect(progress).toHaveAttribute("max", String(256 * 1024 * 1024));
+  expect(progress).toHaveAttribute("value", String(2 * 1024 * 1024));
+});
+
+test("no storage section exists below advanced mode", async () => {
+  renderPage();
+  expect(await screen.findByText("appSettings.extendedTitle", {}, { timeout: 100 }).catch(() => null)).toBeNull();
+  expect(screen.queryByText("appSettings.storageTitle")).toBeNull();
 });
 
 test("a container app lists its recorded image environment in advanced mode", async () => {
