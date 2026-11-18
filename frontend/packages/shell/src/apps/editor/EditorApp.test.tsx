@@ -112,7 +112,45 @@ test("Ctrl+S saves the current plain-text draft", async () => {
   await waitFor(() => expect(state.live.request).toHaveBeenLastCalledWith(expect.any(String), expect.objectContaining({ method: "PUT", body: "Shortcut" })));
 });
 
-test("Markdown format buttons issue the editor commands", async () => {
+test("Markdown links and inline code are inserted as nodes with the editor command", async () => {
+  state.location = "/app/editor?id=notes&name=notes.md";
+  state.live.request.mockImplementation(async () => ({ ok: true, status: 200, arrayBuffer: async () => new TextEncoder().encode("# Notes").buffer }));
+  const exec = vi.fn().mockReturnValue(true);
+  Object.defineProperty(document, "execCommand", { configurable: true, value: exec });
+  Object.defineProperty(document, "queryCommandState", { configurable: true, value: () => false });
+  Object.defineProperty(document, "queryCommandValue", { configurable: true, value: () => "p" });
+  const view = render(<EditorApp />);
+  await screen.findByRole("heading", { name: "Notes" });
+  const rich = screen.getByRole("textbox", { name: "editor.textArea" });
+  const selectAll = () => {
+    const range = document.createRange();
+    range.selectNodeContents(rich);
+    const selection = window.getSelection()!;
+    selection.removeAllRanges();
+    selection.addRange(range);
+  };
+  selectAll();
+  fireEvent.click(screen.getByRole("button", { name: "editor.format.code" }));
+  expect(rich.querySelector("code")?.textContent).toBe("Notes");
+  expect(rich.innerHTML).not.toContain("insertHTML");
+  // Link without a selection: the address is inserted as text and linked by the
+  // editor command, so no href attribute is ever written from user input.
+  const range = document.createRange();
+  range.selectNodeContents(rich);
+  range.collapse(false);
+  const selection = window.getSelection()!;
+  selection.removeAllRanges();
+  selection.addRange(range);
+  fireEvent.click(screen.getByRole("button", { name: "editor.format.link" }));
+  const field = screen.getByLabelText("editor.linkUrl");
+  fireEvent.change(field, { target: { value: "https://example.com/docs" } });
+  fireEvent.submit(field.closest("form")!);
+  expect(exec).toHaveBeenCalledWith("createLink", false, "https://example.com/docs");
+  expect(view.container.querySelector("a[href]")).toBeNull();
+  expect(rich.textContent).toContain("https://example.com/docs");
+});
+
+test("Markdown format commands go through the editor command API", async () => {
   state.location = "/app/editor?id=notes&name=notes.md";
   state.live.request.mockImplementation(async () => ({ ok: true, status: 200, arrayBuffer: async () => new TextEncoder().encode("# Notes\n\nHello").buffer }));
   const exec = vi.fn().mockReturnValue(true);

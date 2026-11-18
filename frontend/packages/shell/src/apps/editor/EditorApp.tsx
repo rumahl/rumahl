@@ -191,18 +191,22 @@ export function EditorApp() {
   };
 
   /** Replaces the current range with a constructed node (never HTML text). */
-  const insertNode = (node: Node) => {
+  const insertNode = (node: Node, select = false) => {
     const selection = window.getSelection();
     const range = selection?.rangeCount ? selection.getRangeAt(0) : null;
-    if (!range) return;
+    if (!range) return false;
     range.deleteContents();
     range.insertNode(node);
-    range.setStartAfter(node);
-    range.collapse(true);
+    if (select) range.selectNode(node);
+    else {
+      range.setStartAfter(node);
+      range.collapse(true);
+    }
     selection?.removeAllRanges();
     selection?.addRange(range);
     rich.current?.focus();
     syncRich();
+    return true;
   };
 
   const insertInlineCode = () => {
@@ -232,11 +236,10 @@ export function EditorApp() {
       }
       if (selection && !selection.isCollapsed) document.execCommand("createLink", false, url);
       else {
-        const anchor = document.createElement("a");
-        anchor.href = url;
-        anchor.rel = "noreferrer noopener";
-        anchor.textContent = url;
-        insertNode(anchor);
+        // Insert the address as text and let the editor command turn the
+        // selected text into a link; no DOM attribute is written from input.
+        const text = document.createTextNode(url);
+        if (insertNode(text, true)) document.execCommand("createLink", false, url);
       }
       syncRich();
     }
