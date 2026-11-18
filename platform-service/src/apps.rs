@@ -101,7 +101,7 @@ pub const DEFAULT_APP_STORAGE_QUOTA: u64 = 256 * 1024 * 1024;
 
 /// Reads `RUMAHL_APP_STORAGE_MIB`; an unset value keeps the default and an
 /// invalid one is a configuration error, never a silent fallback.
-pub fn storage_quota_from_env() -> Result<u64, crate::ServiceError> {
+pub fn storage_quota_from_env() -> Result<u64, std::io::Error> {
     let Some(value) = std::env::var("RUMAHL_APP_STORAGE_MIB").ok() else {
         return Ok(DEFAULT_APP_STORAGE_QUOTA);
     };
@@ -109,7 +109,9 @@ pub fn storage_quota_from_env() -> Result<u64, crate::ServiceError> {
         std::io::Error::other("RUMAHL_APP_STORAGE_MIB must be a whole number of MiB")
     })?;
     if mib == 0 || mib > 1024 * 1024 {
-        return Err(std::io::Error::other("RUMAHL_APP_STORAGE_MIB is out of range").into());
+        return Err(std::io::Error::other(
+            "RUMAHL_APP_STORAGE_MIB is out of range",
+        ));
     }
     Ok(mib * 1024 * 1024)
 }
@@ -428,7 +430,7 @@ impl PersistentApps {
 /// Measures the bytes below one app's data directory without following
 /// symlinks. The walk is bounded; a tree larger than the bound reports at
 /// least what was seen rather than stalling the request.
-fn app_storage_usage_at(root: &Path, app_id: &str) -> Result<u64, AppAccessError> {
+pub(crate) fn app_storage_usage_at(root: &Path, app_id: &str) -> Result<u64, AppAccessError> {
     let flags = OFlags::RDONLY | OFlags::CLOEXEC | OFlags::NOFOLLOW | OFlags::DIRECTORY;
     let root_fd = open(root, flags, Mode::empty()).map_err(|_| AppAccessError::Denied)?;
     let directory =

@@ -36,20 +36,62 @@ use rumahl_platform_buildroot::{
 /// apps have no external runtime and are accepted as a no-op.
 struct PlatformRuntimeProvider {
     supervisor: UnixAppRuntimeProvider,
+    storage: Option<(PathBuf, u64)>,
 }
 
 #[derive(Debug)]
 pub enum PlatformRuntimeError {
     Supervisor(UnixAppRuntimeProviderError),
+    /// The app's private data has reached its quota; the OS refuses to start
+    /// it rather than letting it grow without bound.
+    QuotaExceeded,
+}
+
+impl fmt::Display for PlatformRuntimeError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Supervisor(error) => write!(f, "runtime supervisor failed: {error}"),
+            Self::QuotaExceeded => write!(f, "the app's storage quota is exhausted"),
+        }
+    }
+}
+
+impl Error for PlatformRuntimeError {
+    fn source(&self) -> Option<&(dyn Error + 'static)> {
+        match self {
+            Self::Supervisor(error) => Some(error),
+            Self::QuotaExceeded => None,
+        }
+    }
 }
 
 impl PlatformRuntimeProvider {
     fn new(supervisor: UnixAppRuntimeProvider) -> Self {
-        Self { supervisor }
+        Self {
+            supervisor,
+            storage: None,
+        }
+    }
+
+    /// Enforces the per-app storage quota before a container app starts.
+    fn with_storage_quota(mut self, root: PathBuf, quota: u64) -> Self {
+        self.storage = Some((root, quota));
+        self
     }
 
     fn is_web(app: &InstalledApp) -> bool {
         app.manifest().runtime().kind() == RuntimeKind::Web
+    }
+
+    fn within_quota(&self, app: &InstalledApp) -> Result<(), PlatformRuntimeError> {
+        let Some((root, quota)) = self.storage.as_ref() else {
+            return Ok(());
+        };
+        match crate::apps::app_storage_usage_at(root, app.identity().app_id().as_str()) {
+            // A missing directory is empty, not over quota.
+            Ok(used) if used >= *quota => Err(PlatformRuntimeError::QuotaExceeded),
+            _ => Ok(()),
+        }
     }
 }
 
@@ -60,6 +102,7 @@ impl AppRuntimeProvider for PlatformRuntimeProvider {
         if Self::is_web(app) {
             return Ok(());
         }
+        self.within_quota(app)?;
         self.supervisor
             .prepare_installation(app)
             .map_err(PlatformRuntimeError::Supervisor)
@@ -192,6 +235,27 @@ impl InstallConfig {
     }
 }
 
+/// The runtime provider with app storage wiring: container apps get their
+/// private data directory mounted, and the per-app quota is enforced before an
+/// app starts.
+fn runtime_provider(config: &InstallConfig) -> Result<PlatformRuntimeProvider, InstallError> {
+    let mut provider_config =
+        UnixAppRuntimeProviderConfig::new(&config.control_socket, config.runtime_uid)
+            .map_err(InstallError::provider)?;
+    let data_root = crate::apps_data_root();
+    if let Some(root) = data_root.as_ref() {
+        provider_config = provider_config
+            .with_data_root(root)
+            .map_err(InstallError::provider)?;
+    }
+    let mut provider = PlatformRuntimeProvider::new(UnixAppRuntimeProvider::new(provider_config));
+    if let Some(root) = data_root {
+        let quota = crate::apps::storage_quota_from_env().map_err(InstallError::Io)?;
+        provider = provider.with_storage_quota(root, quota);
+    }
+    Ok(provider)
+}
+
 /// Builds the runtime adapter registry for the serve path when the supervisor
 /// environment is configured. Returns `None` (fail closed) otherwise, so the
 /// runtime control API answers 503 instead of assuming a runtime exists.
@@ -199,9 +263,7 @@ pub fn runtime_adapters_from_env(
     channels: &std::sync::Arc<rumahl_core::RuntimeChannelRegistry>,
 ) -> Option<std::sync::Arc<rumahl_core::RuntimeAdapterRegistry>> {
     let config = InstallConfig::from_env().ok()?;
-    let provider = std::sync::Arc::new(PlatformRuntimeProvider::new(UnixAppRuntimeProvider::new(
-        UnixAppRuntimeProviderConfig::new(&config.control_socket, config.runtime_uid).ok()?,
-    )));
+    let provider = std::sync::Arc::new(runtime_provider(&config).ok()?);
     let mut registry = rumahl_core::RuntimeAdapterRegistry::new();
     registry
         .register(Box::new(
@@ -267,10 +329,7 @@ fn uninstall_with(
         .map_err(InstallError::provider)?;
     let oidc_repository =
         SqliteOidcClientRepository::open(&platform).map_err(InstallError::provider)?;
-    let runtime_provider = PlatformRuntimeProvider::new(UnixAppRuntimeProvider::new(
-        UnixAppRuntimeProviderConfig::new(&config.control_socket, config.runtime_uid)
-            .map_err(InstallError::provider)?,
-    ));
+    let runtime_provider = runtime_provider(config)?;
     let secret_delivery = UnixRuntimeSecretDelivery::new(
         UnixRuntimeSecretDeliveryConfig::new(&config.secret_socket, config.runtime_uid)
             .map_err(InstallError::provider)?,
@@ -341,10 +400,7 @@ fn install_with(
         .map_err(InstallError::provider)?;
     let oidc_repository =
         SqliteOidcClientRepository::open(&platform).map_err(InstallError::provider)?;
-    let runtime_provider = PlatformRuntimeProvider::new(UnixAppRuntimeProvider::new(
-        UnixAppRuntimeProviderConfig::new(&config.control_socket, config.runtime_uid)
-            .map_err(InstallError::provider)?,
-    ));
+    let runtime_provider = runtime_provider(config)?;
     let secret_delivery = UnixRuntimeSecretDelivery::new(
         UnixRuntimeSecretDeliveryConfig::new(&config.secret_socket, config.runtime_uid)
             .map_err(InstallError::provider)?,
@@ -603,22 +659,6 @@ impl fmt::Display for InstallationHostOriginError {
 
 impl Error for InstallationHostOriginError {}
 
-impl fmt::Display for PlatformRuntimeError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::Supervisor(error) => write!(f, "runtime supervisor operation failed: {error}"),
-        }
-    }
-}
-
-impl Error for PlatformRuntimeError {
-    fn source(&self) -> Option<&(dyn Error + 'static)> {
-        match self {
-            Self::Supervisor(error) => Some(error),
-        }
-    }
-}
-
 impl From<io::Error> for InstallError {
     fn from(error: io::Error) -> Self {
         Self::Io(error)
@@ -778,6 +818,28 @@ mod tests {
             origin,
             format!("https://{}.apps.rumahl.test", app.installation_id())
         );
+    }
+
+    #[test]
+    fn refuses_to_start_an_app_whose_data_is_over_quota() {
+        let storage = tempfile::tempdir().unwrap();
+        let app = container_app();
+        let data = storage.path().join(app.identity().app_id().as_str());
+        std::fs::create_dir_all(&data).unwrap();
+        std::fs::write(data.join("big.bin"), vec![0_u8; 64]).unwrap();
+        let config = UnixAppRuntimeProviderConfig::new("/run/rumahl/control.sock", 0).unwrap();
+        let provider = PlatformRuntimeProvider::new(UnixAppRuntimeProvider::new(config))
+            .with_storage_quota(storage.path().to_path_buf(), 16);
+
+        let error = provider.prepare_installation(&app).unwrap_err();
+
+        assert!(matches!(error, PlatformRuntimeError::QuotaExceeded));
+        // Web apps own no container storage and are never blocked by it.
+        let web = PlatformRuntimeProvider::new(UnixAppRuntimeProvider::new(
+            UnixAppRuntimeProviderConfig::new("/run/rumahl/control.sock", 0).unwrap(),
+        ))
+        .with_storage_quota(storage.path().to_path_buf(), 16);
+        assert!(web.prepare_installation(&installed_app()).is_ok());
     }
 
     #[test]

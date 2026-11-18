@@ -27,6 +27,8 @@ const INSTANCE_LABEL: &str = "com.rumahl.supervisor";
 const SPEC_LABEL: &str = "com.rumahl.runtime-spec";
 const IMAGE_LABEL: &str = "com.rumahl.image-id";
 const SECRET_MOUNT_PATH: &str = "/run/rumahl/secrets";
+/// Where an app's private data directory is mounted inside its container.
+const DATA_MOUNT_PATH: &str = "/data";
 const SECRET_DIRECTORY: &str = "secrets";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -63,6 +65,12 @@ pub struct DockerRuntimeTargetConfig {
     supervisor_instance: String,
     command_timeout: Duration,
     stop_timeout_seconds: u8,
+    /// Root under which app data directories may be mounted; `None` mounts no
+    /// storage at all.
+    apps_root: Option<PathBuf>,
+    /// UID app containers run as; the data mount is owned by it. `None` keeps
+    /// the unprivileged `65534`.
+    app_user: Option<u32>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -74,6 +82,8 @@ pub enum DockerRuntimeTargetConfigError {
     InvalidSupervisorInstance,
     ZeroCommandTimeout,
     InvalidStopTimeout,
+    AppsRootMustBeAbsolute,
+    InvalidAppUser,
 }
 
 #[derive(Debug, Clone)]
@@ -193,6 +203,35 @@ impl DockerRuntimeTargetConfig {
         )
     }
 
+    /// Mounts each container app's data directory from this root and runs the
+    /// container as `app_user`, so the mount is owned by the same account the
+    /// platform service uses to measure it.
+    pub fn with_app_storage(
+        mut self,
+        apps_root: impl Into<PathBuf>,
+        app_user: u32,
+    ) -> Result<Self, DockerRuntimeTargetConfigError> {
+        let apps_root = apps_root.into();
+        if !apps_root.is_absolute() {
+            return Err(DockerRuntimeTargetConfigError::AppsRootMustBeAbsolute);
+        }
+        // Root inside the container would defeat the sandbox.
+        if app_user == 0 {
+            return Err(DockerRuntimeTargetConfigError::InvalidAppUser);
+        }
+        self.apps_root = Some(apps_root);
+        self.app_user = Some(app_user);
+        Ok(self)
+    }
+
+    pub fn apps_root(&self) -> Option<&Path> {
+        self.apps_root.as_deref()
+    }
+
+    pub fn app_user(&self) -> Option<u32> {
+        self.app_user
+    }
+
     pub fn with_timeouts(
         executable: impl Into<PathBuf>,
         runtime_root: impl Into<PathBuf>,
@@ -238,6 +277,8 @@ impl DockerRuntimeTargetConfig {
             supervisor_instance,
             command_timeout,
             stop_timeout_seconds,
+            apps_root: None,
+            app_user: None,
         })
     }
 
@@ -511,6 +552,55 @@ where
     }
 }
 
+impl<R: DockerImageResolver> DockerRuntimeTarget<R> {
+    /// Validates and formats the app data mount. The path must exist, be a
+    /// plain directory, stay inside the configured apps root and contain no
+    /// characters that could inject extra mount options.
+    fn data_mount(
+        &self,
+        spec: &RuntimeInstallationSpec,
+    ) -> Result<Option<String>, DockerRuntimeTargetError<R::Error>> {
+        let Some(data_dir) = spec.data_dir() else {
+            return Ok(None);
+        };
+        // A deployment that did not enable app storage keeps running without
+        // a /data mount instead of refusing every container app.
+        let Some(apps_root) = self.config.apps_root.as_ref() else {
+            return Ok(None);
+        };
+        let root = apps_root
+            .canonicalize()
+            .map_err(|_| DockerRuntimeTargetError::InvalidRuntimeSpec)?;
+        let canonical = data_dir
+            .canonicalize()
+            .map_err(|_| DockerRuntimeTargetError::InvalidRuntimeSpec)?;
+        if !canonical.starts_with(&root) {
+            return Err(DockerRuntimeTargetError::InvalidRuntimeSpec);
+        }
+        let meta = fs::symlink_metadata(&canonical)
+            .map_err(|_| DockerRuntimeTargetError::InvalidRuntimeSpec)?;
+        if meta.file_type().is_symlink() || !meta.is_dir() {
+            return Err(DockerRuntimeTargetError::InvalidRuntimeSpec);
+        }
+        let path = canonical.to_string_lossy();
+        if path.contains(',') || path.contains('\n') {
+            return Err(DockerRuntimeTargetError::InvalidRuntimeSpec);
+        }
+        Ok(Some(format!(
+            "type=bind,src={path},dst={DATA_MOUNT_PATH},bind-propagation=rprivate"
+        )))
+    }
+
+    /// The container user: the platform account when app storage is mounted
+    /// (so the mount is writable), otherwise the unprivileged `65534`.
+    fn container_user(&self) -> String {
+        match self.config.app_user {
+            Some(uid) => uid.to_string(),
+            None => "65534:65534".to_owned(),
+        }
+    }
+}
+
 impl<R> RuntimeControlTarget for DockerRuntimeTarget<R>
 where
     R: DockerImageResolver,
@@ -533,6 +623,9 @@ where
             });
         }
 
+        // Storage is validated before anything is created: an app whose data
+        // directory is missing or escapes the apps root never gets a container.
+        let data_mount = self.data_mount(&spec)?;
         let image = self
             .image_resolver
             .resolve_image(&spec, artifact)
@@ -555,45 +648,48 @@ where
             namespace.join(SECRET_DIRECTORY).display()
         );
         let stop_timeout = self.config.stop_timeout_seconds.to_string();
-        let result = self.run_checked(
-            "container create",
-            [
-                "container",
-                "create",
-                "--name",
-                name.as_str(),
-                "--label",
-                managed_label.as_str(),
-                "--label",
-                installation_label.as_str(),
-                "--label",
-                instance_label.as_str(),
-                "--label",
-                spec_label.as_str(),
-                "--label",
-                image_label.as_str(),
-                "--read-only",
-                "--network",
-                self.config.network.as_str(),
-                "--cap-drop",
-                "ALL",
-                "--security-opt",
-                "no-new-privileges=true",
-                "--pids-limit",
-                "128",
-                "--memory",
-                "256m",
-                "--stop-timeout",
-                stop_timeout.as_str(),
-                "--tmpfs",
-                "/tmp:rw,noexec,nosuid,nodev,size=32m,mode=1777",
-                "--user",
-                "65534:65534",
-                "--mount",
-                mount.as_str(),
-                image.as_str(),
-            ],
-        );
+        let user = self.container_user();
+        let mut arguments: Vec<String> = vec![
+            "container".to_owned(),
+            "create".to_owned(),
+            "--name".to_owned(),
+            name.clone(),
+            "--label".to_owned(),
+            managed_label,
+            "--label".to_owned(),
+            installation_label,
+            "--label".to_owned(),
+            instance_label,
+            "--label".to_owned(),
+            spec_label,
+            "--label".to_owned(),
+            image_label,
+            "--read-only".to_owned(),
+            "--network".to_owned(),
+            self.config.network.clone(),
+            "--cap-drop".to_owned(),
+            "ALL".to_owned(),
+            "--security-opt".to_owned(),
+            "no-new-privileges=true".to_owned(),
+            "--pids-limit".to_owned(),
+            "128".to_owned(),
+            "--memory".to_owned(),
+            "256m".to_owned(),
+            "--stop-timeout".to_owned(),
+            stop_timeout,
+            "--tmpfs".to_owned(),
+            "/tmp:rw,noexec,nosuid,nodev,size=32m,mode=1777".to_owned(),
+            "--user".to_owned(),
+            user,
+            "--mount".to_owned(),
+            mount,
+        ];
+        if let Some(data_mount) = data_mount {
+            arguments.push("--mount".to_owned());
+            arguments.push(data_mount);
+        }
+        arguments.push(image.as_str().to_owned());
+        let result = self.run_checked("container create", &arguments);
         if result.is_err() && namespace_created {
             let _ = fs::remove_dir(namespace.join(SECRET_DIRECTORY));
             let _ = fs::remove_dir(&namespace);
@@ -897,6 +993,10 @@ impl fmt::Display for DockerRuntimeTargetConfigError {
             Self::InvalidSupervisorInstance => write!(f, "supervisor instance name is invalid"),
             Self::ZeroCommandTimeout => write!(f, "Docker command timeout must be non-zero"),
             Self::InvalidStopTimeout => write!(f, "Docker stop timeout must be 1 to 60 seconds"),
+            Self::AppsRootMustBeAbsolute => {
+                write!(f, "app data root must be an absolute path")
+            }
+            Self::InvalidAppUser => write!(f, "app containers may not run as root"),
         }
     }
 }
@@ -1037,6 +1137,61 @@ mod tests {
                 .unwrap_err(),
             DockerImageReferenceError::InvalidDigest
         );
+    }
+
+    #[test]
+    fn validates_app_storage_configuration() {
+        let root = unique_test_root('s');
+        let config =
+            DockerRuntimeTargetConfig::new("/usr/bin/docker", &root, "rumahl-apps", "system")
+                .unwrap();
+        assert_eq!(
+            config
+                .clone()
+                .with_app_storage("relative", 1000)
+                .unwrap_err(),
+            DockerRuntimeTargetConfigError::AppsRootMustBeAbsolute
+        );
+        assert_eq!(
+            config.clone().with_app_storage(&root, 0).unwrap_err(),
+            DockerRuntimeTargetConfigError::InvalidAppUser
+        );
+        let configured = config.with_app_storage(&root, 1000).unwrap();
+        assert_eq!(configured.app_user(), Some(1000));
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn the_data_mount_is_contained_and_the_container_user_follows_it() {
+        let root = unique_test_root('s');
+        let apps = root.join("apps");
+        let data = apps.join("com.rumahl.test");
+        fs::create_dir_all(&data).unwrap();
+        let target = DockerRuntimeTarget::new(
+            DockerRuntimeTargetConfig::new("/usr/bin/docker", &root, "rumahl-apps", "system")
+                .unwrap()
+                .with_app_storage(&apps, 1000)
+                .unwrap(),
+            UnusedImageResolver,
+        );
+        let spec = container_spec(AppVersion::new(1, 0, 0), "runtime/server.oci");
+        let with_data = spec.clone().with_data_dir(&data);
+
+        let mount = target.data_mount(&with_data).unwrap().unwrap();
+        assert!(mount.starts_with("type=bind,src="));
+        assert!(mount.ends_with("dst=/data,bind-propagation=rprivate"));
+        assert!(mount.contains(&format!("src={}", data.canonicalize().unwrap().display())));
+        assert_eq!(target.container_user(), "1000");
+        // Without storage configured the mount is refused, never guessed.
+        assert_eq!(target.data_mount(&spec).unwrap(), None);
+        let outside = root.join("outside");
+        fs::create_dir_all(&outside).unwrap();
+        assert!(
+            target
+                .data_mount(&with_data.with_data_dir(&outside))
+                .is_err()
+        );
+        fs::remove_dir_all(root).unwrap();
     }
 
     #[test]

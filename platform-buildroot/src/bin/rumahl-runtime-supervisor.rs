@@ -43,6 +43,8 @@ struct SupervisorArgs {
     secret_socket: PathBuf,
     image_socket: PathBuf,
     platform_user: String,
+    /// Optional root whose per-app directories are mounted into containers.
+    apps_root: Option<PathBuf>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -99,11 +101,17 @@ fn run(arguments: impl IntoIterator<Item = OsString>) -> Result<(), SupervisorEr
     );
     let runtime_root = args.runtime_root;
     let docker = args.docker;
-    let target = DockerRuntimeTarget::new(
+    let mut target_config =
         DockerRuntimeTargetConfig::new(&docker, &runtime_root, args.network, args.instance)
-            .map_err(SupervisorError::TargetConfig)?,
-        resolver,
-    );
+            .map_err(SupervisorError::TargetConfig)?;
+    if let Some(apps_root) = args.apps_root {
+        // App containers run as the platform account so the mounted data
+        // directory is writable by the same UID that measures it.
+        target_config = target_config
+            .with_app_storage(apps_root, platform_uid)
+            .map_err(SupervisorError::TargetConfig)?;
+    }
+    let target = DockerRuntimeTarget::new(target_config, resolver);
     target.probe().map_err(SupervisorError::TargetProbe)?;
     let server_config = UnixRuntimeControlServerConfig::new(args.control_socket, platform_uid)
         .and_then(|config| config.with_socket_mode(0o660))
@@ -182,6 +190,7 @@ fn parse_args(
     let mut secret_socket = None;
     let mut image_socket = None;
     let mut platform_user = None;
+    let mut apps_root = None;
     let mut arguments = arguments.into_iter();
 
     while let Some(option) = arguments.next() {
@@ -212,6 +221,7 @@ fn parse_args(
                     .into_string()
                     .map_err(|_| SupervisorArgsError::NonUtf8Value("--platform-user"))?,
             )?,
+            "--apps-root" => set_once(&mut apps_root, PathBuf::from(value))?,
             _ => return Err(SupervisorArgsError::UnknownOption),
         }
     }
@@ -229,6 +239,7 @@ fn parse_args(
         image_socket: image_socket.ok_or(SupervisorArgsError::MissingOption("--image-socket"))?,
         platform_user: platform_user
             .ok_or(SupervisorArgsError::MissingOption("--platform-user"))?,
+        apps_root,
     })
 }
 
@@ -384,6 +395,14 @@ mod tests {
         assert_eq!(parsed.docker, PathBuf::from("/usr/bin/docker"));
         assert_eq!(parsed.network, "rumahl-apps");
         assert_eq!(parsed.platform_user, "rumahl-platform");
+        // App storage is opt-in: without the flag no data directory is mounted.
+        assert_eq!(parsed.apps_root, None);
+        let mut with_storage = complete_args();
+        with_storage.extend([OsString::from("--apps-root"), OsString::from("/data/apps")]);
+        assert_eq!(
+            parse_args(with_storage).unwrap().apps_root,
+            Some(PathBuf::from("/data/apps"))
+        );
     }
 
     #[test]
