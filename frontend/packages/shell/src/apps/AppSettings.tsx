@@ -8,6 +8,7 @@ import { AppErrorCard } from "../components/AppErrorCard";
 import { LoadingStatus } from "../components/LoadingStatus";
 import { useAppCatalog } from "./AppCatalog";
 import { AppDataBrowser } from "./AppDataBrowser";
+import { AppImageEnvironmentView } from "./AppImageEnvironmentView";
 import { fetchAppSettings, type AppSetting, type AppSettings, type InstalledApp } from "./client";
 
 /**
@@ -59,6 +60,7 @@ function AppSettingsBody({ app }: { app: InstalledApp }) {
             <h2 id="app-settings-extended">{t("appSettings.extendedTitle")}</h2>
             <p>{t("appSettings.extendedEmpty")}</p>
           </section>
+          {app.runtime === "container" ? <AppImageEnvironmentView app={app} /> : null}
           <AppDataBrowser app={app} />
         </>
       : null}

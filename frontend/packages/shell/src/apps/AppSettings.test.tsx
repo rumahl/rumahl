@@ -4,6 +4,8 @@ import { beforeEach, expect, test, vi } from "vitest";
 
 const state = vi.hoisted(() => ({
   advanced: false,
+  runtime: "web" as "web" | "container",
+  image: null as null | { runtime: "web" | "container"; image: null | string; entries: { name: string; value: string }[] },
   manifest: [
     { key: "server.url", title: "Server URL", description: "Backend endpoint", type: "text", required: true, options: [] },
   ],
@@ -12,7 +14,7 @@ const state = vi.hoisted(() => ({
 vi.mock("./AppCatalog", () => ({
   useAppCatalog: () => ({
     status: "ready",
-    apps: [{ id: "com.rumahl.notes", installationId: "01990000-0000-7000-8000-000000000001", title: "Notes", version: "1.0.0", launchable: true }],
+    apps: [{ id: "com.rumahl.notes", installationId: "01990000-0000-7000-8000-000000000001", title: "Notes", version: "1.0.0", launchable: true, runtime: state.runtime }],
     preview: [],
   }),
 }));
@@ -28,6 +30,11 @@ vi.mock("./client", () => ({
     path: "",
     entries: [{ name: "notes.db", directory: false, size: 12 }],
   })),
+  fetchAppImageEnvironment: vi.fn(async () => state.image ?? {
+    runtime: state.runtime,
+    image: null,
+    entries: [],
+  }),
 }));
 vi.mock("../shell/ShellContext", () => ({ useShell: () => ({ live: { request: () => {} } }) }));
 vi.mock("../preferences/OsMode", () => ({
@@ -49,6 +56,8 @@ function renderPage() {
 
 beforeEach(() => {
   state.advanced = false;
+  state.runtime = "web";
+  state.image = null;
 });
 
 test("renders the typed manifest settings with title, description and type in every mode", async () => {
@@ -66,4 +75,23 @@ test("shows the extended configuration and app data sections once in advanced mo
   renderPage();
   expect(await screen.findByText("appSettings.extendedTitle")).toBeInTheDocument();
   expect(await screen.findByText("notes.db · 12")).toBeInTheDocument();
+  // Web apps have no container image section to render.
+  expect(screen.queryByText("appSettings.imageTitle")).toBeNull();
+});
+
+test("a container app lists its recorded image environment in advanced mode", async () => {
+  state.advanced = true;
+  state.runtime = "container";
+  state.image = {
+    runtime: "container",
+    image: "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    entries: [{ name: "PATH", value: "/usr/bin:/bin" }],
+  };
+  renderPage();
+  expect(await screen.findByText("appSettings.imageTitle")).toBeInTheDocument();
+  expect(
+    await screen.findByText("sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"),
+  ).toBeInTheDocument();
+  expect(await screen.findByText("PATH")).toBeInTheDocument();
+  expect(screen.getByText("/usr/bin:/bin")).toBeInTheDocument();
 });

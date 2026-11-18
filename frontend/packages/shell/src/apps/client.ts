@@ -350,6 +350,37 @@ export function parseAppData(value: unknown): AppData {
   }
   throw new Error("invalid app data kind");
 }
+export interface AppImageEntry { name: string; value: string }
+export interface AppImageEnvironment {
+  runtime: "web" | "native" | "container";
+  image: string | null;
+  entries: AppImageEntry[];
+}
+export function parseAppImageEnvironment(value: unknown, app: AppRuntimeTarget): AppImageEnvironment {
+  const object = record(value);
+  if (typeof object.id !== "string" || typeof object.installationId !== "string" ||
+      object.id !== app.id || object.installationId !== app.installationId ||
+      (object.runtime !== "web" && object.runtime !== "native" && object.runtime !== "container") ||
+      (object.image !== null && typeof object.image !== "string") ||
+      (object.image !== null && object.image.length > 512) || !Array.isArray(object.entries))
+    throw new Error("invalid app image environment");
+  const entries: AppImageEntry[] = [];
+  for (const entry of object.entries) {
+    const item = record(entry);
+    if (entries.length >= 64 || typeof item.name !== "string" || typeof item.value !== "string" ||
+        !/^[A-Za-z0-9_.-]{1,128}$/.test(item.name) || item.value.length > 512)
+      throw new Error("invalid app image environment entry");
+    entries.push({ name: item.name, value: item.value });
+  }
+  return { runtime: object.runtime, image: object.image, entries };
+}
+export async function fetchAppImageEnvironment(request: ShellRequest, app: AppRuntimeTarget, device: string, signal: AbortSignal): Promise<AppImageEnvironment> {
+  const query = new URLSearchParams({ installationId: app.installationId, device });
+  return parseAppImageEnvironment(await payload(await request(
+    `/api/v1/shell/apps/${encodeURIComponent(app.id)}/image?${query.toString()}`,
+    { cache: "no-store", credentials: "same-origin", headers: { Accept: "application/json" }, signal }
+  ), 16 * 1024), app);
+}
 export async function fetchAppData(request: ShellRequest, app: InstalledApp, path: string, device: string, signal: AbortSignal): Promise<AppData> {
   const query = new URLSearchParams({ installationId: app.installationId, device, path });
   return parseAppData(await payload(await request(
