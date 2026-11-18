@@ -71,3 +71,60 @@ test("host Markdown remains read-only, including every formatting action", async
   expect(screen.getByRole("combobox")).toBeDisabled();
   expect(screen.getByRole("button", { name: "editor.save" })).toBeDisabled();
 });
+
+test("a failed save keeps the draft dirty and reports the failure", async () => {
+  render(<EditorApp />);
+  const area = await screen.findByRole("textbox", { name: "editor.textArea" });
+  fireEvent.change(area, { target: { value: "Draft" } });
+  state.live.request.mockImplementationOnce(async () => ({ ok: false, status: 500 }));
+  fireEvent.click(screen.getByRole("button", { name: "editor.save" }));
+  expect(await screen.findByText("editor.saveFailed")).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "editor.save" })).toBeEnabled();
+  expect(area).toHaveValue("Draft");
+});
+
+test("confirming reload discards the draft and re-reads the file", async () => {
+  render(<EditorApp />);
+  const area = await screen.findByRole("textbox");
+  fireEvent.change(area, { target: { value: "Draft" } });
+  fireEvent.click(screen.getByRole("button", { name: "editor.reload" }));
+  const dialog = await screen.findByRole("alertdialog");
+  fireEvent.click(within(dialog).getByRole("button", { name: "editor.reload" }));
+  await waitFor(() => expect(screen.getByRole("textbox")).toHaveValue("Original text"));
+  expect(state.live.request).toHaveBeenCalledTimes(2);
+});
+
+test("missing files explain the state and retry after reload", async () => {
+  state.live.request.mockImplementationOnce(async () => ({ ok: false, status: 404 }));
+  render(<EditorApp />);
+  expect(await screen.findByText("editor.error.missing")).toBeInTheDocument();
+  state.live.request.mockImplementationOnce(async () => ({ ok: true, status: 200, arrayBuffer: async () => new TextEncoder().encode("Back again").buffer }));
+  const reload = screen.getAllByRole("button", { name: "editor.reload" }).at(-1)!;
+  fireEvent.click(reload);
+  expect(await screen.findByRole("textbox")).toHaveValue("Back again");
+});
+
+test("Ctrl+S saves the current plain-text draft", async () => {
+  render(<EditorApp />);
+  const area = await screen.findByRole("textbox");
+  fireEvent.change(area, { target: { value: "Shortcut" } });
+  fireEvent.keyDown(area, { key: "s", ctrlKey: true });
+  await waitFor(() => expect(state.live.request).toHaveBeenLastCalledWith(expect.any(String), expect.objectContaining({ method: "PUT", body: "Shortcut" })));
+});
+
+test("Markdown format buttons issue the editor commands", async () => {
+  state.location = "/app/editor?id=notes&name=notes.md";
+  state.live.request.mockImplementation(async () => ({ ok: true, status: 200, arrayBuffer: async () => new TextEncoder().encode("# Notes\n\nHello").buffer }));
+  const exec = vi.fn().mockReturnValue(true);
+  Object.defineProperty(document, "execCommand", { configurable: true, value: exec });
+  Object.defineProperty(document, "queryCommandState", { configurable: true, value: () => false });
+  Object.defineProperty(document, "queryCommandValue", { configurable: true, value: () => "p" });
+  render(<EditorApp />);
+  await screen.findByRole("heading", { name: "Notes" });
+  fireEvent.click(screen.getByRole("button", { name: "editor.format.bold" }));
+  expect(exec).toHaveBeenCalledWith("bold", false, undefined);
+  fireEvent.click(screen.getByRole("button", { name: "editor.format.list" }));
+  expect(exec).toHaveBeenCalledWith("insertUnorderedList", false, undefined);
+  fireEvent.click(screen.getByRole("button", { name: "editor.format.rule" }));
+  expect(exec).toHaveBeenCalledWith("insertHorizontalRule", false, undefined);
+});

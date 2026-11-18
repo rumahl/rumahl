@@ -1,5 +1,5 @@
 import "../test/popover";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { beforeAll, describe, expect, test, vi } from "vitest";
 import { WCAG, contrastRatio } from "@rumahl/ui/color";
 import { paletteTokens } from "@rumahl/ui/palette";
@@ -169,4 +169,13 @@ describe("theme selection", () => {
     expect(document.querySelector(".shell")).toHaveAttribute("data-material", "translucent");
   });
 
+});
+
+test("offers the Iris control material and applies it to the shell", async () => {
+  render(<App snapshot={demoSnapshot} initialLocation="/settings/display/appearance" />);
+  const controls = await screen.findByRole("group", { name: "Controls" });
+  fireEvent.click(within(controls).getByRole("button", { name: "Soft" }));
+  await waitFor(() => expect(document.querySelector(".shell")).toHaveAttribute("data-iris-controls", "soft"));
+  fireEvent.click(within(controls).getByRole("button", { name: "Inset glass" }));
+  await waitFor(() => expect(document.querySelector(".shell")).toHaveAttribute("data-iris-controls", "glass"));
 });

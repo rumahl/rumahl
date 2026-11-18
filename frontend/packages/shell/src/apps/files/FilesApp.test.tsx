@@ -183,6 +183,16 @@ test("opens a text file in the native text editor", async () => {
   await waitFor(() => expect(state.open).toHaveBeenCalledWith("/app/editor?name=notes.txt&id=file-3"));
 });
 
+test("groups personal and device locations and marks device roots read-only", async () => {
+  state.advanced = true;
+  state.fetchHostList.mockResolvedValue([]);
+  render(<FilesApp />);
+  const sidebar = screen.getByRole("complementary");
+  expect(within(sidebar).getByRole("heading", { name: "files.personalGroup" })).toBeInTheDocument();
+  expect(within(sidebar).getByText("files.deviceGroup")).toBeInTheDocument();
+  expect(within(sidebar).getByText("files.readOnly")).toBeInTheDocument();
+});
+
 test("shows application packages with their app identity", async () => {
   state.advanced = true;
   state.apps = [{ id: "com.example.notes", title: "Notes", path: "/apps/com.example.notes", launchable: true, system: false, kind: "app" }];

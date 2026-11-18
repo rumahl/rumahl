@@ -42,3 +42,12 @@ test("each window keeps its own chrome when another app receives focus", () => {
   expect(screen.getByTestId("app:files")).toHaveAttribute("data-custom", "true");
   expect(screen.getByTestId("settings")).toHaveAttribute("data-custom", "false");
 });
+
+test("the focused window owns the highest stacking order", () => {
+  const view = render(<DesktopWindows animations={false} />);
+  const depth = (id: string) => Number((document.querySelector(`[data-testid="${id}"]`)?.closest(".window-position") as HTMLElement | null)?.style.zIndex ?? 0);
+  expect(depth("app:files")).toBeGreaterThan(depth("settings"));
+  context.focused = "settings";
+  view.rerender(<DesktopWindows animations={false} />);
+  expect(depth("settings")).toBeGreaterThan(depth("app:files"));
+});

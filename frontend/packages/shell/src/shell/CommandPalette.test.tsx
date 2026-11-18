@@ -96,3 +96,14 @@ test.each([true, false])("focus restoration on dismissal must not steal focus fr
   expect(focus).toHaveBeenCalledTimes(execute ? 0 : 1);
   source.remove();
 });
+
+test("a disabled command is shown as unavailable and never executes", () => {
+  render(<CommandPalette />);
+  const input = screen.getByRole("combobox");
+  fireEvent.change(input, { target: { value: "Blocked command" } });
+  const option = screen.getByRole("option");
+  expect(option).toBeDisabled();
+  fireEvent.click(option);
+  fireEvent.keyDown(input, { key: "Enter" });
+  expect(context.run).not.toHaveBeenCalled();
+});
