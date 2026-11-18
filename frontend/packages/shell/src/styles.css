@@ -983,6 +983,61 @@
   border-radius: 8px;
   cursor: pointer;
 }
+/* Consent picker: the app only ever learns the files the user ticks here. */
+.files-picker__list {
+  margin: 8px 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 4px;
+  max-height: 16rem;
+  overflow: auto;
+}
+.files-picker__list button,
+.files-picker__list label {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  width: 100%;
+  padding: 8px 12px;
+  text-align: start;
+  color: inherit;
+  background: var(
+    --rumahl-ui-color-panel-background,
+    var(--rumahl-color-panel-background)
+  );
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  cursor: pointer;
+}
+.files-picker__list span:last-child {
+  margin-left: auto;
+  color: var(--rumahl-ui-color-text-muted, var(--rumahl-color-text-muted));
+}
+.files-picker__up {
+  padding: 6px 10px;
+  color: inherit;
+  background: none;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  cursor: pointer;
+}
+.files-picker__validity {
+  display: grid;
+  gap: 8px;
+  margin: 12px 0 0;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+.files-picker__validity label {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+.app-permissions__revoke {
+  margin-left: auto;
+}
 .app-data-preview {
   max-height: 24rem;
   overflow: auto;

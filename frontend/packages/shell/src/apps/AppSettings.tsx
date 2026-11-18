@@ -9,6 +9,7 @@ import { LoadingStatus } from "../components/LoadingStatus";
 import { useAppCatalog } from "./AppCatalog";
 import { AppDataBrowser } from "./AppDataBrowser";
 import { AppImageEnvironmentView } from "./AppImageEnvironmentView";
+import { AppPermissions } from "./AppPermissions";
 import { fetchAppSettings, type AppSetting, type AppSettings, type InstalledApp } from "./client";
 
 /**
@@ -48,6 +49,7 @@ function AppSettingsBody({ app }: { app: InstalledApp }) {
   if (!settings) return <LoadingStatus label={t("appSettings.loading")} />;
   return <main className="app-settings" data-advanced={policy.advancedSettings ? "true" : "false"}>
     <h1>{app.title}</h1>
+    <AppPermissions app={app} />
     <section aria-labelledby="app-settings-manifest">
       <h2 id="app-settings-manifest">{t("appSettings.manifestTitle")}</h2>
       {settings.manifest.length === 0

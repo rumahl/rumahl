@@ -37,6 +37,9 @@ export type BridgeMethod =
   | "os.warnings.publish"
   | "os.warnings.test"
   | "os.warnings.clear"
+  | "os.files.request"
+  | "os.files.read"
+  | "os.files.write"
   | "pets.state"
   | "pets.interact"
   | "pets.action.register"
@@ -54,6 +57,9 @@ export const BRIDGE_METHODS: readonly BridgeMethod[] = [
   "os.warnings.publish",
   "os.warnings.test",
   "os.warnings.clear",
+  "os.files.request",
+  "os.files.read",
+  "os.files.write",
   "pets.state",
   "pets.interact",
   "pets.action.register",
@@ -76,7 +82,15 @@ export const BRIDGE_CAPABILITIES = {
   /** Explicit opt-in for urgent, non-auto-dismissing emergency notifications. */
   emergency: "com.rumahl.os.emergency",
   /** Register as an OS weather-warning source and publish/clear warnings. */
-  warnings: "com.rumahl.os.warnings"
+  warnings: "com.rumahl.os.warnings",
+  /**
+   * Filesystem permissions are OS-owned manifest permissions, not free-form
+   * capability ids: the picker, read and write methods map onto the catalog
+   * entries the platform defines, so an app must declare exactly the one it
+   * uses. `os.files.request` is satisfied by either.
+   */
+  filesRead: "rumahl.files.read",
+  filesWrite: "rumahl.files.write"
 } as const;
 
 /**
@@ -100,6 +114,11 @@ export function capabilityForMethod(method: string): string | null {
   if (method.startsWith("os.window.")) return BRIDGE_CAPABILITIES.window;
   if (method === "os.capabilities.invoke") return BRIDGE_CAPABILITIES.capabilities;
   if (method.startsWith("os.warnings.")) return BRIDGE_CAPABILITIES.warnings;
+  if (method === "os.files.read") return BRIDGE_CAPABILITIES.filesRead;
+  if (method === "os.files.write") return BRIDGE_CAPABILITIES.filesWrite;
+  // The picker is not tied to one permission: it is available to apps that
+  // declared either filesystem permission. The shell gates it itself.
+  if (method === "os.files.request") return BRIDGE_CAPABILITIES.filesRead;
   if (method.startsWith("pets.")) return BRIDGE_CAPABILITIES.pets;
   return null;
 }
@@ -278,6 +297,46 @@ export interface BridgePetInteraction {
   source?: string;
 }
 
+
+/** Which filesystem permission an app wants to exercise through the picker. */
+export type BridgeFilesAccess = "read" | "write";
+
+/** Params for `os.files.request`. */
+export interface BridgeFilesRequestParams {
+  access: BridgeFilesAccess;
+}
+
+/** One personal file the user picked for the app. */
+export interface BridgeFilesFile {
+  /** Personal-file id; only ever learned from the user's own picker choice. */
+  id: string;
+  name: string;
+  size: number;
+}
+
+/** Result of `os.files.request` once the user granted access. */
+export interface BridgeFilesRequestResult {
+  files: BridgeFilesFile[];
+}
+
+/** Result of `os.files.read`: the file's content, base64-encoded. */
+export interface BridgeFilesReadResult {
+  name: string;
+  size: number;
+  contentBase64: string;
+}
+
+/** Params for `os.files.write`. */
+export interface BridgeFilesWriteParams {
+  key: string;
+  contentBase64: string;
+}
+
+/** Result of `os.files.write`. */
+export interface BridgeFilesWriteResult {
+  name: string;
+  size: number;
+}
 
 /** A resource a capability is invoked against. */
 export interface BridgeCapabilityResource {

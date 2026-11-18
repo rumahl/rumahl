@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router";
 import { beforeEach, expect, test, vi } from "vitest";
 
@@ -6,6 +6,11 @@ const state = vi.hoisted(() => ({
   advanced: false,
   runtime: "web" as "web" | "container",
   image: null as null | { runtime: "web" | "container"; image: null | string; entries: { name: string; value: string }[] },
+  grants: {
+    requests: [{ permission: "rumahl.files.read", scope: "user-selected", required: false, reason: "Open files you pick" }],
+    grants: [{ id: "01990000-0000-7000-8000-0000000000aa", permission: "rumahl.files.read", scope: "explicit", resources: ["rumahl.files:file:1"], validity: "session", expiresAt: null }]
+  },
+  revoked: [] as string[],
   manifest: [
     { key: "server.url", title: "Server URL", description: "Backend endpoint", type: "text", required: true, options: [] },
   ],
@@ -35,6 +40,8 @@ vi.mock("./client", () => ({
     image: null,
     entries: [],
   }),
+  fetchAppGrantState: vi.fn(async () => ({ ...state.grants, id: "com.rumahl.notes", installationId: "01990000-0000-7000-8000-000000000001" })),
+  revokeAppGrant: vi.fn(async (_request: unknown, _app: unknown, grantId: string) => { state.revoked.push(grantId); }),
 }));
 vi.mock("../shell/ShellContext", () => ({ useShell: () => ({ live: { request: () => {} } }) }));
 vi.mock("../preferences/OsMode", () => ({
@@ -58,6 +65,7 @@ beforeEach(() => {
   state.advanced = false;
   state.runtime = "web";
   state.image = null;
+  state.revoked = [];
 });
 
 test("renders the typed manifest settings with title, description and type in every mode", async () => {
@@ -94,4 +102,26 @@ test("a container app lists its recorded image environment in advanced mode", as
   ).toBeInTheDocument();
   expect(await screen.findByText("PATH")).toBeInTheDocument();
   expect(screen.getByText("/usr/bin:/bin")).toBeInTheDocument();
+});
+
+test("the permissions section lists requests and revokes issued grants", async () => {
+  renderPage();
+  expect(await screen.findByText("appPermissions.title")).toBeInTheDocument();
+  // The permission shows up twice on purpose: once as requested, once granted.
+  const mentions = await screen.findAllByText("rumahl.files.read", { exact: false });
+  expect(mentions.length).toBe(2);
+  expect(screen.getByText("Open files you pick")).toBeInTheDocument();
+  const revoke = screen.getByRole("button", { name: "appPermissions.revoke" });
+  fireEvent.click(revoke);
+  await waitFor(() => expect(state.revoked).toEqual(["01990000-0000-7000-8000-0000000000aa"]));
+});
+
+test("apps without grants say so instead of guessing", async () => {
+  const grants = state.grants;
+  state.grants = { requests: [], grants: [] };
+  const view = renderPage();
+  expect(await screen.findByText("appPermissions.requestedNone")).toBeInTheDocument();
+  expect(screen.getByText("appPermissions.grantsNone")).toBeInTheDocument();
+  view.unmount();
+  state.grants = grants;
 });
