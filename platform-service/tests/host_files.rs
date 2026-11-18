@@ -114,17 +114,22 @@ async fn host_browsing_and_home_writes_respect_advanced_mode_and_the_home_area()
             .unwrap()
     };
 
-    // Unauthenticated and guided requests get nothing.
+    // Unauthenticated requests get nothing.
     let response = app
         .clone()
         .oneshot(listing("invalid", "home"))
         .await
         .unwrap();
     assert_eq!(response.status(), axum::http::StatusCode::UNAUTHORIZED);
+
+    // The user's own home is not a system surface: it stays visible in guided
+    // mode, while installed apps and the system tree remain advanced-only.
     let response = app.clone().oneshot(listing(&alice, "home")).await.unwrap();
+    assert_eq!(response.status(), axum::http::StatusCode::OK);
+    let response = app.clone().oneshot(listing(&alice, "apps")).await.unwrap();
     assert_eq!(response.status(), axum::http::StatusCode::FORBIDDEN);
 
-    // Advanced mode opens the home area and the apps area.
+    // Advanced mode opens the read-only areas.
     SqliteOsModeRepository::open(root.join("preferences.sqlite"))
         .unwrap()
         .save(

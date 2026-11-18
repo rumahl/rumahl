@@ -102,7 +102,7 @@ export function useExplorer(request: ShellRequest | null, device: string, advanc
   }, [nav, go]);
 
   useEffect(() => {
-    if (nav.place.kind === "host" && !advanced) {
+    if (nav.place.kind === "host" && nav.place.area !== "home" && !advanced) {
       // Demoting out of advanced mode must never leave privileged host entries
       // on screen. Rewind to the personal store root without adding history.
       setEntries([]);

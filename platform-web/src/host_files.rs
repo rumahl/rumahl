@@ -9,7 +9,7 @@
 use crate::{
     GatewayState,
     preferences::{error, user},
-    server::{secure_headers, valid_origin},
+    server::{record_audit, secure_headers, valid_origin},
 };
 use axum::{
     Router,
@@ -19,7 +19,7 @@ use axum::{
     response::{IntoResponse, Response},
     routing::get,
 };
-use rumahl_core::{BrowserProfileId, UserId};
+use rumahl_core::{AuditAction, AuditOutcome, BrowserProfileId, UserId};
 use std::{collections::HashMap, sync::Arc};
 
 /// One entry of a host directory listing.
@@ -150,16 +150,21 @@ async fn context(
         return Err(error(StatusCode::BAD_REQUEST));
     };
     let path = query.get("path").cloned().unwrap_or_default();
-    let Some(mode_repository) = state.os_mode.clone() else {
-        return Err(error(StatusCode::SERVICE_UNAVAILABLE));
-    };
-    let mode = match tokio::task::spawn_blocking(move || mode_repository.load(user, device)).await {
-        Ok(Ok(settings)) => settings.effective_mode(),
-        Ok(Err(_)) => return Err(error(StatusCode::SERVICE_UNAVAILABLE)),
-        Err(_) => return Err(error(StatusCode::SERVICE_UNAVAILABLE)),
-    };
-    if !mode.policy().can_browse_system_files() {
-        return Err(error(StatusCode::FORBIDDEN));
+    // The user's own home is their data, not a system surface: it needs no
+    // exposure mode. Installed apps and the system tree stay advanced-only.
+    if area != HostArea::Home {
+        let Some(mode_repository) = state.os_mode.clone() else {
+            return Err(error(StatusCode::SERVICE_UNAVAILABLE));
+        };
+        let mode =
+            match tokio::task::spawn_blocking(move || mode_repository.load(user, device)).await {
+                Ok(Ok(settings)) => settings.effective_mode(),
+                Ok(Err(_)) => return Err(error(StatusCode::SERVICE_UNAVAILABLE)),
+                Err(_) => return Err(error(StatusCode::SERVICE_UNAVAILABLE)),
+            };
+        if !mode.policy().can_browse_system_files() {
+            return Err(error(StatusCode::FORBIDDEN));
+        }
     }
     let Some(provider) = state.host_files.clone() else {
         return Err(error(StatusCode::SERVICE_UNAVAILABLE));
@@ -192,6 +197,24 @@ fn name_of(query: &HashMap<String, String>) -> Result<String, Response> {
         return Err(error(StatusCode::BAD_REQUEST));
     }
     Ok(name.clone())
+}
+
+/// Records one home mutation, success or failure, in the central audit log.
+fn audit_change(
+    state: &GatewayState,
+    user: UserId,
+    area: HostArea,
+    path: &str,
+    outcome: AuditOutcome,
+) {
+    let target = format!("{}:{path}", area_name(area));
+    record_audit(
+        state,
+        rumahl_core::AuditActor::User(user),
+        AuditAction::HostFileChanged,
+        outcome,
+        Some(&target),
+    );
 }
 
 async fn list(
@@ -285,13 +308,18 @@ async fn write(
         return error(StatusCode::PAYLOAD_TOO_LARGE);
     }
     let data = body.to_vec();
+    let audited = path.clone();
     match tokio::task::spawn_blocking(move || provider.write(area, &path, user, &data)).await {
         Ok(Ok(())) => {
+            audit_change(&state, user, area, &audited, AuditOutcome::Success);
             let mut response = StatusCode::NO_CONTENT.into_response();
             secure_headers(&mut response);
             response
         }
-        Ok(Err(error)) => fail(error),
+        Ok(Err(error)) => {
+            audit_change(&state, user, area, &audited, AuditOutcome::Failure);
+            fail(error)
+        }
         Err(_) => error(StatusCode::SERVICE_UNAVAILABLE),
     }
 }
@@ -320,17 +348,26 @@ async fn create(
         Some("false") => false,
         _ => return error(StatusCode::BAD_REQUEST),
     };
+    let audited = if parent.is_empty() {
+        name.clone()
+    } else {
+        format!("{parent}/{name}")
+    };
     match tokio::task::spawn_blocking(move || {
         provider.create(area, &parent, &name, directory, user)
     })
     .await
     {
         Ok(Ok(())) => {
+            audit_change(&state, user, area, &audited, AuditOutcome::Success);
             let mut response = StatusCode::NO_CONTENT.into_response();
             secure_headers(&mut response);
             response
         }
-        Ok(Err(error)) => fail(error),
+        Ok(Err(error)) => {
+            audit_change(&state, user, area, &audited, AuditOutcome::Failure);
+            fail(error)
+        }
         Err(_) => error(StatusCode::SERVICE_UNAVAILABLE),
     }
 }
@@ -354,13 +391,18 @@ async fn rename(
         Ok(name) => name,
         Err(response) => return response,
     };
+    let audited = path.clone();
     match tokio::task::spawn_blocking(move || provider.rename(area, &path, &name, user)).await {
         Ok(Ok(())) => {
+            audit_change(&state, user, area, &audited, AuditOutcome::Success);
             let mut response = StatusCode::NO_CONTENT.into_response();
             secure_headers(&mut response);
             response
         }
-        Ok(Err(error)) => fail(error),
+        Ok(Err(error)) => {
+            audit_change(&state, user, area, &audited, AuditOutcome::Failure);
+            fail(error)
+        }
         Err(_) => error(StatusCode::SERVICE_UNAVAILABLE),
     }
 }
@@ -380,13 +422,18 @@ async fn remove(
     if area != HostArea::Home {
         return error(StatusCode::FORBIDDEN);
     }
+    let audited = path.clone();
     match tokio::task::spawn_blocking(move || provider.remove(area, &path, user)).await {
         Ok(Ok(())) => {
+            audit_change(&state, user, area, &audited, AuditOutcome::Success);
             let mut response = StatusCode::NO_CONTENT.into_response();
             secure_headers(&mut response);
             response
         }
-        Ok(Err(error)) => fail(error),
+        Ok(Err(error)) => {
+            audit_change(&state, user, area, &audited, AuditOutcome::Failure);
+            fail(error)
+        }
         Err(_) => error(StatusCode::SERVICE_UNAVAILABLE),
     }
 }
