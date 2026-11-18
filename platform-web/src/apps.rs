@@ -523,6 +523,24 @@ impl AppAccess {
     pub fn session_ended(&self, session: SessionId) {
         self.provider.session_ended(session);
     }
+
+    /// File access for a channel app, addressed by installation id only: the
+    /// identity comes from the user's in-flight capability invocation, never
+    /// from the app itself.
+    pub fn app_file_for_installation(
+        &self,
+        identity: ShellIdentity,
+        installation: InstallationId,
+        access: &AppFileAccess,
+    ) -> Result<AppFileOutcome, AppAccessError> {
+        let app = self
+            .catalog(identity)?
+            .into_iter()
+            .find(|app| app.installation_id == installation)
+            .ok_or(AppAccessError::Denied)?;
+        self.provider
+            .app_file(identity, app.installation_id, access)
+    }
     pub fn new(
         provider: Arc<dyn AppProvider>,
         shell_origin: &Url,
@@ -860,6 +878,17 @@ pub fn app_error(error: AppAccessError) -> Response {
         .headers_mut()
         .insert("cache-control", HeaderValue::from_static("no-store"));
     response
+}
+
+impl crate::app_channel::ChannelFiles for AppAccess {
+    fn access(
+        &self,
+        identity: ShellIdentity,
+        installation: InstallationId,
+        access: &AppFileAccess,
+    ) -> Result<AppFileOutcome, AppAccessError> {
+        self.app_file_for_installation(identity, installation, access)
+    }
 }
 
 #[cfg(test)]

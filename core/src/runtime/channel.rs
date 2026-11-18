@@ -8,7 +8,9 @@
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
-use crate::{CapabilityExecution, EventDelivery, Identity, InstallationId, ResourceRef};
+use crate::{
+    CapabilityExecution, EventDelivery, Identity, InstallationId, ResourceRef, SessionId, UserId,
+};
 
 /// A message the OS pushes to a running app instance.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -24,6 +26,18 @@ pub struct RuntimeCapabilityExecution {
     pub capability: String,
     /// The addressed resource (`namespace/kind/key`) when the invocation carries one.
     pub resource: Option<String>,
+    /// The user on whose behalf the invocation runs, and their session. This is
+    /// the only identity a running app may use for user-scoped work (for
+    /// example file access): an app can never borrow another user's context.
+    pub user: Option<UserId>,
+    pub session: Option<SessionId>,
+}
+
+impl RuntimeCapabilityExecution {
+    /// The identity of the invocation, when it runs for a user.
+    pub fn identity(&self) -> Option<(UserId, SessionId)> {
+        Some((self.user?, self.session?))
+    }
 }
 
 /// The provider's result for a capability invocation. The payload is opaque at
@@ -173,6 +187,8 @@ impl RuntimeChannelRegistry {
         let routed = RuntimeCapabilityExecution {
             capability: execution.capability().as_str().to_owned(),
             resource: execution.resource().map(resource_key),
+            user: execution.context().user().copied(),
+            session: execution.context().session().copied(),
         };
         self.execute(identity.installation_id(), &routed)
     }
