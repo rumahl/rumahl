@@ -757,11 +757,13 @@ async fn trust(
 #[cfg(test)]
 mod tests {
     use super::{
-        fingerprint, parse_fingerprint, remember_certificate, source_url, trusted_fingerprint,
+        allows_private_targets, fingerprint, local_hostname, non_public_ip, parse_fingerprint,
+        remember_certificate, resolve_public_target, source_url, trusted_fingerprint,
         untrusted_certificate,
     };
     use rustls::pki_types::{CertificateDer, PrivateKeyDer, PrivatePkcs8KeyDer};
-    use std::sync::Arc;
+    use std::{net::SocketAddr, sync::Arc};
+    use url::Url;
 
     const TEST_CERTIFICATE: &[u8] = include_bytes!("../tests/fixtures/store-test-cert.der");
     const TEST_KEY: &[u8] = include_bytes!("../tests/fixtures/store-test-key.der");
@@ -825,6 +827,78 @@ mod tests {
         assert!(source_url("https://user:pass@store.example/index.json").is_none());
         assert!(source_url("https://store.example/index.json#fragment").is_none());
         assert!(source_url("file:///tmp/index.json").is_none());
+    }
+
+    #[test]
+    fn rejects_non_public_addresses_and_local_names() {
+        for address in [
+            "0.0.0.0",
+            "10.0.0.5",
+            "100.64.0.1",
+            "127.0.0.1",
+            "169.254.10.1",
+            "192.168.1.1",
+            "198.18.0.1",
+            "255.255.255.255",
+            "::1",
+            "::ffff:127.0.0.1",
+            "fc00::1",
+            "fe80::1",
+        ] {
+            assert!(
+                non_public_ip(address.parse().unwrap()),
+                "{address} must not be reachable"
+            );
+        }
+        for address in ["1.1.1.1", "8.8.8.8", "2606:4700:4700::1111"] {
+            assert!(
+                !non_public_ip(address.parse().unwrap()),
+                "{address} is public"
+            );
+        }
+        for host in [
+            "localhost",
+            "app.localhost",
+            "printer.local",
+            "db.internal",
+            "nas.home.arpa",
+        ] {
+            assert!(local_hostname(host), "{host} is a local name");
+        }
+        assert!(!local_hostname("store.example"));
+    }
+
+    #[test]
+    fn only_local_deployments_may_reach_private_targets() {
+        let local = Url::parse("https://localhost:8443/").unwrap();
+        assert!(allows_private_targets(&local));
+        for origin in ["https://demo.rumahl.com/", "https://192.168.1.10/"] {
+            assert!(!allows_private_targets(&Url::parse(origin).unwrap()));
+        }
+    }
+
+    #[tokio::test]
+    async fn resolves_targets_only_when_they_are_public_or_explicitly_local() {
+        assert!(
+            resolve_public_target("127.0.0.1", 443, false)
+                .await
+                .is_none()
+        );
+        assert!(
+            resolve_public_target("localhost", 443, false)
+                .await
+                .is_none()
+        );
+        assert_eq!(
+            resolve_public_target("93.184.216.34", 443, false).await,
+            Some(SocketAddr::from(([93, 184, 216, 34], 443)))
+        );
+        assert_eq!(
+            resolve_public_target("127.0.0.1", 8787, true)
+                .await
+                .map(|address| address.port()),
+            Some(8787)
+        );
     }
 
     #[test]
