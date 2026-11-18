@@ -21,7 +21,11 @@ export function Sidebar({ nav, advanced, onNavigate, onOpenDesktop, inert = fals
       </button>
       {advanced
         ? <>
-            <div className="files-nav__section-heading"><h3 className="files-app__heading">{t("files.deviceGroup")}</h3><span>{t("files.readOnly")}</span></div>
+            <div className="files-nav__section-heading"><h3 className="files-app__heading">{t("files.deviceGroup")}</h3></div>
+            <button type="button" className={item(isHost("home"))} aria-current={isHost("home") ? "page" : undefined} onClick={() => onNavigate(freshHost("home"))}>
+              <FolderIcon className="files-nav__icon" /><span className="files-nav__label">{t("files.home")}</span>
+            </button>
+            <div className="files-nav__section-heading"><span>{t("files.readOnly")}</span></div>
             <button type="button" className={item(isHost("apps"))} aria-current={isHost("apps") ? "page" : undefined} onClick={() => onNavigate(freshHost("apps"))}>
               <GridIcon className="files-nav__icon" /><span className="files-nav__label">{t("files.applications")}</span>
             </button>

@@ -298,7 +298,7 @@ export function FilesApp() {
     onDropOn: (folder) => {
       if (draggingKey && !folder.appFolder && !folder.appPath) {
         const item = explorer.entries.find((entry) => entry.key === draggingKey);
-        if (item && !item.appPath && !item.appFolder && item.key !== folder.key) void explorer.relocate(item.key, item.name, folder.key);
+        if (item && explorer.canMove && !item.appPath && !item.appFolder && item.key !== folder.key) void explorer.relocate(item.key, item.name, folder.key);
       }
       setDraggingKey(null);
       setDragOverKey(null);
@@ -314,7 +314,7 @@ export function FilesApp() {
         ...(explorer.isWritable && !item.appPath && !item.appFolder
           ? [
               { label: t("files.rename"), icon: <PencilIcon />, disabled: explorer.busy, onSelect: () => setRenameKey(item.key) },
-              { label: t("files.move"), icon: <MoveIcon />, disabled: explorer.busy, onSelect: () => setClipboard({ id: item.key, name: item.name }) },
+              ...(explorer.canMove ? [{ label: t("files.move"), icon: <MoveIcon />, disabled: explorer.busy, onSelect: () => setClipboard({ id: item.key, name: item.name }) }] : []),
               {
                 label: t("files.delete"),
                 icon: <TrashIcon />,
@@ -334,7 +334,7 @@ export function FilesApp() {
         { label: t("files.newFile"), icon: <FilePlusIcon />, disabled: explorer.busy, onSelect: newFile },
         { label: t("files.upload"), icon: <UploadIcon />, disabled: explorer.busy, onSelect: () => uploadInput.current?.click() },
       );
-      if (clipboard) items.push({ label: t("files.moveHere"), icon: <MoveIcon />, disabled: explorer.busy, onSelect: paste });
+      if (clipboard && explorer.canMove) items.push({ label: t("files.moveHere"), icon: <MoveIcon />, disabled: explorer.busy, onSelect: paste });
     }
     items.push(
       { label: t("files.selectAll"), onSelect: selectAll },
@@ -365,7 +365,7 @@ export function FilesApp() {
       icon: view === "list" ? <GridViewIcon /> : <ListViewIcon />,
       onSelect: () => chooseView(view === "list" ? "grid" : "list")
     },
-    ...(clipboard ? [{
+    ...(clipboard && explorer.canMove ? [{
       label: t("files.moveHere"),
       icon: <MoveIcon />,
       disabled: explorer.busy,
