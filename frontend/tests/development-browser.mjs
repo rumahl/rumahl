@@ -151,6 +151,7 @@ try {
   await page.getByRole("heading", { name: "Personalization" }).waitFor();
   await setMode("desktop");
   await page.getByRole("region", { name: "Settings", exact: true }).waitFor();
+  await page.getByRole("button", { name: "Close Settings", exact: true }).click();
   await page.getByRole("navigation", { name: "Main navigation" }).getByRole("link", { name: "Home", exact: true }).click();
   // Launch a real authorized installation, including an app-local deep route.
   const appCookies = [];
