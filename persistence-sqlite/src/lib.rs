@@ -63,7 +63,9 @@ pub use browser_session_repository::{BrowserSessionError, SqliteBrowserSessionRe
 
 mod shell_preferences;
 pub use shell_preferences::SqliteShellPreferences;
+mod home_personal_files;
 mod personal_files;
+pub use home_personal_files::HomePersonalFiles;
 pub use personal_files::SqlitePersonalFiles;
 mod weather_warnings;
 pub use weather_warnings::SqliteWeatherWarnings;
