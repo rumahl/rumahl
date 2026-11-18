@@ -26,7 +26,8 @@ pub use docker_image_channel::{
 };
 pub use docker_image_importer::{
     ContainerImageImporter, DockerImageImportError, DockerImageImporter, DockerImageImporterConfig,
-    DockerImageImporterConfigError, DockerImageTarget, MAX_ARCHIVE_BYTES,
+    DockerImageImporterConfigError, DockerImageTarget, MAX_ARCHIVE_BYTES, MAX_IMAGE_ENV_ENTRIES,
+    MAX_IMAGE_ENV_LINE_BYTES, StagedImage, StagedImageEnvironment,
 };
 pub use docker_runtime_target::{
     DockerImageReference, DockerImageReferenceError, DockerImageResolver, DockerRuntimeTarget,

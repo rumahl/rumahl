@@ -17,7 +17,7 @@ use rumahl_core::{
 };
 use rumahl_oidc_provider::{InstalledAppOriginResolver, OidcClientRepository};
 
-use crate::ContainerImageImporter;
+use crate::{ContainerImageImporter, DockerImageReference, StagedImage, StagedImageEnvironment};
 
 #[derive(Debug, Clone)]
 pub struct PackageImporterConfig {
@@ -43,7 +43,14 @@ pub struct PackageImporter<I> {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum PublishedInstall {
     Web(PublishedAssets),
-    Container { images: usize },
+    Container {
+        /// Number of declared container artifacts.
+        images: usize,
+        /// The immutable image reference the runtime resolves for this app.
+        image: DockerImageReference,
+        /// The image's own configuration environment, captured at import.
+        environment: Vec<StagedImageEnvironment>,
+    },
 }
 
 /// A package that was verified, published and (if needed) recovered.
@@ -127,13 +134,23 @@ impl<I: ContainerImageImporter> PackageImporter<I> {
             }
             RuntimeKind::Container => {
                 let artifacts = container_artifacts(package)?;
+                let mut staged: Option<StagedImage> = None;
                 for artifact in &artifacts {
-                    self.image_importer
+                    let image = self
+                        .image_importer
                         .stage_image(installation_id, package_root, artifact)
                         .map_err(|error| PackageImportError::ImageImport(Box::new(error)))?;
+                    // A container app runs exactly one image; the runtime
+                    // spec refuses more. Report the staged image the runtime
+                    // would resolve to, keeping the artifact count for
+                    // diagnostics.
+                    staged = Some(image);
                 }
+                let staged = staged.expect("container artifacts are non-empty");
                 Ok(PublishedInstall::Container {
                     images: artifacts.len(),
+                    image: staged.reference().clone(),
+                    environment: staged.environment().to_vec(),
                 })
             }
             kind => Err(PackageImportError::UnsupportedRuntime(kind)),
@@ -253,6 +270,14 @@ fn require_web_entrypoints(package: &VerifiedPackage) -> Result<(), PackageImpor
         Ok(())
     } else {
         Err(PackageImportError::MissingWebEntrypoint)
+    }
+}
+
+#[cfg(test)]
+fn published_container_environment(published: &PublishedInstall) -> &[StagedImageEnvironment] {
+    match published {
+        PublishedInstall::Container { environment, .. } => environment,
+        PublishedInstall::Web(_) => &[],
     }
 }
 
@@ -380,14 +405,17 @@ mod tests {
             installation_id: &InstallationId,
             _package_root: &Path,
             artifact: &PackagePath,
-        ) -> Result<(), Self::Error> {
+        ) -> Result<StagedImage, Self::Error> {
             let reference =
                 DockerImageReference::parse(format!("sha256:{}", "a".repeat(64))).unwrap();
             StagedDockerImageWriter::new(&self.image_root)
                 .unwrap()
                 .write(installation_id, artifact, &reference)
                 .unwrap();
-            Ok(())
+            Ok(StagedImage::new(
+                reference,
+                vec![StagedImageEnvironment::parse("PATH=/usr/bin:/bin").unwrap()],
+            ))
         }
     }
 
@@ -401,7 +429,7 @@ mod tests {
             _installation_id: &InstallationId,
             _package_root: &Path,
             _artifact: &PackagePath,
-        ) -> Result<(), Self::Error> {
+        ) -> Result<StagedImage, Self::Error> {
             Err(std::io::Error::other("image import disabled"))
         }
     }
@@ -562,7 +590,14 @@ mod tests {
             .publish(&installation_id, package.directory.path(), &verified)
             .unwrap();
 
-        assert_eq!(published, PublishedInstall::Container { images: 1 });
+        assert!(matches!(
+            published,
+            PublishedInstall::Container { images: 1, .. }
+        ));
+        assert_eq!(
+            published_container_environment(&published),
+            &[StagedImageEnvironment::parse("PATH=/usr/bin:/bin").unwrap()]
+        );
 
         let resolver = StagedDockerImageResolver::new(
             StagedDockerImageResolverConfig::new(&image_root).unwrap(),
@@ -971,7 +1006,7 @@ mod tests {
         );
         assert!(matches!(
             installed.published(),
-            PublishedInstall::Container { images: 1 }
+            PublishedInstall::Container { images: 1, .. }
         ));
         assert!(runner.journal().list_incomplete().unwrap().is_empty());
 
