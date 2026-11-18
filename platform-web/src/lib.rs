@@ -63,6 +63,8 @@ pub use host_files::{HostArea, HostEntry, HostError, HostFiles};
 mod os_mode;
 
 mod app_grants;
+mod platform_config;
+pub use platform_config::{PlatformConfig, PlatformConfigEntry};
 mod files;
 mod weather_warnings;
 mod workspace;

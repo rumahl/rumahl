@@ -712,6 +712,7 @@ mod tests {
             login_slots: Arc::new(tokio::sync::Semaphore::new(2)),
             audit: None,
             state_dir: Some(std::path::PathBuf::from(Path::new("/tmp"))),
+            platform_config: None,
         };
         Fixture {
             app: router(state),

@@ -113,6 +113,9 @@ pub struct GatewayState {
     pub audit: Option<Arc<dyn rumahl_core::AuditLog>>,
     /// State directory for recovery settings/diagnostics; None disables them.
     pub state_dir: Option<std::path::PathBuf>,
+    /// Startup-captured, display-safe platform configuration; None disables
+    /// the extended config view.
+    pub platform_config: Option<Arc<crate::PlatformConfig>>,
 }
 
 /// Current wall-clock time as an audit timestamp.
@@ -277,6 +280,7 @@ pub fn router(state: GatewayState) -> Router {
         .merge(crate::workspace::routes())
         .merge(crate::files::routes())
         .merge(crate::app_grants::routes())
+        .merge(crate::platform_config::routes())
         .merge(crate::browser_auth::routes())
         .merge(crate::admin::routes())
         .merge(crate::offline::routes())
@@ -3313,6 +3317,7 @@ mod tests {
             login_slots: Arc::new(tokio::sync::Semaphore::new(2)),
             audit: None,
             state_dir: None,
+            platform_config: None,
         }
     }
 
@@ -3535,6 +3540,7 @@ mod tests {
             login_slots: Arc::new(tokio::sync::Semaphore::new(2)),
             audit: None,
             state_dir: None,
+            platform_config: None,
         });
         let list = app
             .clone()
@@ -3673,6 +3679,7 @@ mod tests {
             login_slots: Arc::new(tokio::sync::Semaphore::new(2)),
             audit: None,
             state_dir: None,
+            platform_config: None,
         });
         let grant = Request::builder()
             .method("POST")
