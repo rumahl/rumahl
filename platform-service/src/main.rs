@@ -186,7 +186,8 @@ async fn run() -> Result<(), ServiceError> {
     };
     let apps_provider = apps::PersistentApps::open(&accounts, &platform, app_root)?
         .with_account_roles(&accounts)?
-        .with_personal_files(personal_files.clone());
+        .with_personal_files(personal_files.clone())
+        .with_storage_quota(apps::storage_quota_from_env()?);
     let apps_provider = match apps_data_root() {
         Some(data_root) => apps_provider.with_data_root(data_root)?,
         None => apps_provider,
@@ -265,7 +266,7 @@ async fn run() -> Result<(), ServiceError> {
             audit.clone(),
         ))),
         host_files: Some(Arc::new(
-            rumahl_platform_service::host_files::LocalHostFiles::from_environment(),
+            rumahl_platform_service::host_files::LocalHostFiles::from_environment(&accounts),
         )),
         weather_warnings: Some(Arc::new(
             rumahl_persistence_sqlite::SqliteWeatherWarnings::open(
