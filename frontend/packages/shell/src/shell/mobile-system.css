@@ -184,7 +184,7 @@
 
 /* The app fills the window to the bottom edge; the tab bar is a floating
    Liquid Glass shelf above the content, like the iOS app dock. */
-.shell[data-mobile="true"][data-launcher="app"] .window-position:not([data-fullscreen="true"]) > .shell-window {
+.shell[data-mobile="true"][data-launcher="app"] .window-position:not([data-fullscreen="true"]) > .window-motion > .shell-window {
   height: calc(100% - env(safe-area-inset-top)) !important;
 }
 

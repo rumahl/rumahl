@@ -2484,7 +2484,7 @@ body {
   background: var(--accent);
 }
 /* Minimize/restore + launcher/desktop entry animations. Focus never animates. */
-.shell .window-position > .shell-window {
+.shell .window-position > .window-motion > .shell-window {
   transition:
     opacity 0.26s ease,
     transform 0.26s cubic-bezier(0.2, 0.7, 0.2, 1),
@@ -2493,13 +2493,13 @@ body {
     width 0.24s cubic-bezier(0.2, 0.7, 0.2, 1),
     height 0.24s cubic-bezier(0.2, 0.7, 0.2, 1);
 }
-.shell .window-position.is-hidden > .shell-window {
+.shell .window-position.is-hidden > .window-motion > .shell-window {
   opacity: 0;
   transform: scale(0.94) translateY(10px);
   pointer-events: none;
 }
 /* Launcher: switching the active app is instant (no fade/scale). */
-.shell:is([data-shell-mode="launcher"], [data-shell-mode="mobile"]) .window-position > .shell-window {
+.shell:is([data-shell-mode="launcher"], [data-shell-mode="mobile"]) .window-position > .window-motion > .shell-window {
   transition: none;
 }
 @keyframes rumahl-surface-in {
@@ -2519,7 +2519,7 @@ body {
 @media (prefers-reduced-motion: reduce) {
   .shell .launcher-workspace,
   .shell .desktop-workspace,
-  .shell .window-position > .shell-window {
+  .shell .window-position > .window-motion > .shell-window {
     animation: none;
     transition: none;
   }
@@ -2639,7 +2639,7 @@ body.animations-off *::after {
   }
 }
 /* Never transition window geometry while dragging (synchronous class). */
-.shell .window-position.is-dragging > .shell-window {
+.shell .window-position.is-dragging > .window-motion > .shell-window {
   transition: none !important;
 }
 /* Top bar dropdown gets a frosted blur (translucent mode only). */

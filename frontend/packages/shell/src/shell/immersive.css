@@ -36,7 +36,7 @@
   width: 100vw;
   height: 100dvh;
 }
-.window-position[data-fullscreen="true"] > .shell-window {
+.window-position[data-fullscreen="true"] > .window-motion > .shell-window {
   left: 0 !important;
   top: 0 !important;
   width: 100% !important;

@@ -250,7 +250,7 @@
 .shell[data-mobile="true"][data-launcher="app"] .workspace-surfaces {
   margin: 0;
 }
-.shell[data-mobile="true"][data-launcher="app"] .window-position > .shell-window {
+.shell[data-mobile="true"][data-launcher="app"] .window-position > .window-motion > .shell-window {
   border-radius: 0;
 }
 
@@ -706,7 +706,7 @@
    window chrome, no rounded inset, no generic titlebar or window controls:
    the app's own topbar (Files/Store) is the only top chrome. */
 .shell[data-mobile="true"][data-launcher="app"] .menubar.topbar { display: none; }
-.shell[data-mobile="true"][data-launcher="app"] .window-position:not([data-fullscreen="true"]) > .shell-window {
+.shell[data-mobile="true"][data-launcher="app"] .window-position:not([data-fullscreen="true"]) > .window-motion > .shell-window {
   top: env(safe-area-inset-top) !important;
   left: 0 !important;
   width: 100% !important;

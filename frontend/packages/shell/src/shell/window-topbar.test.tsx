@@ -3,7 +3,7 @@ import { beforeEach, expect, test, vi } from "vitest";
 import type { PropsWithChildren } from "react";
 import type * as WorkspaceModule from "../preferences/Workspace";
 
-const context = vi.hoisted(() => ({ path: "/app/files", focused: "app:files" }));
+const context = vi.hoisted(() => ({ path: "/app/files", focused: "app:files", mode: "desktop" }));
 vi.mock("@rumahl/ui", () => ({ useTheme: () => ({ theme: {}, tokens: {}, variants: { windowChrome: "standard" } }) }));
 vi.mock("../i18n", () => ({ useI18n: () => ({ t: (key: string) => key }) }));
 vi.mock("react-router", () => ({ useLocation: () => ({ pathname: context.path, search: "", hash: "" }) }));
@@ -20,12 +20,14 @@ vi.mock("./ShellContext", () => ({ useShell: () => ({
   state: { focusedWindowId: context.focused, windows: [
     { id: "app:files", title: "Files", subtitle: "", location: "/app/files" },
     { id: "settings", title: "Settings", subtitle: "", location: "/settings" }
-  ] }, dispatch: () => {}, open: () => {}, mode: "desktop"
+  ] }, dispatch: () => {}, open: () => {}, mode: context.mode
 }) }));
 
 import { DesktopWindows } from "./DesktopWindows";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 
-beforeEach(() => { context.path = "/app/files"; context.focused = "app:files"; });
+beforeEach(() => { context.path = "/app/files"; context.focused = "app:files"; context.mode = "desktop"; });
 
 test("each window keeps its own chrome when another app receives focus", () => {
   const view = render(<DesktopWindows animations={false} />);
@@ -50,4 +52,22 @@ test("the focused window owns the highest stacking order", () => {
   context.focused = "settings";
   view.rerender(<DesktopWindows animations={false} />);
   expect(depth("settings")).toBeGreaterThan(depth("app:files"));
+});
+
+test("the launcher hides every window that is not the active route", () => {
+  context.mode = "launcher";
+  const view = render(<DesktopWindows animations={false} />);
+  const wrapper = (id: string) => document.querySelector(`[data-testid="${id}"]`)?.closest(".window-position");
+  expect(wrapper("settings")).toHaveClass("is-hidden");
+  expect(wrapper("app:files")).not.toHaveClass("is-hidden");
+  view.unmount();
+});
+
+test("hidden windows are styled through the motion wrapper", () => {
+  // The window sits inside the motion element, so a rule that targets a direct
+  // `.shell-window` child never matches and hidden windows stay clickable.
+  const stylesheet = readFileSync(join(import.meta.dirname, "reference/reference.css"), "utf8");
+  const index = stylesheet.indexOf(".window-position.is-hidden");
+  expect(index).toBeGreaterThan(-1);
+  expect(stylesheet.slice(index, index + 160)).toContain("> .window-motion > .shell-window");
 });
