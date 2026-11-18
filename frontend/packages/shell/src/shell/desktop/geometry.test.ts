@@ -12,8 +12,8 @@ describe("desktop windows", () => {
     const rect = { x: 120, y: 90, width: 500, height: 350 };
     expect(shellReducer(initialShellState, { type: "open-window", window: { ...window, rect } }).windows[0]?.rect).toEqual(rect);
   });
-  it("keeps windows reachable on small displays and after resizing the viewport", () => {
-    expect(constrainRect({ x: 900, y: 600, width: 760, height: 540 }, { width: 320, height: 400 })).toEqual({ x: 272, y: 352, width: 320, height: 400 });
+  it("keeps windows fully visible on small displays and reachable after resizing", () => {
+    expect(constrainRect({ x: 900, y: 600, width: 760, height: 540 }, { width: 320, height: 400 })).toEqual({ x: 0, y: 0, width: 320, height: 400 });
     expect(constrainRect({ x: -30, y: -20, width: 1, height: 1 }, { width: 1000, height: 700 })).toEqual({ x: -30, y: -20, width: 280, height: 220 });
     expect(placedRect({ x: 10, y: 10, width: 400, height: 300 }, "maximized", { width: 800, height: 600 })).toEqual({ x: 0, y: 0, width: 800, height: 600 });
     expect(placedRect({ x: 10, y: 10, width: 400, height: 300 }, "maximized", { width: 800, height: 600 }, 38)).toEqual({ x: 0, y: 38, width: 800, height: 562 });

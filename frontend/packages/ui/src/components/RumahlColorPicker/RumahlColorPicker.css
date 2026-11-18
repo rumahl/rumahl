@@ -88,7 +88,7 @@
 
   color: var(--cp-muted);
 
-  font-size: 10px;
+  font-size: 12px;
   line-height: 1.1;
 }
 
@@ -207,7 +207,7 @@
 
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
 
-  font-size: 10px;
+  font-size: 12px;
   font-weight: 500;
 
   pointer-events: none;
@@ -419,7 +419,7 @@
 
   color: var(--cp-muted);
 
-  font-size: 9px;
+  font-size: 12px;
 
   letter-spacing: 0.08em;
 }
@@ -451,7 +451,7 @@
 
   color: var(--cp-muted);
 
-  font-size: 11px;
+  font-size: 12px;
 }
 
 .rumahl-color-picker__presets {

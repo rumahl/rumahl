@@ -1,0 +1,15 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>BMI Calculator</title>
+<style>*{box-sizing:border-box}body{margin:0;min-height:100vh;font:15px/1.55 system-ui,-apple-system,"Segoe UI",sans-serif;color:#e8eef0;background:radial-gradient(circle at 15% 10%,#24444d,#101719 60%);padding:2rem}main{max-width:760px;margin:auto}h1{font:600 2rem/1.1 Georgia,serif;margin:.2rem 0 .3rem}p.lead{color:#a9b7ba;margin:0 0 1.4rem}section{background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.13);border-radius:16px;padding:1.1rem;margin-bottom:1rem}input,textarea,button,select{font:inherit}input,textarea,select{width:100%;padding:.7rem .8rem;border:1px solid rgba(255,255,255,.18);border-radius:10px;background:rgba(0,0,0,.22);color:inherit}textarea{min-height:120px;resize:vertical}button{padding:.62rem .9rem;border:0;border-radius:10px;background:#5cc8a0;color:#061310;font-weight:750;cursor:pointer}button.secondary{background:rgba(255,255,255,.13);color:inherit}button.danger{background:#d56b62;color:#fff}.row{display:flex;gap:.6rem;flex-wrap:wrap}.row>*{flex:1 1 130px}.list{display:grid;gap:.5rem;margin-top:.8rem}.item{display:flex;align-items:center;justify-content:space-between;gap:.7rem;padding:.65rem .75rem;border-radius:10px;background:rgba(0,0,0,.2)}.item.done span{opacity:.5;text-decoration:line-through}.muted{color:#a9b7ba;font-size:.9rem}.stat{font:700 2.4rem/1 Georgia,serif;color:#8fe3c1}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:.7rem}.card{padding:.85rem;border-radius:12px;background:rgba(0,0,0,.2)}small{color:#9fb0b3}a{color:#8fe3c1}</style>
+<body>
+<main>
+<header><h1>BMI Calculator</h1><p class="lead">Calculate body mass index and a healthy weight range.</p></header>
+<section><div class="row"><label class="card">Height (cm)<input id="height" type="number" value="175"></label><label class="card">Weight (kg)<input id="weight" type="number" value="70"></label></div><div class="stat" id="bmi" style="margin-top:1rem">22.9</div><p class="muted" id="category"></p><p class="muted" id="range"></p></section>
+</main>
+<script>function render(){const height=Number(document.querySelector('#height').value)/100,weight=Number(document.querySelector('#weight').value);if(!(height>0)||!(weight>0)){document.querySelector('#bmi').textContent='–';return;}const bmi=weight/(height*height);document.querySelector('#bmi').textContent=bmi.toFixed(1);const category=bmi<18.5?'Underweight':bmi<25?'Healthy range':bmi<30?'Overweight':'Obesity';document.querySelector('#category').textContent=category;const low=(18.5*height*height).toFixed(1),high=(24.9*height*height).toFixed(1);document.querySelector('#range').textContent='Healthy weight for this height: '+low+'–'+high+' kg';}
+document.querySelector('#height').oninput=render;document.querySelector('#weight').oninput=render;render();</script>
+</body>
+</html>

@@ -11,7 +11,8 @@ use rumahl_core::{
     PreferredStreamSize, PublisherId, ResourceKey, ResourceKind, ResourceNamespace, ResourceRef,
     RuntimeDescriptor, RuntimeEndpointId, RuntimeEntrypoint, RuntimeEntrypointId,
     RuntimeEntrypointTarget, RuntimeKind, RuntimeLifecycle, ServiceId, ServiceIdentity,
-    StreamPresentation, UserId, UserIdentity,
+    StreamPresentation, SurfaceDeclaration, SurfaceIcon, SurfaceKind, SurfacePlacement,
+    SurfaceSize, SurfaceSlot, SurfaceTone, UserId, UserIdentity,
 };
 use serde::{Deserialize, Serialize};
 
@@ -141,6 +142,8 @@ struct WireManifest {
     permission_requests: Vec<WirePermissionRequest>,
     provided_capabilities: Vec<String>,
     contributions: Vec<WireContribution>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    surfaces: Vec<WireSurface>,
     event_subscriptions: Vec<String>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     databases: Vec<WireAppDatabase>,
@@ -180,6 +183,11 @@ impl WireManifest {
                 .contributions()
                 .iter()
                 .map(WireContribution::capture)
+                .collect(),
+            surfaces: manifest
+                .surfaces()
+                .iter()
+                .map(WireSurface::capture)
                 .collect(),
             event_subscriptions: manifest
                 .event_subscriptions()
@@ -250,6 +258,12 @@ impl WireManifest {
             manifest
                 .add_contribution(contribution.into_domain()?)
                 .map_err(|error| WireSnapshotError::invalid("manifest contribution", error))?;
+        }
+
+        for surface in self.surfaces {
+            manifest
+                .add_surface(surface.into_domain()?)
+                .map_err(|error| WireSnapshotError::invalid("manifest surface", error))?;
         }
 
         for event in self.event_subscriptions {
@@ -745,6 +759,64 @@ enum WireContribution {
     },
 }
 
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct WireSurface {
+    id: String,
+    slot: String,
+    kind: String,
+    size: String,
+    placement: String,
+    tone: String,
+    icon: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    entrypoint: Option<String>,
+}
+
+impl WireSurface {
+    fn capture(surface: &SurfaceDeclaration) -> Self {
+        Self {
+            id: surface.id().as_str().to_owned(),
+            slot: surface.slot().as_str().to_owned(),
+            kind: surface.kind().as_str().to_owned(),
+            size: surface.size().as_str().to_owned(),
+            placement: surface.placement().as_str().to_owned(),
+            tone: surface.tone().as_str().to_owned(),
+            icon: surface.icon().as_str().to_owned(),
+            entrypoint: surface
+                .entrypoint()
+                .map(|entrypoint| entrypoint.as_str().to_owned()),
+        }
+    }
+
+    fn into_domain(self) -> Result<SurfaceDeclaration, WireSnapshotError> {
+        Ok(SurfaceDeclaration::new(
+            ContributionId::parse(&self.id)
+                .map_err(|error| WireSnapshotError::invalid("surface id", error))?,
+            SurfaceSlot::parse(&self.slot)
+                .ok_or_else(|| WireSnapshotError::invalid("surface slot", &self.slot))?,
+            SurfaceKind::parse(&self.kind)
+                .ok_or_else(|| WireSnapshotError::invalid("surface kind", &self.kind))?,
+            SurfaceSize::parse(&self.size)
+                .ok_or_else(|| WireSnapshotError::invalid("surface size", &self.size))?,
+            SurfacePlacement::parse(&self.placement)
+                .ok_or_else(|| WireSnapshotError::invalid("surface placement", &self.placement))?,
+            SurfaceTone::parse(&self.tone)
+                .ok_or_else(|| WireSnapshotError::invalid("surface tone", &self.tone))?,
+            SurfaceIcon::parse(&self.icon)
+                .ok_or_else(|| WireSnapshotError::invalid("surface icon", &self.icon))?,
+        )
+        .with_entrypoint(
+            self.entrypoint
+                .map(|entrypoint| {
+                    RuntimeEntrypointId::parse(entrypoint)
+                        .map_err(|error| WireSnapshotError::invalid("surface entrypoint", error))
+                })
+                .transpose()?,
+        ))
+    }
+}
+
 impl WireContribution {
     fn capture(contribution: &ContributionDeclaration) -> Self {
         match contribution {
@@ -1063,5 +1135,88 @@ mod stream_presentation_tests {
             "codec": "h264",
         });
         assert!(serde_json::from_value::<WireManifest>(json).is_err());
+    }
+}
+
+#[cfg(test)]
+mod surface_tests {
+    use super::*;
+    use rumahl_core::{
+        SurfaceDeclaration, SurfaceIcon, SurfaceKind, SurfacePlacement, SurfaceSize, SurfaceSlot,
+        SurfaceTone,
+    };
+
+    fn manifest() -> AppManifest {
+        let mut manifest = AppManifest::new(
+            AppId::parse("com.rumahl.clock").unwrap(),
+            PublisherId::parse("com.rumahl").unwrap(),
+            AppVersion::new(1, 0, 0),
+            "Clock",
+            RuntimeDescriptor::web(),
+        )
+        .unwrap();
+        manifest
+            .add_surface(SurfaceDeclaration::new(
+                ContributionId::parse("com.rumahl.clock.desktop").unwrap(),
+                SurfaceSlot::Both,
+                SurfaceKind::Companion,
+                SurfaceSize::Medium,
+                SurfacePlacement::BottomRight,
+                SurfaceTone::Accent,
+                SurfaceIcon::Pulse,
+            ))
+            .unwrap();
+        manifest
+    }
+
+    #[test]
+    fn surfaces_survive_manifest_wire_roundtrip() {
+        let manifest = manifest();
+        let json = serde_json::to_vec(&WireManifest::capture(&manifest)).unwrap();
+        let restored: WireManifest = serde_json::from_slice(&json).unwrap();
+        let restored = restored.into_domain().unwrap();
+        assert_eq!(restored, manifest);
+        assert_eq!(restored.surfaces().len(), 1);
+        assert_eq!(restored.surfaces()[0].kind(), SurfaceKind::Companion);
+    }
+
+    #[test]
+    fn surface_entrypoint_survives_manifest_wire_roundtrip() {
+        let mut manifest = manifest();
+        let mut surface = manifest.surfaces()[0]
+            .clone()
+            .with_entrypoint(Some(RuntimeEntrypointId::parse("overlay").unwrap()));
+        let mut updated = AppManifest::new(
+            AppId::parse("com.rumahl.clock").unwrap(),
+            PublisherId::parse("com.rumahl").unwrap(),
+            AppVersion::new(1, 0, 0),
+            "Clock",
+            RuntimeDescriptor::web(),
+        )
+        .unwrap();
+        surface = surface.clone();
+        updated.add_surface(surface).unwrap();
+        manifest = updated;
+        let json = serde_json::to_value(WireManifest::capture(&manifest)).unwrap();
+        assert_eq!(json["surfaces"][0]["entrypoint"], "overlay");
+        let restored = serde_json::from_value::<WireManifest>(json)
+            .unwrap()
+            .into_domain()
+            .unwrap();
+        assert_eq!(
+            restored.surfaces()[0]
+                .entrypoint()
+                .map(|value| value.as_str()),
+            Some("overlay")
+        );
+    }
+
+    #[test]
+    fn invalid_surface_data_fails_closed() {
+        let manifest = manifest();
+        let mut json = serde_json::to_value(WireManifest::capture(&manifest)).unwrap();
+        json["surfaces"][0]["placement"] = serde_json::json!("middle");
+        let wire: WireManifest = serde_json::from_value(json).unwrap();
+        assert!(wire.into_domain().is_err());
     }
 }

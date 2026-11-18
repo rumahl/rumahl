@@ -38,6 +38,13 @@ pub enum AppManifestValidationError {
         entrypoint: RuntimeEntrypointId,
         kind: RuntimeEntrypointKind,
     },
+    SurfaceEntrypointMissing(ContributionId, RuntimeEntrypointId),
+    SurfaceEntrypointIncompatible {
+        contribution: ContributionId,
+        runtime: RuntimeKind,
+        entrypoint: RuntimeEntrypointId,
+        kind: RuntimeEntrypointKind,
+    },
 }
 
 impl AppManifestValidator {
@@ -51,9 +58,44 @@ impl AppManifestValidator {
         self.validate_connectors(manifest)?;
         self.validate_stream_presentation(manifest)?;
         self.validate_oidc(manifest)?;
+        self.validate_surfaces(manifest)?;
 
         for contribution in manifest.contributions() {
             self.validate_contribution(manifest, contribution)?;
+        }
+
+        Ok(())
+    }
+
+    fn validate_surfaces(&self, manifest: &AppManifest) -> Result<(), AppManifestValidationError> {
+        // Tier B surfaces run in an isolated frame on the app origin. The
+        // declaration names an entrypoint; it never carries a URL or path.
+        let runtime = manifest.runtime();
+        if runtime.kind() == RuntimeKind::Native {
+            return Err(AppManifestValidationError::NativeRuntimeUnsupported);
+        }
+        // A Tier B surface is a static web asset served by the shell's frame
+        // resolver. Container endpoints and native code are not frame targets.
+        let expected_kind = RuntimeEntrypointKind::WebAsset;
+
+        for surface in manifest.surfaces() {
+            let Some(id) = surface.entrypoint() else {
+                continue;
+            };
+            let entrypoint = runtime.entrypoint(id).ok_or_else(|| {
+                AppManifestValidationError::SurfaceEntrypointMissing(
+                    surface.id().clone(),
+                    id.clone(),
+                )
+            })?;
+            if entrypoint.kind() != expected_kind {
+                return Err(AppManifestValidationError::SurfaceEntrypointIncompatible {
+                    contribution: surface.id().clone(),
+                    runtime: runtime.kind(),
+                    entrypoint: entrypoint.id().clone(),
+                    kind: entrypoint.kind(),
+                });
+            }
         }
 
         Ok(())
@@ -292,6 +334,19 @@ impl fmt::Display for AppManifestValidationError {
                 f,
                 "OIDC callback entrypoint '{entrypoint}' of kind '{kind:?}' is incompatible with runtime '{runtime:?}'"
             ),
+            Self::SurfaceEntrypointMissing(contribution, entrypoint) => write!(
+                f,
+                "surface '{contribution}' references missing runtime entrypoint '{entrypoint}'"
+            ),
+            Self::SurfaceEntrypointIncompatible {
+                contribution,
+                runtime,
+                entrypoint,
+                kind,
+            } => write!(
+                f,
+                "surface '{contribution}' entrypoint '{entrypoint}' of kind '{kind:?}' is incompatible with runtime '{runtime:?}'"
+            ),
         }
     }
 }
@@ -307,8 +362,22 @@ mod tests {
         ConnectorDeclaration, ConnectorTarget, ContributionId, OidcCallbackPath,
         OidcClientDeclaration, OidcScope, PackagePath, PublisherId, RuntimeDescriptor,
         RuntimeEndpointId, RuntimeEntrypoint, RuntimeEntrypointId, SearchContributionDeclaration,
-        StreamPresentation,
+        StreamPresentation, SurfaceDeclaration, SurfaceIcon, SurfaceKind, SurfacePlacement,
+        SurfaceSize, SurfaceSlot, SurfaceTone,
     };
+
+    fn surface(entrypoint: Option<&str>) -> SurfaceDeclaration {
+        SurfaceDeclaration::new(
+            ContributionId::parse("com.rumahl.notes.desktop").unwrap(),
+            SurfaceSlot::Desktop,
+            SurfaceKind::Companion,
+            SurfaceSize::Medium,
+            SurfacePlacement::BottomRight,
+            SurfaceTone::Accent,
+            SurfaceIcon::Pulse,
+        )
+        .with_entrypoint(entrypoint.map(|value| RuntimeEntrypointId::parse(value).unwrap()))
+    }
 
     fn manifest() -> AppManifest {
         let mut runtime = RuntimeDescriptor::web();
@@ -688,6 +757,51 @@ mod tests {
             .unwrap();
 
         assert!(AppManifestValidator::new().validate(&manifest).is_ok());
+    }
+
+    #[test]
+    fn accepts_web_surface_entrypoints() {
+        let mut manifest = manifest();
+        manifest.add_surface(surface(Some("main"))).unwrap();
+
+        assert!(AppManifestValidator::new().validate(&manifest).is_ok());
+    }
+
+    #[test]
+    fn rejects_surface_for_missing_entrypoint() {
+        let mut manifest = manifest();
+        manifest.add_surface(surface(Some("overlay"))).unwrap();
+
+        assert!(matches!(
+            AppManifestValidator::new().validate(&manifest),
+            Err(AppManifestValidationError::SurfaceEntrypointMissing(_, entrypoint))
+                if entrypoint.as_str() == "overlay"
+        ));
+    }
+
+    #[test]
+    fn rejects_surface_entrypoint_that_is_not_a_web_asset() {
+        let mut runtime = RuntimeDescriptor::container();
+        runtime
+            .add_entrypoint(RuntimeEntrypoint::container_artifact(
+                RuntimeEntrypointId::parse("service").unwrap(),
+                PackagePath::parse("runtime/server.oci").unwrap(),
+            ))
+            .unwrap();
+        let mut container = AppManifest::new(
+            AppId::parse("com.rumahl.notes").unwrap(),
+            PublisherId::parse("com.rumahl").unwrap(),
+            AppVersion::new(1, 0, 0),
+            "Notes",
+            runtime,
+        )
+        .unwrap();
+        container.add_surface(surface(Some("service"))).unwrap();
+
+        assert!(matches!(
+            AppManifestValidator::new().validate(&container),
+            Err(AppManifestValidationError::SurfaceEntrypointIncompatible { .. })
+        ));
     }
 
     #[test]

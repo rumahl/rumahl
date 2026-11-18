@@ -8,16 +8,18 @@ import type { ShellRequest } from "../snapshot-client";
  */
 export const DESKTOP_FOLDER_NAME = "Desktop";
 
-export interface DesktopFile { id: string; name: string; directory: boolean; size: number }
+export interface DesktopFile { id: string; name: string; directory: boolean; size: number; children: number }
 
-interface StoreEntry { id: string; name: string; directory: boolean; size: number }
+interface StoreEntry { id: string; name: string; directory: boolean; size: number; children?: number }
 
 function call(request: ShellRequest, path: string, init?: RequestInit): Promise<Response> {
   return request(path, { credentials: "same-origin", cache: "no-store", ...init });
 }
 
 async function list(request: ShellRequest, parent: string): Promise<StoreEntry[]> {
-  const response = await call(request, `/api/v1/files?parent=${encodeURIComponent(parent)}`);
+  // The desktop is a personal-store folder; ask for the full account page so
+  // adding pagination to the Files app does not silently truncate desktop files.
+  const response = await call(request, `/api/v1/files?parent=${encodeURIComponent(parent)}&limit=1000&offset=0`);
   if (!response.ok) throw new Error("unavailable");
   const value: unknown = await response.json();
   return Array.isArray(value) ? value as StoreEntry[] : [];
@@ -61,7 +63,7 @@ export function useDesktopFiles(request: ShellRequest | null | undefined) {
       setFolderId(id);
       try {
         const entries = await list(request, id);
-        if (!cancelled) setFiles(entries.map((entry) => ({ id: entry.id, name: entry.name, directory: entry.directory, size: entry.size })));
+        if (!cancelled) setFiles(entries.map((entry) => ({ id: entry.id, name: entry.name, directory: entry.directory, size: entry.size, children: entry.children ?? 0 })));
       } catch { if (!cancelled) setFiles([]); }
     })();
     return () => { cancelled = true; };

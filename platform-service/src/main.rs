@@ -194,6 +194,10 @@ async fn run() -> Result<(), ServiceError> {
     let audit: Arc<dyn rumahl_core::AuditLog> = Arc::new(
         rumahl_persistence_sqlite::SqliteAuditLog::open(state_dir.join("audit.sqlite"))?,
     );
+    let administration = Arc::new(rumahl_platform_service::LocalAdministration::open(
+        &accounts,
+        Some(audit.clone()),
+    )?);
     record_os_event(
         audit.as_ref(),
         rumahl_core::AuditAction::SystemStarted,
@@ -211,6 +215,7 @@ async fn run() -> Result<(), ServiceError> {
         browser_sessions: Some(Arc::new(
             LocalBrowserSessions::open(&accounts)?.with_audit(audit.clone()),
         )),
+        admin: Some(administration),
         login_slots: Arc::new(tokio::sync::Semaphore::new(2)),
         events: events.clone(),
         widgets: Arc::new(NoWidgets),
@@ -256,6 +261,11 @@ async fn run() -> Result<(), ServiceError> {
         ))),
         host_files: Some(Arc::new(
             rumahl_platform_service::host_files::LocalHostFiles::from_environment(),
+        )),
+        weather_warnings: Some(Arc::new(
+            rumahl_persistence_sqlite::SqliteWeatherWarnings::open(
+                state_dir.join("platform.sqlite"),
+            )?,
         )),
         oidc: None,
         audit: Some(audit.clone()),

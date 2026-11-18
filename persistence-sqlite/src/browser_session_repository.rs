@@ -78,6 +78,37 @@ impl SqliteBrowserSessionRepository {
         Ok(token)
     }
 
+    /// Revokes one session by id. Returns whether an active session was found.
+    pub fn revoke_by_id(
+        &self,
+        session_id: SessionId,
+        now: UnixTimestamp,
+    ) -> Result<bool, BrowserSessionError> {
+        let at = i64::try_from(now.as_seconds()).map_err(|_| BrowserSessionError::Storage)?;
+        let mut connection = self
+            .connection
+            .lock()
+            .map_err(|_| BrowserSessionError::Storage)?;
+        let tx = connection
+            .transaction_with_behavior(TransactionBehavior::Immediate)
+            .map_err(|_| BrowserSessionError::Storage)?;
+        let revoked = tx
+            .execute(
+                "UPDATE account_session SET revoked_at = MAX(?2, authenticated_at)
+                 WHERE session_id = ?1 AND revoked_at IS NULL",
+                params![session_id.to_string(), at],
+            )
+            .map_err(|_| BrowserSessionError::Storage)?;
+        tx.execute(
+            "UPDATE session_credential SET revoked_at = MAX(?2, issued_at)
+             WHERE session_id = ?1 AND revoked_at IS NULL",
+            params![session_id.to_string(), at],
+        )
+        .map_err(|_| BrowserSessionError::Storage)?;
+        tx.commit().map_err(|_| BrowserSessionError::Storage)?;
+        Ok(revoked > 0)
+    }
+
     /// Idempotently revoke the OS session as well as its credentials. OIDC and
     /// WebSocket authentication observe the same durable session revocation.
     pub fn revoke(

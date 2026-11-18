@@ -378,7 +378,7 @@ fn render_page(
         } else {
             let username_field = if username.is_empty() || invalid {
                 format!(
-                    r#"<label><span class="visually-hidden">{user}</span><input placeholder="{user}" class="rumahl-input" name="username" value="{}" autocomplete="username" maxlength="128" required {}></label>"#,
+                    r#"<label><span class="login-field-label">{user}</span><input class="rumahl-input" name="username" value="{}" autocomplete="username" maxlength="128" required {}></label>"#,
                     escape(username),
                     if username.is_empty() { "autofocus" } else { "" }
                 )
@@ -389,7 +389,7 @@ fn render_page(
                 )
             };
             format!(
-                r#"{username_field}<div class="password-row"><label><span class="visually-hidden">{password}</span><input class="rumahl-input" name="password" type="password" placeholder="{password}" autocomplete="current-password" maxlength="1024" required {}></label><button class="btn btn--primary" type="submit" aria-label="{signin}" title="{signin}"><svg aria-hidden="true" focusable="false" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="m9 6 6 6-6 6" /></svg></button></div><p class="login-status" role="status"></p>"#,
+                r#"{username_field}<div class="password-row"><label><span class="login-field-label">{password}</span><input class="rumahl-input" name="password" type="password" autocomplete="current-password" maxlength="1024" required {}></label><button class="btn btn--primary" type="submit" aria-label="{signin}" title="{signin}"><svg aria-hidden="true" focusable="false" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="m9 6 6 6-6 6" /></svg></button></div><p class="login-status" role="status"></p>"#,
                 if username.is_empty() { "" } else { "autofocus" }
             )
         };
@@ -424,10 +424,9 @@ fn render_page(
     // a browser cannot resolve. The real stylesheets live in `@rumahl/ui`.
     let materials = include_str!("../../frontend/packages/shell/src/shell/materials.css");
     let controls = include_str!("../../frontend/packages/ui/src/components/controls.css");
-    let classic = include_str!("../../frontend/packages/ui/src/classic.css");
     let css = include_str!("login.css");
     let html = format!(
-        r#"<!doctype html><html lang="{lang}" class="shell" data-theme="com.rumahl.default" data-scheme="light"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>{title} · rumahl OS</title><link rel="icon" href="/icon.svg" type="image/svg+xml"><link rel="icon" href="/icon-512.png" type="image/png" sizes="512x512"><style>{tokens}{materials}{controls}{classic}{css}</style><script src="/login/appearance.js"></script><script src="/os-client.js" defer></script></head><body><header class="lock-clock" aria-hidden="true"><span id="login-date"></span><time id="login-time"></time></header><main><section class="login-profiles" aria-label="{title}">{content}</section></main><footer><span class="brand">rumahl <span>OS</span></span><a href="/recovery">{recovery}</a></footer></body></html>"#
+        r#"<!doctype html><html lang="{lang}" class="shell" data-theme="com.rumahl.default" data-scheme="light"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>{title} · rumahl OS</title><link rel="icon" href="/icon.svg" type="image/svg+xml"><link rel="icon" href="/icon-512.png" type="image/png" sizes="512x512"><style>{tokens}{materials}{controls}{css}</style><script src="/login/appearance.js"></script><script src="/os-client.js" defer></script></head><body><header class="lock-clock" aria-hidden="true"><span id="login-date"></span><time id="login-time"></time></header><main><section class="login-profiles" aria-label="{title}">{content}</section></main><footer><span class="brand">rumahl <span>OS</span></span><a href="/recovery">{recovery}</a></footer></body></html>"#
     );
     let mut response = Response::new(Body::from(html));
     response.headers_mut().insert(
@@ -486,6 +485,8 @@ mod tests {
             .await;
             assert!(body.contains("name=\"username\" value=\"alice\""));
             assert!(body.contains("name=\"password\" type=\"password\""));
+            assert!(body.contains(r#"<span class="login-field-label">Password</span>"#));
+            assert!(!body.contains("placeholder=\"Password\""));
             assert!(body.contains("name=\"next\" value=\"/app/notes\""));
             assert_eq!(body.contains("<p class=\"error\" role=\"alert\""), invalid);
         }

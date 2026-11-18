@@ -33,6 +33,23 @@ describe("desktop shell", () => {
     expect(screen.getByRole("link", { name: "Notes" })).toBeInTheDocument();
   });
 
+  test("disambiguates installed apps with the same title", () => {
+    render(<App snapshot={{ ...demoSnapshot, apps: [
+      { id: "com.example.notes", title: "Notes", launchable: true },
+      { id: "com.rumahl.examples.notes", title: "Notes", launchable: true }
+    ] }} initialLocation="/" />);
+    expect(screen.getByRole("link", { name: "Notes · example" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Notes · examples" })).toBeInTheDocument();
+  });
+
+  test("exposes desktop selection without invalid link ARIA", () => {
+    render(<App snapshot={demoSnapshot} initialLocation="/" />);
+    const files = screen.getByRole("link", { name: "Files" });
+    expect(files).not.toHaveAttribute("aria-pressed");
+    fireEvent.click(files, { metaKey: true });
+    expect(files).toHaveAttribute("aria-current", "true");
+  });
+
   test("opens a workspace folder from the desktop", async () => {
     localStorage.setItem("rumahl.demo.workspace", JSON.stringify({ version: 1, windows: [], folders: [{ id: "tools", name: "Tools", apps: ["files"] }] }));
     render(<App snapshot={demoSnapshot} initialLocation="/" />);

@@ -1,0 +1,19 @@
+{
+  "formatVersion": 1,
+  "publisherId": "com.rumahl.examples",
+  "app": {
+    "appId": "com.rumahl.examples.recipes",
+    "version": "1.0.0",
+    "displayName": "Recipes",
+    "runtime": {
+      "kind": "web",
+      "entrypoints": [
+        {
+          "id": "main",
+          "kind": "web-asset",
+          "path": "frontend/index.html"
+        }
+      ]
+    }
+  }
+}

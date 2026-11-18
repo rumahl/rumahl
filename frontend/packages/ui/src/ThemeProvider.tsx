@@ -23,7 +23,7 @@ export function ThemeProvider({ theme = defaultTheme, children }: PropsWithChild
   useEffect(() => {
     const root = document.documentElement;
     applyTokens(root, theme.tokens);
-    return () => clearTokens(root);
+    return () => clearTokens(root, theme.tokens);
   }, [theme]);
   const value = useMemo<ThemeContextValue>(() => ({ theme, tokens: theme.tokens, variants: theme.variants }), [theme]);
   return <ThemeContext value={value}>{children}</ThemeContext>;

@@ -9,6 +9,7 @@ mod registrar;
 mod registration;
 mod settings;
 mod stream_presentation;
+mod surface;
 mod validator;
 mod version;
 
@@ -28,6 +29,11 @@ pub use settings::{
 
 pub use stream_presentation::{
     PreferredStreamSize, STREAMING_ENGINE_CAPABILITY, StreamPresentation, StreamPresentationError,
+};
+
+pub use surface::{
+    SurfaceDeclaration, SurfaceIcon, SurfaceKind, SurfacePlacement, SurfaceSize, SurfaceSlot,
+    SurfaceTone,
 };
 
 pub use oidc::{
