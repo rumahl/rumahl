@@ -725,6 +725,7 @@ mod app_runtime;
 pub mod apps;
 pub mod host_files;
 pub mod install;
+pub mod user_homes;
 
 #[cfg(test)]
 mod surface_tests {

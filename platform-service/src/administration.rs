@@ -27,6 +27,9 @@ pub struct LocalAdministration {
     passwords: PasswordAdministration,
     sessions: SqliteBrowserSessionRepository,
     audit: Option<Arc<dyn AuditLog>>,
+    /// Home root for new accounts; `None` leaves home creation to the
+    /// deployment.
+    home_root: Option<std::path::PathBuf>,
 }
 
 impl LocalAdministration {
@@ -42,7 +45,16 @@ impl LocalAdministration {
             ),
             sessions: SqliteBrowserSessionRepository::open(path)?,
             audit,
+            home_root: None,
         })
+    }
+
+    /// Creates `/home/<username>` with the standard directories for every new
+    /// account. Best effort: an account whose home cannot be created stays
+    /// usable, and the home area reports absent.
+    pub fn with_home_root(mut self, home_root: impl Into<std::path::PathBuf>) -> Self {
+        self.home_root = Some(home_root.into());
+        self
     }
 
     fn require_admin(&self, actor: UserId) -> Result<(), AdminError> {
@@ -143,6 +155,9 @@ impl Administration for LocalAdministration {
             .accounts()
             .get(&user_id)
             .ok_or(AdminError::Unavailable)?;
+        if let Some(home_root) = self.home_root.as_deref() {
+            let _ = crate::user_homes::ensure_user_home(home_root, username);
+        }
         Ok(self.admin_user(account, core_role))
     }
 

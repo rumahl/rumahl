@@ -221,10 +221,16 @@ async fn run() -> Result<(), ServiceError> {
     let audit: Arc<dyn rumahl_core::AuditLog> = Arc::new(
         rumahl_persistence_sqlite::SqliteAuditLog::open(state_dir.join("audit.sqlite"))?,
     );
-    let administration = Arc::new(rumahl_platform_service::LocalAdministration::open(
-        &accounts,
-        Some(audit.clone()),
-    )?);
+    let home_root = rumahl_platform_service::user_homes::home_root();
+    let administration = Arc::new(
+        rumahl_platform_service::LocalAdministration::open(&accounts, Some(audit.clone()))?
+            .with_home_root(home_root.clone()),
+    );
+    // Heal missing homes for existing accounts (best effort, never fatal).
+    match rumahl_platform_service::user_homes::ensure_account_homes(&accounts, &home_root) {
+        Ok(ensured) => eprintln!("rumahl platform: {ensured} account home(s) available"),
+        Err(error) => eprintln!("rumahl platform: account homes unavailable: {error}"),
+    }
     record_os_event(
         audit.as_ref(),
         rumahl_core::AuditAction::SystemStarted,
