@@ -313,9 +313,12 @@ try {
   await files.locator(".files-surface").click({ button: "right", position: { x: 4, y: 4 } });
   await page.getByRole("menuitem", { name: "Move here", exact: true }).click();
   await files.getByText("renamed.txt", { exact: true }).waitFor();
-  // Delete through the context menu (the explorer deletes immediately).
+  // Delete through the context menu, then confirm in the native dialog.
   await files.getByText("renamed.txt", { exact: true }).click({ button: "right" });
   await page.getByRole("menuitem", { name: "Delete", exact: true }).click();
+  const deleteDialog = page.getByRole("alertdialog", { name: "Delete", exact: true });
+  await deleteDialog.waitFor();
+  await deleteDialog.getByRole("button", { name: "Delete", exact: true }).click();
   await files.getByText("renamed.txt", { exact: true }).waitFor({ state: "detached" });
   // Saved account folders are delivered to an independent browser profile.
   const workspaceContext = await browser.newContext(reducedMotion);
