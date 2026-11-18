@@ -1,5 +1,5 @@
 //! Browser-owned login forms and session cookies, independent of the renderer.
-use crate::server::{credential, secure_headers, valid_origin};
+use crate::server::{authenticate, credential, secure_headers, valid_origin};
 use crate::{GatewayState, ShellBackendError};
 use axum::{
     Router,
@@ -244,6 +244,12 @@ async fn logout(State(state): State<Arc<GatewayState>>, headers: HeaderMap) -> R
         return failure(StatusCode::SERVICE_UNAVAILABLE);
     };
     if let Ok(token) = credential(&headers) {
+        // The session's memory-only app grants die with it.
+        if let Ok(identity) = authenticate(&state, &token).await
+            && let Some(apps) = state.apps.as_ref()
+        {
+            apps.session_ended(identity.session_id);
+        }
         let sessions = Arc::clone(sessions);
         if !matches!(
             tokio::task::spawn_blocking(move || sessions.logout(&token)).await,

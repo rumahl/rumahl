@@ -10,7 +10,7 @@ use axum::{
     response::Response,
 };
 use rand::RngCore;
-use rumahl_core::{AppId, InstallationId, PackagePath};
+use rumahl_core::{AppId, InstallationId, PackagePath, SessionId};
 use url::Url;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -406,6 +406,9 @@ pub trait AppProvider: Send + Sync + 'static {
     ) -> Result<AppStorageInfo, AppAccessError> {
         Err(AppAccessError::Unavailable)
     }
+    /// The browser session ended: memory-only grants issued for it must not
+    /// outlive it. Best effort by design.
+    fn session_ended(&self, _session: SessionId) {}
 }
 #[derive(Clone)]
 struct Lease {
@@ -514,6 +517,11 @@ impl AppAccess {
     ) -> Result<AppStorageInfo, AppAccessError> {
         let app = self.installed(identity, id, installation)?;
         self.provider.app_storage(identity, app.installation_id)
+    }
+
+    /// Drops the memory-only grants of an ended browser session.
+    pub fn session_ended(&self, session: SessionId) {
+        self.provider.session_ended(session);
     }
     pub fn new(
         provider: Arc<dyn AppProvider>,

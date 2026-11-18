@@ -872,6 +872,9 @@ impl AppProvider for PersistentApps {
         let app = self.app(identity, installation)?;
         self.app_storage(app.identity().app_id().as_str())
     }
+    fn session_ended(&self, session: rumahl_core::SessionId) {
+        self.end_session(session);
+    }
 }
 
 /// Writes uploaded package files into a fresh owner-only staging directory.

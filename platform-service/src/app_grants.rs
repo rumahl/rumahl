@@ -97,6 +97,13 @@ impl SessionGrantStore {
             .unwrap_or_default()
     }
 
+    /// Drops everything a session held. Called when the browser session ends,
+    /// so the store never grows past the live sessions.
+    pub fn remove_session(&self, session: rumahl_core::SessionId) -> usize {
+        let mut grants = self.grants.lock().unwrap_or_else(|e| e.into_inner());
+        grants.remove(&session).map_or(0, |removed| removed.len())
+    }
+
     /// Removes one of the session's grants. True when the grant belonged to
     /// this session and is gone now.
     pub fn remove(&self, session: rumahl_core::SessionId, id: &GrantId) -> bool {
@@ -340,6 +347,11 @@ impl PersistentApps {
         Ok(grant_info(&grant))
     }
 
+    /// Drops the session's memory-only grants when the browser session ends.
+    pub fn end_session(&self, session: rumahl_core::SessionId) {
+        self.session_grants.remove_session(session);
+    }
+
     /// Revokes a grant the calling user issued, durable or in this session.
     pub fn revoke_app_grant(
         &self,
@@ -542,6 +554,21 @@ mod tests {
             assert!(store.insert(file_grant(Some(session))));
         }
         assert!(!store.insert(file_grant(Some(session))));
+    }
+
+    #[test]
+    fn ending_a_session_drops_its_grants() {
+        let store = SessionGrantStore::new();
+        let session = SessionId::new();
+        let other = SessionId::new();
+        store.insert(file_grant(Some(session)));
+        store.insert(file_grant(Some(other)));
+
+        assert_eq!(store.remove_session(session), 1);
+
+        assert!(store.grants_for(session).is_empty());
+        assert_eq!(store.grants_for(other).len(), 1);
+        assert_eq!(store.remove_session(session), 0);
     }
 
     #[test]
