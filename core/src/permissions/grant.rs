@@ -150,6 +150,24 @@ impl PermissionGrant {
     pub fn validity(&self) -> &GrantValidity {
         &self.validity
     }
+
+    /// The same grant over a different resource set, keeping id, subject,
+    /// permission, scope, issuer and lifetime. Used by storage migrations that
+    /// translate resource keys; the consent itself is unchanged.
+    pub fn with_resources(
+        &self,
+        resources: Vec<ResourceRef>,
+    ) -> Result<Self, PermissionGrantError> {
+        Self::restore_with_validity(
+            self.id,
+            self.subject.clone(),
+            self.permission.clone(),
+            self.scope,
+            resources,
+            self.granted_by.clone(),
+            self.validity.clone(),
+        )
+    }
 }
 
 impl fmt::Display for PermissionGrantError {
@@ -323,6 +341,36 @@ mod tests {
         assert_eq!(
             expiring.validity(),
             &GrantValidity::durable_until(expires_at)
+        );
+    }
+
+    #[test]
+    fn remapping_resources_keeps_id_and_consent() {
+        let app = notes_app();
+        let resource = test_file_resource();
+        let grant = PermissionGrant::new(
+            app.clone().into(),
+            PermissionId::parse("rumahl.files.read").unwrap(),
+            PermissionScope::Explicit,
+            vec![resource.clone()],
+            app.clone().into(),
+        )
+        .unwrap();
+        let replacement = ResourceRef::new(
+            ResourceNamespace::parse("rumahl.files").unwrap(),
+            ResourceKind::parse("file").unwrap(),
+            ResourceKey::parse("document-2").unwrap(),
+        );
+
+        let remapped = grant.with_resources(vec![replacement.clone()]).unwrap();
+
+        assert_eq!(remapped.id(), grant.id());
+        assert_eq!(remapped.permission(), grant.permission());
+        assert_eq!(remapped.resources(), &[replacement]);
+        // An explicit grant still needs at least one resource.
+        assert_eq!(
+            grant.with_resources(Vec::new()).unwrap_err(),
+            PermissionGrantError::ExplicitScopeRequiresResources
         );
     }
 

@@ -52,7 +52,7 @@ def run():
     with tempfile.TemporaryDirectory(prefix="rumahl-shell-") as temporary, contextlib.ExitStack() as stack:
         root = Path(temporary)
         root.chmod(0o700)
-        for name in ["state", "gateway", "renderer", "nginx"]:
+        for name in ["state", "gateway", "renderer", "nginx", "home"]:
             (root / name).mkdir(mode=0o700)
         log = stack.enter_context((root / "process.log").open("w+"))
         with socket.socket() as listener:
@@ -66,7 +66,7 @@ def run():
         context = ssl.create_default_context(cafile=str(cert))
         blocklist = root / "blocked.txt"
         blocklist.write_text("this password is forbidden\n")
-        env = dict(os.environ, RUMAHL_STATE_DIR=str(root / "state"), RUMAHL_PUBLIC_ORIGIN=origin,
+        env = dict(os.environ, RUMAHL_STATE_DIR=str(root / "state"), RUMAHL_HOME_ROOT=str(root / "home"), RUMAHL_PUBLIC_ORIGIN=origin,
                    RUMAHL_GATEWAY_SOCKET=str(root / "gateway/http.sock"), RUMAHL_GATEWAY_SOCKET_ACCESS="owner",
                    RUMAHL_SSR_SOCKET=str(root / "renderer/ssr.sock"), RUMAHL_SSR_SOCKET_ACCESS="owner",
                    RUMAHL_CLIENT_BUILD=str(REPO / "frontend/packages/shell/dist/build-id.json"),
@@ -206,7 +206,8 @@ http {{
             document = b"personal document\n" * 4096
             assert request("/api/v1/files?parent=root&name=sample.txt&directory=false", "POST", cookie=cookies["alice"], request_origin=origin, binary_body=document)[0] == 204
             documents = json.loads(request("/api/v1/files?parent=root", cookie=cookies["alice"])[2])
-            content_path = "/api/v1/files/content?id=" + documents[0]["id"]
+            sample = next(item for item in documents if item["name"] == "sample.txt")
+            content_path = "/api/v1/files/content?id=" + sample["id"]
             assert request(content_path, cookie=cookies["alice"])[2] == document
             assert request(content_path, cookie=cookies["bob"])[0] == 404
             assert request(content_path, cookie=cookies["alice"])[1]["content-disposition"].startswith("attachment;")

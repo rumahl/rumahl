@@ -71,6 +71,17 @@ fn optional_key_provider() -> Option<Arc<dyn rumahl_persistence_sqlite::FieldKey
         .map(|provider| Arc::new(provider) as Arc<dyn rumahl_persistence_sqlite::FieldKeyProvider>)
 }
 
+/// The key provider for file content: the TPM provider unless the deployment
+/// explicitly disabled file encryption. Serving and migration share it, so a
+/// migration always seals exactly like the running platform.
+fn file_key_provider() -> Option<Arc<dyn rumahl_persistence_sqlite::FieldKeyProvider>> {
+    if env::var("RUMAHL_FILE_ENCRYPTION").as_deref() == Ok("off") {
+        None
+    } else {
+        optional_key_provider()
+    }
+}
+
 async fn run() -> Result<(), ServiceError> {
     let args: Vec<String> = env::args().skip(1).collect();
     let state_dir = PathBuf::from(required("RUMAHL_STATE_DIR")?);
@@ -87,6 +98,7 @@ async fn run() -> Result<(), ServiceError> {
         state_dir.join("platform.sqlite"),
         state_dir.join("preferences.sqlite"),
         state_dir.join("files.sqlite"),
+        state_dir.join("files-index.sqlite"),
     ] {
         rumahl_persistence_sqlite::verify_schema(&database).map_err(|error| {
             std::io::Error::other(format!("database schema check failed: {error}"))
@@ -132,6 +144,29 @@ async fn run() -> Result<(), ServiceError> {
         install::install_package(&state_dir, std::path::Path::new(&args[1]))?;
         return Ok(());
     }
+    if args.first().map(String::as_str) == Some("migrate-files") {
+        if args.len() != 1 {
+            return Err(std::io::Error::other("usage: migrate-files").into());
+        }
+        let home_root = rumahl_platform_service::user_homes::home_root();
+        let report = rumahl_platform_service::file_migration::migrate_files(
+            &state_dir,
+            &home_root,
+            file_key_provider(),
+        )
+        .map_err(|error| std::io::Error::other(error.to_string()))?;
+        println!(
+            "Files migrated: {} accounts ({} without a home), {} files, {} folders created, {} existing entries kept, {} grants remapped, {} grants dropped.",
+            report.accounts,
+            report.skipped,
+            report.files,
+            report.directories,
+            report.existing,
+            report.grants_remapped,
+            report.grants_dropped
+        );
+        return Ok(());
+    }
     if args.first().map(String::as_str) == Some("backup") {
         if args.len() != 2 {
             return Err(std::io::Error::other("usage: backup DESTINATION_DIR").into());
@@ -160,17 +195,18 @@ async fn run() -> Result<(), ServiceError> {
     let app_suffix = env::var("RUMAHL_APP_HOST_SUFFIX")
         .unwrap_or_else(|_| format!("apps.{}", config.public_origin.host_str().unwrap()));
     let app_root = state_dir.join("app-assets");
-    // One personal-files store backs both the shell's own Files app and the
-    // consented app file access, so both always see the same documents.
+    // The home is the source of truth for user files: the shell's Files app and
+    // consented app access both see the account's real documents. The SQLite
+    // store remains only as the rollback for the `migrate-files` upgrade.
+    let home_root = rumahl_platform_service::user_homes::home_root();
+    let files_index = state_dir.join("files-index.sqlite");
     let personal_files: std::sync::Arc<dyn rumahl_core::PersonalFiles> = {
-        match if env::var("RUMAHL_FILE_ENCRYPTION").as_deref() == Ok("off") {
-            None
-        } else {
-            optional_key_provider()
-        } {
+        match file_key_provider() {
             Some(provider) => Arc::new(
-                rumahl_persistence_sqlite::SqlitePersonalFiles::open_encrypted(
-                    state_dir.join("files.sqlite"),
+                rumahl_persistence_sqlite::HomePersonalFiles::open_encrypted(
+                    &home_root,
+                    &accounts,
+                    &files_index,
                     provider,
                 )?,
             ),
@@ -178,8 +214,10 @@ async fn run() -> Result<(), ServiceError> {
                 eprintln!(
                     "rumahl platform: file content encryption disabled (no TPM key configured)"
                 );
-                Arc::new(rumahl_persistence_sqlite::SqlitePersonalFiles::open(
-                    state_dir.join("files.sqlite"),
+                Arc::new(rumahl_persistence_sqlite::HomePersonalFiles::open(
+                    &home_root,
+                    &accounts,
+                    &files_index,
                 )?)
             }
         }

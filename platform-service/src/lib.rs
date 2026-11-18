@@ -69,11 +69,12 @@ pub fn provision(
 }
 
 /// State-volume databases, in backup order.
-pub const STATE_DATABASES: [&str; 5] = [
+pub const STATE_DATABASES: [&str; 6] = [
     "accounts.sqlite",
     "platform.sqlite",
     "preferences.sqlite",
     "files.sqlite",
+    "files-index.sqlite",
     "audit.sqlite",
 ];
 
@@ -84,6 +85,16 @@ pub const STATE_DATABASES: [&str; 5] = [
 /// database written by a newer binary is refused instead of copied. Snapshots
 /// use the SQLite online backup API, never a live file copy.
 pub fn backup_state(state_dir: &Path, destination: &Path) -> Result<(), ServiceError> {
+    backup_state_with_home(state_dir, destination, &user_homes::home_root())
+}
+
+/// [`backup_state`] with an explicit home root, for tests and callers that
+/// manage the layout themselves.
+pub fn backup_state_with_home(
+    state_dir: &Path,
+    destination: &Path,
+    home_root: &Path,
+) -> Result<(), ServiceError> {
     std::fs::create_dir_all(destination)?;
     let metadata = std::fs::symlink_metadata(destination)?;
     if !metadata.is_dir() || metadata.file_type().is_symlink() {
@@ -99,6 +110,68 @@ pub fn backup_state(state_dir: &Path, destination: &Path) -> Result<(), ServiceE
             std::io::Error::other(format!("database schema check failed: {error}"))
         })?;
         rumahl_persistence_sqlite::backup_database(&source, &destination.join(name))?;
+    }
+    backup_account_homes(&state_dir.join("accounts.sqlite"), home_root, destination)
+}
+
+/// Copies each account's home into `destination/home`.
+///
+/// The home is the source of truth for user documents, so a state backup that
+/// skipped it would silently lose them. Only accounts known to this deployment
+/// are copied (never every directory that happens to live under `/home`), and
+/// symlinks are never followed: a link in a home must not pull in files from
+/// outside it.
+fn backup_account_homes(
+    accounts: &Path,
+    home_root: &Path,
+    destination: &Path,
+) -> Result<(), ServiceError> {
+    if !home_root.is_dir() {
+        return Ok(());
+    }
+    let home_backup = destination.join("home");
+    if let (Ok(root), Ok(target)) = (home_root.canonicalize(), destination.canonicalize())
+        && target.starts_with(&root)
+    {
+        return Err(
+            std::io::Error::other("backup destination must not be inside the home root").into(),
+        );
+    }
+    let state = SqliteAccountStateRepository::open(accounts)?.load()?;
+    std::fs::create_dir_all(&home_backup)?;
+    std::fs::set_permissions(&home_backup, std::fs::Permissions::from_mode(0o700))?;
+    for account in state.accounts().accounts() {
+        let source = home_root.join(account.username().as_str());
+        if !source.is_dir() {
+            continue;
+        }
+        copy_home_tree(&source, &home_backup.join(account.username().as_str()), 0)?;
+    }
+    Ok(())
+}
+
+/// Bounded, symlink-safe copy. Backups are owner-only and keep the modes the
+/// files would have in a fresh home.
+fn copy_home_tree(source: &Path, destination: &Path, depth: usize) -> Result<(), ServiceError> {
+    const MAX_DEPTH: usize = 128;
+    if depth > MAX_DEPTH {
+        return Err(std::io::Error::other("home backup directory nesting is too deep").into());
+    }
+    std::fs::create_dir_all(destination)?;
+    std::fs::set_permissions(destination, std::fs::Permissions::from_mode(0o700))?;
+    for entry in std::fs::read_dir(source)? {
+        let entry = entry?;
+        let metadata = std::fs::symlink_metadata(entry.path())?;
+        if metadata.file_type().is_symlink() {
+            continue;
+        }
+        let target = destination.join(entry.file_name());
+        if metadata.is_dir() {
+            copy_home_tree(&entry.path(), &target, depth + 1)?;
+        } else if metadata.is_file() {
+            std::fs::copy(entry.path(), &target)?;
+            std::fs::set_permissions(&target, std::fs::Permissions::from_mode(0o600))?;
+        }
     }
     Ok(())
 }
@@ -723,6 +796,7 @@ fn sha256_hex(bytes: &[u8]) -> String {
 pub mod app_grants;
 mod app_runtime;
 pub mod apps;
+pub mod file_migration;
 pub mod host_files;
 pub mod install;
 pub mod user_homes;

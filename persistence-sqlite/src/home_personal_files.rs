@@ -218,6 +218,12 @@ impl HomePersonalFiles {
         Ok((canonical, relative))
     }
 
+    /// Whether `id` names an entry in the account's home. Used by storage
+    /// migrations to decide whether a grant still points at a servable file.
+    pub fn contains(&self, owner: UserId, id: &str) -> bool {
+        self.resolve(owner, id).is_ok()
+    }
+
     /// Resolves a listing parent ("root" or a directory id) to its path.
     fn resolve_directory(&self, owner: UserId, parent: &str) -> Result<(PathBuf, String), E> {
         if parent == "root" {

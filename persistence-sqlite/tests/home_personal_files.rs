@@ -127,6 +127,10 @@ fn documents_are_owned_durable_bounded_and_moves_cannot_create_cycles() {
     repo.create(a, &folder.id, "hello.txt", Some(b"hello".to_vec()))
         .unwrap();
     let file = repo.list(a, &folder.id).unwrap().remove(0);
+    // Only the owner can resolve an id, and unknown ids never resolve.
+    assert!(repo.contains(a, &file.id));
+    assert!(!repo.contains(b, &file.id));
+    assert!(!repo.contains(a, "ffffffffffffffffffffffffffffffff"));
 
     // Names are real files in the account's home.
     assert_eq!(
