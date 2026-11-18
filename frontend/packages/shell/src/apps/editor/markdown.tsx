@@ -333,7 +333,7 @@ function listFromDom(element: HTMLElement, depth: number): string {
 function tableFromDom(element: HTMLElement): string {
   const rows = Array.from(element.querySelectorAll("tr"));
   if (!rows.length) return "";
-  const cells = (row: Element) => Array.from(row.querySelectorAll("th,td")).map((cell) => inlineFromDom(cell).replace(/\|/g, "\\|").trim());
+  const cells = (row: Element) => Array.from(row.querySelectorAll("th,td")).map((cell) => inlineFromDom(cell).replace(/\\/g, "\\\\").replace(/\|/g, "\\|").trim());
   const header = cells(rows[0]!);
   const lines = [
     `| ${header.join(" | ")} |`,

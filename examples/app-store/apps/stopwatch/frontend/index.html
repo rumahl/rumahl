@@ -14,8 +14,8 @@ const time=document.querySelector('#time');
 function format(ms){const m=Math.floor(ms/60000),s=Math.floor(ms%60000/1000),cs=Math.floor(ms%1000/10);return String(m).padStart(2,'0')+':'+String(s).padStart(2,'0')+'.'+String(cs).padStart(2,'0');}
 function render(){time.textContent=format(elapsed+(running?performance.now()-started:0));if(running)frame=requestAnimationFrame(render);}
 document.querySelector('#toggle').onclick=event=>{if(running){elapsed+=performance.now()-started;running=false;cancelAnimationFrame(frame);event.target.textContent='Start';}else{started=performance.now();running=true;event.target.textContent='Stop';render();}};
-document.querySelector('#lap').onclick=()=>{laps.unshift(time.textContent);const item=document.createElement('div');item.className='item';item.innerHTML='<span>Lap '+laps.length+'</span><span>'+time.textContent+'</span>';document.querySelector('#laps').prepend(item);};
-document.querySelector('#reset').onclick=()=>{running=false;cancelAnimationFrame(frame);elapsed=0;document.querySelector('#toggle').textContent='Start';document.querySelector('#laps').innerHTML='';time.textContent='00:00.00';};
+document.querySelector('#lap').onclick=()=>{laps.unshift(time.textContent);const item=document.createElement('div');item.className='item';const label=document.createElement('span');label.textContent='Lap '+laps.length;const value=document.createElement('span');value.textContent=time.textContent;item.append(label,value);document.querySelector('#laps').prepend(item);};
+document.querySelector('#reset').onclick=()=>{running=false;cancelAnimationFrame(frame);elapsed=0;document.querySelector('#toggle').textContent='Start';document.querySelector('#laps').replaceChildren();time.textContent='00:00.00';};
 render();</script>
 </body>
 </html>

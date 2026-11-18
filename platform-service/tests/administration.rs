@@ -200,16 +200,17 @@ async fn administrators_manage_users_roles_sessions_and_audit() {
     assert_eq!(status, StatusCode::OK);
     assert!(sessions["sessions"].as_array().unwrap().len() >= 2);
 
+    let charlie_password = rumahl_core::UserId::new().to_string();
     let (status, _) = call(
         &app,
         "POST",
         &format!("/api/v1/admin/users/{charlie_id}/password"),
         Some(&alice),
-        Some(serde_json::json!({"password": "new-charlie-password"})),
+        Some(serde_json::json!({"password": charlie_password})),
     )
     .await;
     assert_eq!(status, StatusCode::OK);
-    let charlie = login(&app, "charlie", "new-charlie-password").await;
+    let charlie = login(&app, "charlie", &charlie_password).await;
 
     let (status, renamed) = call(
         &app,

@@ -55,10 +55,6 @@ function decodeText(buffer: ArrayBuffer): string | null {
   }
 }
 
-function escapeHtml(value: string): string {
-  return value.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-}
-
 type LoadState = "loading" | "ready" | "missing" | "binary" | "limit" | "unavailable";
 
 export function EditorApp() {
@@ -194,13 +190,26 @@ export function EditorApp() {
     setBlock(next);
   };
 
-  const insertInlineCode = () => {
+  /** Replaces the current range with a constructed node (never HTML text). */
+  const insertNode = (node: Node) => {
     const selection = window.getSelection();
-    const selected = selection?.toString() ?? "";
+    const range = selection?.rangeCount ? selection.getRangeAt(0) : null;
+    if (!range) return;
+    range.deleteContents();
+    range.insertNode(node);
+    range.setStartAfter(node);
+    range.collapse(true);
+    selection?.removeAllRanges();
+    selection?.addRange(range);
     rich.current?.focus();
-    if (selected) document.execCommand("insertHTML", false, `<code>${escapeHtml(selected)}</code>`);
-    else document.execCommand("insertHTML", false, "<code>code</code>");
     syncRich();
+  };
+
+  const insertInlineCode = () => {
+    const selected = window.getSelection()?.toString() ?? "";
+    const code = document.createElement("code");
+    code.textContent = selected || "code";
+    insertNode(code);
   };
 
   const openLink = () => {
@@ -222,7 +231,13 @@ export function EditorApp() {
         selection.addRange(savedRange.current);
       }
       if (selection && !selection.isCollapsed) document.execCommand("createLink", false, url);
-      else document.execCommand("insertHTML", false, `<a href="${escapeHtml(url)}" rel="noreferrer noopener">${escapeHtml(url)}</a>`);
+      else {
+        const anchor = document.createElement("a");
+        anchor.href = url;
+        anchor.rel = "noreferrer noopener";
+        anchor.textContent = url;
+        insertNode(anchor);
+      }
       syncRich();
     }
     setLinkOpen(false);
