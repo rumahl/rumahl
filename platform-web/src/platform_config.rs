@@ -103,6 +103,14 @@ impl PlatformConfig {
 }
 
 /// Names that could carry a credential are never shown, allow-list or not.
+/// Names that could carry a credential are never shown, allow-list or not.
+/// Shared by the platform configuration and the recorded app image
+/// environment, so one rule decides what an extended configuration view may
+/// ever display.
+pub fn is_display_safe_name(name: &str) -> bool {
+    is_reportable(name)
+}
+
 fn is_reportable(name: &str) -> bool {
     let upper = name.to_ascii_uppercase();
     ["SECRET", "PASSWORD", "TOKEN", "KEY"]

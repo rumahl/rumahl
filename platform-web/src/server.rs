@@ -281,6 +281,7 @@ pub fn router(state: GatewayState) -> Router {
         .merge(crate::files::routes())
         .merge(crate::app_grants::routes())
         .merge(crate::platform_config::routes())
+        .merge(crate::app_runtime::routes())
         .merge(crate::browser_auth::routes())
         .merge(crate::admin::routes())
         .merge(crate::offline::routes())

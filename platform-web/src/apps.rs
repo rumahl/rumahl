@@ -59,6 +59,24 @@ pub struct AppGrantState {
     pub requests: Vec<AppPermissionRequestInfo>,
     pub grants: Vec<AppGrantInfo>,
 }
+/// The recorded runtime environment of an installed app, display-safe.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AppRuntimeEnvironment {
+    /// `web`, `container` or `native`.
+    pub runtime: String,
+    /// The immutable image reference of a container install; `None` when
+    /// nothing was recorded (web/native apps, or an install from before the
+    /// record existed).
+    pub image: Option<String>,
+    /// The image's own environment, without entries whose names could carry
+    /// a credential.
+    pub entries: Vec<AppRuntimeEnvEntry>,
+}
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AppRuntimeEnvEntry {
+    pub name: String,
+    pub value: String,
+}
 /// A user's consent decision, as submitted by the shell.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct GrantIssue {
@@ -362,6 +380,15 @@ pub trait AppProvider: Send + Sync + 'static {
     ) -> Result<AppFileOutcome, AppAccessError> {
         Err(AppAccessError::Unavailable)
     }
+    /// The recorded runtime environment of an installed app. Fails closed
+    /// when no runtime record store is wired.
+    fn app_runtime_environment(
+        &self,
+        _identity: ShellIdentity,
+        _installation: InstallationId,
+    ) -> Result<AppRuntimeEnvironment, AppAccessError> {
+        Err(AppAccessError::Unavailable)
+    }
 }
 #[derive(Clone)]
 struct Lease {
@@ -449,6 +476,17 @@ impl AppAccess {
         let app = self.installed(identity, id, installation)?;
         self.provider
             .app_file(identity, app.installation_id, access)
+    }
+    /// The recorded runtime environment of an installed app.
+    pub fn app_runtime_environment(
+        &self,
+        identity: ShellIdentity,
+        id: &str,
+        installation: &str,
+    ) -> Result<AppRuntimeEnvironment, AppAccessError> {
+        let app = self.installed(identity, id, installation)?;
+        self.provider
+            .app_runtime_environment(identity, app.installation_id)
     }
     pub fn new(
         provider: Arc<dyn AppProvider>,
