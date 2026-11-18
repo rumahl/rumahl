@@ -267,6 +267,7 @@ export function FileList(props: ViewProps) {
       <span className="files-list__kind" role="columnheader">{t("files.type")}</span>
       <span className="files-list__size" role="columnheader">{t("files.size")}</span>
       {props.hostView ? <span className="files-list__modified" role="columnheader">{t("files.modified")}</span> : null}
+      <span className="files-list__actions" role="columnheader"><span className="visually-hidden">{t("files.actions")}</span></span>
     </div>
     <ul role="rowgroup">{props.items.map((item, index) => {
       const label = item.label ?? item.name;
@@ -293,7 +294,7 @@ export function FileList(props: ViewProps) {
         <span className="files-row__kind" role="cell">{itemType(item, t)}</span>
         <span className="files-row__meta files-row__size" role="cell">{item.directory ? "—" : formatSize(item.size)}</span>
         {props.hostView ? <span className="files-row__meta files-row__modified" role="cell">{item.modified ? new Date(item.modified * 1000).toLocaleDateString(locale, { day: "2-digit", month: "short", year: "numeric" }) : "—"}</span> : null}
-        <span className="files-row__action" role="cell">
+        <span className="files-row__action" role="cell" onClick={event => event.stopPropagation()} onDoubleClick={event => event.stopPropagation()}>
           <ItemMenuButton item={item} onMenu={props.onMenu} tabIndex={-1} />
         </span>
       </li>;

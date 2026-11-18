@@ -108,7 +108,9 @@ export const defaultTokens = {
   // Material of the rumahl/ui app input components: "glass" (recessed glass) or
   // "solid" (flat). Independent of the shell material; driven by a theme
   // parameter so a theme (and the user) can choose it.
-  "app.inputs": "glass"
+  "app.inputs": "glass",
+  // Iris keeps its original inset glass; the quieter group recipe is opt-in.
+  "iris.controls": "glass"
 } as const satisfies Record<string, string>;
 
 export type TokenId = keyof typeof defaultTokens;

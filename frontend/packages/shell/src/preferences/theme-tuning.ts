@@ -12,6 +12,7 @@ import {
   type AppearanceSettings,
 } from "./Workspace";
 import { withThemeTransition } from "./theme-transition";
+import { resetAppearanceGroup, resetColorOverrides, resetThemeParameters, type AppearanceResetGroup } from "./appearance-reset";
 
 export type AppearanceTuning = AppearanceSettings;
 export { parseAppearance } from "./Workspace";
@@ -227,12 +228,21 @@ export function useThemeTuning() {
     [tuning, persist],
   );
   const reset = useCallback(() => persist(emptyAppearance), [persist]);
+  const resetGroup = useCallback((group: AppearanceResetGroup) => persist(resetAppearanceGroup(tuning, group)), [persist, tuning]);
+  const resetParameters = useCallback((parameters: Parameters<typeof resetThemeParameters>[1]) => persist(resetThemeParameters(tuning, parameters)), [persist, tuning]);
+  const resetOverrides = useCallback((tokens: readonly string[]) => persist(resetColorOverrides(tuning, tokens)), [persist, tuning]);
   const applyPreset = useCallback(
     (preset: AppearanceSettings) => persist(applyLook(tuning, preset)),
     [persist, tuning],
   );
   return {
     tuning,
+    saving: workspace.busy,
+    ready: workspace.ready,
+    error: workspace.error,
+    resetGroup,
+    resetParameters,
+    resetOverrides,
     applyPreset,
     setSeed,
     setMode,

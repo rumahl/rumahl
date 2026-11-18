@@ -40,6 +40,9 @@ describe("default themes", () => {
 });
 
 test("Iris keeps its established token identity", () => {
+  expect(defaultTheme.tokens["iris.controls"]).toBe("glass");
+  const controls = defaultTheme.parameters.find(parameter => parameter.token === "iris.controls");
+  expect(controls?.kind === "choice" ? controls.options.map(option => option.value) : []).toEqual(["soft", "glass"]);
   expect(defaultTheme.tokens["color.accent"]).toBe("#28694c");
   expect(defaultTheme.tokens["typography.family"]).toContain("Inter");
   expect(defaultTheme.tokens["typography.display"]).toContain("Space Grotesk");

@@ -10,6 +10,13 @@ import { freshStore, ROOT, type Item, type Nav } from "./types";
 
 export type ExplorerError = "conflict" | "folderNotEmpty" | "limit" | "missing" | "unavailable";
 export interface OpenError { name: string; extension: string; program?: string }
+export type FileOperationKind = "createFolder" | "createFile" | "upload" | "rename" | "move" | "remove";
+export interface FileOperation {
+  kind: FileOperationKind;
+  name: string;
+  count: number;
+  phase: "pending" | "complete";
+}
 
 export interface DesktopSources { apps: readonly ShellApp[]; folders: readonly AppFolder[] }
 export interface ExplorerOptions {
@@ -55,6 +62,9 @@ export function useExplorer(request: ShellRequest | null, device: string, advanc
   const [error, setError] = useState<ExplorerError | null>(null);
   const [openError, setOpenError] = useState<OpenError | null>(null);
   const [busy, setBusy] = useState(false);
+  const [operation, setOperation] = useState<FileOperation | null>(null);
+  const [refreshing, setRefreshing] = useState(false);
+  const mutationLock = useRef(false);
   const [revision, setRevision] = useState(0);
   const [desktopFolderId, setDesktopFolderId] = useState<string | null>(null);
   const loadedView = useRef("");
@@ -69,6 +79,7 @@ export function useExplorer(request: ShellRequest | null, device: string, advanc
     setIndex((current) => current + 1);
     setError(null);
     setOpenError(null);
+    setOperation(current => current?.phase === "pending" ? current : null);
   }, [index]);
   const back = useCallback(() => setIndex((current) => Math.max(0, current - 1)), []);
   const forward = useCallback(() => setIndex((current) => Math.min(history.length - 1, current + 1)), [history.length]);
@@ -106,6 +117,7 @@ export function useExplorer(request: ShellRequest | null, device: string, advanc
     // once the fresh data arrives; only real view changes show the loader.
     const view = `${JSON.stringify(nav)}|${advanced}|${device}|${desktopKey ?? ""}|${page}|${pageSize}|${search}`;
     const background = loadedView.current === view;
+    setRefreshing(background);
     if (!background) {
       setLoading(true);
       setError(null);
@@ -134,8 +146,8 @@ export function useExplorer(request: ShellRequest | null, device: string, advanc
             setEntries(value.map((file) => ({ key: file.id, name: file.name, directory: file.directory, size: file.size, children: file.children ?? 0, modified: 0, host: false })));
           }
         })
-        .catch((cause) => { if (!controller.signal.aborted && !background) setError(mapError(cause)); })
-        .finally(() => { if (!controller.signal.aborted) setLoading(false); });
+        .catch((cause) => { if (!controller.signal.aborted) setError(mapError(cause)); })
+        .finally(() => { if (!controller.signal.aborted) { setLoading(false); setRefreshing(false); } });
     } else if (nav.place.kind === "host") {
       const area = nav.place.area;
       const base = nav.segments.join("/");
@@ -160,8 +172,8 @@ export function useExplorer(request: ShellRequest | null, device: string, advanc
             };
           }));
         })
-        .catch((cause) => { if (!controller.signal.aborted && !background) setError(mapError(cause)); })
-        .finally(() => { if (!controller.signal.aborted) setLoading(false); });
+        .catch((cause) => { if (!controller.signal.aborted) setError(mapError(cause)); })
+        .finally(() => { if (!controller.signal.aborted) { setLoading(false); setRefreshing(false); } });
     } else {
       // Virtual desktop: app shortcuts + app folders + the real desktop files.
       const sources = desktopRef.current;
@@ -179,6 +191,7 @@ export function useExplorer(request: ShellRequest | null, device: string, advanc
         setTotal(filtered.length);
         setEntries(filtered.slice(page * pageSize, (page + 1) * pageSize));
         setLoading(false);
+        setRefreshing(false);
       } else {
         const filed = new Set((sources?.folders ?? []).flatMap((folderItem) => folderItem.apps));
         for (const folderItem of sources?.folders ?? []) virtual.push({ key: `folder:${folderItem.id}`, name: folderItem.name, directory: true, size: 0, children: folderItem.apps.length, modified: 0, host: false, appFolder: true });
@@ -201,6 +214,7 @@ export function useExplorer(request: ShellRequest | null, device: string, advanc
             setTotal(filtered.length);
             setEntries(filtered.slice(page * pageSize, (page + 1) * pageSize));
             setLoading(false);
+            setRefreshing(false);
           }
         }).catch(() => {
           if (!controller.signal.aborted) {
@@ -210,6 +224,7 @@ export function useExplorer(request: ShellRequest | null, device: string, advanc
             setTotal(filtered.length);
             setEntries(filtered.slice(page * pageSize, (page + 1) * pageSize));
             setLoading(false);
+            setRefreshing(false);
           }
         });
       }
@@ -233,22 +248,28 @@ export function useExplorer(request: ShellRequest | null, device: string, advanc
     return id;
   }, [isStore, storeParent, isDesktopRoot, request, desktopFolderId]);
 
-  const mutate = useCallback(async (method: string, query: Record<string, string>, body?: File): Promise<boolean> => {
-    if (!request || busy) return false;
+  const mutate = useCallback(async (method: string, query: Record<string, string>, body?: File, kind: FileOperationKind = "rename"): Promise<boolean> => {
+    if (!request || mutationLock.current || !isWritable) return false;
+    mutationLock.current = true;
     setBusy(true);
     setError(null);
+    const action = { kind, name: query.name ?? "", count: 1 };
+    setOperation({ ...action, phase: "pending" });
     try {
       const response = await request(`/api/v1/files?${new URLSearchParams(query)}`, { method, credentials: "same-origin", headers: { "Content-Type": "application/octet-stream" }, ...(body ? { body } : {}) });
       if (!response.ok) throw new Error(fail(response.status));
       setRevision((value) => value + 1);
+      setOperation({ ...action, phase: "complete" });
       return true;
     } catch (cause) {
       setError(mapError(cause));
+      setOperation(null);
       return false;
     } finally {
       setBusy(false);
+      mutationLock.current = false;
     }
-  }, [request, busy]);
+  }, [request, isWritable]);
 
   const open = useCallback((item: Item) => {
     setOpenError(null);
@@ -294,9 +315,12 @@ export function useExplorer(request: ShellRequest | null, device: string, advanc
   }, [nav, device]);
 
   const removeMany = useCallback(async (ids: readonly string[]): Promise<boolean> => {
-    if (!request || ids.length === 0) return false;
+    if (!request || ids.length === 0 || mutationLock.current || !isWritable) return false;
+    mutationLock.current = true;
     setBusy(true);
     setError(null);
+    const action = { kind: "remove" as const, name: entries.find(entry => entry.key === ids[0])?.name ?? "", count: ids.length };
+    setOperation({ ...action, phase: "pending" });
     let removed = 0;
     try {
       // Serialized rather than fire-and-forget: every delete settles before the
@@ -315,15 +339,18 @@ export function useExplorer(request: ShellRequest | null, device: string, advanc
         }
         removed += 1;
       }
+      setOperation({ ...action, phase: "complete" });
       return true;
     } catch (cause) {
       setError(mapError(cause));
+      setOperation(null);
       return false;
     } finally {
       if (removed > 0) setRevision((value) => value + 1);
       setBusy(false);
+      mutationLock.current = false;
     }
-  }, [request, entries]);
+  }, [request, entries, isWritable]);
 
   return {
     nav,
@@ -334,6 +361,8 @@ export function useExplorer(request: ShellRequest | null, device: string, advanc
     openError,
     clearOpenError: () => setOpenError(null),
     busy,
+    operation,
+    refreshing,
     isStore,
     storeParent,
     canBack: index > 0,
@@ -346,36 +375,36 @@ export function useExplorer(request: ShellRequest | null, device: string, advanc
     forward,
     up,
     clearError: () => setError(null),
-    refresh: () => setRevision((value) => value + 1),
+    refresh: () => { setError(null); setOperation(current => current?.phase === "pending" ? current : null); setRevision((value) => value + 1); },
     isWritable,
     createFolder: async (name: string) => {
       const parent = await writeParent();
       if (!parent) { setError("unavailable"); return false; }
-      return mutate("POST", { parent, name, directory: "true" });
+      return mutate("POST", { parent, name, directory: "true" }, undefined, "createFolder");
     },
     createFile: async (name: string) => {
       const parent = await writeParent();
       if (!parent) { setError("unavailable"); return false; }
-      return mutate("POST", { parent, name, directory: "false" });
+      return mutate("POST", { parent, name, directory: "false" }, undefined, "createFile");
     },
     upload: async (file: File) => {
       if (file.size > 16 * 1024 * 1024) return setError("limit");
       const parent = await writeParent();
       if (!parent) return setError("unavailable");
-      await mutate("POST", { parent, name: file.name, directory: "false" }, file);
+      await mutate("POST", { parent, name: file.name, directory: "false" }, file, "upload");
     },
     rename: async (id: string, name: string) => {
       const parent = await writeParent();
       if (!parent) return setError("unavailable");
-      await mutate("PUT", { id, parent, name });
+      await mutate("PUT", { id, parent, name }, undefined, "rename");
     },
     remove: (id: string) => removeMany([id]),
     removeMany,
     move: async (id: string, name: string) => {
       const parent = await writeParent();
-      if (!parent) return setError("unavailable");
-      await mutate("PUT", { id, parent, name });
+      if (!parent) { setError("unavailable"); return false; }
+      return mutate("PUT", { id, parent, name }, undefined, "move");
     },
-    relocate: (id: string, name: string, parent: string) => mutate("PUT", { id, parent, name }),
+    relocate: (id: string, name: string, parent: string) => mutate("PUT", { id, parent, name }, undefined, "move"),
   };
 }

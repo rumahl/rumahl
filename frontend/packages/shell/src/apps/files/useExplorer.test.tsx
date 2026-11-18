@@ -123,3 +123,63 @@ test("leaves a host location when advanced mode is demoted", async () => {
   await waitFor(() => expect(result.current.nav.place.kind).toBe("store"));
   expect(result.current.entries).toEqual([]);
 });
+
+test("exposes real pending/completed feedback and rejects same-tick duplicate writes", async () => {
+  let finish: (value: unknown) => void = () => {};
+  const pending = new Promise(resolve => { finish = resolve; });
+  state.request.mockImplementation(async (_url: string, init?: RequestInit) => init?.method === "POST"
+    ? pending : { ok: true, json: async () => [] });
+  const { result } = renderHook(() => useExplorer(state.request as unknown as ShellRequest, "device", false));
+  await waitFor(() => expect(result.current.loading).toBe(false));
+  let first: Promise<boolean>;
+  let duplicate: Promise<boolean>;
+  await act(async () => {
+    first = result.current.createFolder("Documents");
+    duplicate = result.current.createFolder("Documents");
+    await duplicate;
+  });
+  expect(result.current.busy).toBe(true);
+  expect(result.current.operation).toMatchObject({ kind: "createFolder", name: "Documents", phase: "pending" });
+  act(() => result.current.refresh());
+  expect(result.current.operation?.phase).toBe("pending");
+  expect(state.request.mock.calls.filter(([, init]) => init?.method === "POST")).toHaveLength(1);
+  await act(async () => { finish({ ok: true }); await first!; });
+  expect(result.current.operation).toMatchObject({ kind: "createFolder", name: "Documents", phase: "complete" });
+  expect(result.current.busy).toBe(false);
+});
+
+test("a failed mutation never reports success and can be retried", async () => {
+  state.request.mockImplementation(async (_url: string, init?: RequestInit) => init?.method === "PUT"
+    ? { ok: false, status: 409 } : { ok: true, json: async () => [] });
+  const { result } = renderHook(() => useExplorer(state.request as unknown as ShellRequest, "device", false));
+  await waitFor(() => expect(result.current.loading).toBe(false));
+  await act(async () => { await result.current.move("one", "notes.txt"); });
+  expect(result.current.operation).toBeNull();
+  expect(result.current.error).toBe("conflict");
+  expect(result.current.busy).toBe(false);
+  state.request.mockImplementation(async () => ({ ok: true, json: async () => [] }));
+  await act(async () => { await result.current.move("one", "notes.txt"); });
+  expect(result.current.operation).toMatchObject({ kind: "move", phase: "complete" });
+});
+
+test("refresh failure retains files and reports an error instead of silently failing", async () => {
+  state.request.mockResolvedValue({ ok: true, json: async () => [file("one", "notes.txt")] });
+  const { result } = renderHook(() => useExplorer(state.request as unknown as ShellRequest, "device", false));
+  await waitFor(() => expect(result.current.entries).toHaveLength(1));
+  state.request.mockRejectedValue(new Error("network"));
+  act(() => result.current.refresh());
+  await waitFor(() => expect(result.current.error).toBe("unavailable"));
+  expect(result.current.entries[0]?.name).toBe("notes.txt");
+  expect(result.current.refreshing).toBe(false);
+});
+
+test("read-only host views cannot mutate even through direct hook calls", async () => {
+  state.request.mockResolvedValue({ ok: true, json: async () => [] });
+  const { result } = renderHook(() => useExplorer(state.request as unknown as ShellRequest, "device", true));
+  act(() => result.current.navigate(freshHost("system")));
+  await waitFor(() => expect(result.current.loading).toBe(false));
+  state.request.mockClear();
+  await act(async () => { await result.current.removeMany(["one"]); await result.current.relocate("one", "notes.txt", "target"); });
+  expect(state.request).not.toHaveBeenCalled();
+  expect(result.current.operation).toBeNull();
+});

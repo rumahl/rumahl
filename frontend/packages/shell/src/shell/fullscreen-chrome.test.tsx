@@ -66,7 +66,7 @@ describe("fullscreen chrome", () => {
     expect(shell).not.toHaveAttribute("data-dock-clearance");
   });
 
-  test("offers the clearance switch only while the dock stays visible", async () => {
+  test("enables the clearance switch only while the dock stays visible", async () => {
     localStorage.setItem("rumahl.demo.workspace", JSON.stringify({
       version: 1,
       windows: [],
@@ -74,7 +74,7 @@ describe("fullscreen chrome", () => {
       fullscreenChrome: { hideTopbar: true, hideDock: false, dockClearance: false }
     }));
     const first = render(<App snapshot={demoSnapshot} initialLocation="/settings/display/windows" />);
-    expect(await screen.findByRole("switch", { name: "Keep windows above the dock" })).toBeInTheDocument();
+    expect(await screen.findByRole("switch", { name: "Keep windows above the dock" })).toBeEnabled();
     first.unmount();
     localStorage.setItem("rumahl.demo.workspace", JSON.stringify({
       version: 1,
@@ -84,7 +84,7 @@ describe("fullscreen chrome", () => {
     }));
     render(<App snapshot={demoSnapshot} initialLocation="/settings/display/windows" />);
     expect(await screen.findByRole("switch", { name: "Hide dock" })).toBeInTheDocument();
-    expect(screen.queryByRole("switch", { name: "Keep windows above the dock" })).toBeNull();
+    expect(screen.getByRole("switch", { name: "Keep windows above the dock" })).toBeDisabled();
   });
 
   test("an open launcher app releases the dock row", async () => {

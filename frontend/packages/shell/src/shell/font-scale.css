@@ -14,12 +14,12 @@
   height: calc(17px * var(--rumahl-ui-typography-scale, 1));
 }
 .shell .settings-content .setting {
-  gap: calc(15px * var(--rumahl-ui-typography-scale, 1));
-  min-height: calc(65px * var(--rumahl-ui-typography-scale, 1));
-  padding: calc(15px * var(--rumahl-ui-typography-scale, 1)) calc(18px * var(--rumahl-ui-typography-scale, 1));
+  gap: var(--group-row-gap);
+  min-height: calc(var(--group-row-height) * var(--rumahl-ui-typography-scale, 1));
+  padding: var(--group-row-padding);
 }
-.shell .settings-content .setting .copy strong { font-size: calc(12px * var(--rumahl-ui-typography-scale, 1)); }
-.shell .settings-content .setting .copy p { font-size: calc(12px * var(--rumahl-ui-typography-scale, 1)); }
+.shell .settings-content .setting .copy strong { font-size: var(--group-title-size); font-weight: 600; line-height: 1.4; }
+.shell .settings-content .setting .copy p { font-size: var(--group-description-size); line-height: 1.5; }
 .shell .settings-content .section-title { font-size: calc(12px * var(--rumahl-ui-typography-scale, 1)); }
 .shell .settings-content .pagetitle,
 .shell .settings-content .settings-page-heading h1 { font-size: calc(30px * var(--rumahl-ui-typography-scale, 1)); }
@@ -108,7 +108,7 @@
 .shell .settings-content .settings-page-heading[data-stuck] { padding-block: calc(10px * var(--rumahl-ui-typography-scale, 1)); }
 .shell .settings-content .settings-page-heading[data-stuck] h1 { margin-block: 0; }
 .shell .settings-content .settings-page-heading[data-stuck] p { max-height: 0; margin-block: 0; opacity: 0; }
-.shell .settings-group { margin-bottom: calc(28px * var(--rumahl-ui-typography-scale, 1)); border-radius: calc(15px * var(--rumahl-ui-typography-scale, 1)); }
+.shell .settings-group { margin-bottom: calc(28px * var(--rumahl-ui-typography-scale, 1)); border-radius: var(--group-radius); }
 .shell .rumahl-toggle-group { flex-wrap: wrap !important; overflow-x: visible !important; }
 .shell .rumahl-toggle-group.appearance-choice__group {
   min-height: calc(32px * var(--rumahl-ui-typography-scale, 1)) !important;

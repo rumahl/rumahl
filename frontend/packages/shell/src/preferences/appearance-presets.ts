@@ -74,7 +74,7 @@ const KEYS = [
 
 function tokensKey(tokens: AppearanceSettings["tokens"]): string {
   return JSON.stringify(Object.keys(tokens)
-    .filter((key) => key !== "texture.wallpaper")
+    .filter((key) => key !== "texture.wallpaper" && key !== "iris.controls")
     .sort()
     .map((key) => [key, tokens[key]]));
 }
@@ -87,6 +87,8 @@ export function applyLook(current: AppearanceSettings, preset: AppearanceSetting
   const tokens = { ...preset.tokens };
   const wallpaper = current.tokens["texture.wallpaper"];
   if (wallpaper !== undefined) tokens["texture.wallpaper"] = wallpaper;
+  const controls = current.tokens["iris.controls"];
+  if (controls !== undefined) tokens["iris.controls"] = controls;
   return {
     ...preset,
     mode: current.mode,

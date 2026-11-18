@@ -58,6 +58,10 @@
   --group-row-height: 65px;
   --group-row-gap: 15px;
   --group-row-padding: 15px 18px;
+  --group-divider-inset: 18px;
+  --group-title-size: calc(13px * var(--rumahl-ui-typography-scale, 1));
+  --group-description-size: calc(12px * var(--rumahl-ui-typography-scale, 1));
+  --group-control-width: 202px;
   --group-divider: 1px solid
     var(--rumahl-ui-color-divider, rgba(255, 255, 255, 0.1));
 

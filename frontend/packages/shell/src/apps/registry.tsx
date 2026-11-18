@@ -22,7 +22,7 @@ export interface FirstPartyApp {
 // here. They need a Rust-authorized descriptor and an isolated app host.
 export const firstPartyApps: readonly FirstPartyApp[] = [
   { id: "files", title: "files.title", customTopbar: true, customTopbarFullscreen: true, routes: [{ index: true, Component: FilesApp }] },
-  { id: "editor", title: "editor.title", preferredSize: { width: 900, height: 620 }, routes: [{ index: true, Component: EditorApp }] },
+  { id: "editor", title: "editor.title", customTopbar: true, preferredSize: { width: 900, height: 620 }, routes: [{ index: true, Component: EditorApp }] },
   { id: "pets", title: "pets.title", preferredSize: { width: 1040, height: 740 }, routes: [{ index: true, Component: PetsApp }] },
   { id: "store", title: "store.title", customTopbar: true, customTopbarFullscreen: false, preferredSize: { width: 1200, height: 760 }, settingsPath: "/settings/store", routes: [{ index: true, Component: StoreApp }] }
 ];

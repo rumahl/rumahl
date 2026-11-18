@@ -12,7 +12,8 @@ import { MobileSettings } from "./MobileSettings";
 import { StoreSettings } from "./StoreSettings";
 import { themes } from "@rumahl/ui/themes";
 import { useTheme } from "@rumahl/ui";
-import { useEffect, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from "react";
+import { GroupContainer, GroupRow } from "@rumahl/ui/components";
+import { useEffect, useId, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { useShellPreferences } from "../preferences/ShellPreferences";
 import { WorkspaceSettings } from "../preferences/WorkspaceSettings";
@@ -221,29 +222,24 @@ function AccountSettings() {
   return <section className="display-settings">
     <SettingsHeading title={t("settings.account")} help={t("settings.accountHelp")} back="/settings" />
     <h3 className="section-title">{t("settings.account.profile")}</h3>
-    <div className="settings-group">
-      <div className="setting">
-        <div className="copy"><strong>{t("settings.account.displayName")}</strong><p>{snapshot.user.displayName}</p></div>
-        <div className="visual"><span className="settings-account-avatar" aria-hidden="true">{initial}</span></div>
-      </div>
-      <div className="setting">
-        <div className="copy"><strong>{t("settings.account.locale")}</strong><p>{snapshot.user.locale}</p></div>
-      </div>
-      <div className="setting">
-        <div className="copy"><strong>{t("settings.account.role")}</strong><p>{t(`admin.role.${snapshot.user.role ?? "user"}`)}</p></div>
-      </div>
-    </div>
+    <GroupContainer>
+      <GroupRow title={t("settings.account.displayName")} description={snapshot.user.displayName}>
+        <span className="settings-account-avatar" aria-hidden="true">{initial}</span>
+      </GroupRow>
+      <GroupRow title={t("settings.account.locale")} value={snapshot.user.locale} />
+      <GroupRow title={t("settings.account.role")} value={t(`admin.role.${snapshot.user.role ?? "user"}`)} />
+    </GroupContainer>
     <h3 className="section-title">{t("settings.account.session")}</h3>
-    <div className="settings-group">
-      <div className="setting">
-        <div className="copy"><strong>{t("settings.account.signOut")}</strong><p>{t("settings.account.signOutHelp")}</p></div>
-        <div className="visual"><Button variant="danger" type="submit" form="rumahl-sign-out">{t("settings.account.signOut")}</Button></div>
-      </div>
-    </div>
+    <GroupContainer>
+      <GroupRow title={t("settings.account.signOut")} description={t("settings.account.signOutHelp")}>
+        <Button variant="danger" type="submit" form="rumahl-sign-out">{t("settings.account.signOut")}</Button>
+      </GroupRow>
+    </GroupContainer>
   </section>;
 }
 
 function AppsSettings() {
+  const statusId = useId();
   const { t } = useI18n();
   const { dispatch } = useShell();
   const statusIndicators = useAppStatusIndicators();
@@ -253,12 +249,11 @@ function AppsSettings() {
   const systemApps = managed.filter((app) => app.system && app.kind === "app");
   return <section className="display-settings">
     <SettingsHeading title={t("settings.apps")} help={t("settings.appsHelp")} back="/settings" />
-    <div className="settings-group">
-      <div className="setting">
-        <div className="copy"><strong>{t("settings.appStatusIndicators")}</strong><p>{t("settings.appStatusIndicatorsHelp")}</p></div>
-        <div className="visual"><input type="checkbox" role="switch" aria-label={t("settings.appStatusIndicators")} checked={statusIndicators} onChange={(event) => setAppStatusIndicators(event.target.checked)} /></div>
-      </div>
-    </div>
+    <GroupContainer>
+      <GroupRow title={t("settings.appStatusIndicators")} description={t("settings.appStatusIndicatorsHelp")} controlId={statusId}>
+        <input id={statusId} type="checkbox" role="switch" checked={statusIndicators} onChange={(event) => setAppStatusIndicators(event.target.checked)} />
+      </GroupRow>
+    </GroupContainer>
     {apps.length
       ? <div className="settings-group settings-nav">
           {apps.map((app) => <NavRow key={app.id} to={app.managePath!} title={app.title}
@@ -773,11 +768,11 @@ function Links() {
 function NavRow({ to, href, icon, title, subtitle }: { to?: string; href?: string; icon?: ReactNode; title: string; subtitle?: string }) {
   const external = href !== undefined;
   const body = <>
-    {icon ? <span className="settings-nav__icon" aria-hidden="true">{icon}</span> : null}
-    <span className="settings-nav__text"><strong>{title}</strong>{subtitle ? <small>{subtitle}</small> : null}</span>
+    {icon ? <span className="settings-nav__icon rumahl-group__link-icon" aria-hidden="true">{icon}</span> : null}
+    <span className="settings-nav__text rumahl-group__link-text"><strong>{title}</strong>{subtitle ? <small>{subtitle}</small> : null}</span>
     {external ? <ExternalLinkIcon className="settings-nav__ext" /> : <span className="settings-nav__chevron" aria-hidden="true">›</span>}
   </>;
   return external
-    ? <a className="settings-nav__row" href={href} target="_blank" rel="noreferrer noopener">{body}</a>
-    : <ShellLink className="settings-nav__row" to={to!}>{body}</ShellLink>;
+    ? <a className="settings-nav__row rumahl-group__link" href={href} target="_blank" rel="noreferrer noopener">{body}</a>
+    : <ShellLink className="settings-nav__row rumahl-group__link" to={to!}>{body}</ShellLink>;
 }

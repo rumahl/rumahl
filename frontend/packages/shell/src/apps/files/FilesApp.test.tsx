@@ -346,6 +346,37 @@ test("shows the modified column only for host listings", async () => {
   expect(screen.getByRole("columnheader", { name: "files.modified" })).toBeInTheDocument();
 });
 
+test("native detail rows retain modifier selection without adding admin controls", async () => {
+  listing([{ id: "one", name: "notes.txt", directory: false, size: 12 }, { id: "two", name: "photo.png", directory: false, size: 24 }]);
+  render(<FilesApp />);
+  await screen.findByText("notes.txt");
+  fireEvent.click(screen.getByRole("radio", { name: "files.listView" }));
+  const table = screen.getByRole("table");
+  const rows = within(table).getAllByRole("row").slice(1);
+  fireEvent.click(within(rows[0]!).getByText("notes.txt"));
+  expect(rows[0]).toHaveAttribute("aria-selected", "true");
+  expect(rows[1]).toHaveAttribute("aria-selected", "false");
+  expect(state.open).not.toHaveBeenCalled();
+  fireEvent.click(within(rows[1]!).getByText("photo.png"), { ctrlKey: true });
+  expect(rows.every(row => row.getAttribute("aria-selected") === "true")).toBe(true);
+  expect(within(table).queryByRole("checkbox")).toBeNull();
+  expect(table.querySelector(".files-row__quick-action")).toBeNull();
+});
+
+test("detail rows open on double click and retain inline keyboard rename", async () => {
+  listing([{ id: "one", name: "notes.txt", directory: false, size: 12 }, { id: "two", name: "other.txt", directory: false, size: 24 }]);
+  render(<FilesApp />);
+  await screen.findByText("notes.txt");
+  fireEvent.click(screen.getByRole("radio", { name: "files.listView" }));
+  const rows = within(screen.getByRole("table")).getAllByRole("row").slice(1);
+  fireEvent.click(within(rows[0]!).getByText("notes.txt"));
+  fireEvent.doubleClick(within(rows[1]!).getByText("other.txt"));
+  expect(state.open).toHaveBeenCalledWith("/app/editor?name=other.txt&id=two");
+  const nameCell = rows[1]!.querySelector("[data-file-focus]")!;
+  fireEvent.keyDown(nameCell, { key: "F2" });
+  expect(screen.getByRole("textbox", { name: "files.rename" })).toHaveValue("other.txt");
+});
+
 test("reports a non-empty folder separately from a name conflict", async () => {
   const files = [{ id: "folder-1", name: "Projects", directory: true, size: 0 }];
   state.live.request.mockImplementation(async (url: string, init?: RequestInit) => {

@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { RumahlDialog, useRegisterMobileNav, type MobileIslandNavItem } from "@rumahl/ui/components";
-import { GridIcon, RefreshIcon, SearchIcon, SettingsIcon } from "../../icons";
+import { CheckIcon, GridIcon, RefreshIcon, SearchIcon, SettingsIcon } from "../../icons";
 import { useI18n } from "../../i18n";
 import { useOsModePolicy } from "../../preferences/OsMode";
 import { browserProfile } from "../../preferences/storage";
@@ -44,7 +44,8 @@ export function FilesApp() {
   const { advancedSettings } = useOsModePolicy();
   const apps = useShellApps();
   const workspace = useWorkspace();
-  const device = browserProfile().id;
+  // Profile discovery touches storage/cookies; do it once, not on every selection.
+  const [device] = useState(() => browserProfile().id);
   const desktopSources = useMemo(() => ({ apps, folders: workspace.effective.folders }), [apps, workspace.effective.folders]);
   const desktopKey = useMemo(() => JSON.stringify({ a: apps.map((app) => app.id), f: workspace.effective.folders.map((folderItem) => [folderItem.id, folderItem.apps]) }), [apps, workspace.effective.folders]);
   const [page, setPage] = useState(0);
@@ -213,6 +214,12 @@ export function FilesApp() {
     explorer.navigate(freshDesktop());
   }
 
+  async function paste() {
+    const item = clipboard;
+    if (!item || explorer.busy) return;
+    if (await explorer.move(item.id, item.name)) setClipboard(current => current === item ? null : current);
+  }
+
   function focusItem(key: string) {
     root.current?.querySelectorAll<HTMLElement>("[data-file-key]").forEach((element) => {
       if (element.dataset.fileKey === key) element.focus({ preventScroll: true });
@@ -220,7 +227,7 @@ export function FilesApp() {
   }
 
   function requestDelete(keys: Iterable<string>) {
-    if (!explorer.isWritable) return;
+    if (!explorer.isWritable || explorer.busy) return;
     const allowed = [...new Set(keys)].filter((key) => {
       const item = explorer.entries.find((entry) => entry.key === key);
       return item && !item.appPath && !item.appFolder;
@@ -268,7 +275,7 @@ export function FilesApp() {
     renameKey,
     draggingKey,
     dragOverKey,
-    writable: explorer.isWritable,
+    writable: explorer.isWritable && !explorer.busy,
     hostView: explorer.nav.place.kind === "host",
     openOnTap: mobile,
     onSelect: select,
@@ -306,12 +313,13 @@ export function FilesApp() {
           : []),
         ...(explorer.isWritable && !item.appPath && !item.appFolder
           ? [
-              { label: t("files.rename"), icon: <PencilIcon />, onSelect: () => setRenameKey(item.key) },
-              { label: t("files.move"), icon: <MoveIcon />, onSelect: () => setClipboard({ id: item.key, name: item.name }) },
+              { label: t("files.rename"), icon: <PencilIcon />, disabled: explorer.busy, onSelect: () => setRenameKey(item.key) },
+              { label: t("files.move"), icon: <MoveIcon />, disabled: explorer.busy, onSelect: () => setClipboard({ id: item.key, name: item.name }) },
               {
                 label: t("files.delete"),
                 icon: <TrashIcon />,
                 danger: true,
+                disabled: explorer.busy,
                 onSelect: () => requestDelete(selected.has(item.key) ? selected : [item.key])
               },
             ]
@@ -322,11 +330,11 @@ export function FilesApp() {
     const items: MenuItem[] = [];
     if (explorer.isWritable) {
       items.push(
-        { label: t("files.newFolder"), icon: <PlusIcon />, onSelect: newFolder },
-        { label: t("files.newFile"), icon: <FilePlusIcon />, onSelect: newFile },
-        { label: t("files.upload"), icon: <UploadIcon />, onSelect: () => uploadInput.current?.click() },
+        { label: t("files.newFolder"), icon: <PlusIcon />, disabled: explorer.busy, onSelect: newFolder },
+        { label: t("files.newFile"), icon: <FilePlusIcon />, disabled: explorer.busy, onSelect: newFile },
+        { label: t("files.upload"), icon: <UploadIcon />, disabled: explorer.busy, onSelect: () => uploadInput.current?.click() },
       );
-      if (clipboard) items.push({ label: t("files.moveHere"), icon: <MoveIcon />, onSelect: () => { void explorer.move(clipboard.id, clipboard.name); setClipboard(null); } });
+      if (clipboard) items.push({ label: t("files.moveHere"), icon: <MoveIcon />, disabled: explorer.busy, onSelect: paste });
     }
     items.push(
       { label: t("files.selectAll"), onSelect: selectAll },
@@ -348,9 +356,9 @@ export function FilesApp() {
       : explorer.nav.segments.at(-1) ?? locationLabel;
   const mobileActions: MenuItem[] = [
     ...(explorer.isWritable ? [
-      { label: t("files.newFolder"), icon: <PlusIcon />, onSelect: newFolder },
-      { label: t("files.newFile"), icon: <FilePlusIcon />, onSelect: newFile },
-      { label: t("files.upload"), icon: <UploadIcon />, onSelect: () => uploadInput.current?.click() },
+      { label: t("files.newFolder"), icon: <PlusIcon />, disabled: explorer.busy, onSelect: newFolder },
+      { label: t("files.newFile"), icon: <FilePlusIcon />, disabled: explorer.busy, onSelect: newFile },
+      { label: t("files.upload"), icon: <UploadIcon />, disabled: explorer.busy, onSelect: () => uploadInput.current?.click() },
     ] : []),
     {
       label: view === "list" ? t("files.gridView") : t("files.listView"),
@@ -360,7 +368,8 @@ export function FilesApp() {
     ...(clipboard ? [{
       label: t("files.moveHere"),
       icon: <MoveIcon />,
-      onSelect: () => { void explorer.move(clipboard.id, clipboard.name); setClipboard(null); }
+      disabled: explorer.busy,
+      onSelect: paste
     }] : []),
     { label: t("files.refresh"), icon: <RefreshIcon />, onSelect: explorer.refresh }
   ];
@@ -387,7 +396,7 @@ export function FilesApp() {
       return;
     }
     if ((event.key === "Enter" || event.key === " ") && single) { event.preventDefault(); explorer.open(single); return; }
-    if (!explorer.isWritable) return;
+    if (!explorer.isWritable || explorer.busy) return;
     if (event.key === "F2" && single && !single.appPath && !single.appFolder) { event.preventDefault(); setRenameKey(single.key); return; }
     if (event.key === "Delete") { event.preventDefault(); requestDelete(selected); }
   }
@@ -399,7 +408,7 @@ export function FilesApp() {
     onNavigate={explorer.navigate} onBack={explorer.back} onForward={explorer.forward} onUp={explorer.up}
     onView={chooseView} onSearch={setSearch}
     onNewFolder={newFolder} onNewFile={newFile} onUpload={explorer.upload}
-    onPaste={() => { if (clipboard) { void explorer.move(clipboard.id, clipboard.name); setClipboard(null); } }}
+    onPaste={paste}
   />;
   const fallbackChrome = compact || !topbarHost;
 
@@ -440,7 +449,7 @@ export function FilesApp() {
           onBack={explorer.back} onForward={explorer.forward} onUp={explorer.up}
           onView={chooseView} onSearch={setSearch}
           onNewFolder={newFolder} onNewFile={newFile} onUpload={explorer.upload}
-          onPaste={() => { if (clipboard) { void explorer.move(clipboard.id, clipboard.name); setClipboard(null); } }}
+          onPaste={paste}
         />
       </> : null}
       {explorer.error ? <div className="files-alert" role="alert">
@@ -457,7 +466,7 @@ export function FilesApp() {
         </span>
         <button type="button" className="files-alert__close" aria-label={t("files.dismiss")} onClick={explorer.clearOpenError}>×</button>
       </div> : null}
-      <div className="files-surface" ref={surface} aria-busy={explorer.loading} tabIndex={0}
+      <div className="files-surface" ref={surface} aria-busy={explorer.loading || explorer.busy || explorer.refreshing} tabIndex={0}
         {...marquee.handlers}
         onContextMenu={(event) => {
           if ((event.target as HTMLElement).closest("[data-file-key], .files-menu")) return;
@@ -475,7 +484,11 @@ export function FilesApp() {
             </div>
           : view === "grid" ? <FileGrid {...viewProps} /> : <FileList {...viewProps} />}
       </div>
-      <div className="files-status" role="status" aria-live="polite">
+      <div className="files-status" role="status" aria-live="polite" aria-atomic="true">
+        {explorer.operation ? <span className="files-status__operation" data-phase={explorer.operation.phase}>
+          {explorer.operation.phase === "pending" ? <RefreshIcon /> : <CheckIcon />}
+          <span>{t(`files.operation.${explorer.operation.kind}.${explorer.operation.phase}`, { name: explorer.operation.name, count: explorer.operation.count })}</span>
+        </span> : explorer.refreshing ? <span className="files-status__operation" data-phase="pending"><RefreshIcon /><span>{t("files.refreshing")}</span></span> : null}
         {explorer.loading
           ? <span className="files-status__count">{t("files.loading")}</span>
           : <>

@@ -1,5 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ClipboardEvent as ReactClipboardEvent, type KeyboardEvent, type MouseEvent as ReactMouseEvent } from "react";
 import { Button } from "../../components/Button";
+import { createPortal } from "react-dom";
+import { RumahlButtonGroup, RumahlDialog } from "@rumahl/ui/components";
+import { DocumentIcon, RefreshIcon } from "../../icons";
+import { useAppTopbarHost } from "../../components/ProtectedWindow";
+import { EditorToolIcon, type EditorTool } from "./EditorToolIcon";
 import { useI18n } from "../../i18n";
 import { browserProfile } from "../../preferences/storage";
 import { useWindowLocation } from "../../routing/window-location";
@@ -59,6 +64,7 @@ type LoadState = "loading" | "ready" | "missing" | "binary" | "limit" | "unavail
 export function EditorApp() {
   const { t } = useI18n();
   const { live, open } = useShell();
+  const topbarHost = useAppTopbarHost();
   const location = useWindowLocation();
   const target = useMemo(() => readTarget((location ?? "").split("?")[1] ?? ""), [location]);
   const markdown = target ? isMarkdownFile(target.name) : false;
@@ -73,6 +79,7 @@ export function EditorApp() {
   const [linkValue, setLinkValue] = useState("https://");
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState(false);
+  const [reloadConfirm, setReloadConfirm] = useState(false);
   const [cursor, setCursor] = useState({ line: 1, column: 1 });
   const area = useRef<HTMLTextAreaElement>(null);
   const rich = useRef<HTMLDivElement>(null);
@@ -231,6 +238,7 @@ export function EditorApp() {
     const input = (event.target as HTMLElement).closest('input[type="checkbox"]') as HTMLInputElement | null;
     if (input) {
       event.preventDefault();
+      if (readOnly) return;
       input.checked = !input.checked;
       syncRich();
     }
@@ -239,6 +247,7 @@ export function EditorApp() {
   const onRichPaste = (event: ReactClipboardEvent<HTMLDivElement>) => {
     // Paste as plain text: never inject foreign HTML into the document.
     event.preventDefault();
+    if (readOnly) return;
     const textValue = event.clipboardData.getData("text/plain");
     if (textValue) document.execCommand("insertText", false, textValue);
   };
@@ -246,10 +255,12 @@ export function EditorApp() {
   const onRichKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
     if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "s") {
       event.preventDefault();
+      event.stopPropagation();
       void save();
     }
-    if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
+    if (!readOnly && (event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
       event.preventDefault();
+      event.stopPropagation();
       openLink();
     }
   };
@@ -271,7 +282,7 @@ export function EditorApp() {
 
   if (!target) {
     return <section className="editor editor--empty">
-      <span className="editor__empty-mark" aria-hidden="true">Aa</span>
+      <span className="editor__empty-mark" aria-hidden="true"><DocumentIcon /></span>
       <h1>{t("editor.emptyTitle")}</h1>
       <p>{t("editor.emptyHelp")}</p>
       <Button onClick={() => open("/app/files")}>{t("editor.openFiles")}</Button>
@@ -280,47 +291,52 @@ export function EditorApp() {
 
   const status = state === "loading"
     ? t("editor.loading")
+    : state !== "ready" ? t("editor.errorTitle")
+    : saving ? t("editor.saving")
     : saveError
       ? t("editor.saveFailed")
+      : readOnly ? t("editor.readOnly")
       : dirty
         ? t("editor.dirty")
         : t("editor.saved");
 
-  return <section className="editor" aria-label={t("editor.title")}>
-    <header className="editor__bar">
+  const header = <header className={`editor__bar${topbarHost ? " editor__bar--hosted" : ""}`}>
       <div className="editor__identity">
-        <span className="editor__glyph" aria-hidden="true">{markdown ? "M" : "T"}</span>
+        <span className="editor__glyph" aria-hidden="true"><DocumentIcon /></span>
         <span className="editor__titles">
           <strong title={target.name}>{target.name}</strong>
           <small>{markdown ? t("editor.markdown") : t("editor.plain")}{readOnly ? ` · ${t("editor.readOnly")}` : dirty ? ` · ${t("editor.dirty")}` : ` · ${t("editor.saved")}`}</small>
         </span>
       </div>
-      <div className="editor__actions">
-        {markdown ? <div className="editor__modes" role="group" aria-label={t("editor.modeLabel")}>
-          {(["edit", "split", "preview"] as const).map((value) => <button
-            key={value}
-            type="button"
-            className={`editor__mode${mode === value ? " is-active" : ""}`}
-            aria-pressed={mode === value}
-            onClick={() => setMode(value)}
-          >{t(`editor.mode.${value}`)}</button>)}
-        </div> : null}
+      <div className="editor__actions" role="group" aria-label={t("editor.documentActions")}>
+        {markdown ? <RumahlButtonGroup className="editor__modes" label={t("editor.modeLabel")} value={mode} onChange={setMode}
+          options={(["edit", "split", "preview"] as const).map(value => ({ value, label: t(`editor.mode.${value}`) }))} /> : null}
         {markdown ? null : <label className="editor__toggle">
-          <input type="checkbox" checked={wrap} onChange={(event) => setWrap(event.target.checked)} />
+          <input type="checkbox" role="switch" checked={wrap} onChange={(event) => setWrap(event.target.checked)} />
           {t("editor.wrap")}
         </label>}
-        <Button size="sm" variant="secondary" onClick={() => void load()} disabled={state === "loading"}>{t("editor.reload")}</Button>
-        <Button size="sm" variant="primary" onClick={() => void save()} disabled={readOnly || !dirty || saving}>
-          {saving ? t("editor.saving") : t("editor.save")}
+        <Button className="editor__reload" size="sm" variant="secondary" leftIcon={<RefreshIcon />} aria-label={t("editor.reload")}
+          onClick={() => { if (dirty) setReloadConfirm(true); else void load(); }} disabled={state === "loading" || saving}><span className="editor__reload-label">{t("editor.reload")}</span></Button>
+        <Button size="sm" variant="primary" onClick={() => void save()} loading={saving} disabled={readOnly || !dirty}>
+          {t("editor.save")}
         </Button>
       </div>
-    </header>
+    </header>;
+  const tool = (icon: EditorTool, label: string, action: () => void, active?: boolean) => <Button
+    className="editor__tool" variant="ghost" size="sm" title={label} aria-label={label} aria-pressed={active}
+    disabled={readOnly} onMouseDown={event => event.preventDefault()} onClick={action}>
+    <EditorToolIcon tool={icon} />
+  </Button>;
+
+  return <section className="editor" aria-label={t("editor.title")}>
+    {topbarHost ? createPortal(header, topbarHost) : header}
 
     {markdown && showWrite && state === "ready" ? <div className="editor__format" role="toolbar" aria-label={t("editor.format")}>
       <select
         className="editor__block"
         aria-label={t("editor.format.block")}
         value={block}
+        disabled={readOnly}
         onChange={(event) => setBlockFormat(event.target.value as BlockFormat)}
       >
         <option value="p">{t("editor.format.paragraph")}</option>
@@ -330,19 +346,25 @@ export function EditorApp() {
         <option value="blockquote">{t("editor.format.quoteBlock")}</option>
       </select>
       <span className="editor__tool-sep" aria-hidden="true" />
-      <button type="button" className={`editor__tool is-bold${format.bold ? " is-active" : ""}`} aria-pressed={format.bold} title={t("editor.format.bold")} onClick={() => exec("bold")}>B</button>
-      <button type="button" className={`editor__tool is-italic${format.italic ? " is-active" : ""}`} aria-pressed={format.italic} title={t("editor.format.italic")} onClick={() => exec("italic")}>I</button>
-      <button type="button" className={`editor__tool is-strike${format.strike ? " is-active" : ""}`} aria-pressed={format.strike} title={t("editor.format.strike")} onClick={() => exec("strikeThrough")}>S</button>
-      <button type="button" className="editor__tool is-code" title={t("editor.format.code")} onClick={insertInlineCode}>{"<>"}</button>
-      <button type="button" className="editor__tool" title={t("editor.format.link")} onClick={openLink}>↗</button>
+      <div className="editor__format-group" role="group" aria-label={t("editor.format.textGroup")}>
+        {tool("bold", t("editor.format.bold"), () => exec("bold"), format.bold)}
+        {tool("italic", t("editor.format.italic"), () => exec("italic"), format.italic)}
+        {tool("strike", t("editor.format.strike"), () => exec("strikeThrough"), format.strike)}
+        {tool("code", t("editor.format.code"), insertInlineCode)}
+        {tool("link", t("editor.format.link"), openLink)}
+      </div>
       <span className="editor__tool-sep" aria-hidden="true" />
-      <button type="button" className="editor__tool" title={t("editor.format.list")} onClick={() => exec("insertUnorderedList")}>•</button>
-      <button type="button" className="editor__tool" title={t("editor.format.numbered")} onClick={() => exec("insertOrderedList")}>1.</button>
-      <button type="button" className="editor__tool" title={t("editor.format.task")} onClick={insertTask}>☐</button>
-      <button type="button" className="editor__tool" title={t("editor.format.rule")} onClick={() => exec("insertHorizontalRule")}>—</button>
+      <div className="editor__format-group" role="group" aria-label={t("editor.format.blockGroup")}>
+        {tool("list", t("editor.format.list"), () => exec("insertUnorderedList"))}
+        {tool("numbered", t("editor.format.numbered"), () => exec("insertOrderedList"))}
+        {tool("task", t("editor.format.task"), insertTask)}
+        {tool("rule", t("editor.format.rule"), () => exec("insertHorizontalRule"))}
+      </div>
       <span className="editor__tool-sep" aria-hidden="true" />
-      <button type="button" className="editor__tool" title={t("editor.format.undo")} onClick={() => exec("undo")}>↺</button>
-      <button type="button" className="editor__tool" title={t("editor.format.redo")} onClick={() => exec("redo")}>↻</button>
+      <div className="editor__format-group" role="group" aria-label={t("editor.format.historyGroup")}>
+        {tool("undo", t("editor.format.undo"), () => exec("undo"))}
+        {tool("redo", t("editor.format.redo"), () => exec("redo"))}
+      </div>
       {linkOpen ? <form className="editor__link" onSubmit={(event) => { event.preventDefault(); applyLink(); }}>
         <input
           autoFocus
@@ -365,7 +387,8 @@ export function EditorApp() {
           contentEditable={!readOnly}
           suppressContentEditableWarning
           role="textbox"
-          aria-multiline="true"
+           aria-multiline="true"
+           aria-readonly={readOnly}
           aria-label={t("editor.textArea", { name: target.name })}
           data-placeholder={t("editor.placeholder")}
           onInput={syncRich}
@@ -408,8 +431,12 @@ export function EditorApp() {
         <span>{t("editor.lines", { line: cursor.line, column: cursor.column })}</span>
         <span>{t("editor.characters", { count: text.length })}</span>
       </>}
-      <span className="editor__save-state" aria-live="polite">{status}</span>
+      <span className="editor__save-state" data-state={saveError ? "error" : saving ? "saving" : dirty ? "dirty" : "saved"} aria-live="polite">{status}</span>
       <span className="editor__path" title={target.host?.path ?? target.name}>{target.host ? target.host.path : t("editor.personal")}</span>
     </footer>
+    <RumahlDialog open={reloadConfirm} onClose={() => setReloadConfirm(false)}
+      title={t("editor.reloadConfirm")} description={t("editor.reloadConfirmHelp")} application={t("editor.title")}
+      confirmLabel={t("editor.reload")} cancelLabel={t("editor.keepEditing")} destructive
+      onConfirm={() => { setReloadConfirm(false); void load(); }} />
   </section>;
 }

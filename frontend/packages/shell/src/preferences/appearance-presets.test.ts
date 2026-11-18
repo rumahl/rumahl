@@ -69,6 +69,9 @@ describe("appearance presets", () => {
   });
 
   test("looks stay active across light/dark and wallpapers", () => {
+    const soft = { ...irisLook, tokens: { "iris.controls": "soft" } };
+    expect(isLookActive(soft, irisLook)).toBe(true);
+    expect(applyLook(soft, appearancePresets[1]!.appearance).tokens["iris.controls"]).toBe("soft");
     expect(isLookActive({ ...irisLook, mode: "light" }, irisLook)).toBe(true);
     expect(isLookActive({ ...irisLook, mode: "dark" }, irisLook)).toBe(true);
     expect(isLookActive({ ...irisLook, tokens: { ...irisLook.tokens, "texture.wallpaper": "photo:towner" } }, irisLook)).toBe(true);

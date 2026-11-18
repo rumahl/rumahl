@@ -1,6 +1,6 @@
 import { useTheme } from "@rumahl/ui";
 import { getTheme } from "@rumahl/ui/sdk";
-import { Button } from "../components/Button";
+import { SettingsReset } from "../components/SettingsReset";
 import { SettingsHeading } from "../components/SettingsHeading";
 import { ThemeParameterControl } from "../components/ThemeParameterControl";
 import { useI18n } from "../i18n";
@@ -28,13 +28,9 @@ export function ThemeSettings() {
             tokens={tokens}
             onChange={(token, value) => tuning.setToken(token, value)}
             onSeed={tuning.setSeed}
-          />)}
+           />)}
+          <SettingsReset label={t("settings.resetGroup")} description={t("themes.resetOptionsHelp")}
+            disabled={!tuning.ready || tuning.saving} onReset={() => tuning.resetParameters(theme.parameters)} />
         </div>}
-    <div className="setting">
-      <div className="copy" />
-      <div className="visual">
-        <Button variant="danger" onClick={tuning.reset}>{t("theme.reset")}</Button>
-      </div>
-    </div>
   </section>;
 }

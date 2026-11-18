@@ -10,6 +10,7 @@
   box-shadow: var(--group-shadow);
   overflow: hidden;
   margin-bottom: 28px;
+  container: rumahl-group / inline-size;
 }
 
 /* Floating group: the OS top-bar island recipe (material/theme aware). */
@@ -40,8 +41,28 @@
 }
 
 /* Content rows ------------------------------------------------------------- */
+.rumahl-group__footer {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 12px 16px;
+  padding: 12px var(--group-divider-inset);
+  border-top: var(--group-divider);
+}
+.rumahl-group__footer > p {
+  flex: 1 1 200px;
+  min-width: 0;
+  margin: 0;
+  color: var(--rumahl-ui-color-text-muted);
+  font-size: var(--group-description-size);
+  line-height: 1.5;
+}
+.rumahl-group__footer-actions { display: flex; flex-wrap: wrap; gap: 8px; }
 /* One setting row — the OS `.setting` (copy + visual), 65px min height. */
 .rumahl-group__row {
+  position: relative;
+  box-sizing: border-box;
   display: flex;
   align-items: center;
   gap: var(--group-row-gap);
@@ -50,19 +71,28 @@
   font-size: 12px;
 }
 .rumahl-group__row + .rumahl-group__row {
+  border-top: 0;
+}
+.rumahl-group__row + .rumahl-group__row::before,
+.rumahl-group__link + .rumahl-group__link::before {
+  content: "";
+  position: absolute;
+  inset: 0 var(--group-divider-inset) auto;
   border-top: var(--group-divider);
+  pointer-events: none;
 }
 .rumahl-group__copy { flex: 1; min-width: 0; }
-.rumahl-group__copy strong {
+.rumahl-group__copy > :is(strong, label) {
   display: block;
-  font-weight: 620;
-  font-size: 12px;
+  font-weight: 600;
+  font-size: var(--group-title-size);
+  line-height: 1.4;
   color: var(--rumahl-ui-color-text-primary);
 }
 .rumahl-group__copy p {
-  margin: 5px 0 0;
-  font-size: 12px;
-  line-height: 1.35;
+  margin: 4px 0 0;
+  font-size: var(--group-description-size);
+  line-height: 1.5;
   color: var(--rumahl-ui-color-text-muted);
 }
 .rumahl-group__visual {
@@ -70,10 +100,20 @@
   display: flex;
   align-items: center;
   color: var(--rumahl-ui-color-text-muted);
+  gap: 8px;
+  min-width: 0;
+  max-width: 50%;
+  justify-content: flex-end;
+}
+.rumahl-group__row[data-variant="value"] .rumahl-group__visual { overflow-wrap: anywhere; text-align: end; }
+.rumahl-group__visual > :is(select, .rumahl-select, input:not([type="checkbox"]):not([type="radio"]):not([type="range"])) {
+  width: var(--group-control-width);
+  max-width: 100%;
 }
 
 /* Link rows ---------------------------------------------------------------- */
 .rumahl-group__link {
+  position: relative;
   display: flex;
   align-items: center;
   gap: 15px;
@@ -81,11 +121,11 @@
   color: inherit;
   text-decoration: none;
   cursor: pointer;
-  transition: background 150ms ease, box-shadow 140ms ease, scale 140ms ease;
+  transition: background var(--motion-feedback-duration) var(--motion-easing-standard), scale var(--motion-press-duration) ease, translate var(--motion-press-duration) ease, box-shadow var(--motion-press-duration) ease;
 }
-.rumahl-group__link + .rumahl-group__link { border-top: 1px solid var(--control-border); }
+.rumahl-group__link + .rumahl-group__link { border-top: 0; }
 .rumahl-group__link:hover { background: color-mix(in srgb, var(--rumahl-ui-color-accent) 10%, transparent); }
-.rumahl-group__link:active { scale: 0.98; }
+.rumahl-group__link:active { background: color-mix(in srgb, var(--rumahl-ui-color-accent) 15%, transparent); }
 .rumahl-group__link:focus-visible {
   outline: 2px solid var(--rumahl-ui-color-accent);
   outline-offset: -2px;
@@ -122,4 +162,50 @@
 @media (prefers-reduced-motion: reduce) {
   .rumahl-group__link:active { scale: none; }
   .rumahl-group__link { transition: none; }
+}
+
+/* The shell's legacy settings markup reads the same recipes as GroupRow. */
+.shell[data-theme-base="iris"] .settings-group {
+  background: var(--group-background);
+  border: var(--group-border);
+  border-radius: var(--group-radius);
+  box-shadow: var(--group-shadow);
+  container: rumahl-group / inline-size;
+}
+.shell[data-theme-base="iris"] :is(.setting, .settings-nav__row) { position: relative; }
+.shell[data-theme-base="iris"] .settings-nav__row { transition: background var(--motion-feedback-duration) var(--motion-easing-standard), scale var(--motion-press-duration) ease, translate var(--motion-press-duration) ease, box-shadow var(--motion-press-duration) ease; }
+.shell[data-theme-base="iris"] .settings-nav__row:active { transform: none; }
+.shell[data-theme-base="iris"] .setting .visual > :is(select, .rumahl-select, input[type="text"], input[type="number"], input[type="url"]) {
+  width: var(--group-control-width);
+  max-width: 100%;
+}
+.shell[data-theme-base="iris"] .setting + .setting,
+.shell[data-theme-base="iris"] .settings-nav__row + .settings-nav__row { border-top: 0; }
+.shell[data-theme-base="iris"] .setting + .setting::before,
+.shell[data-theme-base="iris"] .settings-nav__row + .settings-nav__row::before {
+  content: "";
+  position: absolute;
+  inset: 0 var(--group-divider-inset) auto;
+  border-top: var(--group-divider);
+  pointer-events: none;
+}
+/* Glass inherits the original control recipe unchanged from the parent shell. */
+.shell[data-theme-base="iris"][data-iris-controls="soft"] :is(.rumahl-group, .settings-group):not([data-floating]) {
+  --control-fill: var(--rumahl-ui-color-surface-strong);
+  --control-hover: color-mix(in srgb, var(--rumahl-ui-color-surface-strong) 94%, var(--rumahl-ui-color-text-primary));
+  --control-inset: inset 0 1px 2px color-mix(in srgb, var(--rumahl-ui-color-text-primary) 5%, transparent);
+  --control-recess: linear-gradient(transparent, transparent);
+  --control-button-shadow: 0 1px 2px color-mix(in srgb, var(--rumahl-ui-color-text-primary) 8%, transparent);
+}
+
+/* Adapt to the group width, not the desktop viewport or app window size. */
+@container rumahl-group (max-width: 460px) {
+  .rumahl-group__row:has(.rumahl-group__visual > :is(button, select, textarea, .rumahl-select, input:not([role="switch"]):not([type="checkbox"]):not([type="radio"]))) {
+    flex-wrap: wrap;
+  }
+  .rumahl-group__row:has(.rumahl-group__visual > :is(button, select, textarea, .rumahl-select, input:not([role="switch"]):not([type="checkbox"]):not([type="radio"]))) .rumahl-group__copy { flex-basis: 100%; }
+  .rumahl-group__row:has(.rumahl-group__visual > :is(button, select, textarea, .rumahl-select, input:not([role="switch"]):not([type="checkbox"]):not([type="radio"]))) .rumahl-group__visual { max-width: 100%; }
+  .shell[data-theme-base="iris"] .setting:has(.visual > :is(button, select, textarea, .rumahl-select, input:not([role="switch"]):not([type="checkbox"]):not([type="radio"]))) { flex-wrap: wrap; }
+  .shell[data-theme-base="iris"] .setting:has(.visual > :is(button, select, textarea, .rumahl-select, input:not([role="switch"]):not([type="checkbox"]):not([type="radio"]))) .copy { flex-basis: 100%; }
+  .shell[data-theme-base="iris"] .setting .visual { max-width: 100%; min-width: 0; }
 }

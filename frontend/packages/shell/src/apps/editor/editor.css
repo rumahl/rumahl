@@ -5,6 +5,7 @@
 }
 
 .editor {
+  container: editor / inline-size;
   display: flex;
   flex-direction: column;
   height: 100%;
@@ -62,7 +63,7 @@
 
 .editor__titles small {
   color: var(--rumahl-ui-color-text-muted, #6b6b70);
-  font-size: 11.5px;
+  font-size: 12px;
 }
 
 .editor__actions {
@@ -72,37 +73,7 @@
   margin-left: auto;
 }
 
-.editor__modes {
-  display: inline-flex;
-  padding: 2px;
-  gap: 2px;
-  border: 1px solid var(--rumahl-ui-color-outline, rgba(0, 0, 0, 0.16));
-  border-radius: 999px;
-  background: color-mix(in srgb, var(--rumahl-ui-color-text-primary, #000) 5%, transparent);
-}
-
-.editor__mode {
-  min-height: 26px;
-  padding: 0 11px;
-  border: 0;
-  border-radius: 999px;
-  background: transparent;
-  color: var(--rumahl-ui-color-text-muted, #6b6b70);
-  font: inherit;
-  font-size: 12px;
-  font-weight: 560;
-  cursor: pointer;
-}
-
-.editor__mode:hover {
-  color: var(--rumahl-ui-color-text-primary, #111111);
-}
-
-.editor__mode.is-active {
-  background: var(--rumahl-ui-color-surface-strong, #ffffff);
-  color: var(--rumahl-ui-color-text-primary, #111111);
-  box-shadow: 0 1px 2px rgb(0 0 0 / 0.16);
-}
+.editor__modes { flex: none; }
 
 .editor__toggle {
   display: inline-flex;
@@ -121,47 +92,24 @@
 .editor__format {
   display: flex;
   align-items: center;
-  gap: 2px;
+  gap: 8px;
+  flex-wrap: wrap;
   flex: none;
-  padding: 4px 12px;
+  padding: 8px 12px;
   background: color-mix(in srgb, var(--rumahl-ui-color-panel-background, #f5f5f7) 70%, var(--rumahl-ui-color-surface-strong, #fff));
   border-bottom: 1px solid var(--rumahl-ui-color-outline, rgba(0, 0, 0, 0.12));
 }
 
-.editor__tool {
-  display: grid;
-  place-items: center;
-  width: 28px;
-  height: 26px;
-  border: 0;
-  border-radius: 5px;
-  background: transparent;
-  color: var(--rumahl-ui-color-text-muted, #55555c);
-  font: inherit;
-  font-size: 12.5px;
-  cursor: pointer;
-}
-
-.editor__tool.is-bold { font-weight: 760; }
-.editor__tool.is-italic { font-style: italic; }
-.editor__tool.is-code { font-family: ui-monospace, monospace; font-size: 11px; }
-
-.editor__tool:hover {
-  background: color-mix(in srgb, var(--rumahl-ui-color-accent, #28694c) 14%, transparent);
-  color: var(--rumahl-ui-color-text-primary, #111111);
-}
-
-.editor__tool.is-strike {
-  text-decoration: line-through;
-}
-
-.editor__tool.is-active {
+.editor__format-group { display: flex; gap: 2px; }
+.shell .editor__tool { width: 32px; min-width: 32px; height: 32px; padding: 0; }
+.shell .editor__tool svg { width: 18px; height: 18px; }
+.shell .editor__tool[aria-pressed="true"] {
   background: color-mix(in srgb, var(--rumahl-ui-color-accent, #28694c) 20%, transparent);
   color: var(--rumahl-ui-color-text-primary, #111111);
 }
 
 .editor__block {
-  height: 26px;
+  height: 32px;
   padding: 0 6px;
   border: 1px solid var(--rumahl-ui-color-outline, rgba(0, 0, 0, 0.16));
   border-radius: 5px;
@@ -172,6 +120,8 @@
 }
 
 .editor__link {
+  flex-wrap: wrap;
+  max-width: 100%;
   display: flex;
   align-items: center;
   gap: 6px;
@@ -179,8 +129,8 @@
 }
 
 .editor__link input {
-  width: 220px;
-  height: 26px;
+  width: min(220px, 100%);
+  height: 32px;
   padding: 0 8px;
   border: 1px solid var(--rumahl-ui-color-outline, rgba(0, 0, 0, 0.18));
   border-radius: 5px;
@@ -191,6 +141,7 @@
 }
 
 .editor__tool-sep {
+  flex: none;
   width: 1px;
   height: 16px;
   margin: 0 5px;
@@ -263,6 +214,7 @@
 }
 
 .editor__area {
+  caret-color: var(--rumahl-ui-color-accent);
   flex: 1;
   min-height: 0;
   width: 100%;
@@ -293,9 +245,7 @@
 
 .editor__pane--preview {
   overflow: auto;
-  background:
-    radial-gradient(circle at 20% 0%, color-mix(in srgb, var(--rumahl-ui-color-accent, #28694c) 7%, transparent), transparent 46%),
-    color-mix(in srgb, var(--rumahl-ui-color-canvas-background, #e8ece7) 55%, var(--rumahl-ui-color-surface-strong, #ffffff));
+  background: var(--rumahl-ui-color-panel-background);
 }
 
 .editor__sheet {
@@ -328,7 +278,7 @@
 .markdown h5,
 .markdown h6 {
   margin: 1.35em 0 0.5em;
-  font-family: var(--rumahl-ui-typography-display, inherit);
+  font-family: inherit;
   font-weight: 560;
   line-height: 1.18;
   letter-spacing: -0.01em;
@@ -481,13 +431,13 @@
   border-radius: 12px;
   background: color-mix(in srgb, var(--rumahl-ui-color-accent, #28694c) 15%, transparent);
   color: var(--rumahl-ui-color-accent, #28694c);
-  font-family: var(--rumahl-ui-typography-display, inherit);
+  font-family: inherit;
   font-size: 21px;
 }
 
 .editor--empty h1 {
   margin: 0;
-  font-family: var(--rumahl-ui-typography-display, inherit);
+  font-family: inherit;
   font-size: 24px;
   font-weight: 560;
 }
@@ -510,7 +460,7 @@
   background: var(--rumahl-ui-color-panel-background, #f5f5f7);
   border-top: 1px solid var(--rumahl-ui-color-outline, rgba(0, 0, 0, 0.14));
   color: var(--rumahl-ui-color-text-muted, #6b6b70);
-  font-size: 11.5px;
+  font-size: 12px;
   font-variant-numeric: tabular-nums;
 }
 
@@ -523,18 +473,14 @@
   white-space: nowrap;
 }
 
-@media (max-width: 860px) {
-  .editor__modes { order: 2; }
-  .editor__toggle { display: none; }
+@container editor (max-width: 700px) {
   .editor__sheet {
     width: calc(100% - 24px);
     padding: 30px 26px 42px;
   }
 }
 
-@media (max-width: 700px) {
-  .editor__bar { flex-wrap: wrap; }
-  .editor__actions { width: 100%; justify-content: flex-end; flex-wrap: wrap; }
+@container editor (max-width: 540px) {
   .editor__panes.is-split { flex-direction: column; }
   .editor__panes.is-split .editor__pane--write {
     flex: 1 1 50%;
@@ -544,3 +490,32 @@
   .editor__status { gap: 10px; }
   .editor__path { display: none; }
 }
+
+/* Hosted chrome is a single native titlebar, not a second app toolbar. */
+.editor__bar--hosted {
+  width: 100%; height: 100%; min-height: 0; min-width: 0;
+  padding: 0 12px; gap: 12px; border: 0; background: transparent;
+  pointer-events: none;
+}
+.editor__bar--hosted .editor__identity { flex: 1; }
+.editor__bar--hosted .editor__actions { pointer-events: auto; flex: none; gap: 6px; }
+.editor__bar--hosted .editor__titles small { display: none; }
+.editor__glyph svg { width: 18px; height: 18px; }
+.editor__empty-mark svg { width: 28px; height: 28px; }
+.editor__save-state[data-state="error"] { color: var(--rumahl-ui-color-danger, #b42318); }
+.editor__save-state[data-state="dirty"] { color: var(--rumahl-ui-color-text-primary); }
+@container window-topbar (max-width: 850px) {
+  .editor__bar--hosted .editor__toggle, .editor__bar--hosted .editor__reload-label { display: none; }
+}
+@container window-topbar (max-width: 650px) {
+  .editor__bar--hosted { gap: 6px; padding-inline: 8px; }
+  .editor__bar--hosted .editor__glyph { display: none; }
+  .editor__bar--hosted .editor__titles strong { max-width: 100px; }
+  .editor__bar--hosted .editor__modes button { padding-inline: 6px; }
+}
+@container window-topbar (max-width: 480px) {
+  .editor__bar--hosted .editor__identity { display: none; }
+  .editor__bar--hosted .editor__actions { margin-left: 0; width: 100%; justify-content: space-between; }
+}
+.shell[data-mobile="true"] .editor__format { gap: 6px; }
+.shell[data-mobile="true"] .editor__tool { width: 44px; min-width: 44px; height: 44px; }

@@ -207,6 +207,16 @@ const COLOR_PRESETS = [
 /** Parameters offered by the official rumahl theme (colour, wallpaper, glass). */
 const officialParameters: readonly ThemeParameter[] = [
   {
+    kind: "choice",
+    id: "irisControls",
+    token: "iris.controls",
+    labelKey: "theme.irisControls",
+    options: [
+      { value: "soft", labelKey: "theme.irisControls.soft" },
+      { value: "glass", labelKey: "theme.irisControls.glass" },
+    ],
+  },
+  {
     kind: "color",
     id: "accent",
     token: "color.accent",

@@ -108,7 +108,9 @@ function HostedWindow({ item, area, dockReserve, zIndex, animations: motionEnabl
   }, [item.id]);
   const mobileNavSlot = useMemo(() => ({ windowId: item.id, register: registerMobileNav }), [item.id, registerMobileNav]);
   const flush = isInstalledAppWindow(item.id);
-  const topbarApp = active.startsWith("app:") ? findFirstPartyApp(active.slice(4)) : undefined;
+  // Chrome belongs to this window, not the globally active route. Otherwise
+  // focusing Settings strips Files' header (and lends it to other windows).
+  const topbarApp = item.id.startsWith("app:") ? findFirstPartyApp(item.id.slice(4)) : undefined;
   const customTopbar = topbarApp?.customTopbar === true;
   const customTopbarFullscreen = customTopbar && topbarApp?.customTopbarFullscreen === true;
   const isFullscreen = item.fullscreen === true;

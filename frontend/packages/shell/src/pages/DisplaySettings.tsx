@@ -19,6 +19,8 @@ import { setTestMedia } from "../shell/test-media";
 import { RumahlSelect } from "../components/RumahlSelect";
 import { RumahlColorPicker } from "../components/RumahlColorPicker";
 import { Button } from "../components/Button";
+import { SettingsReset } from "../components/SettingsReset";
+import type { AppearanceResetGroup } from "../preferences/appearance-reset";
 import { SettingsHeading } from "../components/SettingsHeading";
 import { resolveThemeLabel } from "../components/theme-labels";
 import { ShellLink } from "../routing/ShellLink";
@@ -162,7 +164,6 @@ export function DisplaySettings({ section = "appearance" }: { section?: DisplayS
     setMode,
     setToken,
     clearToken,
-    autoColors,
     setTransparency,
     setAutoColor,
     setWallpaperTint,
@@ -178,7 +179,12 @@ export function DisplaySettings({ section = "appearance" }: { section?: DisplayS
     setMaterialPreset,
     setAdaptiveType,
     setFontScale,
-    reset,
+    resetGroup,
+    resetParameters,
+    resetOverrides,
+    saving: tuningSaving,
+    ready: tuningReady,
+    error: tuningError,
   } = useThemeTuning();
   const [refraction, setRefraction] = useState(REFRACTION_DEFAULT);
   const [chromaPercent, setChromaPercent] = useState(CHROMA_DEFAULT);
@@ -378,6 +384,20 @@ export function DisplaySettings({ section = "appearance" }: { section?: DisplayS
   const activeLookPreset = appearancePresets.find((preset) => isLookActive(tuning, preset.appearance));
   const supportsLookPresets = activeTheme.presets?.look === true;
   const supportsMaterialPresets = activeTheme.presets?.material === true;
+  const groupReset = (group: AppearanceResetGroup) => <SettingsReset
+    label={t("settings.resetGroup")}
+    description={t("settings.resetGroupHelp")}
+    disabled={!tuningReady || tuningSaving}
+    onReset={() => {
+      if (group === "glass") {
+        setGlassColorDraft(null);
+        setRefraction(REFRACTION_DEFAULT); setChromaPercent(CHROMA_DEFAULT); setSaturationPercent(SATURATION_DEFAULT);
+        setGlassAdjust({ refraction: REFRACTION_DEFAULT, chroma: CHROMA_DEFAULT / 100, saturation: SATURATION_DEFAULT / 100 });
+        setTestMedia({ image: null, video: null });
+      }
+      resetGroup(group);
+    }}
+  />;
   return (
     <section className="display-settings">
       <SettingsHeading
@@ -550,6 +570,7 @@ export function DisplaySettings({ section = "appearance" }: { section?: DisplayS
             </Button>
           </div>
         </div>
+        {groupReset("typography")}
       </div>
       </> : null}
 
@@ -558,6 +579,7 @@ export function DisplaySettings({ section = "appearance" }: { section?: DisplayS
           <h3 className="section-title">{t("theme.options")}</h3>
           <div className="settings-group">
             {themeOptions.map(renderParameter)}
+            <SettingsReset label={t("settings.resetGroup")} description={t("themes.resetOptionsHelp")} disabled={!tuningReady || tuningSaving} onReset={() => resetParameters(themeOptions)} />
           </div>
         </>
       ) : null}
@@ -600,6 +622,18 @@ export function DisplaySettings({ section = "appearance" }: { section?: DisplayS
                 </div>
               </div>
             ) : null}
+            {(activeTheme.base ?? "iris") === "iris" && !activeTheme.locked ? <div className="setting">
+              <div className="copy">
+                <strong>{t("theme.irisControls")}</strong>
+                <p>{t("theme.irisControlsHelp")}</p>
+              </div>
+              <div className="visual">
+                <RumahlButtonGroup label={t("theme.irisControls")}
+                  value={tokens["iris.controls"] === "soft" ? "soft" : "glass"}
+                  onChange={value => setToken("iris.controls", value)}
+                  options={[{ value: "soft", label: t("theme.irisControls.soft") }, { value: "glass", label: t("theme.irisControls.glass") }]} />
+              </div>
+            </div> : null}
             {supportsMaterialPresets && activeTheme.material !== "solid" ? (
               <div className="setting iris-preset-row">
                 <div className="copy">
@@ -702,6 +736,7 @@ export function DisplaySettings({ section = "appearance" }: { section?: DisplayS
             />
           </div>
         </div>
+        {groupReset("surface")}
       </div>
 
       {activeTheme.material !== "solid" ? (
@@ -971,6 +1006,7 @@ export function DisplaySettings({ section = "appearance" }: { section?: DisplayS
                 </Button>
               </div>
             </div>
+            {groupReset("glass")}
           </div>
         </>
       ) : null}
@@ -1007,6 +1043,7 @@ export function DisplaySettings({ section = "appearance" }: { section?: DisplayS
             />
           </div>
         </div>
+        {groupReset("performance")}
       </div>
 
       </> : null}
@@ -1028,14 +1065,7 @@ export function DisplaySettings({ section = "appearance" }: { section?: DisplayS
                 </div>
               </details>
             ) : null}
-            <div className="setting">
-              <div className="copy" />
-              <div className="visual">
-                <Button variant="danger" onClick={reset}>
-                  {t("theme.reset")}
-                </Button>
-              </div>
-            </div>
+            <SettingsReset label={t("settings.resetGroup")} description={t("themes.resetOptionsHelp")} disabled={!tuningReady || tuningSaving} onReset={() => resetParameters(tuningParams)} />
           </div>
         </>
       ) : null}
@@ -1070,12 +1100,8 @@ export function DisplaySettings({ section = "appearance" }: { section?: DisplayS
                 </div>
               ) : null}
               {overrideColors.map(renderOverride)}
-              <div className="setting">
-                <div className="copy" />
-                <div className="visual">
-                  <Button onClick={autoColors}>{t("theme.resetAuto")}</Button>
-                </div>
-              </div>
+              <SettingsReset label={t("theme.resetAuto")} description={t("settings.resetGroupHelp")} disabled={!tuningReady || tuningSaving}
+                onReset={() => resetOverrides(overrideColors.map(parameter => parameter.token))} />
             </details>
           </div>
         </>
@@ -1088,11 +1114,11 @@ export function DisplaySettings({ section = "appearance" }: { section?: DisplayS
         {effectiveTheme?.name ?? settings.theme}
       </p>
       <p>
-        {settings.saving
+        {settings.saving || tuningSaving
           ? <LoadingStatus className="loading-status--inline" label={t("preferences.saving")} />
-          : settings.error
-            ? <span role="status">{t(`preferences.${settings.error}`)}</span>
-            : settings.ready
+          : settings.error || tuningError
+            ? <span role="status">{t(`preferences.${settings.error ?? (tuningError === "conflict" ? "conflict" : "unavailable")}`)}</span>
+            : settings.ready && tuningReady
               ? <span role="status">{t("preferences.synced")}</span>
               : <LoadingStatus className="loading-status--inline" label={t("preferences.loading")} />}
       </p>
