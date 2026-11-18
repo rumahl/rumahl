@@ -720,6 +720,7 @@ fn sha256_hex(bytes: &[u8]) -> String {
         .collect()
 }
 
+pub mod app_grants;
 pub mod apps;
 pub mod host_files;
 pub mod install;

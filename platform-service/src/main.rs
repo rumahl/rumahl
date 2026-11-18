@@ -160,7 +160,33 @@ async fn run() -> Result<(), ServiceError> {
     let app_suffix = env::var("RUMAHL_APP_HOST_SUFFIX")
         .unwrap_or_else(|_| format!("apps.{}", config.public_origin.host_str().unwrap()));
     let app_root = state_dir.join("app-assets");
-    let apps_provider = apps::PersistentApps::open(&accounts, &platform, app_root)?;
+    // One personal-files store backs both the shell's own Files app and the
+    // consented app file access, so both always see the same documents.
+    let personal_files: std::sync::Arc<dyn rumahl_core::PersonalFiles> = {
+        match if env::var("RUMAHL_FILE_ENCRYPTION").as_deref() == Ok("off") {
+            None
+        } else {
+            optional_key_provider()
+        } {
+            Some(provider) => Arc::new(
+                rumahl_persistence_sqlite::SqlitePersonalFiles::open_encrypted(
+                    state_dir.join("files.sqlite"),
+                    provider,
+                )?,
+            ),
+            None => {
+                eprintln!(
+                    "rumahl platform: file content encryption disabled (no TPM key configured)"
+                );
+                Arc::new(rumahl_persistence_sqlite::SqlitePersonalFiles::open(
+                    state_dir.join("files.sqlite"),
+                )?)
+            }
+        }
+    };
+    let apps_provider = apps::PersistentApps::open(&accounts, &platform, app_root)?
+        .with_account_roles(&accounts)?
+        .with_personal_files(personal_files.clone());
     let apps_provider = match apps_data_root() {
         Some(data_root) => apps_provider.with_data_root(data_root)?,
         None => apps_provider,
@@ -221,28 +247,7 @@ async fn run() -> Result<(), ServiceError> {
         widgets: Arc::new(NoWidgets),
         streams: None,
         apps: Some(apps.clone()),
-        files: Some(
-            match if env::var("RUMAHL_FILE_ENCRYPTION").as_deref() == Ok("off") {
-                None
-            } else {
-                optional_key_provider()
-            } {
-                Some(provider) => Arc::new(
-                    rumahl_persistence_sqlite::SqlitePersonalFiles::open_encrypted(
-                        state_dir.join("files.sqlite"),
-                        provider,
-                    )?,
-                ),
-                None => {
-                    eprintln!(
-                        "rumahl platform: file content encryption disabled (no TPM key configured)"
-                    );
-                    Arc::new(rumahl_persistence_sqlite::SqlitePersonalFiles::open(
-                        state_dir.join("files.sqlite"),
-                    )?)
-                }
-            },
-        ),
+        files: Some(personal_files),
         workspace: Some(Arc::new(
             rumahl_persistence_sqlite::SqliteShellPreferences::open(
                 state_dir.join("preferences.sqlite"),

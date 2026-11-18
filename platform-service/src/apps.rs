@@ -1,11 +1,14 @@
 //! Installation metadata and explicit launch grants come from the platform snapshot.
 //! Published web roots are immutable, installation-specific directories.
 use rumahl_core::*;
-use rumahl_persistence_sqlite::{SqliteAccountStateRepository, SqliteSnapshotRepository};
+use rumahl_persistence_sqlite::{
+    SqliteAccountRoles, SqliteAccountStateRepository, SqliteSnapshotRepository,
+};
 use rumahl_platform_web::{
-    AppAccessError, AppAsset, AppData, AppDataEntry, AppProvider, AppSettingInfo,
-    AppSettingOptionInfo, BrowserDelivery, CapabilityOutcome, CapabilityResource, CapabilityResult,
-    CatalogApp, ImportedApp, PackageUploadFile, RuntimeState, ShellIdentity,
+    AppAccessError, AppAsset, AppData, AppDataEntry, AppFileAccess, AppFileOutcome, AppGrantInfo,
+    AppGrantState, AppProvider, AppSettingInfo, AppSettingOptionInfo, BrowserDelivery,
+    CapabilityOutcome, CapabilityResource, CapabilityResult, CatalogApp, GrantIssue, ImportedApp,
+    PackageUploadFile, RuntimeState, ShellIdentity,
 };
 use rustix::fs::{Dir, FileType, Mode, OFlags, fstat, open, openat};
 use std::fs::File;
@@ -75,13 +78,20 @@ pub fn authorized_apps(
     Ok(result)
 }
 pub struct PersistentApps {
-    accounts: SqliteAccountStateRepository,
-    platform: SqliteSnapshotRepository,
+    pub(crate) accounts: SqliteAccountStateRepository,
+    pub(crate) platform: SqliteSnapshotRepository,
     root: PathBuf,
     /// Apps data volume root, one directory per app id. `None` disables app-data browsing.
     data_root: Option<PathBuf>,
     /// Runtime adapters for status/start/stop. `None` fails closed.
     runtime: Option<Arc<rumahl_core::RuntimeAdapterRegistry>>,
+    /// Account roles for grant issuer policies. `None` fails consent closed.
+    pub(crate) roles: Option<SqliteAccountRoles>,
+    /// Personal files, so consented app access can act on the user's files.
+    /// `None` fails file access closed.
+    pub(crate) files: Option<Arc<dyn rumahl_core::PersonalFiles>>,
+    /// Session-scoped grants; memory-only by design.
+    pub(crate) session_grants: crate::app_grants::SessionGrantStore,
 }
 impl PersistentApps {
     pub fn open(
@@ -98,7 +108,25 @@ impl PersistentApps {
             root,
             data_root: None,
             runtime: None,
+            roles: None,
+            files: None,
+            session_grants: crate::app_grants::SessionGrantStore::new(),
         })
+    }
+
+    /// Attaches the account-role store used to authorize grant issuers.
+    pub fn with_account_roles(mut self, accounts: &Path) -> Result<Self, crate::ServiceError> {
+        self.roles = Some(rumahl_persistence_sqlite::SqliteAccountRoles::open(
+            accounts,
+        )?);
+        Ok(self)
+    }
+
+    /// Attaches the personal-files store so consented app file access can
+    /// read and write the calling user's documents.
+    pub fn with_personal_files(mut self, files: Arc<dyn rumahl_core::PersonalFiles>) -> Self {
+        self.files = Some(files);
+        self
     }
 
     /// Enables runtime status/start/stop through the registered adapters.
@@ -152,7 +180,7 @@ impl PersistentApps {
         }
     }
     /// Confirms the account can authenticate and the session is live.
-    fn authenticate(&self, identity: ShellIdentity) -> Result<(), AppAccessError> {
+    pub(crate) fn authenticate(&self, identity: ShellIdentity) -> Result<(), AppAccessError> {
         let accounts = self
             .accounts
             .load()
@@ -691,6 +719,37 @@ impl AppProvider for PersistentApps {
             }),
             Err(_) => Err(AppAccessError::Denied),
         }
+    }
+    fn app_grants(
+        &self,
+        identity: ShellIdentity,
+        installation: InstallationId,
+    ) -> Result<AppGrantState, AppAccessError> {
+        self.app_grant_state(identity, installation)
+    }
+    fn issue_app_grant(
+        &self,
+        identity: ShellIdentity,
+        installation: InstallationId,
+        issue: &GrantIssue,
+    ) -> Result<AppGrantInfo, AppAccessError> {
+        PersistentApps::issue_app_grant(self, identity, installation, issue)
+    }
+    fn revoke_app_grant(
+        &self,
+        identity: ShellIdentity,
+        installation: InstallationId,
+        grant_id: &str,
+    ) -> Result<(), AppAccessError> {
+        PersistentApps::revoke_app_grant(self, identity, installation, grant_id)
+    }
+    fn app_file(
+        &self,
+        identity: ShellIdentity,
+        installation: InstallationId,
+        access: &AppFileAccess,
+    ) -> Result<AppFileOutcome, AppAccessError> {
+        self.app_file_access(identity, installation, access)
     }
 }
 
