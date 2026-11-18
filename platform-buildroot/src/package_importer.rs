@@ -157,14 +157,17 @@ impl<I: ContainerImageImporter> PackageImporter<I> {
         }
     }
 
-    /// Verifies a package, installs it through the runner and publishes the
-    /// package payload.
+    /// Verifies a package, installs or updates it through the runner and
+    /// publishes the package payload.
     ///
-    /// A container installation normally fails its first runtime step because
-    /// the image reference does not exist yet. When the runner reports an error,
-    /// the matching incomplete operation is located, the package is published
-    /// for its installation id, and startup recovery resumes the operation
-    /// forward. A web package can commit directly and is published afterwards.
+    /// An app id that is already installed is updated in place (newer version
+    /// required), keeping its installation identity, grants and data. A
+    /// container installation or update normally fails its first runtime step
+    /// because the new image reference does not exist yet. When the runner
+    /// reports an error, the matching incomplete operation is located, the
+    /// package is published for its installation id, and startup recovery
+    /// resumes the operation forward. A web package can commit directly and is
+    /// published afterwards.
     pub fn install<J, D, U, R, O, P, S, T>(
         &self,
         runner: &AppOperationRunner<J, D, U, R, O, P, S, T>,
@@ -187,10 +190,24 @@ impl<I: ContainerImageImporter> PackageImporter<I> {
             .to_app_manifest()
             .map_err(PackageImportError::Manifest)?;
         let app_id = verified.manifest().app().app_id().clone();
+        let update_from = state
+            .installed_apps()
+            .get_by_app_id(&app_id)
+            .map(|app| *app.installation_id());
 
-        match runner.install(manifest, state, grants) {
-            Ok(result) => {
-                let installation_id = *result.app().installation_id();
+        // An existing installation is updated in place; the lifecycle rejects
+        // versions that do not move forward.
+        let started = match update_from {
+            Some(installation_id) => runner
+                .update(&installation_id, manifest, state, grants)
+                .map(|result| (*result.app().installation_id(), AppOperationKind::Update)),
+            None => runner
+                .install(manifest, state, grants)
+                .map(|result| (*result.app().installation_id(), AppOperationKind::Install)),
+        };
+
+        match started {
+            Ok((installation_id, _kind)) => {
                 let published = self.publish(&installation_id, package_root, &verified)?;
                 Ok(InstalledPackage {
                     installation_id,
@@ -202,7 +219,7 @@ impl<I: ContainerImageImporter> PackageImporter<I> {
                     .journal()
                     .list_incomplete()
                     .map_err(|journal| PackageImportError::Journal(Box::new(journal)))?;
-                let Some(operation) = select_incomplete_install(operations, &app_id) else {
+                let Some(operation) = select_incomplete_operation(operations, &app_id) else {
                     return Err(PackageImportError::Install(Box::new(error)));
                 };
                 let installation_id = *operation.installation_id();
@@ -219,16 +236,18 @@ impl<I: ContainerImageImporter> PackageImporter<I> {
     }
 }
 
-fn select_incomplete_install(
+fn select_incomplete_operation(
     operations: Vec<AppOperation>,
     app_id: &AppId,
 ) -> Option<AppOperation> {
     operations.into_iter().find(|operation| {
-        operation.kind() == AppOperationKind::Install
-            && operation
-                .target_app()
-                .map(|target| target.identity().app_id() == app_id)
-                .unwrap_or(false)
+        matches!(
+            operation.kind(),
+            AppOperationKind::Install | AppOperationKind::Update
+        ) && operation
+            .target_app()
+            .map(|target| target.identity().app_id() == app_id)
+            .unwrap_or(false)
     })
 }
 
@@ -444,6 +463,15 @@ mod tests {
         entrypoints: Value,
         files: &[(&str, &[u8])],
     ) -> SignedPackage {
+        build_package_version("1.0.0", runtime_kind, entrypoints, files)
+    }
+
+    fn build_package_version(
+        version: &str,
+        runtime_kind: &str,
+        entrypoints: Value,
+        files: &[(&str, &[u8])],
+    ) -> SignedPackage {
         let directory = tempfile::tempdir().unwrap();
         for (relative, content) in files {
             let path = directory.path().join(relative);
@@ -469,7 +497,7 @@ mod tests {
             "publisherId": PUBLISHER,
             "app": {
                 "appId": "com.rumahl.notes",
-                "version": "1.0.0",
+                "version": version,
                 "displayName": "Notes",
                 "runtime": { "kind": runtime_kind, "entrypoints": entrypoints },
             },
@@ -961,6 +989,95 @@ mod tests {
             ]),
             &[("runtime/server.oci", b"not-a-real-image")],
         )
+    }
+
+    fn container_package_version(version: &str) -> SignedPackage {
+        build_package_version(
+            version,
+            "container",
+            json!([
+                { "id": "service", "kind": "container-artifact", "path": "runtime/server.oci" },
+                { "id": "main", "kind": "endpoint", "endpoint": "web" },
+            ]),
+            &[("runtime/server.oci", b"not-a-real-image")],
+        )
+    }
+
+    #[test]
+    fn updates_an_installed_package_in_place() {
+        let v1 = container_package();
+        let (_trust_dir, trust_store) = trust_store_file(&v1);
+        let asset_root = unique_test_root('a');
+        let image_root = unique_test_root('g');
+        let importer = PackageImporter::new(
+            PackageImporterConfig::new(&trust_store, &asset_root).unwrap(),
+            TestImageImporter {
+                image_root: image_root.clone(),
+            },
+        )
+        .unwrap();
+        let runner = AppOperationRunner::new(
+            MemoryJournal::default(),
+            NoopDatabases,
+            AppRuntimeServices::new(
+                StagingRuntime {
+                    image_root: image_root.clone(),
+                },
+                NoopSecretDelivery,
+            ),
+            NoopOidc,
+            TestOrigin,
+            MemorySnapshot::default(),
+            NoopSecrets,
+        );
+        let mut state = PlatformState::new();
+        let mut grants = InMemoryGrantStore::new();
+
+        let first = importer
+            .install(&runner, v1.directory.path(), &mut state, &mut grants)
+            .unwrap();
+        let installation_id = *first.installation_id();
+        let identity = state.installed_apps().apps()[0].identity().clone();
+        let user = rumahl_core::UserId::new();
+        let mut policy = rumahl_core::GrantIssuerPolicy::new();
+        policy.set_user_role(user, rumahl_core::UserRole::User);
+        grants.insert(
+            rumahl_core::GrantAuthority::new()
+                .issue(
+                    &policy,
+                    rumahl_core::UserIdentity::new(user).into(),
+                    identity.clone().into(),
+                    rumahl_core::PermissionId::parse("rumahl.files.read").unwrap(),
+                    rumahl_core::PermissionScope::Explicit,
+                    vec![rumahl_core::ResourceRef::new(
+                        rumahl_core::ResourceNamespace::parse("rumahl.files").unwrap(),
+                        rumahl_core::ResourceKind::parse("file").unwrap(),
+                        rumahl_core::ResourceKey::parse("document-1").unwrap(),
+                    )],
+                )
+                .unwrap(),
+        );
+
+        // The next version of the same app installs as an update, not a second
+        // installation.
+        let v2 = container_package_version("1.1.0");
+        let updated = importer
+            .install(&runner, v2.directory.path(), &mut state, &mut grants)
+            .unwrap();
+
+        assert_eq!(updated.installation_id(), &installation_id);
+        assert_eq!(state.installed_apps().len(), 1);
+        assert_eq!(
+            state.installed_apps().apps()[0].manifest().version(),
+            &AppVersion::new(1, 1, 0)
+        );
+        assert_eq!(state.installed_apps().apps()[0].identity(), &identity);
+        // Grants survive the update.
+        assert_eq!(grants.len(), 1);
+        assert!(runner.journal().list_incomplete().unwrap().is_empty());
+
+        fs::remove_dir_all(asset_root).unwrap();
+        fs::remove_dir_all(image_root).unwrap();
     }
 
     #[test]

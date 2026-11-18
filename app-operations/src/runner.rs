@@ -29,6 +29,22 @@ pub struct AppUninstallResult {
     app: InstalledApp,
 }
 
+#[derive(Debug, Clone)]
+pub struct AppUpdateOutcome {
+    operation_id: AppOperationId,
+    app: InstalledApp,
+}
+
+impl AppUpdateOutcome {
+    pub fn operation_id(&self) -> &AppOperationId {
+        &self.operation_id
+    }
+
+    pub fn app(&self) -> &InstalledApp {
+        &self.app
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct AppOperationRecoveryReport {
     resumed: usize,
@@ -138,6 +154,39 @@ where
         Ok(AppInstallResult { operation_id, app })
     }
 
+    /// Replaces an installation with a newer manifest through the journal.
+    ///
+    /// Identity, grants, databases and the private data directory stay; the
+    /// derived platform registration is rebuilt and the runtime instance is
+    /// replaced (removed, then prepared for the new spec). A failed update
+    /// compensates the new resources and re-prepares the previous version.
+    pub fn update(
+        &self,
+        installation_id: &InstallationId,
+        manifest: AppManifest,
+        state: &mut PlatformState,
+        grant_store: &InMemoryGrantStore,
+    ) -> Result<AppUpdateOutcome, AppOperationRunnerError> {
+        let mut staged = state.clone();
+        let app = self
+            .lifecycle
+            .update(installation_id, manifest, &mut staged)
+            .map_err(AppOperationRunnerError::AppLifecycle)?
+            .app()
+            .clone();
+        let started_at = UnixTimestamp::now().map_err(AppOperationRunnerError::Clock)?;
+        let operation = AppOperation::for_app(&app, AppOperationKind::Update, started_at)
+            .map_err(AppOperationRunnerError::Operation)?;
+        let operation_id = *operation.id();
+
+        self.journal
+            .create(&operation)
+            .map_err(|error| AppOperationRunnerError::Journal(Box::new(error)))?;
+        self.apply_update(operation, staged, state, grant_store)?;
+
+        Ok(AppUpdateOutcome { operation_id, app })
+    }
+
     pub fn uninstall(
         &self,
         installation_id: &InstallationId,
@@ -181,7 +230,10 @@ where
             .map_err(|error| AppOperationRunnerError::Journal(Box::new(error)))?
             .ok_or(AppOperationRunnerError::OperationNotFound(*operation_id))?;
 
-        if operation.kind() != AppOperationKind::Install {
+        if !matches!(
+            operation.kind(),
+            AppOperationKind::Install | AppOperationKind::Update
+        ) {
             return Err(AppOperationRunnerError::UnsupportedOperationKind(
                 operation.kind(),
             ));
@@ -237,10 +289,14 @@ where
                     )?;
                     committed += 1;
                 }
-                (AppOperationKind::Update, _) => {
-                    return Err(AppOperationRunnerError::UnsupportedOperationKind(
-                        AppOperationKind::Update,
-                    ));
+                (AppOperationKind::Update, AppOperationPhase::Applying) => {
+                    let staged = self.stage_update_target(&operation, state)?;
+                    self.apply_update(operation, staged, state, grant_store)?;
+                    committed += 1;
+                }
+                (AppOperationKind::Update, AppOperationPhase::Compensating) => {
+                    self.compensate_install_operation(operation, state, grant_store)?;
+                    compensated += 1;
                 }
                 (_, phase) => {
                     return Err(AppOperationRunnerError::UnsupportedOperationPhase(phase));
@@ -283,6 +339,49 @@ where
             }
         }
 
+        Ok(staged)
+    }
+
+    fn apply_update(
+        &self,
+        operation: AppOperation,
+        staged: PlatformState,
+        live: &mut PlatformState,
+        grant_store: &InMemoryGrantStore,
+    ) -> Result<(), AppOperationRunnerError> {
+        // The update plan is the install plan: the runtime instance arm
+        // replaces the old instance because the operation kind is Update.
+        self.apply_install(operation, staged, live, grant_store)
+    }
+
+    fn stage_update_target(
+        &self,
+        operation: &AppOperation,
+        state: &PlatformState,
+    ) -> Result<PlatformState, AppOperationRunnerError> {
+        let target = operation
+            .target_app()
+            .ok_or_else(|| AppOperationRunnerError::MissingOperationTarget(*operation.id()))?;
+        let app = target.installed_app();
+        let mut staged = state.clone();
+        match staged
+            .installed_apps()
+            .get_by_installation_id(app.installation_id())
+        {
+            Some(existing) if existing == app => {}
+            Some(_) => {
+                // Crash before the commit: the live state still holds the
+                // previous version, so replay the recorded update onto it.
+                self.lifecycle
+                    .update(app.installation_id(), app.manifest().clone(), &mut staged)
+                    .map_err(AppOperationRunnerError::AppLifecycle)?;
+            }
+            None => {
+                self.lifecycle
+                    .restore(app.clone(), &mut staged)
+                    .map_err(AppOperationRunnerError::AppLifecycle)?;
+            }
+        }
         Ok(staged)
     }
 
@@ -460,6 +559,22 @@ where
         *live_state = staged_state;
         *live_grants = staged_grants;
 
+        // A compensated update leaves the previous installation recorded but
+        // without its runtime instance (the update removed it). Restore it,
+        // best effort: the app must not silently stay down after a failed
+        // upgrade.
+        if operation.kind() == AppOperationKind::Update
+            && let Some(previous) = live_state
+                .installed_apps()
+                .get_by_installation_id(app.installation_id())
+                .cloned()
+        {
+            let _ = self.runtime_provider.prepare_installation(&previous);
+            if rumahl_core::activates_at_install(&previous) {
+                let _ = self.runtime_provider.activate_installation(&previous);
+            }
+        }
+
         Ok(())
     }
 
@@ -485,6 +600,10 @@ where
                     .uninstall(app.installation_id(), &mut staged_state, &mut staged_grants)
                     .map_err(AppOperationRunnerError::AppLifecycle)?;
             }
+            // A compensated update never removed the previous installation:
+            // the state already holds it, and only the new resources are
+            // undone below.
+            Some(_) if operation.kind() == AppOperationKind::Update => {}
             Some(_) => {
                 return Err(AppOperationRunnerError::RecoveredTargetMismatch(
                     *operation.id(),
@@ -527,10 +646,27 @@ where
                     .provision_installation(&bindings)
                     .map_err(|error| AppOperationRunnerError::DatabaseProvider(Box::new(error)))
             }
-            AppOperationResource::RuntimeInstance => self
-                .runtime_provider
-                .prepare_installation(app)
-                .map_err(|error| AppOperationRunnerError::RuntimeProvider(Box::new(error))),
+            AppOperationResource::RuntimeInstance => {
+                // An update replaces the instance: the supervisor refuses to
+                // prepare a second container under the same installation name.
+                if operation.kind() == AppOperationKind::Update {
+                    // The supervisor refuses to remove an active instance, so
+                    // an update follows the uninstall order: deactivate first.
+                    self.runtime_provider
+                        .deactivate_installation(app.installation_id())
+                        .map_err(|error| {
+                            AppOperationRunnerError::RuntimeProvider(Box::new(error))
+                        })?;
+                    self.runtime_provider
+                        .remove_installation(app.installation_id())
+                        .map_err(|error| {
+                            AppOperationRunnerError::RuntimeProvider(Box::new(error))
+                        })?;
+                }
+                self.runtime_provider
+                    .prepare_installation(app)
+                    .map_err(|error| AppOperationRunnerError::RuntimeProvider(Box::new(error)))
+            }
             AppOperationResource::OidcClient => {
                 let registration = self
                     .oidc_registrar
@@ -623,7 +759,15 @@ where
                 .remove_installation(app.installation_id())
                 .map(|_| ())
                 .map_err(|error| AppOperationRunnerError::RuntimeProvider(Box::new(error))),
-            AppOperationResource::OidcClient => self.remove_oidc_material(operation, app),
+            AppOperationResource::OidcClient => {
+                // An update reuses the installation's OIDC registration, so an
+                // update compensation must not revoke it.
+                if operation.kind() == AppOperationKind::Update {
+                    Ok(())
+                } else {
+                    self.remove_oidc_material(operation, app)
+                }
+            }
             AppOperationResource::RuntimeActivation => self
                 .runtime_provider
                 .deactivate_installation(app.installation_id())
@@ -980,6 +1124,7 @@ mod tests {
     struct MemoryRuntimeProvider {
         runtimes: RefCell<Vec<(InstalledApp, AppRuntimeInstallationState)>>,
         trace: Rc<RefCell<Vec<&'static str>>>,
+        fail_next_prepare: Cell<bool>,
     }
 
     impl AppRuntimeProvider for MemoryRuntimeProvider {
@@ -987,6 +1132,9 @@ mod tests {
 
         fn prepare_installation(&self, app: &InstalledApp) -> Result<(), Self::Error> {
             self.trace.borrow_mut().push("runtime-prepared");
+            if self.fail_next_prepare.replace(false) {
+                return Err(TestError("injected prepare failure"));
+            }
             let mut runtimes = self.runtimes.borrow_mut();
             if let Some((existing, _)) = runtimes
                 .iter()
@@ -1285,6 +1433,7 @@ mod tests {
             MemoryRuntimeProvider {
                 runtimes: RefCell::new(Vec::new()),
                 trace: Rc::clone(&trace),
+                fail_next_prepare: Cell::new(false),
             },
             MemoryRuntimeSecrets {
                 fail_next: Cell::new(false),
@@ -1412,6 +1561,151 @@ mod tests {
                 .len(),
             1
         );
+    }
+
+    #[test]
+    fn updates_in_place_replacing_the_runtime_instance() {
+        let runner = runner();
+        let mut state = PlatformState::new();
+        let grants = InMemoryGrantStore::new();
+        let installed = runner
+            .install(container_manifest(), &mut state, &grants)
+            .unwrap();
+        let installation_id = *installed.app().installation_id();
+        runner.runtime_provider().trace.borrow_mut().clear();
+
+        let mut next = container_manifest();
+        next.set_version(AppVersion::new(1, 1, 0));
+        let outcome = runner
+            .update(&installation_id, next, &mut state, &grants)
+            .unwrap();
+
+        assert_eq!(outcome.operation_id(), &{
+            let op = runner.journal().operations.borrow();
+            *op.last().unwrap().id()
+        });
+        assert_eq!(outcome.app().installation_id(), &installation_id);
+        assert_eq!(state.installed_apps().len(), 1);
+        assert_eq!(
+            state.installed_apps().apps()[0].manifest().version(),
+            &AppVersion::new(1, 1, 0)
+        );
+        // The runtime instance was replaced: deactivated, removed, prepared
+        // and activated again.
+        assert_eq!(
+            runner.runtime_provider().trace.borrow().as_slice(),
+            [
+                "runtime-deactivated",
+                "runtime-removed",
+                "runtime-prepared",
+                "secret-delivered",
+                "runtime-activated"
+            ]
+        );
+        assert_eq!(
+            runner
+                .journal()
+                .find(outcome.operation_id())
+                .unwrap()
+                .unwrap()
+                .kind(),
+            AppOperationKind::Update
+        );
+        assert_eq!(
+            runner
+                .journal()
+                .find(outcome.operation_id())
+                .unwrap()
+                .unwrap()
+                .phase(),
+            AppOperationPhase::Committed
+        );
+    }
+
+    #[test]
+    fn a_failed_update_resumes_forward_and_can_be_compensated() {
+        let runner = runner();
+        let mut state = PlatformState::new();
+        let mut grants = InMemoryGrantStore::new();
+        let installed = runner
+            .install(container_manifest(), &mut state, &grants)
+            .unwrap();
+        let installation_id = *installed.app().installation_id();
+        runner.runtime_provider().trace.borrow_mut().clear();
+        // The next prepare fails: the update stays journaled in Applying and
+        // the previous version remains live.
+        runner.runtime_provider().fail_next_prepare.set(true);
+
+        let mut next = container_manifest();
+        next.set_version(AppVersion::new(1, 1, 0));
+        let error = runner
+            .update(&installation_id, next, &mut state, &grants)
+            .unwrap_err();
+
+        assert!(matches!(error, AppOperationRunnerError::RuntimeProvider(_)));
+        assert_eq!(state.installed_apps().len(), 1);
+        assert_eq!(
+            state.installed_apps().apps()[0].manifest().version(),
+            &AppVersion::new(1, 0, 0)
+        );
+        let operation = runner.journal().list_incomplete().unwrap();
+        assert_eq!(operation.len(), 1);
+        assert_eq!(operation[0].kind(), AppOperationKind::Update);
+        assert_eq!(operation[0].phase(), AppOperationPhase::Applying);
+
+        // Recovery replays the update forward once the runtime is available.
+        let report = runner.recover_incomplete(&mut state, &mut grants).unwrap();
+        assert_eq!(report.committed(), 1);
+        assert_eq!(
+            state.installed_apps().apps()[0].manifest().version(),
+            &AppVersion::new(1, 1, 0)
+        );
+        assert_eq!(
+            runner
+                .runtime_provider()
+                .installation_state(&installation_id)
+                .unwrap(),
+            AppRuntimeInstallationState::Active
+        );
+        assert!(runner.journal().list_incomplete().unwrap().is_empty());
+    }
+
+    #[test]
+    fn compensating_a_failed_update_restores_the_previous_runtime() {
+        let runner = runner();
+        let mut state = PlatformState::new();
+        let mut grants = InMemoryGrantStore::new();
+        let installed = runner
+            .install(container_manifest(), &mut state, &grants)
+            .unwrap();
+        let installation_id = *installed.app().installation_id();
+        runner.runtime_provider().trace.borrow_mut().clear();
+        runner.runtime_provider().fail_next_prepare.set(true);
+
+        let mut next = container_manifest();
+        next.set_version(AppVersion::new(1, 1, 0));
+        let _ = runner
+            .update(&installation_id, next, &mut state, &grants)
+            .unwrap_err();
+        let operation_id = *runner.journal().list_incomplete().unwrap()[0].id();
+        runner.runtime_provider().trace.borrow_mut().clear();
+
+        runner
+            .compensate_install(&operation_id, &mut state, &mut grants)
+            .unwrap();
+
+        let trace = runner.runtime_provider().trace.borrow().clone();
+        assert!(trace.contains(&"runtime-removed"));
+        assert_eq!(trace.last(), Some(&"runtime-activated"));
+        assert_eq!(
+            runner
+                .runtime_provider()
+                .installation_state(&installation_id)
+                .unwrap(),
+            AppRuntimeInstallationState::Active
+        );
+        let operation = runner.journal().find(&operation_id).unwrap().unwrap();
+        assert_eq!(operation.phase(), AppOperationPhase::Compensated);
     }
 
     #[test]
