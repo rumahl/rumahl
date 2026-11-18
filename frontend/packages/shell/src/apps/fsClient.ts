@@ -136,11 +136,13 @@ export async function removeHostEntry(
 export type RumahlArea = "home" | "apps" | "system" | "desktop";
 
 export interface RumahlPath {
-  /** Canonical form shown in the address bar. */
+  /** Canonical form sent to the service. */
   canonical: string;
   area: RumahlArea;
   /** Path relative to the area root, without a leading slash. */
   relative: string;
+  /** True when the input was an internal absolute path (`/home/alice/...`). */
+  internal: boolean;
 }
 
 function hasControlCharacter(value: string): boolean {
@@ -149,6 +151,12 @@ function hasControlCharacter(value: string): boolean {
     if (code < 0x20 || code === 0x7f) return true;
   }
   return false;
+}
+
+function validSegments(value: string): string[] | null {
+  const segments = value.split("/").filter((segment) => segment.length > 0 && segment !== ".");
+  if (segments.some((segment) => segment === ".." || segment.length > 255 || hasControlCharacter(segment))) return null;
+  return segments;
 }
 
 const AREA_ALIASES: Record<string, RumahlArea> = {
@@ -163,10 +171,17 @@ const AREA_ALIASES: Record<string, RumahlArea> = {
 };
 
 /**
- * Parses what a user typed into the Files address bar into a canonical rumahl
- * path. This is deliberately not a POSIX interpreter: there are no drive
- * letters, no absolute host paths and no `..`; backslashes are treated as
- * separators so a path pasted from Windows still lands where it points.
+ * Parses what a user typed into the Files address bar into a canonical path.
+ *
+ * Two forms are accepted:
+ * * `rumahl://home/Documents` — the client-neutral address shown in the bar.
+ * * `/home/<username>/Documents`, `/apps/...`, `/system/...` — the internal
+ *   absolute form the rest of the OS resolves. The service checks that the
+ *   account name is the caller's; the client never guesses another home.
+ *
+ * This is deliberately not a POSIX interpreter: there is no arbitrary host
+ * path, no drive letter and no `..`. Backslashes are treated as separators so
+ * a path pasted from Windows still lands where it points.
  */
 export function parseRumahlPath(input: string): RumahlPath | null {
   let value = input.trim();
@@ -174,24 +189,57 @@ export function parseRumahlPath(input: string): RumahlPath | null {
     value = value.slice(1, -1).trim();
   }
   value = value.replace(/\\/g, "/");
+  if (!value) return null;
   const lower = value.toLowerCase();
+  if (value.startsWith("/")) {
+    const segments = validSegments(value);
+    if (!segments || segments.length === 0) return null;
+    const area = segments[0]?.toLowerCase();
+    if (area === "home") {
+      const username = segments[1];
+      if (!username) return null;
+      const relative = segments.slice(2).join("/");
+      const canonical = `/home/${username}${relative ? `/${relative}` : ""}`;
+      return { canonical, area: "home", relative, internal: true };
+    }
+    if (area === "apps" || area === "system") {
+      const relative = segments.slice(1).join("/");
+      const canonical = `/${area}${relative ? `/${relative}` : ""}`;
+      return { canonical, area, relative, internal: true };
+    }
+    return null;
+  }
   if (lower.startsWith("rumahl://")) value = value.slice("rumahl://".length);
   else if (lower.startsWith("rumahl:")) value = value.slice("rumahl:".length);
   if (!value || value.startsWith("/")) return null;
-  const segments = value.split("/").filter((segment) => segment.length > 0 && segment !== ".");
-  if (segments.some((segment) => segment === ".." || segment.length > 255 || hasControlCharacter(segment))) return null;
+  const segments = validSegments(value);
+  if (!segments || segments.length === 0) return null;
   const area = AREA_ALIASES[segments[0]?.toLowerCase() ?? ""];
   if (!area) return null;
   const relative = segments.slice(1).join("/");
   if (area === "desktop" && relative) return null;
   if (relative.length > 4096) return null;
-  return { canonical: relative ? `rumahl://${area}/${relative}` : `rumahl://${area}`, area, relative };
+  return { canonical: relative ? `rumahl://${area}/${relative}` : `rumahl://${area}`, area, relative, internal: false };
+}
+
+export interface PathTrailEntry {
+  id: string;
+  name: string;
+  directory: boolean;
 }
 
 export interface ResolvedRumahlPath extends RumahlPath {
+  /** Internal absolute path (`/home/alice/Documents`) or the desktop URI. */
+  path: string;
+  /** Client-neutral URI shown in the address bar. */
+  uri: string;
   name: string;
   directory: boolean;
   writable: boolean;
+  /** Personal-store id of the target when the area is home. */
+  id: string | null;
+  /** Personal-store trail from the home root to the target, when available. */
+  trail: readonly PathTrailEntry[] | null;
 }
 
 export type PathResolutionReason = "invalid" | "denied" | "missing" | "unavailable";
@@ -233,17 +281,37 @@ export async function resolveRumahlPath(
   if (value.fsVersion !== 1 ||
       (value.area !== "home" && value.area !== "apps" && value.area !== "system" && value.area !== "desktop") ||
       typeof value.path !== "string" || value.path.length > 4096 ||
+      typeof value.uri !== "string" || value.uri.length > 4096 ||
       typeof value.relative !== "string" || value.relative.length > 4096 ||
       typeof value.name !== "string" || value.name.length > 255 ||
       typeof value.directory !== "boolean" ||
-      typeof value.writable !== "boolean")
+      typeof value.writable !== "boolean" ||
+      (value.id !== null && (typeof value.id !== "string" || value.id.length > 255)) ||
+      !validTrail(value.trail))
     throw new PathResolutionError("unavailable");
   return {
-    canonical: value.path,
+    canonical: value.uri,
     area: value.area,
     relative: value.relative,
+    internal: false,
+    path: value.path,
+    uri: value.uri,
     name: value.name,
     directory: value.directory,
     writable: value.writable,
+    id: value.id,
+    trail: value.trail,
   };
+}
+
+function validTrail(value: unknown): value is readonly PathTrailEntry[] | null {
+  if (value === null) return true;
+  if (!Array.isArray(value) || value.length > 256) return false;
+  return value.every((entry) => {
+    if (typeof entry !== "object" || !entry || Array.isArray(entry)) return false;
+    const candidate = entry as Record<string, unknown>;
+    return typeof candidate.id === "string" && candidate.id.length > 0 && candidate.id.length <= 255 &&
+      typeof candidate.name === "string" && candidate.name.length <= 255 &&
+      typeof candidate.directory === "boolean";
+  });
 }

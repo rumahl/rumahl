@@ -1,7 +1,8 @@
 //! Router-level tests for host file browsing and the writable home area.
 use http_body_util::BodyExt;
 use rumahl_core::{
-    AccountStateRepository, BrowserProfileId, OsMode, OsModeRepository, PreferenceScope,
+    AccountStateRepository, BrowserProfileId, OsMode, OsModeRepository, PersonalFiles,
+    PreferenceScope,
 };
 use rumahl_persistence_sqlite::{SqliteAccountStateRepository, SqliteOsModeRepository};
 use rumahl_platform_service::host_files::LocalHostFiles;
@@ -15,7 +16,11 @@ use tower::ServiceExt;
 const ORIGIN: &str = "https://rumahl.test";
 const DEVICE: &str = "00000000-0000-4000-8000-000000000001";
 
-fn gateway(root: &std::path::Path, host: Arc<dyn HostFiles>) -> axum::Router {
+fn gateway(
+    root: &std::path::Path,
+    host: Arc<dyn HostFiles>,
+    files: Option<Arc<dyn rumahl_core::PersonalFiles>>,
+) -> axum::Router {
     let accounts = root.join("accounts.sqlite");
     let platform = root.join("platform.sqlite");
     router(GatewayState {
@@ -33,7 +38,7 @@ fn gateway(root: &std::path::Path, host: Arc<dyn HostFiles>) -> axum::Router {
         streams: None,
         apps: None,
         oidc: None,
-        files: None,
+        files,
         workspace: None,
         preferences: None,
         os_mode: Some(Arc::new(
@@ -90,7 +95,7 @@ async fn host_browsing_and_home_writes_respect_advanced_mode_and_the_home_area()
         LocalHostFiles::new(root.join("apps"), root.join("system"))
             .with_homes(home_root.clone(), accounts.clone()),
     );
-    let app = gateway(root, host);
+    let app = gateway(root, host, None);
 
     let listing = |token: &str, area: &str| {
         axum::http::Request::builder()
@@ -148,7 +153,9 @@ async fn host_browsing_and_home_writes_respect_advanced_mode_and_the_home_area()
         .unwrap();
     assert_eq!(response.status(), axum::http::StatusCode::OK);
     let value = json(response).await;
-    assert_eq!(value["path"], "rumahl://home/Documents");
+    // The internal absolute form and the client-neutral URI name one target.
+    assert_eq!(value["path"], "/home/alice/Documents");
+    assert_eq!(value["uri"], "rumahl://home/Documents");
     assert_eq!(value["area"], "home");
     assert_eq!(value["name"], "Documents");
     assert_eq!(value["directory"], true);
@@ -175,6 +182,20 @@ async fn host_browsing_and_home_writes_respect_advanced_mode_and_the_home_area()
     let response = app
         .clone()
         .oneshot(resolve(&alice, "rumahl%3A%2F%2Fapps"))
+        .await
+        .unwrap();
+    assert_eq!(response.status(), axum::http::StatusCode::FORBIDDEN);
+    let response = app
+        .clone()
+        .oneshot(resolve(&alice, "%2Fhome%2Falice%2FDocuments"))
+        .await
+        .unwrap();
+    assert_eq!(response.status(), axum::http::StatusCode::OK);
+    assert_eq!(json(response).await["path"], "/home/alice/Documents");
+    // Another account's home is never resolvable, even with the exact path.
+    let response = app
+        .clone()
+        .oneshot(resolve(&alice, "%2Fhome%2Fbob%2FDocuments"))
         .await
         .unwrap();
     assert_eq!(response.status(), axum::http::StatusCode::FORBIDDEN);
@@ -225,6 +246,8 @@ async fn host_browsing_and_home_writes_respect_advanced_mode_and_the_home_area()
     assert_eq!(response.status(), axum::http::StatusCode::OK);
     let value = json(response).await;
     assert_eq!(value["area"], "apps");
+    assert_eq!(value["path"], "/apps");
+    assert_eq!(value["uri"], "rumahl://apps");
     assert_eq!(value["writable"], false);
 
     // Home writes need the origin and land contained in the home directory.
@@ -304,4 +327,91 @@ async fn host_browsing_and_home_writes_respect_advanced_mode_and_the_home_area()
     let response = app.clone().oneshot(remove).await.unwrap();
     assert_eq!(response.status(), axum::http::StatusCode::NO_CONTENT);
     assert!(!home_root.join("alice/Projects").exists());
+}
+
+#[tokio::test]
+async fn a_home_path_resolves_to_the_personal_store_trail() {
+    use rumahl_persistence_sqlite::HomePersonalFiles;
+
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path();
+    let accounts = root.join("accounts.sqlite");
+    let password = rumahl_account_auth::SessionToken::generate()
+        .unwrap()
+        .encode()
+        .to_string();
+    provision(
+        &accounts,
+        "alice",
+        "Alice",
+        password.clone(),
+        LocalPasswordBlocklist::default(),
+    )
+    .unwrap();
+    let sessions = LocalBrowserSessions::open(&accounts).unwrap();
+    let alice = sessions.login("alice", password).unwrap();
+    let user_id = {
+        let state = SqliteAccountStateRepository::open(&accounts)
+            .unwrap()
+            .load()
+            .unwrap();
+        *state
+            .accounts()
+            .accounts()
+            .iter()
+            .find(|user| user.username().as_str() == "alice")
+            .unwrap()
+            .user_id()
+    };
+    let home_root = root.join("home");
+    std::fs::create_dir_all(home_root.join("alice/Documents")).unwrap();
+    std::fs::write(home_root.join("alice/Documents/notes.txt"), b"mine").unwrap();
+    let host: Arc<dyn HostFiles> = Arc::new(
+        LocalHostFiles::new(root.join("apps"), root.join("system"))
+            .with_homes(home_root.clone(), accounts.clone()),
+    );
+    let files =
+        HomePersonalFiles::open(&home_root, &accounts, root.join("files-index.sqlite")).unwrap();
+    let expected = files.resolve_path(user_id, "Documents/notes.txt").unwrap();
+    assert!(!expected.1);
+    let app = gateway(
+        root,
+        host,
+        Some(Arc::new(files) as Arc<dyn rumahl_core::PersonalFiles>),
+    );
+
+    let request = |path: &str| {
+        axum::http::Request::builder()
+            .uri(format!(
+                "/api/v1/shell/fs/resolve?path={path}&device={DEVICE}"
+            ))
+            .header("cookie", format!("__Host-rumahl_session={}", &*alice))
+            .body(axum::body::Body::empty())
+            .unwrap()
+    };
+    let response = app
+        .clone()
+        .oneshot(request("%2Fhome%2Falice%2FDocuments%2Fnotes.txt"))
+        .await
+        .unwrap();
+    assert_eq!(response.status(), axum::http::StatusCode::OK);
+    let value = json(response).await;
+    assert_eq!(value["uri"], "rumahl://home/Documents/notes.txt");
+    assert_eq!(value["id"], expected.0);
+    assert_eq!(value["trail"][0]["name"], "Documents");
+    assert_eq!(value["trail"][0]["directory"], true);
+    assert_eq!(value["trail"][1]["name"], "notes.txt");
+    assert_eq!(value["trail"][1]["id"], expected.0);
+    assert_eq!(value["trail"][1]["directory"], false);
+
+    // The home root is the store root, not a fabricated ancestor.
+    let response = app
+        .clone()
+        .oneshot(request("rumahl%3A%2F%2Fhome"))
+        .await
+        .unwrap();
+    let value = json(response).await;
+    assert_eq!(value["path"], "/home/alice");
+    assert_eq!(value["id"], "root");
+    assert_eq!(value["trail"].as_array().unwrap().len(), 0);
 }

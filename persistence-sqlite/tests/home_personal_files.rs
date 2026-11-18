@@ -172,6 +172,31 @@ fn documents_are_owned_durable_bounded_and_moves_cannot_create_cycles() {
         Err(FileError::Invalid)
     );
 
+    // Paths resolve to the same stable ids without exposing them.
+    let trail = repo.path_trail(a, "Documents/hello.txt").unwrap();
+    assert_eq!(trail.len(), 2);
+    assert_eq!(trail[0].name, "Documents");
+    assert_eq!(trail[1].id, file.id);
+    assert_eq!(
+        repo.resolve_path(a, "Documents/hello.txt"),
+        Ok((file.id.clone(), false))
+    );
+    assert_eq!(
+        repo.resolve_path(a, "Documents"),
+        Ok((folder.id.clone(), true))
+    );
+    assert_eq!(repo.resolve_path(a, ""), Ok(("root".to_owned(), true)));
+    assert_eq!(
+        repo.resolve_path(a, "Documents/missing"),
+        Err(FileError::Missing)
+    );
+    assert_eq!(repo.resolve_path(a, "../escape"), Err(FileError::Invalid));
+    assert_eq!(
+        repo.resolve_path(a, "Documents/hello.txt/deeper"),
+        Err(FileError::Invalid)
+    );
+    assert_eq!(repo.resolve_path(b, "Documents"), Err(FileError::Missing));
+
     // A rename keeps the id, so grants survive it.
     repo.relocate(a, &file.id, "root", "renamed.txt").unwrap();
     assert_eq!(

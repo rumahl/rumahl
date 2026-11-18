@@ -421,26 +421,40 @@ test("shows the canonical rumahl path and follows navigation", async () => {
 
 test("opens a typed rumahl folder and file through the service", async () => {
   state.advanced = true;
+  const seen: string[] = [];
   state.live.request.mockImplementation(async (url: string) => {
+    seen.push(String(url));
     if (String(url).startsWith("/api/v1/shell/fs/resolve?")) {
       const target = new URL(String(url), "https://localhost").searchParams.get("path") ?? "";
-      const file = target === "rumahl://home/Documents/notes.txt";
+      const file = target.endsWith("/notes.txt");
       return {
         ok: true,
         json: async () => file
-          ? { fsVersion: 1, path: target, area: "home", relative: "Documents/notes.txt", name: "notes.txt", directory: false, writable: true }
-          : { fsVersion: 1, path: target, area: "home", relative: "Documents", name: "Documents", directory: true, writable: true }
+          ? {
+              fsVersion: 1, path: "/home/alice/Documents/notes.txt", uri: "rumahl://home/Documents/notes.txt",
+              area: "home", relative: "Documents/notes.txt", name: "notes.txt", directory: false, writable: true,
+              id: "file-id", trail: [
+                { id: "documents-id", name: "Documents", directory: true },
+                { id: "file-id", name: "notes.txt", directory: false }
+              ]
+            }
+          : {
+              fsVersion: 1, path: "/home/alice/Documents", uri: "rumahl://home/Documents",
+              area: "home", relative: "Documents", name: "Documents", directory: true, writable: true,
+              id: "documents-id", trail: [{ id: "documents-id", name: "Documents", directory: true }]
+            }
       };
     }
     return { ok: true, headers: new Headers({ "x-total-count": "0" }), json: async () => [] };
   });
-  state.fetchHostList.mockResolvedValue([{ name: "notes.txt", directory: false, size: 3, modified: 1 }]);
   render(<FilesApp />);
   const address = screen.getByRole("textbox", { name: "files.address" });
 
-  fireEvent.change(address, { target: { value: "~/Documents" } });
+  fireEvent.change(address, { target: { value: "/home/alice/Documents" } });
   fireEvent.submit(address.closest("form")!);
-  await waitFor(() => expect(state.fetchHostList).toHaveBeenCalledWith(expect.anything(), "home", "Documents", expect.anything(), expect.anything()));
+  // The internal path lands in the one personal store view, addressed by the
+  // stable id of the folder, and the bar shows the client-neutral URI.
+  await waitFor(() => expect(seen.some((url) => url.startsWith("/api/v1/files?parent=documents-id"))).toBe(true));
   expect(address).toHaveValue("rumahl://home/Documents");
 
   fireEvent.change(address, { target: { value: "rumahl://home/Documents/notes.txt" } });
@@ -448,9 +462,8 @@ test("opens a typed rumahl folder and file through the service", async () => {
   await waitFor(() => expect(state.open).toHaveBeenCalledTimes(1));
   const opened = state.open.mock.calls[0]![0] as string;
   expect(opened).toContain("/app/editor?");
-  expect(opened).toContain("source=host");
-  expect(opened).toContain("area=home");
-  expect(opened).toContain("path=Documents%2Fnotes.txt");
+  expect(opened).toContain("id=file-id");
+  expect(opened).not.toContain("source=host");
 });
 
 test("rejects invalid and forbidden paths without guessing", async () => {
@@ -465,7 +478,8 @@ test("rejects invalid and forbidden paths without guessing", async () => {
   fireEvent.submit(address.closest("form")!);
   expect(await screen.findByText("files.pathDenied")).toBeInTheDocument();
 
-  // A host path is not a rumahl path and never reaches the service.
+  // An arbitrary host path is not part of the rumahl namespace and never
+  // reaches the service.
   fireEvent.change(address, { target: { value: "/etc/passwd" } });
   fireEvent.submit(address.closest("form")!);
   expect(await screen.findByText("files.pathInvalid")).toBeInTheDocument();

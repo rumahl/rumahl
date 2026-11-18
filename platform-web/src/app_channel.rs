@@ -71,7 +71,14 @@ pub enum ChannelFrame {
         id: String,
         invocation: String,
         action: String,
-        key: String,
+        /// Personal-file id; exactly one of `key` and `path` is set.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        key: Option<String>,
+        /// Internal path (`/home/<user>/...` or `rumahl://home/...`). The OS
+        /// resolves it with the invocation's identity, then authorizes the
+        /// resolved id exactly like a key request.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        path: Option<String>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         content_base64: Option<String>,
     },
@@ -100,6 +107,18 @@ pub trait ChannelFiles: Send + Sync {
         installation: InstallationId,
         access: &AppFileAccess,
     ) -> Result<AppFileOutcome, AppAccessError>;
+
+    /// Resolves an internal path to the invocation user's personal-file id.
+    /// Implementations must only accept the caller's own home and fail closed;
+    /// the grant on the returned id still decides the access.
+    fn resolve(
+        &self,
+        _identity: ShellIdentity,
+        _installation: InstallationId,
+        _path: &str,
+    ) -> Result<String, AppAccessError> {
+        Err(AppAccessError::Denied)
+    }
 }
 
 impl ChannelFrame {
@@ -396,7 +415,8 @@ fn handle_file_request<W: Write + Send>(
     id: String,
     invocation: String,
     action: String,
-    key: String,
+    key: Option<String>,
+    path: Option<String>,
     content_base64: Option<String>,
     files: Option<&dyn ChannelFiles>,
 ) -> ChannelFrame {
@@ -413,6 +433,19 @@ fn handle_file_request<W: Write + Send>(
     };
     let Some(files) = files else {
         return deny("unavailable");
+    };
+    let identity = ShellIdentity {
+        user_id: user,
+        session_id: session,
+    };
+    let key = match (key, path) {
+        (Some(key), None) => key,
+        (None, Some(path)) => match files.resolve(identity, installation, &path) {
+            Ok(key) => key,
+            Err(AppAccessError::Denied) => return deny("denied"),
+            Err(AppAccessError::Unavailable) => return deny("unavailable"),
+        },
+        _ => return deny("invalid"),
     };
     if key.is_empty() || key.len() > 255 {
         return deny("invalid");
@@ -435,10 +468,6 @@ fn handle_file_request<W: Write + Send>(
             }
         }
         _ => return deny("invalid"),
-    };
-    let identity = ShellIdentity {
-        user_id: user,
-        session_id: session,
     };
     match files.access(identity, installation, &access) {
         Ok(AppFileOutcome::Content { name, bytes }) => match encode_file_content(&bytes) {
@@ -506,9 +535,13 @@ where
                     invocation,
                     action,
                     key,
+                    path,
                     content_base64,
                 } => {
-                    let target = format!("{installation}:{action}:{key}");
+                    let target = format!(
+                        "{installation}:{action}:{}",
+                        key.as_deref().or(path.as_deref()).unwrap_or("")
+                    );
                     let response = handle_file_request(
                         &connection,
                         installation,
@@ -516,6 +549,7 @@ where
                         invocation,
                         action,
                         key,
+                        path,
                         content_base64,
                         files.as_deref(),
                     );
@@ -727,6 +761,7 @@ mod tests {
         #[derive(Default)]
         struct RecordingFiles {
             seen: Mutex<Vec<(ShellIdentity, InstallationId, AppFileAccess)>>,
+            paths: Mutex<Vec<String>>,
         }
 
         impl ChannelFiles for RecordingFiles {
@@ -744,6 +779,20 @@ mod tests {
                     name: "notes.txt".into(),
                     bytes: b"hello".to_vec(),
                 })
+            }
+
+            fn resolve(
+                &self,
+                _identity: ShellIdentity,
+                _installation: InstallationId,
+                path: &str,
+            ) -> Result<String, AppAccessError> {
+                self.paths.lock().unwrap().push(path.to_owned());
+                if path == "/home/alice/Documents/notes.txt" {
+                    Ok("path-resolved".into())
+                } else {
+                    Err(AppAccessError::Denied)
+                }
             }
         }
 
@@ -824,7 +873,8 @@ mod tests {
                         id: "1".into(),
                         invocation: invocation.clone(),
                         action: "read".into(),
-                        key: "0123456789abcdef0123456789abcdef".into(),
+                        key: Some("0123456789abcdef0123456789abcdef".into()),
+                        path: None,
                         content_base64: None,
                     }
                     .encode()
@@ -873,7 +923,8 @@ mod tests {
                         id: "2".into(),
                         invocation: "not-an-invocation".into(),
                         action: "read".into(),
-                        key: "0123456789abcdef0123456789abcdef".into(),
+                        key: Some("0123456789abcdef0123456789abcdef".into()),
+                        path: None,
                         content_base64: None,
                     }
                     .encode()
@@ -892,6 +943,74 @@ mod tests {
             Some(ChannelFrame::FileResponse { ok: false, error: Some(error), .. }) if error == "no-invocation"
         ));
         assert_eq!(files.seen.lock().unwrap().len(), 1);
+
+        // A path request resolves with the invocation's identity, then runs
+        // through the same consent check on the resolved id.
+        client
+            .write_all(
+                format!(
+                    "{}\n",
+                    ChannelFrame::FileRequest {
+                        id: "3".into(),
+                        invocation: invocation.clone(),
+                        action: "read".into(),
+                        key: None,
+                        path: Some("/home/alice/Documents/notes.txt".into()),
+                        content_base64: None,
+                    }
+                    .encode()
+                    .unwrap()
+                )
+                .as_bytes(),
+            )
+            .unwrap();
+        client.flush().unwrap();
+        let mut resolved = String::new();
+        BufReader::new(client.try_clone().unwrap())
+            .read_line(&mut resolved)
+            .unwrap();
+        assert!(matches!(
+            ChannelFrame::decode(resolved.trim()),
+            Some(ChannelFrame::FileResponse { ok: true, .. })
+        ));
+        assert_eq!(
+            files.seen.lock().unwrap().last().unwrap().2.key,
+            "path-resolved"
+        );
+        assert_eq!(
+            files.paths.lock().unwrap().as_slice(),
+            ["/home/alice/Documents/notes.txt"]
+        );
+
+        // A path outside the caller's home is denied before the executor runs.
+        client
+            .write_all(
+                format!(
+                    "{}\n",
+                    ChannelFrame::FileRequest {
+                        id: "4".into(),
+                        invocation: invocation.clone(),
+                        action: "read".into(),
+                        key: None,
+                        path: Some("/home/bob/Documents/notes.txt".into()),
+                        content_base64: None,
+                    }
+                    .encode()
+                    .unwrap()
+                )
+                .as_bytes(),
+            )
+            .unwrap();
+        client.flush().unwrap();
+        let mut foreign = String::new();
+        BufReader::new(client.try_clone().unwrap())
+            .read_line(&mut foreign)
+            .unwrap();
+        assert!(matches!(
+            ChannelFrame::decode(foreign.trim()),
+            Some(ChannelFrame::FileResponse { ok: false, error: Some(error), .. }) if error == "denied"
+        ));
+        assert_eq!(files.seen.lock().unwrap().len(), 2);
 
         // Finishing the invocation forgets its identity.
         client

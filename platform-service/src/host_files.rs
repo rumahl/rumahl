@@ -71,22 +71,26 @@ impl LocalHostFiles {
         &self.home_root
     }
 
-    /// The account's home directory. Unknown users and missing directories
-    /// resolve to nothing: no area ever inherits another user's path.
-    fn home_of(&self, user: UserId) -> Result<PathBuf, HostError> {
+    /// The caller's account name. Unknown users resolve to nothing: no area
+    /// ever inherits another user's name.
+    fn account_name(&self, user: UserId) -> Result<String, HostError> {
         let Some(accounts) = self.accounts.as_ref() else {
             return Err(HostError::Denied);
         };
         let state = SqliteAccountStateRepository::open(accounts)
             .and_then(|repository| repository.load())
             .map_err(|_| HostError::Unavailable)?;
-        let account = state
+        state
             .accounts()
             .get(&user)
-            .ok_or(HostError::Denied)?
-            .username()
-            .as_str()
-            .to_owned();
+            .map(|account| account.username().as_str().to_owned())
+            .ok_or(HostError::Denied)
+    }
+
+    /// The account's home directory. Unknown users and missing directories
+    /// resolve to nothing: no area ever inherits another user's path.
+    fn home_of(&self, user: UserId) -> Result<PathBuf, HostError> {
+        let account = self.account_name(user)?;
         let root = self
             .home_root
             .canonicalize()
@@ -244,6 +248,10 @@ impl HostFiles for LocalHostFiles {
             .map(|name| name.to_string_lossy().into_owned())
             .unwrap_or_else(|| "download".to_owned());
         Ok((name, data))
+    }
+
+    fn username(&self, user: UserId) -> Result<String, HostError> {
+        self.account_name(user)
     }
 
     fn stat(&self, area: HostArea, path: &str, user: UserId) -> Result<(String, bool), HostError> {

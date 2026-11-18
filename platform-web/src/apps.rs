@@ -294,6 +294,17 @@ pub trait AppProvider: Send + Sync + 'static {
         installation: InstallationId,
         path: &str,
     ) -> Result<AppData, AppAccessError>;
+    /// Resolves an internal path (`/home/<caller>/...` or `rumahl://home/...`)
+    /// to the caller's personal-store id for channel file access. Only the
+    /// caller's own home is addressable; grants still apply to the id.
+    fn resolve_channel_path(
+        &self,
+        _identity: ShellIdentity,
+        _installation: InstallationId,
+        _path: &str,
+    ) -> Result<String, AppAccessError> {
+        Err(AppAccessError::Denied)
+    }
     /// Runtime activation state. Fails closed when no runtime control is wired.
     fn runtime_status(
         &self,
@@ -524,6 +535,22 @@ impl AppAccess {
         self.provider.session_ended(session);
     }
 
+    /// Resolves an internal path for a channel app with the invocation's
+    /// identity, so an app can use `/home/<user>/...` without ever naming
+    /// another account or bypassing the grant on the resolved id.
+    pub fn resolve_channel_path(
+        &self,
+        identity: ShellIdentity,
+        installation: InstallationId,
+        path: &str,
+    ) -> Result<String, AppAccessError> {
+        self.catalog(identity)?
+            .into_iter()
+            .find(|app| app.installation_id == installation)
+            .ok_or(AppAccessError::Denied)?;
+        self.provider
+            .resolve_channel_path(identity, installation, path)
+    }
     /// File access for a channel app, addressed by installation id only: the
     /// identity comes from the user's in-flight capability invocation, never
     /// from the app itself.
@@ -888,6 +915,15 @@ impl crate::app_channel::ChannelFiles for AppAccess {
         access: &AppFileAccess,
     ) -> Result<AppFileOutcome, AppAccessError> {
         self.app_file_for_installation(identity, installation, access)
+    }
+
+    fn resolve(
+        &self,
+        identity: ShellIdentity,
+        installation: InstallationId,
+        path: &str,
+    ) -> Result<String, AppAccessError> {
+        self.resolve_channel_path(identity, installation, path)
     }
 }
 

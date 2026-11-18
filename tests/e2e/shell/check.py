@@ -215,8 +215,13 @@ http {{
             # path or traversal never becomes a file access.
             resolved_path = "/api/v1/shell/fs/resolve?path=rumahl%3A%2F%2Fhome%2Fsample.txt&device=00000000-0000-4000-8000-000000000001"
             resolved = json.loads(request(resolved_path, cookie=cookies["alice"])[2])
-            assert resolved["path"] == "rumahl://home/sample.txt" and resolved["directory"] is False
-            assert resolved["writable"] is True
+            assert resolved["path"] == "/home/alice/sample.txt"
+            assert resolved["uri"] == "rumahl://home/sample.txt"
+            assert resolved["directory"] is False and resolved["writable"] is True
+            assert resolved["id"] == sample["id"]
+            assert resolved["trail"][0]["id"] == sample["id"]
+            # Another account's home is never resolvable from a session.
+            assert request("/api/v1/shell/fs/resolve?path=%2Fhome%2Fbob%2Fsample.txt&device=00000000-0000-4000-8000-000000000001", cookie=cookies["alice"])[0] == 403
             assert request("/api/v1/shell/fs/resolve?path=rumahl%3A%2F%2Fhome%2F..%2F..%2Fetc&device=00000000-0000-4000-8000-000000000001", cookie=cookies["alice"])[0] == 400
             assert request("/api/v1/shell/fs/resolve?path=%2Fetc%2Fpasswd&device=00000000-0000-4000-8000-000000000001", cookie=cookies["alice"])[0] == 400
             print("PASS: production document upload limits, download and owner isolation", flush=True)

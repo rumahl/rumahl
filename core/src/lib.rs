@@ -171,4 +171,4 @@ pub use shell_preferences::{
 mod workspace;
 pub use workspace::{WorkspacePreferences, WorkspaceRepository};
 mod personal_files;
-pub use personal_files::{FileError, PersonalFile, PersonalFiles};
+pub use personal_files::{FileError, PersonalFile, PersonalFiles, personal_path_segments};

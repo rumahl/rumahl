@@ -4,7 +4,8 @@ use rumahl_persistence_sqlite::{SqliteAccountStateRepository, SqlitePersonalFile
 use rumahl_platform_service::apps::PersistentApps;
 use rumahl_platform_service::*;
 use rumahl_platform_web::{
-    AppAccess, BrowserSessions, GatewayConfig, GatewayState, InMemoryShellEvents, router,
+    AppAccess, BrowserSessions, GatewayConfig, GatewayState, InMemoryShellEvents, ShellIdentity,
+    router,
 };
 use std::sync::Arc;
 use tower::ServiceExt;
@@ -680,5 +681,113 @@ async fn consent_bodies_are_validated_and_missing_files_report_absent() {
     assert_eq!(
         response.status(),
         axum::http::StatusCode::UNSUPPORTED_MEDIA_TYPE
+    );
+}
+
+#[tokio::test]
+async fn channel_paths_resolve_only_the_callers_home() {
+    use rumahl_platform_web::ChannelFiles;
+
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path();
+    let accounts = root.join("accounts.sqlite");
+    let password = rumahl_account_auth::SessionToken::generate()
+        .unwrap()
+        .encode()
+        .to_string();
+    provision(
+        &accounts,
+        "alice",
+        "Alice",
+        password.clone(),
+        LocalPasswordBlocklist::default(),
+    )
+    .unwrap();
+    let sessions = LocalBrowserSessions::open(&accounts).unwrap();
+    let _alice = sessions.login("alice", password).unwrap();
+    let installation = seed_files_app(root, "alice");
+    let files = Arc::new(SqlitePersonalFiles::open(root.join("files.sqlite")).unwrap());
+    let (user_id, session_id) = {
+        let state = SqliteAccountStateRepository::open(&accounts)
+            .unwrap()
+            .load()
+            .unwrap();
+        let user = *state
+            .accounts()
+            .accounts()
+            .iter()
+            .find(|user| user.username().as_str() == "alice")
+            .unwrap()
+            .user_id();
+        let session = *state
+            .sessions()
+            .sessions_for_user(&user)
+            .next()
+            .unwrap()
+            .session_id();
+        (user, session)
+    };
+    let identity = ShellIdentity {
+        user_id,
+        session_id,
+    };
+    files.create(user_id, "root", "Documents", None).unwrap();
+    let documents = files.list(user_id, "root").unwrap().remove(0);
+    files
+        .create(user_id, &documents.id, "notes.txt", Some(b"hello".to_vec()))
+        .unwrap();
+    let expected = files
+        .resolve_path(user_id, "Documents/notes.txt")
+        .unwrap()
+        .0;
+
+    let provider = PersistentApps::open(
+        &accounts,
+        &root.join("platform.sqlite"),
+        root.join("app-assets"),
+    )
+    .unwrap()
+    .with_account_roles(&accounts)
+    .unwrap()
+    .with_personal_files(files.clone() as Arc<dyn PersonalFiles>);
+    let origin = GatewayConfig::new(ORIGIN, root.join("ssr.sock"))
+        .unwrap()
+        .public_origin;
+    let access = AppAccess::new(Arc::new(provider), &origin, "apps.rumahl.test").unwrap();
+
+    // Both the internal absolute path and the client-neutral URI resolve to
+    // the same store id; consent still applies to that id.
+    assert_eq!(
+        access
+            .resolve(identity, installation, "/home/alice/Documents/notes.txt")
+            .unwrap(),
+        expected
+    );
+    assert_eq!(
+        access
+            .resolve(identity, installation, "rumahl://home/Documents/notes.txt")
+            .unwrap(),
+        expected
+    );
+    // Another account's home, an unowned area and a missing file all deny.
+    assert!(
+        access
+            .resolve(identity, installation, "/home/bob/Documents/notes.txt")
+            .is_err()
+    );
+    assert!(
+        access
+            .resolve(identity, installation, "/apps/com.rumahl/files-app")
+            .is_err()
+    );
+    assert!(
+        access
+            .resolve(identity, installation, "/home/alice/missing.txt")
+            .is_err()
+    );
+    assert!(
+        access
+            .resolve(identity, installation, "/home/alice/../etc/passwd")
+            .is_err()
     );
 }

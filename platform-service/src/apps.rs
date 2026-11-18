@@ -856,6 +856,14 @@ impl AppProvider for PersistentApps {
     ) -> Result<AppFileOutcome, AppAccessError> {
         self.app_file_access(identity, installation, access)
     }
+    fn resolve_channel_path(
+        &self,
+        identity: ShellIdentity,
+        installation: InstallationId,
+        path: &str,
+    ) -> Result<String, AppAccessError> {
+        self.resolve_channel_file(identity, installation, path)
+    }
     fn app_runtime_environment(
         &self,
         identity: ShellIdentity,

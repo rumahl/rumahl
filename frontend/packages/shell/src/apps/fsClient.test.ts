@@ -58,15 +58,22 @@ test("host failures map to the explorer's vocabulary", async () => {
 
 test("rumahl paths are canonical across client operating systems", () => {
   expect(parseRumahlPath("rumahl://home/Documents/notes.txt")).toEqual({
-    canonical: "rumahl://home/Documents/notes.txt", area: "home", relative: "Documents/notes.txt"
+    canonical: "rumahl://home/Documents/notes.txt", area: "home", relative: "Documents/notes.txt", internal: false
   });
-  expect(parseRumahlPath("~/Documents")).toEqual({ canonical: "rumahl://home/Documents", area: "home", relative: "Documents" });
-  expect(parseRumahlPath("  HOME\\Documents  ")).toEqual({ canonical: "rumahl://home/Documents", area: "home", relative: "Documents" });
-  expect(parseRumahlPath("files")).toEqual({ canonical: "rumahl://home", area: "home", relative: "" });
-  expect(parseRumahlPath("desktop")).toEqual({ canonical: "rumahl://desktop", area: "desktop", relative: "" });
-  expect(parseRumahlPath("rumahl://apps/com.example.notes/data")).toEqual({ canonical: "rumahl://apps/com.example.notes/data", area: "apps", relative: "com.example.notes/data" });
+  expect(parseRumahlPath("~/Documents")).toEqual({ canonical: "rumahl://home/Documents", area: "home", relative: "Documents", internal: false });
+  expect(parseRumahlPath("  HOME\\Documents  ")).toEqual({ canonical: "rumahl://home/Documents", area: "home", relative: "Documents", internal: false });
+  expect(parseRumahlPath("files")).toEqual({ canonical: "rumahl://home", area: "home", relative: "", internal: false });
+  expect(parseRumahlPath("desktop")).toEqual({ canonical: "rumahl://desktop", area: "desktop", relative: "", internal: false });
+  expect(parseRumahlPath("rumahl://apps/com.example.notes/data")).toEqual({ canonical: "rumahl://apps/com.example.notes/data", area: "apps", relative: "com.example.notes/data", internal: false });
+  // The internal absolute form the rest of the OS resolves.
+  expect(parseRumahlPath("/home/alice/Documents/notes.txt")).toEqual({
+    canonical: "/home/alice/Documents/notes.txt", area: "home", relative: "Documents/notes.txt", internal: true
+  });
+  expect(parseRumahlPath("/apps/com.example.notes/data")).toEqual({
+    canonical: "/apps/com.example.notes/data", area: "apps", relative: "com.example.notes/data", internal: true
+  });
   // No POSIX host paths, drive letters, traversal or unknown areas.
-  for (const invalid of ["/home/alice", "C:\\Users\\alice", "rumahl://home/../etc", "rumahl://desktop/Documents", "rumahl:https://x", "documents", ""]) {
+  for (const invalid of ["/home", "/etc/passwd", "C:\\Users\\alice", "rumahl://home/../etc", "/home/alice/../etc", "rumahl://desktop/Documents", "rumahl:https://x", "documents", ""]) {
     expect(parseRumahlPath(invalid), invalid).toBeNull();
   }
 });
@@ -77,13 +84,16 @@ const rumahlPath = parseRumahlPath("rumahl://home/Documents")!;
 
 test("the service resolves a rumahl path and decides folder versus file", async () => {
   const shell = jsonRequest(200, {
-    fsVersion: 1, path: "rumahl://home/Documents", area: "home", relative: "Documents",
-    name: "Documents", directory: true, writable: true
+    fsVersion: 1, path: "/home/alice/Documents", uri: "rumahl://home/Documents",
+    area: "home", relative: "Documents", name: "Documents", directory: true, writable: true,
+    id: "documents-id", trail: [{ id: "documents-id", name: "Documents", directory: true }]
   });
   const resolved = await resolveRumahlPath(shell, rumahlPath, "device", new AbortController().signal);
   expect(resolved).toEqual({
-    canonical: "rumahl://home/Documents", area: "home", relative: "Documents",
-    name: "Documents", directory: true, writable: true
+    canonical: "rumahl://home/Documents", area: "home", relative: "Documents", internal: false,
+    path: "/home/alice/Documents", uri: "rumahl://home/Documents",
+    name: "Documents", directory: true, writable: true,
+    id: "documents-id", trail: [{ id: "documents-id", name: "Documents", directory: true }]
   });
   const [url] = vi.mocked(shell).mock.calls[0] as [string, RequestInit];
   expect(url).toContain("/api/v1/shell/fs/resolve?");
@@ -100,4 +110,9 @@ test("path resolution failures stay in the explorer's vocabulary", async () => {
   }
   await expect(resolveRumahlPath(jsonRequest(200, { fsVersion: 2 }), rumahlPath, "device", new AbortController().signal))
     .rejects.toThrow("unavailable");
+  await expect(resolveRumahlPath(jsonRequest(200, {
+    fsVersion: 1, path: "/home/alice/Documents", uri: "rumahl://home/Documents",
+    area: "home", relative: "Documents", name: "Documents", directory: true, writable: true,
+    id: null, trail: [{ id: "", name: "Documents", directory: true }]
+  }), rumahlPath, "device", new AbortController().signal)).rejects.toThrow("unavailable");
 });

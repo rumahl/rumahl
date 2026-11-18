@@ -77,6 +77,9 @@ pub trait HostFiles: Send + Sync + 'static {
     /// Returns an entry's own name and whether it is a directory, without
     /// reading its content or listing a whole folder.
     fn stat(&self, area: HostArea, path: &str, user: UserId) -> Result<(String, bool), HostError>;
+    /// The caller's account name, used to validate the `/home/<name>` form of
+    /// an internal path. It is never another user's name.
+    fn username(&self, user: UserId) -> Result<String, HostError>;
     /// Removes a file or an empty directory from the user's home.
     fn remove(&self, area: HostArea, path: &str, user: UserId) -> Result<(), HostError>;
     /// Renames one entry inside the user's home.
@@ -120,21 +123,32 @@ pub(crate) fn area_name(area: HostArea) -> &'static str {
     }
 }
 
-/// One parsed `rumahl://` path. Desktop is virtual; the other areas map to a
-/// real host root and a path relative to it.
+/// One parsed path. Desktop is virtual; home carries the optional account
+/// name from an internal absolute path; apps/system map to a real host root.
 #[derive(Debug, PartialEq, Eq)]
-enum RumahlTarget {
+enum PathTarget {
     Desktop,
-    Host { area: HostArea, relative: String },
+    Home {
+        username: Option<String>,
+        relative: String,
+    },
+    Host {
+        area: HostArea,
+        relative: String,
+    },
 }
 
-/// Parses the canonical rumahl path syntax: `rumahl://home/Documents`,
-/// `rumahl://apps/<app-id>/...`, `rumahl://system/...`, `rumahl://desktop`.
+/// Parses both address forms into one target:
 ///
-/// The syntax is deliberately not a POSIX path: it has no drive letters, no
-/// absolute host paths, and `..` never escapes an area. Client-side input
-/// normalization (aliases, backslashes) happens before this parser runs.
-fn parse_rumahl_path(value: &str) -> Option<RumahlTarget> {
+/// * `rumahl://home/Documents`, `rumahl://apps/<app-id>/...`,
+///   `rumahl://system/...`, `rumahl://desktop` — the client-neutral form.
+/// * `/home/<username>/Documents`, `/apps/...`, `/system/...` — the internal
+///   absolute form that other OS parts and apps resolve.
+///
+/// Neither form can reach another user's home: the account name in
+/// `/home/<name>` must be the caller's, and `..` never escapes an area. There
+/// are no drive letters and no arbitrary host paths.
+fn parse_path(value: &str) -> Option<PathTarget> {
     const MAX_PATH_BYTES: usize = 4096;
     const MAX_NAME_BYTES: usize = 255;
     if value.is_empty()
@@ -143,6 +157,41 @@ fn parse_rumahl_path(value: &str) -> Option<RumahlTarget> {
         || value.chars().any(char::is_control)
     {
         return None;
+    }
+    if let Some(rest) = value.strip_prefix('/') {
+        let mut parts = rest
+            .split('/')
+            .filter(|part| !part.is_empty() && *part != ".");
+        let area = parts.next()?.to_ascii_lowercase();
+        let segments: Vec<&str> = parts.collect();
+        if segments
+            .iter()
+            .any(|segment| *segment == ".." || segment.len() > MAX_NAME_BYTES)
+        {
+            return None;
+        }
+        let relative = segments.join("/");
+        return match area.as_str() {
+            "home" => {
+                let (username, rest) = relative.split_once('/').unwrap_or((&relative, ""));
+                if username.is_empty() || username == "." || username == ".." {
+                    return None;
+                }
+                Some(PathTarget::Home {
+                    username: Some(username.to_owned()),
+                    relative: rest.to_owned(),
+                })
+            }
+            "apps" => Some(PathTarget::Host {
+                area: HostArea::Apps,
+                relative,
+            }),
+            "system" => Some(PathTarget::Host {
+                area: HostArea::System,
+                relative,
+            }),
+            _ => None,
+        };
     }
     let (scheme, rest) = value.split_once("://")?;
     if !scheme.eq_ignore_ascii_case("rumahl") {
@@ -160,25 +209,39 @@ fn parse_rumahl_path(value: &str) -> Option<RumahlTarget> {
         return None;
     }
     let relative = segments.join("/");
-    let target = match area.as_str() {
-        "home" => HostArea::Home,
-        "apps" => HostArea::Apps,
-        "system" => HostArea::System,
-        "desktop" if relative.is_empty() => return Some(RumahlTarget::Desktop),
-        _ => return None,
-    };
-    Some(RumahlTarget::Host {
-        area: target,
-        relative,
-    })
+    match area.as_str() {
+        "home" => Some(PathTarget::Home {
+            username: None,
+            relative,
+        }),
+        "apps" => Some(PathTarget::Host {
+            area: HostArea::Apps,
+            relative,
+        }),
+        "system" => Some(PathTarget::Host {
+            area: HostArea::System,
+            relative,
+        }),
+        "desktop" if relative.is_empty() => Some(PathTarget::Desktop),
+        _ => None,
+    }
 }
 
-/// The canonical form shown in the address bar.
+/// The client-neutral form shown in the address bar.
 fn rumahl_path(area: HostArea, relative: &str) -> String {
     if relative.is_empty() {
         format!("rumahl://{}", area_name(area))
     } else {
         format!("rumahl://{}/{relative}", area_name(area))
+    }
+}
+
+/// The internal absolute form other OS parts resolve.
+fn internal_path(username: &str, relative: &str) -> String {
+    if relative.is_empty() {
+        format!("/home/{username}")
+    } else {
+        format!("/home/{username}/{relative}")
     }
 }
 
@@ -299,20 +362,23 @@ async fn resolve_path(
     let Some(raw) = query.get("path") else {
         return error(StatusCode::BAD_REQUEST);
     };
-    let target = match parse_rumahl_path(raw) {
+    let target = match parse_path(raw) {
         Some(target) => target,
         None => return error(StatusCode::BAD_REQUEST),
     };
-    let (path, area, relative, name, directory, writable) = match target {
-        RumahlTarget::Desktop => (
+    let (path, uri, area, relative, name, directory, writable, id, trail) = match target {
+        PathTarget::Desktop => (
+            "rumahl://desktop".to_owned(),
             "rumahl://desktop".to_owned(),
             "desktop",
             String::new(),
             "Desktop".to_owned(),
             true,
             true,
+            None,
+            None,
         ),
-        RumahlTarget::Host { area, relative } => {
+        PathTarget::Host { area, relative } => {
             if let Err(response) = authorize_area(&state, user, device, area).await {
                 return response;
             }
@@ -320,29 +386,113 @@ async fn resolve_path(
                 return error(StatusCode::SERVICE_UNAVAILABLE);
             };
             let canonical = rumahl_path(area, &relative);
+            let internal = match area {
+                HostArea::Apps => format!("/apps/{relative}"),
+                HostArea::System => format!("/system/{relative}"),
+                HostArea::Home => unreachable!("home is handled above"),
+            };
             let requested = relative.clone();
             match tokio::task::spawn_blocking(move || provider.stat(area, &requested, user)).await {
                 Ok(Ok((name, directory))) => (
+                    internal.trim_end_matches('/').to_owned(),
                     canonical,
                     area_name(area),
                     relative,
                     name,
                     directory,
-                    area == HostArea::Home,
+                    false,
+                    None,
+                    None,
                 ),
                 Ok(Err(failure)) => return fail(failure),
                 Err(_) => return error(StatusCode::SERVICE_UNAVAILABLE),
             }
         }
+        PathTarget::Home { username, relative } => {
+            // The account name in an internal path must be the caller's. It is
+            // never accepted from the client without that comparison.
+            let Some(provider) = state.host_files.clone() else {
+                return error(StatusCode::SERVICE_UNAVAILABLE);
+            };
+            let user_for_name = user;
+            let account =
+                match tokio::task::spawn_blocking(move || provider.username(user_for_name)).await {
+                    Ok(Ok(name)) => name,
+                    Ok(Err(failure)) => return fail(failure),
+                    Err(_) => return error(StatusCode::SERVICE_UNAVAILABLE),
+                };
+            if username.as_deref().is_some_and(|name| name != account) {
+                return error(StatusCode::FORBIDDEN);
+            }
+            let provider = match state.host_files.clone() {
+                Some(provider) => provider,
+                None => return error(StatusCode::SERVICE_UNAVAILABLE),
+            };
+            let requested = relative.clone();
+            let (name, directory) = match tokio::task::spawn_blocking(move || {
+                provider.stat(HostArea::Home, &requested, user)
+            })
+            .await
+            {
+                Ok(Ok(entry)) => entry,
+                Ok(Err(failure)) => return fail(failure),
+                Err(_) => return error(StatusCode::SERVICE_UNAVAILABLE),
+            };
+            // The personal store is the same home; its stable ids make the
+            // path a store trail the Files app can navigate.
+            let (id, trail) = match state.files.clone() {
+                Some(files) => {
+                    let requested = relative.clone();
+                    match tokio::task::spawn_blocking(move || files.path_trail(user, &requested))
+                        .await
+                    {
+                        Ok(Ok(entries)) => {
+                            let trail = entries
+                                .iter()
+                                .map(|entry| {
+                                    serde_json::json!({
+                                        "id": entry.id,
+                                        "name": entry.name,
+                                        "directory": entry.directory,
+                                    })
+                                })
+                                .collect::<Vec<_>>();
+                            let id = entries
+                                .last()
+                                .map(|entry| entry.id.clone())
+                                .unwrap_or_else(|| "root".to_owned());
+                            (Some(id), Some(trail))
+                        }
+                        Ok(Err(_)) => (None, None),
+                        Err(_) => return error(StatusCode::SERVICE_UNAVAILABLE),
+                    }
+                }
+                None => (None, None),
+            };
+            (
+                internal_path(&account, &relative),
+                rumahl_path(HostArea::Home, &relative),
+                "home",
+                relative,
+                name,
+                directory,
+                true,
+                id,
+                trail,
+            )
+        }
     };
     let mut response = axum::Json(serde_json::json!({
         "fsVersion": 1,
         "path": path,
+        "uri": uri,
         "area": area,
         "relative": relative,
         "name": name,
         "directory": directory,
         "writable": writable,
+        "id": id,
+        "trail": trail,
     }))
     .into_response();
     secure_headers(&mut response);
@@ -593,55 +743,68 @@ mod tests {
     use super::*;
 
     #[test]
-    fn parses_only_canonical_rumahl_paths() {
-        assert_eq!(
-            parse_rumahl_path("rumahl://home"),
-            Some(RumahlTarget::Host {
-                area: HostArea::Home,
-                relative: String::new()
+    fn parses_rumahl_and_internal_paths() {
+        let home = |username: Option<&str>, relative: &str| {
+            Some(PathTarget::Home {
+                username: username.map(str::to_owned),
+                relative: relative.to_owned(),
             })
-        );
+        };
+        assert_eq!(parse_path("rumahl://home"), home(None, ""));
         assert_eq!(
-            parse_rumahl_path("rumahl://home/Documents/notes.txt"),
-            Some(RumahlTarget::Host {
-                area: HostArea::Home,
-                relative: "Documents/notes.txt".to_owned()
-            })
+            parse_path("rumahl://home/Documents/notes.txt"),
+            home(None, "Documents/notes.txt")
         );
         // The scheme and the area are case-insensitive; the path is not.
         assert_eq!(
-            parse_rumahl_path("RUMAHL://Home/Documents"),
-            Some(RumahlTarget::Host {
-                area: HostArea::Home,
-                relative: "Documents".to_owned()
-            })
+            parse_path("RUMAHL://Home/Documents"),
+            home(None, "Documents")
         );
         // Empty and "." segments are normalized, never interpreted.
         assert_eq!(
-            parse_rumahl_path("rumahl://home//Documents/./x/"),
-            Some(RumahlTarget::Host {
-                area: HostArea::Home,
-                relative: "Documents/x".to_owned()
+            parse_path("rumahl://home//Documents/./x/"),
+            home(None, "Documents/x")
+        );
+        // The internal absolute form names the account explicitly.
+        assert_eq!(
+            parse_path("/home/alice/Documents"),
+            home(Some("alice"), "Documents")
+        );
+        assert_eq!(parse_path("/home/alice"), home(Some("alice"), ""));
+        assert_eq!(
+            parse_path("/apps/com.example.notes/data"),
+            Some(PathTarget::Host {
+                area: HostArea::Apps,
+                relative: "com.example.notes/data".to_owned()
             })
         );
         assert_eq!(
-            parse_rumahl_path("rumahl://desktop"),
-            Some(RumahlTarget::Desktop)
+            parse_path("/system/etc/hosts"),
+            Some(PathTarget::Host {
+                area: HostArea::System,
+                relative: "etc/hosts".to_owned()
+            })
         );
+        assert_eq!(parse_path("rumahl://desktop"), Some(PathTarget::Desktop));
         for invalid in [
             "rumahl://desktop/Documents",
             "rumahl://home/../etc",
-            "rumahl://home/Documents/..",
+            "/home/alice/../etc",
+            "/home/alice/Documents/..",
             "rumahl://home\\Documents",
+            "/home/alice\\Documents",
             "rumahl://home/Documents\0",
-            "/home/alice",
+            "/home",
+            "/home/",
+            "/etc/passwd",
+            "/apps/../secret",
             "C:\\Users\\alice",
             "home/Documents",
             "rumahl://root/etc",
             "rumahl://",
             "https://example.test/home",
         ] {
-            assert_eq!(parse_rumahl_path(invalid), None, "{invalid}");
+            assert_eq!(parse_path(invalid), None, "{invalid}");
         }
     }
 }

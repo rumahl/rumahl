@@ -285,6 +285,9 @@ keeps the connection open; frames are JSON lines versioned by
 `rumahl.channel.v1`. File requests are authorized with the user and session of
 the capability invocation that is still in flight, never with the app's own
 claim. A missing token, an unknown installation or a stale invocation denies
-the request. The listener bounds hello/frame sizes and concurrent connections,
+the request. A file request may carry `path` instead of `key`:
+`/home/<caller>/Documents/...` or `rumahl://home/Documents/...` is resolved with
+the invocation's identity, every other account and area is rejected, and the
+resolved personal-file id is then authorized exactly like a key request. The listener bounds hello/frame sizes and concurrent connections,
 and a channel directory that cannot be delivered leaves the app running
 without a channel instead of opening an unauthenticated path.

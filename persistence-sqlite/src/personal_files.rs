@@ -349,6 +349,40 @@ impl PersonalFiles for SqlitePersonalFiles {
         }
         tx.commit().map_err(db)
     }
+
+    fn path_trail(&self, u: UserId, path: &str) -> Result<Vec<PersonalFile>, E> {
+        use rumahl_core::personal_path_segments;
+        let segments = personal_path_segments(path)?;
+        let c = self.connect().map_err(db)?;
+        let mut parent = "root".to_owned();
+        let mut trail: Vec<PersonalFile> = Vec::with_capacity(segments.len());
+        for (position, segment) in segments.iter().enumerate() {
+            let entry = c
+                .query_row(
+                    "SELECT id,parent,name,directory,size,(SELECT COUNT(*) FROM personal_files child WHERE child.owner=?1 AND child.parent=personal_files.id) FROM personal_files WHERE owner=?1 AND parent=?2 AND name=?3",
+                    params![u.to_string(), parent, segment],
+                    |r| {
+                        Ok(PersonalFile {
+                            id: r.get(0)?,
+                            parent: r.get(1)?,
+                            name: r.get(2)?,
+                            directory: r.get(3)?,
+                            size: r.get::<_, i64>(4)? as u64,
+                            children: r.get::<_, i64>(5)?.try_into().unwrap_or(0),
+                        })
+                    },
+                )
+                .optional()
+                .map_err(db)?
+                .ok_or(E::Missing)?;
+            if position + 1 < segments.len() && !entry.directory {
+                return Err(E::Invalid);
+            }
+            parent = entry.id.clone();
+            trail.push(entry);
+        }
+        Ok(trail)
+    }
 }
 
 #[cfg(test)]

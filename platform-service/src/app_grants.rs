@@ -22,11 +22,11 @@ use std::collections::HashMap;
 use std::sync::Mutex;
 
 use rumahl_core::{
-    AuthorizationDecision, AuthorizationDenyReason, AuthorizationEngine, AuthorizationRequest,
-    GrantAuthority, GrantId, GrantIssuerPolicy, GrantValidity, Identity, InMemoryGrantStore,
-    OperationContext, OsPermissionCatalogError, PermissionGrant, PermissionId, PermissionScope,
-    PlatformRecovery, PlatformSnapshot, PlatformSnapshotRepository, ResourceKey, ResourceKind,
-    ResourceNamespace, ResourceRef, UnixTimestamp, UserId, UserIdentity, UserRole,
+    AccountStateRepository, AuthorizationDecision, AuthorizationDenyReason, AuthorizationEngine,
+    AuthorizationRequest, GrantAuthority, GrantId, GrantIssuerPolicy, GrantValidity, Identity,
+    InMemoryGrantStore, OperationContext, OsPermissionCatalogError, PermissionGrant, PermissionId,
+    PermissionScope, PlatformRecovery, PlatformSnapshot, PlatformSnapshotRepository, ResourceKey,
+    ResourceKind, ResourceNamespace, ResourceRef, UnixTimestamp, UserId, UserIdentity, UserRole,
     os_permission_catalog_validate,
 };
 use rumahl_persistence_sqlite::SqliteAccountRoles;
@@ -115,6 +115,24 @@ impl SessionGrantStore {
         entry.retain(|grant| grant.id() != id);
         entry.len() != before
     }
+}
+
+/// The home-relative part of an internal channel path, or `None` when the
+/// path names another account or is not a home path at all.
+fn home_relative<'a>(path: &'a str, username: &str) -> Option<&'a str> {
+    if let Some(rest) = path.strip_prefix("/home/") {
+        let (name, relative) = rest.split_once('/').unwrap_or((rest, ""));
+        return (name == username).then_some(relative);
+    }
+    let lower = path.to_ascii_lowercase();
+    if lower.starts_with("rumahl://home") {
+        let rest = &path["rumahl://home".len()..];
+        if rest.is_empty() {
+            return Some("");
+        }
+        return rest.strip_prefix('/');
+    }
+    None
 }
 
 /// Loads the platform snapshot and recovers state + durable grants.
@@ -383,6 +401,41 @@ impl PersistentApps {
             .store(&PlatformSnapshot::capture(&state, &durable))
             .map_err(|_| AppAccessError::Unavailable)?;
         Ok(())
+    }
+
+    /// Resolves an internal path for a channel app to the caller's personal
+    /// store id. Only `/home/<caller>/...` and `rumahl://home/...` are
+    /// accepted; the grant on the returned id still decides the access.
+    pub(crate) fn resolve_channel_file(
+        &self,
+        identity: ShellIdentity,
+        installation: rumahl_core::InstallationId,
+        path: &str,
+    ) -> Result<String, AppAccessError> {
+        self.authenticate(identity)?;
+        self.app(identity, installation)?;
+        let state = self
+            .accounts
+            .load()
+            .map_err(|_| AppAccessError::Unavailable)?;
+        let username = state
+            .accounts()
+            .get(&identity.user_id)
+            .ok_or(AppAccessError::Denied)?
+            .username()
+            .as_str()
+            .to_owned();
+        let relative = home_relative(path, &username).ok_or(AppAccessError::Denied)?;
+        let files = self.files.as_ref().ok_or(AppAccessError::Unavailable)?;
+        files
+            .resolve_path(identity.user_id, relative)
+            .map(|(id, _)| id)
+            .map_err(|error| match error {
+                rumahl_core::FileError::Missing | rumahl_core::FileError::Invalid => {
+                    AppAccessError::Denied
+                }
+                _ => AppAccessError::Unavailable,
+            })
     }
 
     /// Reads or writes one personal file on an app's behalf, authorized per

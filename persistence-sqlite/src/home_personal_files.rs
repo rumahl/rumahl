@@ -504,6 +504,39 @@ impl PersonalFiles for HomePersonalFiles {
         Ok(())
     }
 
+    fn path_trail(&self, owner: UserId, path: &str) -> Result<Vec<PersonalFile>, E> {
+        let segments = rumahl_core::personal_path_segments(path)?;
+        let home = self.home(owner)?;
+        let connection = self.connect().map_err(db)?;
+        let mut target = home.clone();
+        let mut relative = String::new();
+        let mut parent = "root".to_owned();
+        let mut trail: Vec<PersonalFile> = Vec::with_capacity(segments.len());
+        for (position, segment) in segments.iter().enumerate() {
+            target.push(segment);
+            let meta = std::fs::symlink_metadata(&target).map_err(io_error)?;
+            if meta.file_type().is_symlink() {
+                return Err(E::Invalid);
+            }
+            let directory = meta.is_dir();
+            if position + 1 < segments.len() && !directory {
+                return Err(E::Invalid);
+            }
+            relative = Self::join(&relative, segment);
+            let id = Self::id_for_path(&connection, owner, &relative)?;
+            trail.push(PersonalFile {
+                id: id.clone(),
+                parent: parent.clone(),
+                name: (*segment).to_owned(),
+                directory,
+                size: if directory { 0 } else { meta.len() },
+                children: 0,
+            });
+            parent = id;
+        }
+        Ok(trail)
+    }
+
     fn delete(&self, owner: UserId, id: &str) -> Result<(), E> {
         let (path, relative) = self.resolve(owner, id)?;
         let meta = std::fs::symlink_metadata(&path).map_err(io_error)?;

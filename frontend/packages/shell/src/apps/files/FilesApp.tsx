@@ -199,8 +199,24 @@ export function FilesApp() {
       const target = await resolveRumahlPath(live.request, parsed, device, new AbortController().signal);
       if (generation !== addressGeneration.current) return;
       if (target.directory) {
-        if (target.area === "desktop") explorer.navigate(freshDesktop());
-        else explorer.navigate({ place: { kind: "host", area: target.area }, trail: [ROOT], segments: target.relative ? target.relative.split("/") : [] });
+        if (target.area === "desktop") {
+          explorer.navigate(freshDesktop());
+        } else if (target.area === "home" && target.trail) {
+          // The home and the personal store are one tree: address the path,
+          // land in the stable-id store view instead of a second home.
+          explorer.navigate({
+            place: { kind: "store" },
+            trail: [{ id: ROOT.id, name: "" }, ...target.trail.map((entry) => ({ id: entry.id, name: entry.name }))],
+            segments: []
+          });
+        } else {
+          explorer.navigate({ place: { kind: "host", area: target.area }, trail: [ROOT], segments: target.relative ? target.relative.split("/") : [] });
+        }
+        return;
+      }
+      if (target.area === "home" && target.id) {
+        // Personal files open by their stable id, exactly like the list does.
+        explorer.open({ key: target.id, name: target.name, directory: false, size: 0, modified: 0, host: false });
         return;
       }
       const extension = extensionOf(target.name);
