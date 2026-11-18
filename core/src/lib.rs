@@ -25,7 +25,7 @@ pub use accounts::{
 pub use app_operations::{
     AppOperation, AppOperationError, AppOperationId, AppOperationIdError, AppOperationKind,
     AppOperationPhase, AppOperationRepository, AppOperationResource, AppOperationResourceState,
-    AppOperationStep,
+    AppOperationStep, activates_at_install,
 };
 
 pub use apps::{
