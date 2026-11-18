@@ -458,6 +458,17 @@ fn install_with(
             let issuer: Identity = UserIdentity::new(*account.user_id()).into();
             let subject: Identity = UserIdentity::new(*account.user_id()).into();
             for (permission, scope, resources) in &targets {
+                // An update reuses the installation's grants: only missing
+                // ones are issued, so repeated imports cannot pile duplicates.
+                let exists = grants.grants().iter().any(|grant| {
+                    grant.subject() == &subject
+                        && grant.permission() == permission
+                        && grant.scope() == *scope
+                        && grant.resources() == resources.as_slice()
+                });
+                if exists {
+                    continue;
+                }
                 let grant = GrantAuthority::new()
                     .issue(
                         &policy,
@@ -481,7 +492,7 @@ fn install_with(
     }
 
     println!(
-        "Installed {} ({:?}).",
+        "Installed or updated {} ({:?}).",
         installed.installation_id(),
         installed.published()
     );
@@ -1206,6 +1217,51 @@ mod tests {
                 ("PATH".to_owned(), "/usr/bin:/bin".to_owned()),
                 ("RUMAHL_SEALED_SECRET".to_owned(), "hidden".to_owned()),
             ]
+        );
+
+        // A newer package for the same app id updates the installation in
+        // place: same identity, one app, and the image record follows.
+        let upgrade = tempfile::tempdir().unwrap();
+        fs::create_dir_all(upgrade.path().join("runtime")).unwrap();
+        fs::write(
+            upgrade.path().join("runtime/server.oci"),
+            b"not-a-real-image",
+        )
+        .unwrap();
+        let mut upgraded = template.clone();
+        upgraded["app"]["version"] = json!("1.1.0");
+        let manifest =
+            PackageManifest::from_bytes(&serde_json::to_vec(&upgraded).unwrap()).unwrap();
+        generated
+            .key_store()
+            .signer()
+            .unwrap()
+            .sign(upgrade.path(), &manifest)
+            .unwrap();
+
+        install_with(&config, state.path(), upgrade.path()).unwrap();
+
+        let snapshot = SqliteSnapshotRepository::open(state.path().join("platform.sqlite"))
+            .unwrap()
+            .load()
+            .unwrap()
+            .unwrap();
+        assert_eq!(snapshot.installed_apps().len(), 1);
+        assert_eq!(
+            snapshot.installed_apps()[0]
+                .manifest()
+                .version()
+                .to_string(),
+            "1.1.0"
+        );
+        assert_eq!(
+            snapshot.installed_apps()[0].installation_id(),
+            installation_id
+        );
+        assert_eq!(imported.lock().unwrap().len(), 2);
+        assert!(
+            crate::app_runtime::read_runtime_record(state.path(), installation_id).is_some(),
+            "the update refreshes the recorded image metadata"
         );
     }
 }
