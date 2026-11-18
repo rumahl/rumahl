@@ -43,6 +43,8 @@ pub enum AuditAction {
     GrantIssued,
     GrantRevoked,
     AppFileAccess,
+    /// The user changed files in their own home through the shell.
+    HostFileChanged,
     // Health, crashes and self-healing.
     AppCrashed,
     AppUnresponsive,
@@ -79,6 +81,7 @@ impl AuditAction {
             Self::GrantIssued => "grant-issued",
             Self::GrantRevoked => "grant-revoked",
             Self::AppFileAccess => "app-file-access",
+            Self::HostFileChanged => "host-file-changed",
             Self::AppCrashed => "app-crashed",
             Self::AppUnresponsive => "app-unresponsive",
             Self::ServiceStarted => "service-started",
@@ -113,6 +116,7 @@ impl AuditAction {
             "grant-issued" => Self::GrantIssued,
             "grant-revoked" => Self::GrantRevoked,
             "app-file-access" => Self::AppFileAccess,
+            "host-file-changed" => Self::HostFileChanged,
             "app-crashed" => Self::AppCrashed,
             "app-unresponsive" => Self::AppUnresponsive,
             "service-started" => Self::ServiceStarted,
@@ -343,6 +347,7 @@ mod tests {
             AuditAction::GrantIssued,
             AuditAction::GrantRevoked,
             AuditAction::AppFileAccess,
+            AuditAction::HostFileChanged,
             AuditAction::AppCrashed,
             AuditAction::AppUnresponsive,
             AuditAction::ServiceStarted,
