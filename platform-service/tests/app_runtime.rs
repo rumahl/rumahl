@@ -1,4 +1,4 @@
-//! Router-level tests for the recorded app image environment view.
+//! Router-level tests for the recorded app image environment and app storage.
 use http_body_util::BodyExt;
 use rumahl_core::*;
 use rumahl_persistence_sqlite::{SqliteAccountStateRepository, SqliteOsModeRepository};
@@ -88,7 +88,10 @@ fn gateway(root: &std::path::Path) -> axum::Router {
     let provider = PersistentApps::open(&accounts, &platform, root.join("app-assets"))
         .unwrap()
         .with_account_roles(&accounts)
-        .unwrap();
+        .unwrap()
+        .with_data_root(root.join("apps-data"))
+        .unwrap()
+        .with_storage_quota(1024 * 1024);
     router(GatewayState {
         host_files: None,
         weather_warnings: None,
@@ -257,4 +260,84 @@ async fn the_recorded_image_environment_is_an_advanced_surface() {
     assert_eq!(value["runtime"], "web");
     assert!(value["image"].is_null());
     assert_eq!(value["entries"].as_array().unwrap().len(), 0);
+}
+
+#[tokio::test]
+async fn app_storage_is_measured_and_gated_like_the_data_browser() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path();
+    let accounts = root.join("accounts.sqlite");
+    let password = rumahl_account_auth::SessionToken::generate()
+        .unwrap()
+        .encode()
+        .to_string();
+    provision(
+        &accounts,
+        "alice",
+        "Alice",
+        password.clone(),
+        LocalPasswordBlocklist::default(),
+    )
+    .unwrap();
+    let sessions = LocalBrowserSessions::open(&accounts).unwrap();
+    let alice = sessions.login("alice", password).unwrap();
+    let _installation = seed_app(root, "alice");
+    // The app's private data directory carries two files.
+    let data = root.join("apps-data/com.rumahl.notes");
+    std::fs::create_dir_all(data.join("state")).unwrap();
+    std::fs::write(data.join("state/index.db"), vec![0_u8; 100]).unwrap();
+    std::fs::write(data.join("log.txt"), vec![0_u8; 20]).unwrap();
+
+    let app = gateway(root);
+    let request = axum::http::Request::builder()
+        .uri(format!(
+            "/api/v1/shell/apps/com.rumahl.notes/storage?installationId={}&device={DEVICE}",
+            _installation
+        ))
+        .header("cookie", format!("__Host-rumahl_session={}", &*alice))
+        .body(axum::body::Body::empty())
+        .unwrap();
+
+    // Guided mode keeps storage diagnostics closed.
+    let response = app.clone().oneshot(request).await.unwrap();
+    assert_eq!(response.status(), axum::http::StatusCode::FORBIDDEN);
+
+    let user_id = {
+        let state = SqliteAccountStateRepository::open(&accounts)
+            .unwrap()
+            .load()
+            .unwrap();
+        *state
+            .accounts()
+            .accounts()
+            .iter()
+            .find(|user| user.username().as_str() == "alice")
+            .unwrap()
+            .user_id()
+    };
+    SqliteOsModeRepository::open(root.join("preferences.sqlite"))
+        .unwrap()
+        .save(
+            user_id,
+            BrowserProfileId::parse(DEVICE).unwrap(),
+            0,
+            PreferenceScope::Device,
+            Some(OsMode::Advanced),
+        )
+        .unwrap();
+
+    let request = axum::http::Request::builder()
+        .uri(format!(
+            "/api/v1/shell/apps/com.rumahl.notes/storage?installationId={}&device={DEVICE}",
+            _installation
+        ))
+        .header("cookie", format!("__Host-rumahl_session={}", &*alice))
+        .body(axum::body::Body::empty())
+        .unwrap();
+    let response = app.clone().oneshot(request).await.unwrap();
+    assert_eq!(response.status(), axum::http::StatusCode::OK);
+    let value = body(response).await;
+    assert_eq!(value["id"], "com.rumahl.notes");
+    assert_eq!(value["usedBytes"], 120);
+    assert_eq!(value["quotaBytes"], 1024 * 1024);
 }

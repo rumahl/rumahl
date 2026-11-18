@@ -7,8 +7,8 @@ use rumahl_persistence_sqlite::{
 use rumahl_platform_web::{
     AppAccessError, AppAsset, AppData, AppDataEntry, AppFileAccess, AppFileOutcome, AppGrantInfo,
     AppGrantState, AppProvider, AppRuntimeEnvironment, AppSettingInfo, AppSettingOptionInfo,
-    BrowserDelivery, CapabilityOutcome, CapabilityResource, CapabilityResult, CatalogApp,
-    GrantIssue, ImportedApp, PackageUploadFile, RuntimeState, ShellIdentity,
+    AppStorageInfo, BrowserDelivery, CapabilityOutcome, CapabilityResource, CapabilityResult,
+    CatalogApp, GrantIssue, ImportedApp, PackageUploadFile, RuntimeState, ShellIdentity,
 };
 use rustix::fs::{Dir, FileType, Mode, OFlags, fstat, open, openat};
 use std::fs::File;
@@ -92,7 +92,32 @@ pub struct PersistentApps {
     pub(crate) files: Option<Arc<dyn rumahl_core::PersonalFiles>>,
     /// Session-scoped grants; memory-only by design.
     pub(crate) session_grants: crate::app_grants::SessionGrantStore,
+    /// Per-app storage quota for the private data directory.
+    storage_quota: u64,
 }
+
+/// Default per-app storage quota: 256 MiB of private app data.
+pub const DEFAULT_APP_STORAGE_QUOTA: u64 = 256 * 1024 * 1024;
+
+/// Reads `RUMAHL_APP_STORAGE_MIB`; an unset value keeps the default and an
+/// invalid one is a configuration error, never a silent fallback.
+pub fn storage_quota_from_env() -> Result<u64, crate::ServiceError> {
+    let Some(value) = std::env::var("RUMAHL_APP_STORAGE_MIB").ok() else {
+        return Ok(DEFAULT_APP_STORAGE_QUOTA);
+    };
+    let mib: u64 = value.trim().parse().map_err(|_| {
+        std::io::Error::other("RUMAHL_APP_STORAGE_MIB must be a whole number of MiB")
+    })?;
+    if mib == 0 || mib > 1024 * 1024 {
+        return Err(std::io::Error::other("RUMAHL_APP_STORAGE_MIB is out of range").into());
+    }
+    Ok(mib * 1024 * 1024)
+}
+/// Bound for one usage measurement: unlimited walks would let a huge tree
+/// stall a request, so the report stops and says "at least this much".
+const MAX_USAGE_INODES: usize = 10_000;
+const MAX_USAGE_DEPTH: usize = 16;
+
 impl PersistentApps {
     pub fn open(
         accounts: &Path,
@@ -111,6 +136,7 @@ impl PersistentApps {
             roles: None,
             files: None,
             session_grants: crate::app_grants::SessionGrantStore::new(),
+            storage_quota: DEFAULT_APP_STORAGE_QUOTA,
         })
     }
 
@@ -126,6 +152,12 @@ impl PersistentApps {
     /// read and write the calling user's documents.
     pub fn with_personal_files(mut self, files: Arc<dyn rumahl_core::PersonalFiles>) -> Self {
         self.files = Some(files);
+        self
+    }
+
+    /// Overrides the per-app storage quota (bytes).
+    pub fn with_storage_quota(mut self, quota: u64) -> Self {
+        self.storage_quota = quota;
         self
     }
 
@@ -380,6 +412,77 @@ impl PersistentApps {
         };
         read_app_data_at(root, app_id, path)
     }
+
+    fn app_storage(&self, app_id: &str) -> Result<AppStorageInfo, AppAccessError> {
+        let Some(root) = self.data_root.as_ref() else {
+            return Err(AppAccessError::Unavailable);
+        };
+        let used = app_storage_usage_at(root, app_id)?;
+        Ok(AppStorageInfo {
+            used_bytes: used,
+            quota_bytes: self.storage_quota,
+        })
+    }
+}
+
+/// Measures the bytes below one app's data directory without following
+/// symlinks. The walk is bounded; a tree larger than the bound reports at
+/// least what was seen rather than stalling the request.
+fn app_storage_usage_at(root: &Path, app_id: &str) -> Result<u64, AppAccessError> {
+    let flags = OFlags::RDONLY | OFlags::CLOEXEC | OFlags::NOFOLLOW | OFlags::DIRECTORY;
+    let root_fd = open(root, flags, Mode::empty()).map_err(|_| AppAccessError::Denied)?;
+    let directory =
+        openat(&root_fd, app_id, flags, Mode::empty()).map_err(|_| AppAccessError::Denied)?;
+    let mut total = 0_u64;
+    let mut seen = 0_usize;
+    fn walk(fd: &rustix::fd::OwnedFd, depth: usize, total: &mut u64, seen: &mut usize) {
+        if depth > MAX_USAGE_DEPTH || *seen > MAX_USAGE_INODES {
+            return;
+        }
+        let Ok(entries) = Dir::read_from(fd) else {
+            return;
+        };
+        for entry in entries {
+            let Ok(entry) = entry else { continue };
+            if *seen > MAX_USAGE_INODES {
+                return;
+            }
+            *seen += 1;
+            let name = entry.file_name().to_string_lossy().into_owned();
+            if name == "." || name == ".." {
+                continue;
+            }
+            match entry.file_type() {
+                FileType::Directory => {
+                    if let Ok(child) = openat(
+                        fd,
+                        name.as_str(),
+                        OFlags::RDONLY | OFlags::CLOEXEC | OFlags::NOFOLLOW | OFlags::DIRECTORY,
+                        Mode::empty(),
+                    ) {
+                        walk(&child, depth + 1, total, seen);
+                    }
+                }
+                FileType::RegularFile => {
+                    let child = openat(
+                        fd,
+                        name.as_str(),
+                        OFlags::RDONLY | OFlags::CLOEXEC | OFlags::NOFOLLOW | OFlags::NONBLOCK,
+                        Mode::empty(),
+                    );
+                    let Ok(child) = child else { continue };
+                    let Ok(stat) = fstat(&child) else { continue };
+                    if FileType::from_raw_mode(stat.st_mode) == FileType::RegularFile {
+                        *total =
+                            total.saturating_add(u64::try_from(stat.st_size.max(0)).unwrap_or(0));
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
+    walk(&directory, 0, &mut total, &mut seen);
+    Ok(total)
 }
 
 fn read_app_data_at(root: &Path, app_id: &str, path: &str) -> Result<AppData, AppAccessError> {
@@ -758,6 +861,15 @@ impl AppProvider for PersistentApps {
     ) -> Result<AppRuntimeEnvironment, AppAccessError> {
         self.app_runtime_environment(identity, installation)
     }
+    fn app_storage(
+        &self,
+        identity: ShellIdentity,
+        installation: InstallationId,
+    ) -> Result<AppStorageInfo, AppAccessError> {
+        self.authenticate(identity)?;
+        let app = self.app(identity, installation)?;
+        self.app_storage(app.identity().app_id().as_str())
+    }
 }
 
 /// Writes uploaded package files into a fresh owner-only staging directory.
@@ -799,6 +911,22 @@ mod tests {
         std::fs::write(app.join("notes.txt"), b"hello").unwrap();
         std::fs::write(app.join("docs/readme.md"), b"# readme").unwrap();
         temp
+    }
+
+    #[test]
+    fn measures_app_storage_without_following_symlinks() {
+        let temp = setup();
+        let app = temp.path().join("com.rumahl.notes");
+        // A symlink to a large file outside the app must not count.
+        let outside = temp.path().join("outside.bin");
+        std::fs::write(&outside, vec![0_u8; 4096]).unwrap();
+        symlink(&outside, app.join("docs/escape.bin")).unwrap();
+
+        let used = app_storage_usage_at(temp.path(), "com.rumahl.notes").unwrap();
+
+        assert_eq!(used, 5 + 8);
+        // Unknown installations are not measurements.
+        assert!(app_storage_usage_at(temp.path(), "com.rumahl.unknown").is_err());
     }
 
     #[test]

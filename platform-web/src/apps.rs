@@ -59,6 +59,14 @@ pub struct AppGrantState {
     pub requests: Vec<AppPermissionRequestInfo>,
     pub grants: Vec<AppGrantInfo>,
 }
+/// Storage accounting for one installed app's private data directory.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct AppStorageInfo {
+    pub used_bytes: u64,
+    /// The configured per-app quota; a write that would exceed it is refused
+    /// by whichever OS component owns that write path.
+    pub quota_bytes: u64,
+}
 /// The recorded runtime environment of an installed app, display-safe.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AppRuntimeEnvironment {
@@ -389,6 +397,15 @@ pub trait AppProvider: Send + Sync + 'static {
     ) -> Result<AppRuntimeEnvironment, AppAccessError> {
         Err(AppAccessError::Unavailable)
     }
+    /// Measured storage usage of an installed app's data directory. Fails
+    /// closed when no data root is wired.
+    fn app_storage(
+        &self,
+        _identity: ShellIdentity,
+        _installation: InstallationId,
+    ) -> Result<AppStorageInfo, AppAccessError> {
+        Err(AppAccessError::Unavailable)
+    }
 }
 #[derive(Clone)]
 struct Lease {
@@ -487,6 +504,16 @@ impl AppAccess {
         let app = self.installed(identity, id, installation)?;
         self.provider
             .app_runtime_environment(identity, app.installation_id)
+    }
+    /// Measured storage usage of an installed app's data directory.
+    pub fn app_storage(
+        &self,
+        identity: ShellIdentity,
+        id: &str,
+        installation: &str,
+    ) -> Result<AppStorageInfo, AppAccessError> {
+        let app = self.installed(identity, id, installation)?;
+        self.provider.app_storage(identity, app.installation_id)
     }
     pub fn new(
         provider: Arc<dyn AppProvider>,

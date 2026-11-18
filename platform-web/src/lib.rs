@@ -45,9 +45,9 @@ pub use apps::{
     AppAccess, AppAccessError, AppAsset, AppData, AppDataEntry, AppFileAccess, AppFileAction,
     AppFileDeny, AppFileOutcome, AppGrantInfo, AppGrantState, AppPermissionRequestInfo,
     AppProvider, AppRuntimeEnvEntry, AppRuntimeEnvironment, AppSettingInfo, AppSettingOptionInfo,
-    AppSettingsInfo, BrowserDelivery, CapabilityOutcome, CapabilityResource, CapabilityResult,
-    CatalogApp, GrantIssue, GrantValidityChoice, ImportedApp, PackageUploadFile, RuntimeAction,
-    RuntimeState, app_error,
+    AppSettingsInfo, AppStorageInfo, BrowserDelivery, CapabilityOutcome, CapabilityResource,
+    CapabilityResult, CatalogApp, GrantIssue, GrantValidityChoice, ImportedApp, PackageUploadFile,
+    RuntimeAction, RuntimeState, app_error,
 };
 
 mod app_channel;
