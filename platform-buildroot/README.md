@@ -266,3 +266,25 @@ timeouts require a matching explicit `UnixAppRuntimeProviderConfig::with_timeout
 budget. A client timeout does not cancel an operation already running in the
 supervisor; recovery must recheck runtime state and use the existing replay-safe
 operation journal.
+
+## App channel
+
+Always-on container apps receive OS events and invocation-scoped file access
+over one Unix socket. The platform service listens on
+`RUMAHL_CHANNEL_SOCKET` (production:
+`/run/rumahl-platform/channel/channel.sock`); the supervisor mounts that
+directory read-only into every app container at `/run/rumahl/channel`. Before
+a container is prepared, the service writes `<data>/.rumahl/channel.json`
+(mode `0600`) with the protocol, installation ID, container socket path and a
+256-bit token. The authoritative token lives in the state volume
+(`channel-tokens/<installation>`, mode `0600`, removed on uninstall), so it
+survives reboots and a serving restart does not invalidate running apps.
+
+The app connects, sends a `hello` frame with its installation ID and token, and
+keeps the connection open; frames are JSON lines versioned by
+`rumahl.channel.v1`. File requests are authorized with the user and session of
+the capability invocation that is still in flight, never with the app's own
+claim. A missing token, an unknown installation or a stale invocation denies
+the request. The listener bounds hello/frame sizes and concurrent connections,
+and a channel directory that cannot be delivered leaves the app running
+without a channel instead of opening an unauthenticated path.

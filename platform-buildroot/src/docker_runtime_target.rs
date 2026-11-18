@@ -27,6 +27,8 @@ const INSTANCE_LABEL: &str = "com.rumahl.supervisor";
 const SPEC_LABEL: &str = "com.rumahl.runtime-spec";
 const IMAGE_LABEL: &str = "com.rumahl.image-id";
 const SECRET_MOUNT_PATH: &str = "/run/rumahl/secrets";
+/// Where the platform-owned app channel socket directory is mounted.
+const CHANNEL_MOUNT_PATH: &str = "/run/rumahl/channel";
 /// Where an app's private data directory is mounted inside its container.
 const DATA_MOUNT_PATH: &str = "/data";
 const SECRET_DIRECTORY: &str = "secrets";
@@ -71,6 +73,9 @@ pub struct DockerRuntimeTargetConfig {
     /// UID app containers run as; the data mount is owned by it. `None` keeps
     /// the unprivileged `65534`.
     app_user: Option<u32>,
+    /// Directory holding the app channel socket; mounted read-only at
+    /// `/run/rumahl/channel` so always-on apps can connect.
+    channel_dir: Option<PathBuf>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -84,6 +89,7 @@ pub enum DockerRuntimeTargetConfigError {
     InvalidStopTimeout,
     AppsRootMustBeAbsolute,
     InvalidAppUser,
+    ChannelDirMustBeAbsolute,
 }
 
 #[derive(Debug, Clone)]
@@ -224,8 +230,26 @@ impl DockerRuntimeTargetConfig {
         Ok(self)
     }
 
+    /// Mounts the platform's channel socket directory into app containers.
+    /// The path may not exist yet at boot; the mount is then omitted.
+    pub fn with_channel_dir(
+        mut self,
+        channel_dir: impl Into<PathBuf>,
+    ) -> Result<Self, DockerRuntimeTargetConfigError> {
+        let channel_dir = channel_dir.into();
+        if !channel_dir.is_absolute() {
+            return Err(DockerRuntimeTargetConfigError::ChannelDirMustBeAbsolute);
+        }
+        self.channel_dir = Some(channel_dir);
+        Ok(self)
+    }
+
     pub fn apps_root(&self) -> Option<&Path> {
         self.apps_root.as_deref()
+    }
+
+    pub fn channel_dir(&self) -> Option<&Path> {
+        self.channel_dir.as_deref()
     }
 
     pub fn app_user(&self) -> Option<u32> {
@@ -279,6 +303,7 @@ impl DockerRuntimeTargetConfig {
             stop_timeout_seconds,
             apps_root: None,
             app_user: None,
+            channel_dir: None,
         })
     }
 
@@ -591,6 +616,35 @@ impl<R: DockerImageResolver> DockerRuntimeTarget<R> {
         )))
     }
 
+    /// Validates and formats the channel socket mount. A missing directory
+    /// means the platform listener is not up yet: the app starts without a
+    /// channel instead of the container failing.
+    fn channel_mount(&self) -> Result<Option<String>, DockerRuntimeTargetError<R::Error>> {
+        let Some(directory) = self.config.channel_dir.as_ref() else {
+            return Ok(None);
+        };
+        // Check the configured path itself before resolving it: a symlink must
+        // never decide which host directory an app container gets.
+        let meta = match fs::symlink_metadata(directory) {
+            Ok(meta) => meta,
+            Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(None),
+            Err(error) => return Err(DockerRuntimeTargetError::Namespace(error)),
+        };
+        if meta.file_type().is_symlink() || !meta.is_dir() {
+            return Err(DockerRuntimeTargetError::InvalidRuntimeSpec);
+        }
+        let canonical = directory
+            .canonicalize()
+            .map_err(|_| DockerRuntimeTargetError::InvalidRuntimeSpec)?;
+        let path = canonical.to_string_lossy();
+        if path.contains(',') || path.contains('\n') {
+            return Err(DockerRuntimeTargetError::InvalidRuntimeSpec);
+        }
+        Ok(Some(format!(
+            "type=bind,src={path},dst={CHANNEL_MOUNT_PATH},readonly,bind-propagation=rprivate"
+        )))
+    }
+
     /// The container user: the platform account when app storage is mounted
     /// (so the mount is writable), otherwise the unprivileged `65534`.
     fn container_user(&self) -> String {
@@ -626,6 +680,7 @@ where
         // Storage is validated before anything is created: an app whose data
         // directory is missing or escapes the apps root never gets a container.
         let data_mount = self.data_mount(&spec)?;
+        let channel_mount = self.channel_mount()?;
         let image = self
             .image_resolver
             .resolve_image(&spec, artifact)
@@ -684,6 +739,10 @@ where
             "--mount".to_owned(),
             mount,
         ];
+        if let Some(channel_mount) = channel_mount {
+            arguments.push("--mount".to_owned());
+            arguments.push(channel_mount);
+        }
         if let Some(data_mount) = data_mount {
             arguments.push("--mount".to_owned());
             arguments.push(data_mount);
@@ -997,6 +1056,9 @@ impl fmt::Display for DockerRuntimeTargetConfigError {
                 write!(f, "app data root must be an absolute path")
             }
             Self::InvalidAppUser => write!(f, "app containers may not run as root"),
+            Self::ChannelDirMustBeAbsolute => {
+                write!(f, "app channel directory must be an absolute path")
+            }
         }
     }
 }
@@ -1158,6 +1220,58 @@ mod tests {
         );
         let configured = config.with_app_storage(&root, 1000).unwrap();
         assert_eq!(configured.app_user(), Some(1000));
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn the_channel_mount_is_optional_but_never_followed_through_a_symlink() {
+        let root = unique_test_root('c');
+        let channel = root.join("channel");
+        fs::create_dir_all(&channel).unwrap();
+        let target = DockerRuntimeTarget::new(
+            DockerRuntimeTargetConfig::new("/usr/bin/docker", &root, "rumahl-apps", "system")
+                .unwrap()
+                .with_channel_dir(&channel)
+                .unwrap(),
+            UnusedImageResolver,
+        );
+        let mount = target.channel_mount().unwrap().unwrap();
+        assert!(mount.contains(&format!(
+            "src={}",
+            channel.canonicalize().unwrap().display()
+        )));
+        assert!(mount.ends_with("dst=/run/rumahl/channel,readonly,bind-propagation=rprivate"));
+
+        // Missing until the platform listener starts: no mount, no failure.
+        let later = root.join("later");
+        let target = DockerRuntimeTarget::new(
+            DockerRuntimeTargetConfig::new("/usr/bin/docker", &root, "rumahl-apps", "system")
+                .unwrap()
+                .with_channel_dir(&later)
+                .unwrap(),
+            UnusedImageResolver,
+        );
+        assert_eq!(target.channel_mount().unwrap(), None);
+
+        // A symlinked channel directory never decides where a container mounts.
+        let link = root.join("linked");
+        std::os::unix::fs::symlink(&channel, &link).unwrap();
+        let target = DockerRuntimeTarget::new(
+            DockerRuntimeTargetConfig::new("/usr/bin/docker", &root, "rumahl-apps", "system")
+                .unwrap()
+                .with_channel_dir(&link)
+                .unwrap(),
+            UnusedImageResolver,
+        );
+        assert!(target.channel_mount().is_err());
+
+        assert_eq!(
+            DockerRuntimeTargetConfig::new("/usr/bin/docker", &root, "rumahl-apps", "system")
+                .unwrap()
+                .with_channel_dir("relative")
+                .unwrap_err(),
+            DockerRuntimeTargetConfigError::ChannelDirMustBeAbsolute
+        );
         fs::remove_dir_all(root).unwrap();
     }
 

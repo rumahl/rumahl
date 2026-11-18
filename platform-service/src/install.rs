@@ -37,6 +37,7 @@ use rumahl_platform_buildroot::{
 struct PlatformRuntimeProvider {
     supervisor: UnixAppRuntimeProvider,
     storage: Option<(PathBuf, u64)>,
+    channel: Option<std::sync::Arc<crate::channel::ChannelTokens>>,
 }
 
 #[derive(Debug)]
@@ -45,6 +46,8 @@ pub enum PlatformRuntimeError {
     /// The app's private data has reached its quota; the OS refuses to start
     /// it rather than letting it grow without bound.
     QuotaExceeded,
+    /// The app's private data directory cannot be prepared for the container.
+    AppData(std::io::Error),
 }
 
 impl fmt::Display for PlatformRuntimeError {
@@ -52,6 +55,7 @@ impl fmt::Display for PlatformRuntimeError {
         match self {
             Self::Supervisor(error) => write!(f, "runtime supervisor failed: {error}"),
             Self::QuotaExceeded => write!(f, "the app's storage quota is exhausted"),
+            Self::AppData(error) => write!(f, "app data directory is unavailable: {error}"),
         }
     }
 }
@@ -61,6 +65,7 @@ impl Error for PlatformRuntimeError {
         match self {
             Self::Supervisor(error) => Some(error),
             Self::QuotaExceeded => None,
+            Self::AppData(error) => Some(error),
         }
     }
 }
@@ -70,6 +75,7 @@ impl PlatformRuntimeProvider {
         Self {
             supervisor,
             storage: None,
+            channel: None,
         }
     }
 
@@ -77,6 +83,44 @@ impl PlatformRuntimeProvider {
     fn with_storage_quota(mut self, root: PathBuf, quota: u64) -> Self {
         self.storage = Some((root, quota));
         self
+    }
+
+    /// Publishes the per-installation channel token into the app's data
+    /// directory before the container starts.
+    fn with_channel(mut self, channel: std::sync::Arc<crate::channel::ChannelTokens>) -> Self {
+        self.channel = Some(channel);
+        self
+    }
+
+    /// Creates the private data directory (traversable by the supervisor's
+    /// group) and hands the app its channel descriptor. The supervisor mounts
+    /// the directory at `/data`, so both steps must happen before prepare.
+    fn prepare_app_storage(&self, app: &InstalledApp) -> Result<(), PlatformRuntimeError> {
+        let Some((root, _)) = self.storage.as_ref() else {
+            return Ok(());
+        };
+        let identity = app.identity();
+        let directory = root.join(identity.app_id().as_str());
+        crate::channel::create_private_directory(&directory, 0o750)
+            .map_err(PlatformRuntimeError::AppData)?;
+        if let Some(channel) = self.channel.as_ref() {
+            let installation = *identity.installation_id();
+            match channel.issue(installation) {
+                Ok(token) => {
+                    if let Err(error) =
+                        crate::channel::publish_app_material(&directory, installation, &token)
+                    {
+                        // The app still starts; without material the channel
+                        // stays closed instead of becoming unauthenticated.
+                        eprintln!("rumahl platform: app channel material unavailable: {error}");
+                    }
+                }
+                Err(error) => {
+                    eprintln!("rumahl platform: app channel token unavailable: {error}");
+                }
+            }
+        }
+        Ok(())
     }
 
     fn is_web(app: &InstalledApp) -> bool {
@@ -103,6 +147,7 @@ impl AppRuntimeProvider for PlatformRuntimeProvider {
             return Ok(());
         }
         self.within_quota(app)?;
+        self.prepare_app_storage(app)?;
         self.supervisor
             .prepare_installation(app)
             .map_err(PlatformRuntimeError::Supervisor)
@@ -139,9 +184,14 @@ impl AppRuntimeProvider for PlatformRuntimeProvider {
         &self,
         installation_id: &rumahl_core::InstallationId,
     ) -> Result<bool, Self::Error> {
-        self.supervisor
+        let removed = self
+            .supervisor
             .remove_installation(installation_id)
-            .map_err(PlatformRuntimeError::Supervisor)
+            .map_err(PlatformRuntimeError::Supervisor)?;
+        if let Some(channel) = self.channel.as_ref() {
+            channel.revoke(installation_id);
+        }
+        Ok(removed)
     }
 }
 
@@ -238,7 +288,10 @@ impl InstallConfig {
 /// The runtime provider with app storage wiring: container apps get their
 /// private data directory mounted, and the per-app quota is enforced before an
 /// app starts.
-fn runtime_provider(config: &InstallConfig) -> Result<PlatformRuntimeProvider, InstallError> {
+fn runtime_provider(
+    config: &InstallConfig,
+    state_dir: &Path,
+) -> Result<PlatformRuntimeProvider, InstallError> {
     let mut provider_config =
         UnixAppRuntimeProviderConfig::new(&config.control_socket, config.runtime_uid)
             .map_err(InstallError::provider)?;
@@ -253,6 +306,11 @@ fn runtime_provider(config: &InstallConfig) -> Result<PlatformRuntimeProvider, I
         let quota = crate::apps::storage_quota_from_env().map_err(InstallError::Io)?;
         provider = provider.with_storage_quota(root, quota);
     }
+    // The channel is independent of app storage: a container without `/data`
+    // simply has nowhere to receive its descriptor and stays disconnected.
+    provider = provider.with_channel(std::sync::Arc::new(
+        crate::channel::ChannelTokens::in_state(state_dir),
+    ));
     Ok(provider)
 }
 
@@ -261,9 +319,10 @@ fn runtime_provider(config: &InstallConfig) -> Result<PlatformRuntimeProvider, I
 /// runtime control API answers 503 instead of assuming a runtime exists.
 pub fn runtime_adapters_from_env(
     channels: &std::sync::Arc<rumahl_core::RuntimeChannelRegistry>,
+    state_dir: &Path,
 ) -> Option<std::sync::Arc<rumahl_core::RuntimeAdapterRegistry>> {
     let config = InstallConfig::from_env().ok()?;
-    let provider = std::sync::Arc::new(runtime_provider(&config).ok()?);
+    let provider = std::sync::Arc::new(runtime_provider(&config, state_dir).ok()?);
     let mut registry = rumahl_core::RuntimeAdapterRegistry::new();
     registry
         .register(Box::new(
@@ -329,7 +388,7 @@ fn uninstall_with(
         .map_err(InstallError::provider)?;
     let oidc_repository =
         SqliteOidcClientRepository::open(&platform).map_err(InstallError::provider)?;
-    let runtime_provider = runtime_provider(config)?;
+    let runtime_provider = runtime_provider(config, state_dir)?;
     let secret_delivery = UnixRuntimeSecretDelivery::new(
         UnixRuntimeSecretDeliveryConfig::new(&config.secret_socket, config.runtime_uid)
             .map_err(InstallError::provider)?,
@@ -400,7 +459,7 @@ fn install_with(
         .map_err(InstallError::provider)?;
     let oidc_repository =
         SqliteOidcClientRepository::open(&platform).map_err(InstallError::provider)?;
-    let runtime_provider = runtime_provider(config)?;
+    let runtime_provider = runtime_provider(config, state_dir)?;
     let secret_delivery = UnixRuntimeSecretDelivery::new(
         UnixRuntimeSecretDeliveryConfig::new(&config.secret_socket, config.runtime_uid)
             .map_err(InstallError::provider)?,
@@ -461,7 +520,7 @@ fn install_with(
     if let Some(apps_root) = crate::apps_data_root() {
         let directory = apps_root.join(&info.app_id);
         std::fs::create_dir_all(&directory)?;
-        std::fs::set_permissions(&directory, std::fs::Permissions::from_mode(0o700))?;
+        std::fs::set_permissions(&directory, std::fs::Permissions::from_mode(0o750))?;
     }
 
     // Access is granted, not an install side effect: every existing account gets
@@ -783,6 +842,63 @@ mod tests {
             provider.prepare_installation(&app),
             Err(PlatformRuntimeError::Supervisor(_))
         ));
+    }
+
+    #[test]
+    fn prepares_the_data_directory_and_channel_material_before_start() {
+        use rumahl_platform_web::ChannelAuthenticator;
+        use std::os::unix::fs::PermissionsExt;
+
+        let temp = tempfile::tempdir().unwrap();
+        let apps = temp.path().join("apps");
+        let state = temp.path().join("state");
+        std::fs::create_dir(&apps).unwrap();
+        std::fs::create_dir(&state).unwrap();
+        let provider = PlatformRuntimeProvider::new(UnixAppRuntimeProvider::new(
+            UnixAppRuntimeProviderConfig::new("/run/rumahl/control.sock", 0).unwrap(),
+        ))
+        .with_storage_quota(apps.clone(), u64::MAX)
+        .with_channel(std::sync::Arc::new(
+            crate::channel::ChannelTokens::in_state(&state),
+        ));
+        let app = container_app();
+        let app_id = app.identity().app_id().as_str().to_owned();
+        let installation = *app.identity().installation_id();
+
+        provider.prepare_app_storage(&app).unwrap();
+
+        let directory = apps.join(&app_id);
+        assert_eq!(
+            std::fs::metadata(&directory).unwrap().permissions().mode() & 0o777,
+            0o750
+        );
+        let material = std::fs::read_to_string(directory.join(".rumahl/channel.json")).unwrap();
+        let value: serde_json::Value = serde_json::from_str(&material).unwrap();
+        assert_eq!(value["protocol"], crate::channel::CHANNEL_PROTOCOL);
+        assert_eq!(value["installationId"], installation.to_string());
+        assert_eq!(value["socket"], crate::channel::CONTAINER_SOCKET);
+        // The same token the listener will accept, and it is never world-readable.
+        let auth = crate::channel::ChannelTokens::in_state(&state);
+        assert_eq!(
+            auth.authenticate(&installation.to_string(), value["token"].as_str().unwrap()),
+            Some(installation)
+        );
+        assert_eq!(
+            std::fs::metadata(directory.join(".rumahl/channel.json"))
+                .unwrap()
+                .permissions()
+                .mode()
+                & 0o777,
+            0o600
+        );
+        // A repeated prepare reuses the token instead of rotating it under a
+        // running app.
+        provider.prepare_app_storage(&app).unwrap();
+        let again: serde_json::Value = serde_json::from_str(
+            &std::fs::read_to_string(directory.join(".rumahl/channel.json")).unwrap(),
+        )
+        .unwrap();
+        assert_eq!(again["token"], value["token"]);
     }
 
     #[test]

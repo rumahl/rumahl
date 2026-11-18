@@ -796,6 +796,7 @@ fn sha256_hex(bytes: &[u8]) -> String {
 pub mod app_grants;
 mod app_runtime;
 pub mod apps;
+pub mod channel;
 pub mod file_migration;
 pub mod host_files;
 pub mod install;

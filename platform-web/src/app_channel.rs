@@ -6,7 +6,7 @@
 //! even while it has no window open. Frames are JSON lines, versioned by
 //! `rumahl.channel.v1`.
 use std::collections::HashMap;
-use std::io::{BufRead, BufReader, Write};
+use std::io::{BufRead, BufReader, Read, Write};
 use std::os::unix::net::UnixListener;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::mpsc;
@@ -311,14 +311,42 @@ impl<W: Write + Send> RuntimeChannel for SocketRuntimeChannel<W> {
     }
 }
 
+/// Largest hello line accepted from an app.
+const MAX_HELLO_BYTES: usize = 4096;
+/// Largest single frame line accepted. File content is base64 of at most
+/// 12 MiB, so this stays comfortably above a full file response.
+const MAX_FRAME_BYTES: usize = 18 * 1024 * 1024;
+/// Concurrent channel connections. Every connection holds a thread, so a
+/// misbehaving local client must not be able to exhaust the process.
+const MAX_CONNECTIONS: usize = 64;
+
+/// Reads one newline-terminated line without letting the peer grow the buffer
+/// past `limit`. A peer that sends more is refused instead of buffered.
+fn read_bounded_line<R: BufRead + ?Sized>(
+    reader: &mut R,
+    limit: usize,
+) -> std::io::Result<Option<String>> {
+    let mut line = String::new();
+    let read = Read::take(&mut *reader, limit as u64 + 1).read_line(&mut line)?;
+    if read == 0 {
+        return Ok(None);
+    }
+    if line.len() > limit && !line.ends_with('\n') {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidData,
+            "channel frame exceeds the line limit",
+        ));
+    }
+    Ok(Some(line))
+}
+
 /// Reads the first frame of a connection and returns the authenticated
 /// installation. Returns `None` for a missing/invalid `hello`.
 pub fn read_hello(
     reader: &mut impl BufRead,
     authenticator: &dyn ChannelAuthenticator,
 ) -> Option<InstallationId> {
-    let mut line = String::new();
-    reader.read_line(&mut line).ok()?;
+    let line = read_bounded_line(reader, MAX_HELLO_BYTES).ok()??;
     let ChannelFrame::Hello {
         protocol,
         installation_id,
@@ -465,14 +493,12 @@ where
     if !registry.register(installation, channel) {
         return Ok(());
     }
-    // Dispatch result frames until the app disconnects (0 bytes) or errors.
-    let mut line = String::new();
-    loop {
-        line.clear();
-        match reader.read_line(&mut line) {
-            Ok(0) | Err(_) => break,
-            Ok(_) => {}
-        }
+    // Dispatch result frames until the app disconnects (0 bytes), sends an
+    // oversized line or errors.
+    while let Some(line) = read_bounded_line(&mut reader, MAX_FRAME_BYTES)
+        .ok()
+        .flatten()
+    {
         if let Some(frame) = ChannelFrame::decode(line.trim()) {
             match frame {
                 ChannelFrame::FileRequest {
@@ -530,9 +556,16 @@ pub fn serve_channel_listener(
     files: Option<Arc<dyn ChannelFiles>>,
     audit: Option<Arc<dyn AuditLog>>,
 ) {
+    let live = Arc::new(AtomicU64::new(0));
     for stream in listener.incoming() {
         let Ok(stream) = stream else { continue };
+        if live.fetch_add(1, Ordering::AcqRel) as usize >= MAX_CONNECTIONS {
+            live.fetch_sub(1, Ordering::AcqRel);
+            // Dropping the stream closes it without reading an unbounded hello.
+            continue;
+        }
         let Ok(writer) = stream.try_clone() else {
+            live.fetch_sub(1, Ordering::AcqRel);
             continue;
         };
         let reader = BufReader::new(stream);
@@ -540,8 +573,10 @@ pub fn serve_channel_listener(
         let authenticator = Arc::clone(&authenticator);
         let files = files.clone();
         let audit = audit.clone();
+        let live = Arc::clone(&live);
         std::thread::spawn(move || {
             let _ = run_connection(reader, writer, registry, authenticator, files, audit);
+            live.fetch_sub(1, Ordering::AcqRel);
         });
     }
 }
@@ -911,6 +946,24 @@ mod tests {
 
         let mut reader = Cursor::new(b"garbage\n".to_vec());
         assert_eq!(read_hello(&mut reader, &authenticator), None);
+    }
+
+    #[test]
+    fn bounded_reads_refuse_oversized_lines() {
+        // A peer cannot grow a frame buffer without bound: the read stops one
+        // byte past the limit and reports invalid data.
+        let mut reader = Cursor::new(vec![b'x'; MAX_HELLO_BYTES + 10]);
+        assert!(read_bounded_line(&mut reader, MAX_HELLO_BYTES).is_err());
+
+        // A line that exactly fills the limit is still a valid frame.
+        let mut reader = Cursor::new(format!("{}\n", "y".repeat(MAX_HELLO_BYTES - 1)).into_bytes());
+        let line = read_bounded_line(&mut reader, MAX_HELLO_BYTES)
+            .unwrap()
+            .unwrap();
+        assert_eq!(line.len(), MAX_HELLO_BYTES);
+
+        let mut reader = Cursor::new(vec![b'{'; MAX_HELLO_BYTES + 10]);
+        assert_eq!(read_hello(&mut reader, &FakeAuthenticator), None);
     }
 
     #[test]

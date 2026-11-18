@@ -47,6 +47,7 @@ for name in ["rumahl-platform", "rumahl-shell", "rumahl-recovery", *supervisor_u
     (wants / f"{name}.service").symlink_to(f"/usr/lib/systemd/system/{name}.service")
 copy(repo / "platform-buildroot/deployment/platform.env.example", "etc/rumahl/platform.env")
 copy(repo / "platform-buildroot/deployment/rumahl.sysusers", "usr/lib/sysusers.d/rumahl.conf")
+copy(repo / "platform-buildroot/deployment/rumahl-tmpfiles.conf", "usr/lib/tmpfiles.d/rumahl.conf")
 copy(repo / "platform-buildroot/nginx/rumahl.conf", "etc/nginx/rumahl.conf")
 copy(repo / "platform-buildroot/nginx/rumahl-proxy.inc", "etc/nginx/rumahl-proxy.inc")
 dropin = root / "etc/systemd/system/nginx.service.d"

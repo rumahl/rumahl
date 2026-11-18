@@ -45,6 +45,8 @@ struct SupervisorArgs {
     platform_user: String,
     /// Optional root whose per-app directories are mounted into containers.
     apps_root: Option<PathBuf>,
+    /// Optional platform channel directory, mounted read-only into containers.
+    channel_dir: Option<PathBuf>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -109,6 +111,11 @@ fn run(arguments: impl IntoIterator<Item = OsString>) -> Result<(), SupervisorEr
         // directory is writable by the same UID that measures it.
         target_config = target_config
             .with_app_storage(apps_root, platform_uid)
+            .map_err(SupervisorError::TargetConfig)?;
+    }
+    if let Some(channel_dir) = args.channel_dir {
+        target_config = target_config
+            .with_channel_dir(channel_dir)
             .map_err(SupervisorError::TargetConfig)?;
     }
     let target = DockerRuntimeTarget::new(target_config, resolver);
@@ -191,6 +198,7 @@ fn parse_args(
     let mut image_socket = None;
     let mut platform_user = None;
     let mut apps_root = None;
+    let mut channel_dir = None;
     let mut arguments = arguments.into_iter();
 
     while let Some(option) = arguments.next() {
@@ -222,6 +230,7 @@ fn parse_args(
                     .map_err(|_| SupervisorArgsError::NonUtf8Value("--platform-user"))?,
             )?,
             "--apps-root" => set_once(&mut apps_root, PathBuf::from(value))?,
+            "--channel-dir" => set_once(&mut channel_dir, PathBuf::from(value))?,
             _ => return Err(SupervisorArgsError::UnknownOption),
         }
     }
@@ -240,6 +249,7 @@ fn parse_args(
         platform_user: platform_user
             .ok_or(SupervisorArgsError::MissingOption("--platform-user"))?,
         apps_root,
+        channel_dir,
     })
 }
 
@@ -397,11 +407,21 @@ mod tests {
         assert_eq!(parsed.platform_user, "rumahl-platform");
         // App storage is opt-in: without the flag no data directory is mounted.
         assert_eq!(parsed.apps_root, None);
+        assert_eq!(parsed.channel_dir, None);
         let mut with_storage = complete_args();
         with_storage.extend([OsString::from("--apps-root"), OsString::from("/data/apps")]);
         assert_eq!(
             parse_args(with_storage).unwrap().apps_root,
             Some(PathBuf::from("/data/apps"))
+        );
+        let mut with_channel = complete_args();
+        with_channel.extend([
+            OsString::from("--channel-dir"),
+            OsString::from("/run/rumahl-channel"),
+        ]);
+        assert_eq!(
+            parse_args(with_channel).unwrap().channel_dir,
+            Some(PathBuf::from("/run/rumahl-channel"))
         );
     }
 

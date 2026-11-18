@@ -52,8 +52,8 @@ pub use apps::{
 
 mod app_channel;
 pub use app_channel::{
-    CHANNEL_PROTOCOL, ChannelAuthenticator, ChannelFrame, ChannelTokenStore, SocketRuntimeChannel,
-    read_hello, run_connection, serve_channel_listener,
+    CHANNEL_PROTOCOL, ChannelAuthenticator, ChannelFiles, ChannelFrame, ChannelTokenStore,
+    SocketRuntimeChannel, read_hello, run_connection, serve_channel_listener,
 };
 
 mod preferences;

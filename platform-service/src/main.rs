@@ -234,7 +234,7 @@ async fn run() -> Result<(), ServiceError> {
     // otherwise the runtime API stays fail-closed (503). The same channel
     // registry receives live app channels for background event delivery.
     let runtime_channels = Arc::new(rumahl_core::RuntimeChannelRegistry::new());
-    let apps_provider = match install::runtime_adapters_from_env(&runtime_channels) {
+    let apps_provider = match install::runtime_adapters_from_env(&runtime_channels, &state_dir) {
         Some(adapters) => apps_provider.with_runtime_adapters(adapters),
         None => apps_provider,
     };
@@ -268,6 +268,25 @@ async fn run() -> Result<(), ServiceError> {
     match rumahl_platform_service::user_homes::ensure_account_homes(&accounts, &home_root) {
         Ok(ensured) => eprintln!("rumahl platform: {ensured} account home(s) available"),
         Err(error) => eprintln!("rumahl platform: account homes unavailable: {error}"),
+    }
+    // App containers reach the OS over this socket; the supervisor mounts it
+    // and the token descriptor lives in each app's private data directory.
+    match rumahl_platform_service::channel::start(
+        rumahl_platform_service::channel::ChannelListener {
+            socket: rumahl_platform_service::channel::socket_path(&state_dir),
+            registry: Arc::clone(&runtime_channels),
+            tokens: Arc::new(rumahl_platform_service::channel::ChannelTokens::in_state(
+                &state_dir,
+            )),
+            files: Some(apps.clone() as Arc<dyn rumahl_platform_web::ChannelFiles>),
+            audit: Some(audit.clone()),
+        },
+    ) {
+        Ok(path) => eprintln!(
+            "rumahl platform: app channel listening on {}",
+            path.display()
+        ),
+        Err(error) => eprintln!("rumahl platform: app channel unavailable: {error}"),
     }
     record_os_event(
         audit.as_ref(),
