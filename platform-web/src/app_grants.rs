@@ -150,9 +150,17 @@ async fn grants(
         Ok(apps) => apps,
         Err(response) => return response,
     };
-    match tokio::task::spawn_blocking(move || apps.app_grants(identity, &id, &installation)).await {
+    let id_for_call = id.clone();
+    let installation_for_call = installation.clone();
+    match tokio::task::spawn_blocking(move || {
+        apps.app_grants(identity, &id_for_call, &installation_for_call)
+    })
+    .await
+    {
         Ok(Ok(state)) => json_response(
             serde_json::json!({
+                "id": id,
+                "installationId": installation,
                 "requests": state
                     .requests
                     .iter()
@@ -321,8 +329,10 @@ async fn issue(
         Err(response) => return response,
     };
     let target = format!("{installation}:{}", request.permission);
+    let id_for_call = id.clone();
+    let installation_for_call = installation.clone();
     match tokio::task::spawn_blocking(move || {
-        apps.issue_app_grant(identity, &id, &installation, &request)
+        apps.issue_app_grant(identity, &id_for_call, &installation_for_call, &request)
     })
     .await
     {
@@ -336,7 +346,9 @@ async fn issue(
             );
             json_response(
                 serde_json::json!({
-                    "id": grant.id,
+                    "id": id,
+                    "installationId": installation,
+                    "grantId": grant.id,
                     "permission": grant.permission,
                     "scope": grant.scope,
                     "resources": grant.resources,

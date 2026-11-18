@@ -329,7 +329,7 @@ async fn consent_and_file_access_follow_the_grants() {
     let grant = json(response).await;
     assert_eq!(grant["validity"], "session");
     assert_eq!(grant["scope"], "explicit");
-    let session_grant_id = grant["id"].as_str().unwrap().to_owned();
+    let session_grant_id = grant["grantId"].as_str().unwrap().to_owned();
 
     // The granted file reads back; the other one is outside the scope.
     let response = app
@@ -416,7 +416,7 @@ async fn consent_and_file_access_follow_the_grants() {
     let durable_grant = json(response).await;
     assert_eq!(durable_grant["validity"], "durable");
     assert!(durable_grant["expiresAt"].is_null());
-    let durable_grant_id = durable_grant["id"].as_str().unwrap().to_owned();
+    let durable_grant_id = durable_grant["grantId"].as_str().unwrap().to_owned();
 
     // The app writes through its durable consent.
     let response = app
