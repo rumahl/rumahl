@@ -6,9 +6,9 @@ use rumahl_persistence_sqlite::{
 };
 use rumahl_platform_web::{
     AppAccessError, AppAsset, AppData, AppDataEntry, AppFileAccess, AppFileOutcome, AppGrantInfo,
-    AppGrantState, AppProvider, AppSettingInfo, AppSettingOptionInfo, BrowserDelivery,
-    CapabilityOutcome, CapabilityResource, CapabilityResult, CatalogApp, GrantIssue, ImportedApp,
-    PackageUploadFile, RuntimeState, ShellIdentity,
+    AppGrantState, AppProvider, AppRuntimeEnvironment, AppSettingInfo, AppSettingOptionInfo,
+    BrowserDelivery, CapabilityOutcome, CapabilityResource, CapabilityResult, CatalogApp,
+    GrantIssue, ImportedApp, PackageUploadFile, RuntimeState, ShellIdentity,
 };
 use rustix::fs::{Dir, FileType, Mode, OFlags, fstat, open, openat};
 use std::fs::File;
@@ -80,7 +80,7 @@ pub fn authorized_apps(
 pub struct PersistentApps {
     pub(crate) accounts: SqliteAccountStateRepository,
     pub(crate) platform: SqliteSnapshotRepository,
-    root: PathBuf,
+    pub(crate) root: PathBuf,
     /// Apps data volume root, one directory per app id. `None` disables app-data browsing.
     data_root: Option<PathBuf>,
     /// Runtime adapters for status/start/stop. `None` fails closed.
@@ -200,7 +200,7 @@ impl PersistentApps {
             Err(AppAccessError::Denied)
         }
     }
-    fn app(
+    pub(crate) fn app(
         &self,
         identity: ShellIdentity,
         installation: InstallationId,
@@ -750,6 +750,13 @@ impl AppProvider for PersistentApps {
         access: &AppFileAccess,
     ) -> Result<AppFileOutcome, AppAccessError> {
         self.app_file_access(identity, installation, access)
+    }
+    fn app_runtime_environment(
+        &self,
+        identity: ShellIdentity,
+        installation: InstallationId,
+    ) -> Result<AppRuntimeEnvironment, AppAccessError> {
+        self.app_runtime_environment(identity, installation)
     }
 }
 

@@ -320,6 +320,7 @@ fn uninstall_with(
         .join("app-assets")
         .join(installation_id.to_string());
     let _ = std::fs::remove_dir_all(assets);
+    crate::app_runtime::remove_runtime_record(state_dir, installation_id);
     if let Some(apps_root) = crate::apps_data_root() {
         let _ = std::fs::remove_dir_all(apps_root.join(&info.app_id));
     }
@@ -390,6 +391,15 @@ fn install_with(
 
     // Public metadata of the freshly installed app, read from the trusted snapshot.
     let info = installed_info(&platform, installed.installation_id())?;
+
+    // Record what the supervisor captured about the staged image, so the
+    // extended configuration view can report it. Container packages only;
+    // a failed record write means a broken state directory and surfaces.
+    crate::app_runtime::write_runtime_record(
+        state_dir,
+        installed.installation_id(),
+        installed.published(),
+    )?;
 
     // Give the app its own directory under the apps volume, owner-only.
     if let Some(apps_root) = crate::apps_data_root() {
@@ -647,8 +657,9 @@ mod tests {
     };
     use rumahl_platform_buildroot::{
         DockerImageReference, DockerImageTarget, RuntimeControlTarget, RuntimeControlTargetOutcome,
-        RuntimeInstallationSpec, StagedDockerImageWriter, UnixDockerImageServer,
-        UnixDockerImageServerConfig, UnixRuntimeControlServer, UnixRuntimeControlServerConfig,
+        RuntimeInstallationSpec, StagedDockerImageWriter, StagedImage, StagedImageEnvironment,
+        UnixDockerImageServer, UnixDockerImageServerConfig, UnixRuntimeControlServer,
+        UnixRuntimeControlServerConfig,
     };
     use serde_json::json;
 
@@ -1033,7 +1044,7 @@ mod tests {
             installation_id: &rumahl_core::InstallationId,
             artifact: &PackagePath,
             archive: &[u8],
-        ) -> Result<(), Self::Error> {
+        ) -> Result<StagedImage, Self::Error> {
             if archive.is_empty() {
                 return Err(std::io::Error::other("empty archive"));
             }
@@ -1047,7 +1058,13 @@ mod tests {
                 .unwrap()
                 .write(installation_id, artifact, &reference)
                 .unwrap();
-            Ok(())
+            Ok(StagedImage::new(
+                reference,
+                vec![
+                    StagedImageEnvironment::parse("PATH=/usr/bin:/bin").unwrap(),
+                    StagedImageEnvironment::parse("RUMAHL_SEALED_SECRET=hidden").unwrap(),
+                ],
+            ))
         }
     }
 
@@ -1175,6 +1192,20 @@ mod tests {
         assert_eq!(
             imported.lock().unwrap().as_slice(),
             &[(installation_id.to_string(), "runtime/server.oci".to_owned())]
+        );
+
+        // The supervisor's captured image metadata is recorded next to the
+        // app state, with the credential-sounding entry still stored raw —
+        // the display filter runs at read time, not at capture time.
+        let record = crate::app_runtime::read_runtime_record(state.path(), installation_id)
+            .expect("container install records its image metadata");
+        assert_eq!(record.image, format!("sha256:{}", "a".repeat(64)));
+        assert_eq!(
+            record.environment,
+            vec![
+                ("PATH".to_owned(), "/usr/bin:/bin".to_owned()),
+                ("RUMAHL_SEALED_SECRET".to_owned(), "hidden".to_owned()),
+            ]
         );
     }
 }
