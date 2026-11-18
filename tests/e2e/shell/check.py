@@ -211,6 +211,14 @@ http {{
             assert request(content_path, cookie=cookies["alice"])[2] == document
             assert request(content_path, cookie=cookies["bob"])[0] == 404
             assert request(content_path, cookie=cookies["alice"])[1]["content-disposition"].startswith("attachment;")
+            # The Files address bar resolves a canonical rumahl path; a host
+            # path or traversal never becomes a file access.
+            resolved_path = "/api/v1/shell/fs/resolve?path=rumahl%3A%2F%2Fhome%2Fsample.txt&device=00000000-0000-4000-8000-000000000001"
+            resolved = json.loads(request(resolved_path, cookie=cookies["alice"])[2])
+            assert resolved["path"] == "rumahl://home/sample.txt" and resolved["directory"] is False
+            assert resolved["writable"] is True
+            assert request("/api/v1/shell/fs/resolve?path=rumahl%3A%2F%2Fhome%2F..%2F..%2Fetc&device=00000000-0000-4000-8000-000000000001", cookie=cookies["alice"])[0] == 400
+            assert request("/api/v1/shell/fs/resolve?path=%2Fetc%2Fpasswd&device=00000000-0000-4000-8000-000000000001", cookie=cookies["alice"])[0] == 400
             print("PASS: production document upload limits, download and owner isolation", flush=True)
             preferences_path = "/api/v1/shell/preferences?device=00000000-0000-4000-8000-000000000001"
             settings = json.loads(request(preferences_path, cookie=cookies["alice"])[2])

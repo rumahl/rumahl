@@ -1,11 +1,12 @@
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterAll, beforeAll, beforeEach, expect, test, vi } from "vitest";
+import type * as FsClient from "../fsClient";
 
 const state = vi.hoisted(() => ({
   advanced: false,
   apps: [] as { id: string; title: string; path: string; launchable: boolean; system: boolean; kind: "app" }[],
   topbarHost: null as HTMLElement | null,
-  live: { request: vi.fn(async (url: string, init?: RequestInit): Promise<{ ok: boolean; headers?: Headers; json: () => Promise<unknown> }> => { void url; void init; return { ok: true, headers: new Headers(), json: async () => [] }; }) },
+  live: { request: vi.fn(async (url: string, init?: RequestInit): Promise<{ ok: boolean; status?: number; headers?: Headers; json: () => Promise<unknown> }> => { void url; void init; return { ok: true, headers: new Headers(), json: async () => [] }; }) },
   open: vi.fn(),
   fetchHostList: vi.fn(async () => [] as { name: string; directory: boolean; size: number; modified: number }[]),
 }));
@@ -16,7 +17,10 @@ vi.mock("../../preferences/OsMode", () => ({ useOsModePolicy: () => ({ advancedS
 vi.mock("../../preferences/storage", () => ({ browserProfile: () => ({ id: "01990000-0000-7000-8000-000000000001", persistence: "memory" }) }));
 vi.mock("../../preferences/Workspace", () => ({ useWorkspace: () => ({ effective: { folders: [] } }) }));
 vi.mock("../useShellApps", () => ({ useShellApps: () => state.apps }));
-vi.mock("../fsClient", () => ({ fetchHostList: state.fetchHostList, hostContentUrl: () => "/content" }));
+vi.mock("../fsClient", async (importOriginal) => {
+  const actual = await importOriginal<typeof FsClient>();
+  return { ...actual, fetchHostList: state.fetchHostList, hostContentUrl: () => "/content" };
+});
 vi.mock("../../components/ProtectedWindow", () => ({ useAppTopbarHost: () => state.topbarHost }));
 
 import { FilesApp } from "./FilesApp";
@@ -405,17 +409,66 @@ test("reports a non-empty folder separately from a name conflict", async () => {
   expect(await screen.findByText("files.folderNotEmpty")).toBeInTheDocument();
 });
 
-test("marks the current breadcrumb and keeps the root crumb intact", async () => {
+test("shows the canonical rumahl path and follows navigation", async () => {
   listing([{ id: "folder-1", name: "Projects", directory: true, size: 0 }]);
   render(<FilesApp />);
-  const nav = screen.getByRole("navigation", { name: "files.path" });
-  const root = within(nav).getByRole("button", { name: "files.root" });
-  expect(root).toHaveClass("files-crumbs__root");
-  expect(root).toHaveAttribute("aria-current", "page");
+  const address = screen.getByRole("textbox", { name: "files.address" });
+  expect(address).toHaveValue("rumahl://home");
 
   fireEvent.doubleClick(await screen.findByText("Projects"));
-  await waitFor(() => expect(within(nav).getByRole("button", { name: "Projects" })).toHaveAttribute("aria-current", "page"));
-  expect(root).not.toHaveAttribute("aria-current");
+  await waitFor(() => expect(address).toHaveValue("rumahl://home/Projects"));
+});
+
+test("opens a typed rumahl folder and file through the service", async () => {
+  state.advanced = true;
+  state.live.request.mockImplementation(async (url: string) => {
+    if (String(url).startsWith("/api/v1/shell/fs/resolve?")) {
+      const target = new URL(String(url), "https://localhost").searchParams.get("path") ?? "";
+      const file = target === "rumahl://home/Documents/notes.txt";
+      return {
+        ok: true,
+        json: async () => file
+          ? { fsVersion: 1, path: target, area: "home", relative: "Documents/notes.txt", name: "notes.txt", directory: false, writable: true }
+          : { fsVersion: 1, path: target, area: "home", relative: "Documents", name: "Documents", directory: true, writable: true }
+      };
+    }
+    return { ok: true, headers: new Headers({ "x-total-count": "0" }), json: async () => [] };
+  });
+  state.fetchHostList.mockResolvedValue([{ name: "notes.txt", directory: false, size: 3, modified: 1 }]);
+  render(<FilesApp />);
+  const address = screen.getByRole("textbox", { name: "files.address" });
+
+  fireEvent.change(address, { target: { value: "~/Documents" } });
+  fireEvent.submit(address.closest("form")!);
+  await waitFor(() => expect(state.fetchHostList).toHaveBeenCalledWith(expect.anything(), "home", "Documents", expect.anything(), expect.anything()));
+  expect(address).toHaveValue("rumahl://home/Documents");
+
+  fireEvent.change(address, { target: { value: "rumahl://home/Documents/notes.txt" } });
+  fireEvent.submit(address.closest("form")!);
+  await waitFor(() => expect(state.open).toHaveBeenCalledTimes(1));
+  const opened = state.open.mock.calls[0]![0] as string;
+  expect(opened).toContain("/app/editor?");
+  expect(opened).toContain("source=host");
+  expect(opened).toContain("area=home");
+  expect(opened).toContain("path=Documents%2Fnotes.txt");
+});
+
+test("rejects invalid and forbidden paths without guessing", async () => {
+  state.live.request.mockImplementation(async (url: string) => {
+    if (String(url).startsWith("/api/v1/shell/fs/resolve?")) return { ok: false, status: 403, json: async () => ({}) };
+    return { ok: true, headers: new Headers(), json: async () => [] };
+  });
+  render(<FilesApp />);
+  const address = screen.getByRole("textbox", { name: "files.address" });
+
+  fireEvent.change(address, { target: { value: "rumahl://apps" } });
+  fireEvent.submit(address.closest("form")!);
+  expect(await screen.findByText("files.pathDenied")).toBeInTheDocument();
+
+  // A host path is not a rumahl path and never reaches the service.
+  fireEvent.change(address, { target: { value: "/etc/passwd" } });
+  fireEvent.submit(address.closest("form")!);
+  expect(await screen.findByText("files.pathInvalid")).toBeInTheDocument();
 });
 
 test("clears the search from the button and with Escape", async () => {

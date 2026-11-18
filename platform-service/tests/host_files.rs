@@ -129,6 +129,74 @@ async fn host_browsing_and_home_writes_respect_advanced_mode_and_the_home_area()
     let response = app.clone().oneshot(listing(&alice, "apps")).await.unwrap();
     assert_eq!(response.status(), axum::http::StatusCode::FORBIDDEN);
 
+    // The address bar resolves a canonical rumahl path without interpreting a
+    // host path on the client: home is always usable, apps waits for advanced
+    // mode, and traversal or a missing entry never becomes a path guess.
+    let resolve = |token: &str, path: &str| {
+        axum::http::Request::builder()
+            .uri(format!(
+                "/api/v1/shell/fs/resolve?path={path}&device={DEVICE}"
+            ))
+            .header("cookie", format!("__Host-rumahl_session={token}"))
+            .body(axum::body::Body::empty())
+            .unwrap()
+    };
+    let response = app
+        .clone()
+        .oneshot(resolve(&alice, "rumahl%3A%2F%2Fhome%2FDocuments"))
+        .await
+        .unwrap();
+    assert_eq!(response.status(), axum::http::StatusCode::OK);
+    let value = json(response).await;
+    assert_eq!(value["path"], "rumahl://home/Documents");
+    assert_eq!(value["area"], "home");
+    assert_eq!(value["name"], "Documents");
+    assert_eq!(value["directory"], true);
+    assert_eq!(value["writable"], true);
+    let response = app
+        .clone()
+        .oneshot(resolve(
+            &alice,
+            "rumahl%3A%2F%2Fhome%2FDocuments%2Fnotes.txt",
+        ))
+        .await
+        .unwrap();
+    assert_eq!(response.status(), axum::http::StatusCode::OK);
+    let value = json(response).await;
+    assert_eq!(value["name"], "notes.txt");
+    assert_eq!(value["directory"], false);
+    let response = app
+        .clone()
+        .oneshot(resolve(&alice, "rumahl%3A%2F%2Fdesktop"))
+        .await
+        .unwrap();
+    assert_eq!(response.status(), axum::http::StatusCode::OK);
+    assert_eq!(json(response).await["area"], "desktop");
+    let response = app
+        .clone()
+        .oneshot(resolve(&alice, "rumahl%3A%2F%2Fapps"))
+        .await
+        .unwrap();
+    assert_eq!(response.status(), axum::http::StatusCode::FORBIDDEN);
+    let response = app
+        .clone()
+        .oneshot(resolve(&alice, "rumahl%3A%2F%2Fhome%2Fmissing.txt"))
+        .await
+        .unwrap();
+    assert_eq!(response.status(), axum::http::StatusCode::NOT_FOUND);
+    let response = app
+        .clone()
+        .oneshot(resolve(&alice, "rumahl%3A%2F%2Fhome%2F..%2F..%2Fetc"))
+        .await
+        .unwrap();
+    assert_eq!(response.status(), axum::http::StatusCode::BAD_REQUEST);
+    let response = app
+        .clone()
+        .oneshot(resolve(&alice, "home%2FDocuments"))
+        .await
+        .unwrap();
+    assert_eq!(response.status(), axum::http::StatusCode::BAD_REQUEST);
+
     // Advanced mode opens the read-only areas.
     SqliteOsModeRepository::open(root.join("preferences.sqlite"))
         .unwrap()
@@ -149,6 +217,15 @@ async fn host_browsing_and_home_writes_respect_advanced_mode_and_the_home_area()
     assert_eq!(response.status(), axum::http::StatusCode::OK);
     let value = json(response).await;
     assert_eq!(value["entries"][0]["name"], "com.example.notes");
+    let response = app
+        .clone()
+        .oneshot(resolve(&alice, "rumahl%3A%2F%2Fapps"))
+        .await
+        .unwrap();
+    assert_eq!(response.status(), axum::http::StatusCode::OK);
+    let value = json(response).await;
+    assert_eq!(value["area"], "apps");
+    assert_eq!(value["writable"], false);
 
     // Home writes need the origin and land contained in the home directory.
     let no_origin = axum::http::Request::builder()

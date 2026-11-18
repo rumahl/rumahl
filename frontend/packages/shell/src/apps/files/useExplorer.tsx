@@ -402,6 +402,7 @@ export function useExplorer(request: ShellRequest | null, device: string, advanc
     error,
     openError,
     clearOpenError: () => setOpenError(null),
+    reportOpenError: (error: OpenError | null) => setOpenError(error),
     busy,
     operation,
     refreshing,

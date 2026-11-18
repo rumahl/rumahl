@@ -246,6 +246,23 @@ impl HostFiles for LocalHostFiles {
         Ok((name, data))
     }
 
+    fn stat(&self, area: HostArea, path: &str, user: UserId) -> Result<(String, bool), HostError> {
+        if path.is_empty() {
+            let root = self.root(area, user)?;
+            return Ok((String::new(), root.is_dir()));
+        }
+        let target = self.resolve(area, path, user)?;
+        let meta = std::fs::symlink_metadata(&target).map_err(|_| HostError::Missing)?;
+        if meta.file_type().is_symlink() {
+            return Err(HostError::Invalid);
+        }
+        let name = target
+            .file_name()
+            .map(|name| name.to_string_lossy().into_owned())
+            .unwrap_or_default();
+        Ok((name, meta.is_dir()))
+    }
+
     fn write(
         &self,
         area: HostArea,

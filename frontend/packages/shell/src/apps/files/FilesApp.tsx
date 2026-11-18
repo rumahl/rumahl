@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { RumahlDialog, useRegisterMobileNav, type MobileIslandNavItem } from "@rumahl/ui/components";
 import { CheckIcon, GridIcon, RefreshIcon, SearchIcon, SettingsIcon } from "../../icons";
@@ -8,9 +8,10 @@ import { browserProfile } from "../../preferences/storage";
 import { isMobile } from "../../shell/device";
 import { useShell } from "../../shell/ShellContext";
 import { useAppTopbarHost } from "../../components/ProtectedWindow";
+import { useWindowLocation } from "../../routing/window-location";
 import { useShellApps } from "../../apps/useShellApps";
 import { useWorkspace } from "../../preferences/Workspace";
-import { Breadcrumb } from "./Breadcrumb";
+import { AddressBar } from "./AddressBar";
 import { ContextMenu, type MenuItem } from "./ContextMenu";
 import { FileGrid, FileList, type ViewProps } from "./FileViews";
 import { SearchField } from "./SearchField";
@@ -18,7 +19,9 @@ import { Sidebar } from "./Sidebar";
 import { Toolbar } from "./Toolbar";
 import { Topbar } from "./Topbar";
 import { AlertIcon, ArrowLeftIcon, DesktopArtwork, DownloadIcon, FilePlusIcon, FolderArtwork, FolderIcon, GridViewIcon, ListViewIcon, MoreIcon, MoveIcon, OpenIcon, PencilIcon, PlusIcon, TrashIcon, UploadIcon } from "./icons";
-import { freshDesktop, freshHost, freshStore, placeLabelKey, type Item } from "./types";
+import { freshDesktop, freshHost, freshStore, placeLabelKey, ROOT, type Item } from "./types";
+import { extensionOf, fileAssociation } from "./fileTypes";
+import { parseRumahlPath, PathResolutionError, resolveRumahlPath, type PathResolutionReason } from "../fsClient";
 import { useExplorer } from "./useExplorer";
 import { useMarquee } from "./useMarquee";
 import { useSelection } from "./useSelection";
@@ -31,6 +34,13 @@ import "./files.css";
  * appear from advanced mode upwards.
  */
 type Menu = { x: number; y: number; item: Item | null; anchor: HTMLElement | null };
+
+const ADDRESS_ERROR_KEYS = {
+  invalid: "files.pathInvalid",
+  denied: "files.pathDenied",
+  missing: "files.pathMissing",
+  unavailable: "files.pathUnavailable"
+} as const;
 
 /** Page size for the file grid/list. Parsing stays client-side; pagination keeps
  * the DOM bounded without pretending a very large folder is a short one. */
@@ -111,6 +121,9 @@ export function FilesApp() {
   const [pendingRename, setPendingRename] = useState<string | null>(null);
   const [mounted, setMounted] = useState(false);
   const [compact, setCompact] = useState(false);
+  const [addressError, setAddressError] = useState<PathResolutionReason | null>(null);
+  const addressGeneration = useRef(0);
+  const windowLocation = useWindowLocation();
   const root = useRef<HTMLElement>(null);
   const uploadInput = useRef<HTMLInputElement>(null);
   const sidebarToggle = useRef<HTMLButtonElement>(null);
@@ -156,6 +169,70 @@ export function FilesApp() {
 
   useEffect(() => { clear(); setSearch(""); setQuery(""); setRenameKey(null); setPendingRename(null); setMenu(null); setMobileMenu(null); setMobileSearchOpen(false); setSidebarOpen(false); createdSearch.current = false; }, [explorer.nav, clear]);
   useEffect(() => { if (explorer.error) clear(); }, [explorer.error, clear]);
+
+  const addressPath = useMemo(() => {
+    const place = explorer.nav.place;
+    if (place.kind === "desktop") return "rumahl://desktop";
+    if (place.kind === "store") {
+      const names = explorer.nav.trail.slice(1).map((crumb) => crumb.name);
+      return names.length ? `rumahl://home/${names.join("/")}` : "rumahl://home";
+    }
+    const segments = explorer.nav.segments;
+    return segments.length ? `rumahl://${place.area}/${segments.join("/")}` : `rumahl://${place.area}`;
+  }, [explorer.nav]);
+
+  // The address line addresses a rumahl area, never a host path. The service
+  // resolves it with the same gates as browsing and decides folder vs file.
+  const submitAddress = useCallback(async (input: string) => {
+    setAddressError(null);
+    const parsed = parseRumahlPath(input);
+    if (!parsed) {
+      setAddressError("invalid");
+      return;
+    }
+    if (!live) {
+      setAddressError("unavailable");
+      return;
+    }
+    const generation = ++addressGeneration.current;
+    try {
+      const target = await resolveRumahlPath(live.request, parsed, device, new AbortController().signal);
+      if (generation !== addressGeneration.current) return;
+      if (target.directory) {
+        if (target.area === "desktop") explorer.navigate(freshDesktop());
+        else explorer.navigate({ place: { kind: "host", area: target.area }, trail: [ROOT], segments: target.relative ? target.relative.split("/") : [] });
+        return;
+      }
+      const extension = extensionOf(target.name);
+      const handler = fileAssociation(target.name);
+      if (!handler) {
+        explorer.reportOpenError({ name: target.name, extension });
+        return;
+      }
+      if (!handler.installed || !handler.appPath) {
+        explorer.reportOpenError({ name: target.name, extension, program: handler.label });
+        return;
+      }
+      const params = new URLSearchParams({ name: target.name, source: "host", area: target.area, path: target.relative });
+      openPath(`${handler.appPath}?${params.toString()}`);
+    } catch (cause) {
+      if (generation !== addressGeneration.current) return;
+      setAddressError(cause instanceof PathResolutionError ? cause.reason : "unavailable");
+    }
+  }, [live, device, explorer, openPath]);
+
+  // A deep link (`/app/files?path=rumahl://home/Documents`) opens once, after
+  // the live request exists, and never fights later navigation.
+  const deepLink = useMemo(() => {
+    const search = (windowLocation ?? "").split("?")[1] ?? "";
+    return new URLSearchParams(search).get("path");
+  }, [windowLocation]);
+  const openedDeepLink = useRef<string | null>(null);
+  useEffect(() => {
+    if (!deepLink || !live || openedDeepLink.current === deepLink) return;
+    openedDeepLink.current = deepLink;
+    void submitAddress(deepLink);
+  }, [deepLink, live, submitAddress]);
 
   const pageCount = Math.max(1, Math.ceil(explorer.total / PAGE_SIZE));
   const safePage = Math.min(page, pageCount - 1);
@@ -402,10 +479,10 @@ export function FilesApp() {
   }
 
   const topbar = <Topbar
-    nav={explorer.nav} compact={compact} writable={explorer.isWritable} busy={explorer.busy}
+    nav={explorer.nav} addressPath={addressPath} compact={compact} writable={explorer.isWritable} busy={explorer.busy}
     canBack={explorer.canBack} canForward={explorer.canForward} canUp={explorer.canUp}
     canPaste={!!clipboard} view={view} search={search}
-    onNavigate={explorer.navigate} onBack={explorer.back} onForward={explorer.forward} onUp={explorer.up}
+    onNavigate={explorer.navigate} onAddress={submitAddress} onBack={explorer.back} onForward={explorer.forward} onUp={explorer.up}
     onView={chooseView} onSearch={setSearch}
     onNewFolder={newFolder} onNewFile={newFile} onUpload={explorer.upload}
     onPaste={paste}
@@ -434,13 +511,17 @@ export function FilesApp() {
           }}><MoreIcon /></button>
         </div>
         {mobileSearchOpen || search.trim() ? <SearchField className="files-search files-mobile-search" value={search} onChange={setSearch} autoFocus={mobileSearchOpen} /> : null}
+        <div className="files-address files-address--mobile">
+          <FolderIcon className="files-address__icon" />
+          <AddressBar path={addressPath} busy={explorer.busy} onSubmit={submitAddress} />
+        </div>
       </header> : fallbackChrome ? <>
         <div className="files-address">
           <button ref={sidebarToggle} className="files-sidebar-toggle" type="button" aria-label={t("files.locations")} aria-expanded={sidebarOpen} aria-controls="files-locations-drawer" onClick={() => setSidebarOpen(true)}>
             <FolderIcon /> <span>{t("files.locations")}</span>
           </button>
           <FolderIcon className="files-address__icon" />
-          <Breadcrumb nav={explorer.nav} onNavigate={explorer.navigate} />
+          <AddressBar path={addressPath} busy={explorer.busy} onSubmit={submitAddress} />
         </div>
         <Toolbar
           writable={explorer.isWritable} busy={explorer.busy}
@@ -452,6 +533,11 @@ export function FilesApp() {
           onPaste={paste}
         />
       </> : null}
+      {addressError ? <div className="files-alert" role="alert">
+        <AlertIcon className="files-alert__icon" />
+        <span className="files-alert__text">{t(ADDRESS_ERROR_KEYS[addressError])}</span>
+        <button type="button" className="files-alert__close" aria-label={t("files.dismiss")} onClick={() => setAddressError(null)}>×</button>
+      </div> : null}
       {explorer.error ? <div className="files-alert" role="alert">
         <AlertIcon className="files-alert__icon" />
         <span className="files-alert__text">{t(`files.${explorer.error}`)}</span>

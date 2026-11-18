@@ -74,6 +74,9 @@ pub trait HostFiles: Send + Sync + 'static {
         directory: bool,
         user: UserId,
     ) -> Result<(), HostError>;
+    /// Returns an entry's own name and whether it is a directory, without
+    /// reading its content or listing a whole folder.
+    fn stat(&self, area: HostArea, path: &str, user: UserId) -> Result<(String, bool), HostError>;
     /// Removes a file or an empty directory from the user's home.
     fn remove(&self, area: HostArea, path: &str, user: UserId) -> Result<(), HostError>;
     /// Renames one entry inside the user's home.
@@ -97,6 +100,7 @@ pub(crate) fn routes() -> Router<Arc<GatewayState>> {
                 .put(write)
                 .layer(DefaultBodyLimit::max(MAX_WRITE_BYTES)),
         )
+        .route("/api/v1/shell/fs/resolve", get(resolve_path))
 }
 
 fn parse_area(value: &str) -> Option<HostArea> {
@@ -113,6 +117,68 @@ pub(crate) fn area_name(area: HostArea) -> &'static str {
         HostArea::Apps => "apps",
         HostArea::System => "system",
         HostArea::Home => "home",
+    }
+}
+
+/// One parsed `rumahl://` path. Desktop is virtual; the other areas map to a
+/// real host root and a path relative to it.
+#[derive(Debug, PartialEq, Eq)]
+enum RumahlTarget {
+    Desktop,
+    Host { area: HostArea, relative: String },
+}
+
+/// Parses the canonical rumahl path syntax: `rumahl://home/Documents`,
+/// `rumahl://apps/<app-id>/...`, `rumahl://system/...`, `rumahl://desktop`.
+///
+/// The syntax is deliberately not a POSIX path: it has no drive letters, no
+/// absolute host paths, and `..` never escapes an area. Client-side input
+/// normalization (aliases, backslashes) happens before this parser runs.
+fn parse_rumahl_path(value: &str) -> Option<RumahlTarget> {
+    const MAX_PATH_BYTES: usize = 4096;
+    const MAX_NAME_BYTES: usize = 255;
+    if value.is_empty()
+        || value.len() > MAX_PATH_BYTES
+        || value.contains(['\\', '\0'])
+        || value.chars().any(char::is_control)
+    {
+        return None;
+    }
+    let (scheme, rest) = value.split_once("://")?;
+    if !scheme.eq_ignore_ascii_case("rumahl") {
+        return None;
+    }
+    let mut parts = rest
+        .split('/')
+        .filter(|part| !part.is_empty() && *part != ".");
+    let area = parts.next()?.to_ascii_lowercase();
+    let segments: Vec<&str> = parts.collect();
+    if segments
+        .iter()
+        .any(|segment| *segment == ".." || segment.len() > MAX_NAME_BYTES)
+    {
+        return None;
+    }
+    let relative = segments.join("/");
+    let target = match area.as_str() {
+        "home" => HostArea::Home,
+        "apps" => HostArea::Apps,
+        "system" => HostArea::System,
+        "desktop" if relative.is_empty() => return Some(RumahlTarget::Desktop),
+        _ => return None,
+    };
+    Some(RumahlTarget::Host {
+        area: target,
+        relative,
+    })
+}
+
+/// The canonical form shown in the address bar.
+fn rumahl_path(area: HostArea, relative: &str) -> String {
+    if relative.is_empty() {
+        format!("rumahl://{}", area_name(area))
+    } else {
+        format!("rumahl://{}/{relative}", area_name(area))
     }
 }
 
@@ -150,26 +216,36 @@ async fn context(
         return Err(error(StatusCode::BAD_REQUEST));
     };
     let path = query.get("path").cloned().unwrap_or_default();
-    // The user's own home is their data, not a system surface: it needs no
-    // exposure mode. Installed apps and the system tree stay advanced-only.
-    if area != HostArea::Home {
-        let Some(mode_repository) = state.os_mode.clone() else {
-            return Err(error(StatusCode::SERVICE_UNAVAILABLE));
-        };
-        let mode =
-            match tokio::task::spawn_blocking(move || mode_repository.load(user, device)).await {
-                Ok(Ok(settings)) => settings.effective_mode(),
-                Ok(Err(_)) => return Err(error(StatusCode::SERVICE_UNAVAILABLE)),
-                Err(_) => return Err(error(StatusCode::SERVICE_UNAVAILABLE)),
-            };
-        if !mode.policy().can_browse_system_files() {
-            return Err(error(StatusCode::FORBIDDEN));
-        }
-    }
+    authorize_area(state, user, device, area).await?;
     let Some(provider) = state.host_files.clone() else {
         return Err(error(StatusCode::SERVICE_UNAVAILABLE));
     };
     Ok((area, path, provider, user))
+}
+
+/// The user's own home is their data, not a system surface: it needs no
+/// exposure mode. Installed apps and the system tree stay advanced-only.
+async fn authorize_area(
+    state: &Arc<GatewayState>,
+    user: UserId,
+    device: BrowserProfileId,
+    area: HostArea,
+) -> Result<(), Response> {
+    if area == HostArea::Home {
+        return Ok(());
+    }
+    let Some(mode_repository) = state.os_mode.clone() else {
+        return Err(error(StatusCode::SERVICE_UNAVAILABLE));
+    };
+    let mode = match tokio::task::spawn_blocking(move || mode_repository.load(user, device)).await {
+        Ok(Ok(settings)) => settings.effective_mode(),
+        Ok(Err(_)) => return Err(error(StatusCode::SERVICE_UNAVAILABLE)),
+        Err(_) => return Err(error(StatusCode::SERVICE_UNAVAILABLE)),
+    };
+    if !mode.policy().can_browse_system_files() {
+        return Err(error(StatusCode::FORBIDDEN));
+    }
+    Ok(())
 }
 
 /// Mutating requests need the origin check, exactly like every other write in
@@ -197,6 +273,80 @@ fn name_of(query: &HashMap<String, String>) -> Result<String, Response> {
         return Err(error(StatusCode::BAD_REQUEST));
     }
     Ok(name.clone())
+}
+
+/// Resolves a typed `rumahl://` path for the address bar: it decides whether
+/// the target is a folder or a file, whether it exists, and whether the caller
+/// may see that area. The frontend never interprets host paths itself.
+async fn resolve_path(
+    State(state): State<Arc<GatewayState>>,
+    Query(query): Query<HashMap<String, String>>,
+    headers: HeaderMap,
+) -> Response {
+    let user = match user(&state, &headers).await {
+        Ok(user) => user,
+        Err(response) => return response,
+    };
+    if query.len() != 2 {
+        return error(StatusCode::BAD_REQUEST);
+    }
+    let Some(device) = query
+        .get("device")
+        .and_then(|value| BrowserProfileId::parse(value))
+    else {
+        return error(StatusCode::BAD_REQUEST);
+    };
+    let Some(raw) = query.get("path") else {
+        return error(StatusCode::BAD_REQUEST);
+    };
+    let target = match parse_rumahl_path(raw) {
+        Some(target) => target,
+        None => return error(StatusCode::BAD_REQUEST),
+    };
+    let (path, area, relative, name, directory, writable) = match target {
+        RumahlTarget::Desktop => (
+            "rumahl://desktop".to_owned(),
+            "desktop",
+            String::new(),
+            "Desktop".to_owned(),
+            true,
+            true,
+        ),
+        RumahlTarget::Host { area, relative } => {
+            if let Err(response) = authorize_area(&state, user, device, area).await {
+                return response;
+            }
+            let Some(provider) = state.host_files.clone() else {
+                return error(StatusCode::SERVICE_UNAVAILABLE);
+            };
+            let canonical = rumahl_path(area, &relative);
+            let requested = relative.clone();
+            match tokio::task::spawn_blocking(move || provider.stat(area, &requested, user)).await {
+                Ok(Ok((name, directory))) => (
+                    canonical,
+                    area_name(area),
+                    relative,
+                    name,
+                    directory,
+                    area == HostArea::Home,
+                ),
+                Ok(Err(failure)) => return fail(failure),
+                Err(_) => return error(StatusCode::SERVICE_UNAVAILABLE),
+            }
+        }
+    };
+    let mut response = axum::Json(serde_json::json!({
+        "fsVersion": 1,
+        "path": path,
+        "area": area,
+        "relative": relative,
+        "name": name,
+        "directory": directory,
+        "writable": writable,
+    }))
+    .into_response();
+    secure_headers(&mut response);
+    response
 }
 
 /// Records one home mutation, success or failure, in the central audit log.
@@ -435,5 +585,63 @@ async fn remove(
             fail(error)
         }
         Err(_) => error(StatusCode::SERVICE_UNAVAILABLE),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parses_only_canonical_rumahl_paths() {
+        assert_eq!(
+            parse_rumahl_path("rumahl://home"),
+            Some(RumahlTarget::Host {
+                area: HostArea::Home,
+                relative: String::new()
+            })
+        );
+        assert_eq!(
+            parse_rumahl_path("rumahl://home/Documents/notes.txt"),
+            Some(RumahlTarget::Host {
+                area: HostArea::Home,
+                relative: "Documents/notes.txt".to_owned()
+            })
+        );
+        // The scheme and the area are case-insensitive; the path is not.
+        assert_eq!(
+            parse_rumahl_path("RUMAHL://Home/Documents"),
+            Some(RumahlTarget::Host {
+                area: HostArea::Home,
+                relative: "Documents".to_owned()
+            })
+        );
+        // Empty and "." segments are normalized, never interpreted.
+        assert_eq!(
+            parse_rumahl_path("rumahl://home//Documents/./x/"),
+            Some(RumahlTarget::Host {
+                area: HostArea::Home,
+                relative: "Documents/x".to_owned()
+            })
+        );
+        assert_eq!(
+            parse_rumahl_path("rumahl://desktop"),
+            Some(RumahlTarget::Desktop)
+        );
+        for invalid in [
+            "rumahl://desktop/Documents",
+            "rumahl://home/../etc",
+            "rumahl://home/Documents/..",
+            "rumahl://home\\Documents",
+            "rumahl://home/Documents\0",
+            "/home/alice",
+            "C:\\Users\\alice",
+            "home/Documents",
+            "rumahl://root/etc",
+            "rumahl://",
+            "https://example.test/home",
+        ] {
+            assert_eq!(parse_rumahl_path(invalid), None, "{invalid}");
+        }
     }
 }

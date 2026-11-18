@@ -1,6 +1,7 @@
 import { expect, test, vi } from "vitest";
 import {
-  createHostEntry, parseHostList, removeHostEntry, renameHostEntry, writeHostFile
+  createHostEntry, parseHostList, parseRumahlPath, PathResolutionError, removeHostEntry,
+  renameHostEntry, resolveRumahlPath, writeHostFile
 } from "./fsClient";
 import type { ShellRequest } from "../snapshot-client";
 
@@ -51,5 +52,52 @@ test("host failures map to the explorer's vocabulary", async () => {
   await expect(removeHostEntry(request(400), "x", "device", new AbortController().signal))
     .rejects.toThrow("conflict");
   await expect(renameHostEntry(request(500), "x", "y", "device", new AbortController().signal))
+    .rejects.toThrow("unavailable");
+});
+
+
+test("rumahl paths are canonical across client operating systems", () => {
+  expect(parseRumahlPath("rumahl://home/Documents/notes.txt")).toEqual({
+    canonical: "rumahl://home/Documents/notes.txt", area: "home", relative: "Documents/notes.txt"
+  });
+  expect(parseRumahlPath("~/Documents")).toEqual({ canonical: "rumahl://home/Documents", area: "home", relative: "Documents" });
+  expect(parseRumahlPath("  HOME\\Documents  ")).toEqual({ canonical: "rumahl://home/Documents", area: "home", relative: "Documents" });
+  expect(parseRumahlPath("files")).toEqual({ canonical: "rumahl://home", area: "home", relative: "" });
+  expect(parseRumahlPath("desktop")).toEqual({ canonical: "rumahl://desktop", area: "desktop", relative: "" });
+  expect(parseRumahlPath("rumahl://apps/com.example.notes/data")).toEqual({ canonical: "rumahl://apps/com.example.notes/data", area: "apps", relative: "com.example.notes/data" });
+  // No POSIX host paths, drive letters, traversal or unknown areas.
+  for (const invalid of ["/home/alice", "C:\\Users\\alice", "rumahl://home/../etc", "rumahl://desktop/Documents", "rumahl:https://x", "documents", ""]) {
+    expect(parseRumahlPath(invalid), invalid).toBeNull();
+  }
+});
+
+const jsonRequest = (status: number, body: unknown) =>
+  vi.fn(async () => ({ ok: status < 400, status, json: async () => body })) as unknown as ShellRequest;
+const rumahlPath = parseRumahlPath("rumahl://home/Documents")!;
+
+test("the service resolves a rumahl path and decides folder versus file", async () => {
+  const shell = jsonRequest(200, {
+    fsVersion: 1, path: "rumahl://home/Documents", area: "home", relative: "Documents",
+    name: "Documents", directory: true, writable: true
+  });
+  const resolved = await resolveRumahlPath(shell, rumahlPath, "device", new AbortController().signal);
+  expect(resolved).toEqual({
+    canonical: "rumahl://home/Documents", area: "home", relative: "Documents",
+    name: "Documents", directory: true, writable: true
+  });
+  const [url] = vi.mocked(shell).mock.calls[0] as [string, RequestInit];
+  expect(url).toContain("/api/v1/shell/fs/resolve?");
+  expect(url).toContain("path=rumahl%3A%2F%2Fhome%2FDocuments");
+  expect(url).toContain("device=device");
+});
+
+test("path resolution failures stay in the explorer's vocabulary", async () => {
+  for (const [status, reason] of [[400, "invalid"], [403, "denied"], [404, "missing"], [503, "unavailable"]] as const) {
+    const failure = await resolveRumahlPath(jsonRequest(status, {}), rumahlPath, "device", new AbortController().signal)
+      .catch((cause: unknown) => cause);
+    expect(failure).toBeInstanceOf(PathResolutionError);
+    expect((failure as PathResolutionError).reason).toBe(reason);
+  }
+  await expect(resolveRumahlPath(jsonRequest(200, { fsVersion: 2 }), rumahlPath, "device", new AbortController().signal))
     .rejects.toThrow("unavailable");
 });

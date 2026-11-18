@@ -1,5 +1,5 @@
 import { useI18n } from "../../i18n";
-import { Breadcrumb } from "./Breadcrumb";
+import { AddressBar } from "./AddressBar";
 import {
   ArrowLeftIcon,
   ArrowRightIcon,
@@ -16,6 +16,8 @@ import { ViewSwitch } from "./ViewSwitch";
 
 export interface TopbarProps {
   nav: Nav;
+  /** Canonical rumahl path of the current folder. */
+  addressPath: string;
   compact: boolean;
   writable: boolean;
   canBack: boolean;
@@ -26,6 +28,7 @@ export interface TopbarProps {
   view: "grid" | "list";
   search: string;
   onNavigate: (next: Nav) => void;
+  onAddress: (input: string) => void;
   onBack: () => void;
   onForward: () => void;
   onUp: () => void;
@@ -53,7 +56,7 @@ export function Topbar(props: TopbarProps) {
       </div>
       <div className="files-topbar__path">
         <FolderIcon className="files-topbar__path-icon" />
-        <Breadcrumb nav={props.nav} onNavigate={props.onNavigate} />
+        <AddressBar path={props.addressPath} busy={props.busy} onSubmit={props.onAddress} />
       </div>
       <span className="files-topbar__spacer" />
       {props.writable
