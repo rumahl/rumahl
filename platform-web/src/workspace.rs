@@ -39,12 +39,16 @@ struct FullscreenChrome {
     hide_topbar: bool,
     #[serde(default = "default_true")]
     hide_dock: bool,
+    /// Keeps window bottoms above a visible dock; the shell always sends it.
+    #[serde(default)]
+    dock_clearance: bool,
 }
 impl Default for FullscreenChrome {
     fn default() -> Self {
         Self {
             hide_topbar: true,
             hide_dock: true,
+            dock_clearance: false,
         }
     }
 }
@@ -346,6 +350,30 @@ mod appearance_tests {
         assert!(custom.fullscreen_chrome.hide_dock);
         let stored = serde_json::to_value(&custom).unwrap();
         assert_eq!(stored["fullscreenChrome"]["hideTopbar"], false);
+    }
+
+    /// The shell always sends `dockClearance` with the chrome settings, so the
+    /// stored shape must accept it; anything else stays rejected.
+    #[test]
+    fn fullscreen_chrome_accepts_the_shell_payload() {
+        let value: Workspace = serde_json::from_str(
+            r#"{"version":1,"windows":[],"folders":[],"fullscreenChrome":{"hideTopbar":true,"hideDock":false,"dockClearance":true}}"#,
+        )
+        .unwrap();
+        assert!(value.fullscreen_chrome.hide_topbar);
+        assert!(!value.fullscreen_chrome.hide_dock);
+        assert!(value.fullscreen_chrome.dock_clearance);
+        assert!(valid(&value));
+        assert_eq!(
+            serde_json::to_value(&value).unwrap()["fullscreenChrome"]["dockClearance"],
+            true
+        );
+        assert!(
+            serde_json::from_str::<Workspace>(
+                r#"{"version":1,"windows":[],"folders":[],"fullscreenChrome":{"hideTopbar":true,"hideDock":true,"unknown":true}}"#
+            )
+            .is_err()
+        );
     }
 
     #[test]
