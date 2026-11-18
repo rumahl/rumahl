@@ -87,9 +87,11 @@ pub use runtime::{
 
 pub use permissions::{
     AuthorizationDecision, AuthorizationDenyReason, AuthorizationEngine, AuthorizationRequest,
-    GrantAuthority, GrantAuthorityError, GrantId, GrantIdError, GrantIssuerPolicy,
-    GrantIssuerPolicyError, InMemoryGrantStore, PermissionGrant, PermissionGrantError,
-    PermissionId, PermissionIdError, PermissionRequest, PermissionScope, UserRole,
+    FILES_READ_PERMISSION, FILES_WRITE_PERMISSION, GrantAuthority, GrantAuthorityError, GrantId,
+    GrantIdError, GrantIssuerPolicy, GrantIssuerPolicyError, GrantValidity, InMemoryGrantStore,
+    OsPermission, OsPermissionCatalogError, PermissionGrant, PermissionGrantError, PermissionId,
+    PermissionIdError, PermissionRequest, PermissionScope, UserRole, os_permission_catalog,
+    os_permission_catalog_validate,
 };
 
 pub use persistence::{

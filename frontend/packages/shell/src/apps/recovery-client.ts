@@ -110,7 +110,8 @@ export const AUDIT_ACTIONS = [
   "sign-in", "sign-in-failed", "sign-out", "reauthenticate", "reauthenticate-failed",
   "os-mode-changed", "app-launched", "app-launch-failed", "app-runtime-started",
   "app-runtime-stopped", "app-installed", "app-uninstalled", "app-imported",
-  "capability-invoked", "capability-denied", "app-crashed", "app-unresponsive",
+  "capability-invoked", "capability-denied", "grant-issued", "grant-revoked",
+  "app-file-access", "app-crashed", "app-unresponsive",
   "service-started", "service-stopped", "service-stale", "service-recovered",
   "self-heal", "maintenance", "system-started", "system-stopped", "activity"
 ] as const;

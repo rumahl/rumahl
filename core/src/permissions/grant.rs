@@ -4,7 +4,7 @@ use std::fmt;
 use crate::identity::Identity;
 use crate::resources::ResourceRef;
 
-use super::{GrantId, PermissionId, PermissionScope};
+use super::{GrantId, GrantValidity, PermissionId, PermissionScope};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum PermissionGrantError {
@@ -20,6 +20,7 @@ pub struct PermissionGrant {
     scope: PermissionScope,
     resources: Vec<ResourceRef>,
     granted_by: Identity,
+    validity: GrantValidity,
 }
 
 impl PermissionGrant {
@@ -37,6 +38,26 @@ impl PermissionGrant {
             scope,
             resources,
             granted_by,
+            GrantValidity::durable(),
+        )
+    }
+
+    pub(crate) fn new_with_validity(
+        subject: Identity,
+        permission: PermissionId,
+        scope: PermissionScope,
+        resources: Vec<ResourceRef>,
+        granted_by: Identity,
+        validity: GrantValidity,
+    ) -> Result<Self, PermissionGrantError> {
+        Self::create(
+            GrantId::new(),
+            subject,
+            permission,
+            scope,
+            resources,
+            granted_by,
+            validity,
         )
     }
 
@@ -48,7 +69,29 @@ impl PermissionGrant {
         resources: Vec<ResourceRef>,
         granted_by: Identity,
     ) -> Result<Self, PermissionGrantError> {
-        Self::create(id, subject, permission, scope, resources, granted_by)
+        Self::restore_with_validity(
+            id,
+            subject,
+            permission,
+            scope,
+            resources,
+            granted_by,
+            GrantValidity::durable(),
+        )
+    }
+
+    pub(crate) fn restore_with_validity(
+        id: GrantId,
+        subject: Identity,
+        permission: PermissionId,
+        scope: PermissionScope,
+        resources: Vec<ResourceRef>,
+        granted_by: Identity,
+        validity: GrantValidity,
+    ) -> Result<Self, PermissionGrantError> {
+        Self::create(
+            id, subject, permission, scope, resources, granted_by, validity,
+        )
     }
 
     fn create(
@@ -58,6 +101,7 @@ impl PermissionGrant {
         scope: PermissionScope,
         resources: Vec<ResourceRef>,
         granted_by: Identity,
+        validity: GrantValidity,
     ) -> Result<Self, PermissionGrantError> {
         if scope == PermissionScope::Explicit && resources.is_empty() {
             return Err(PermissionGrantError::ExplicitScopeRequiresResources);
@@ -74,6 +118,7 @@ impl PermissionGrant {
             scope,
             resources,
             granted_by,
+            validity,
         })
     }
 
@@ -100,6 +145,11 @@ impl PermissionGrant {
     pub fn granted_by(&self) -> &Identity {
         &self.granted_by
     }
+
+    /// How long the grant stays usable; see [`GrantValidity`].
+    pub fn validity(&self) -> &GrantValidity {
+        &self.validity
+    }
 }
 
 impl fmt::Display for PermissionGrantError {
@@ -124,7 +174,7 @@ mod tests {
 
     use crate::{
         AppId, AppIdentity, InstallationId, PublisherId, ResourceKey, ResourceKind,
-        ResourceNamespace, ResourceRef, UserId, UserIdentity,
+        ResourceNamespace, ResourceRef, SessionId, UnixTimestamp, UserId, UserIdentity,
     };
 
     fn test_app_identity() -> AppIdentity {
@@ -239,5 +289,59 @@ mod tests {
         .unwrap();
 
         assert_eq!(grant.id(), &id);
+        assert_eq!(grant.validity(), &GrantValidity::durable());
+    }
+
+    #[test]
+    fn grants_carry_their_validity() {
+        let app = notes_app();
+        let session = SessionId::new();
+
+        let session_grant = PermissionGrant::new_with_validity(
+            app.clone().into(),
+            PermissionId::parse("rumahl.files.read").unwrap(),
+            PermissionScope::Explicit,
+            vec![test_file_resource()],
+            app.clone().into(),
+            GrantValidity::session(session),
+        )
+        .unwrap();
+
+        assert_eq!(session_grant.validity(), &GrantValidity::session(session));
+
+        let expires_at = UnixTimestamp::from_seconds(1_700_000_000);
+        let expiring = PermissionGrant::new_with_validity(
+            app.clone().into(),
+            PermissionId::parse("rumahl.files.write").unwrap(),
+            PermissionScope::Explicit,
+            vec![test_file_resource()],
+            app.into(),
+            GrantValidity::durable_until(expires_at),
+        )
+        .unwrap();
+
+        assert_eq!(
+            expiring.validity(),
+            &GrantValidity::durable_until(expires_at)
+        );
+    }
+
+    #[test]
+    fn explicit_scope_still_requires_resources_with_validity() {
+        let app = notes_app();
+
+        let result = PermissionGrant::new_with_validity(
+            app.clone().into(),
+            PermissionId::parse("rumahl.files.read").unwrap(),
+            PermissionScope::Explicit,
+            vec![],
+            app.into(),
+            GrantValidity::session(SessionId::new()),
+        );
+
+        assert_eq!(
+            result.unwrap_err(),
+            PermissionGrantError::ExplicitScopeRequiresResources
+        );
     }
 }
