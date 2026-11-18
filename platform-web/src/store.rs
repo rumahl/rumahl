@@ -574,6 +574,10 @@ async fn fetch_remote(
     let client =
         store_client(pinned.as_deref(), resolved).map_err(|_| RemoteFailure::Unavailable)?;
 
+    // The target is only reachable because `resolve_public_target` refused every
+    // non-public address above and `store_client` pins the checked address, so
+    // DNS cannot rebind between the check and this request. Redirects stay
+    // disabled, so the flow analysis below cannot be steered elsewhere.
     let response = match client
         .get(target.clone())
         .header(ACCEPT, accept)
