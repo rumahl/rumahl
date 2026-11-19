@@ -74,7 +74,7 @@
 }
 .rumahl-list-item__subtitle {
   color: var(--rumahl-ui-color-text-muted);
-  font-size: calc(var(--control-font) * 0.92);
+  font-size: var(--control-font);
 }
 
 /* Menu --------------------------------------------------------------------- */
@@ -150,7 +150,7 @@
   flex: none;
   margin-inline-start: 12px;
   color: var(--rumahl-ui-color-text-muted);
-  font-size: 11px;
+  font-size: 12px;
   letter-spacing: 0.02em;
 }
 .rumahl-menu-divider { height: 1px; margin: 5px 6px; background: color-mix(in srgb, var(--rumahl-ui-color-text-primary) 10%, transparent); }
@@ -398,7 +398,7 @@ button.rumahl-chip__label { cursor: pointer; }
 .rumahl-toast__body { flex: 1; min-width: 0; }
 .rumahl-toast__title { font-size: var(--control-font); font-weight: 600; }
 .rumahl-toast__message {
-  font-size: calc(var(--control-font) * 0.92);
+  font-size: var(--control-font);
   color: var(--rumahl-ui-color-text-muted);
 }
 .rumahl-toast__close {
@@ -479,7 +479,7 @@ button.rumahl-chip__label { cursor: pointer; }
 .rumahl-table th {
   padding: 10px 16px;
   text-align: start;
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 600;
   letter-spacing: 0.04em;
   text-transform: uppercase;
@@ -530,7 +530,7 @@ button.rumahl-chip__label { cursor: pointer; }
 }
 .rumahl-tipseen__title { font-size: var(--control-font); font-weight: 700; }
 .rumahl-tipseen__body {
-  font-size: calc(var(--control-font) * 0.92);
+  font-size: var(--control-font);
   opacity: 0.92;
   margin-top: 4px;
 }

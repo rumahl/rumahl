@@ -1,4 +1,4 @@
-use rusqlite::Connection;
+use rusqlite::{Connection, OptionalExtension};
 
 pub(super) fn initialize(connection: &Connection) -> rusqlite::Result<()> {
     connection.execute_batch(
@@ -11,6 +11,11 @@ pub(super) fn initialize(connection: &Connection) -> rusqlite::Result<()> {
              username TEXT NOT NULL UNIQUE COLLATE NOCASE,
              display_name TEXT NOT NULL,
              status TEXT NOT NULL CHECK (status IN ('active', 'locked', 'disabled'))
+         );
+
+         CREATE TABLE IF NOT EXISTS account_role (
+             user_id TEXT PRIMARY KEY,
+             role TEXT NOT NULL CHECK (role IN ('user', 'manager', 'administrator', 'owner'))
          );
 
          CREATE TABLE IF NOT EXISTS account_session (
@@ -51,5 +56,33 @@ pub(super) fn initialize(connection: &Connection) -> rusqlite::Result<()> {
 
          CREATE INDEX IF NOT EXISTS session_credential_session_id
          ON session_credential(session_id);",
+    )?;
+    migrate_account_roles(connection)
+}
+
+/// Older development databases created `account_role` with a cascading foreign
+/// key. Account writes replace rows, which would otherwise erase every role.
+fn migrate_account_roles(connection: &Connection) -> rusqlite::Result<()> {
+    let sql: Option<String> = connection
+        .query_row(
+            "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'account_role'",
+            [],
+            |row| row.get(0),
+        )
+        .optional()?;
+    let Some(sql) = sql else { return Ok(()) };
+    if !sql.contains("REFERENCES local_account") {
+        return Ok(());
+    }
+    connection.execute_batch(
+        "DROP TABLE IF EXISTS account_role_migrated;
+         CREATE TABLE account_role_migrated (
+             user_id TEXT PRIMARY KEY,
+             role TEXT NOT NULL CHECK (role IN ('user', 'manager', 'administrator', 'owner'))
+         );
+         INSERT OR IGNORE INTO account_role_migrated (user_id, role)
+             SELECT user_id, role FROM account_role;
+         DROP TABLE account_role;
+         ALTER TABLE account_role_migrated RENAME TO account_role;",
     )
 }

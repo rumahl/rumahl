@@ -305,7 +305,7 @@ body.light {
   align-items: center;
   margin-left: auto;
   color: var(--ink);
-  font-size: 11px;
+  font-size: 12px;
 }
 .menuright svg {
   opacity: 0.82;
@@ -344,7 +344,7 @@ body.light {
   width: 76px;
   color: white;
   text-shadow: 0 1px 8px #122a49a1;
-  font-size: 11px;
+  font-size: 12px;
 }
 .app-icon {
   width: 57px;
@@ -476,7 +476,7 @@ body.light {
 }
 .eyebrow {
   text-transform: uppercase;
-  font-size: 9px;
+  font-size: 12px;
   letter-spacing: 0.18em;
   font-weight: 800;
   color: var(--muted);
@@ -489,7 +489,7 @@ body.light {
 }
 .small {
   color: var(--muted);
-  font-size: 11px;
+  font-size: 12px;
 }
 .statusline {
   display: flex;
@@ -516,7 +516,7 @@ body.light {
 .statusfoot {
   display: flex;
   justify-content: space-between;
-  font-size: 11px;
+  font-size: 12px;
   color: var(--muted);
 }
 /* Window */
@@ -578,7 +578,7 @@ body.light {
   font-size: 12px;
 }
 .titlebar-subtitle {
-  font-size: 11px;
+  font-size: 12px;
   color: var(--muted);
 }
 .winbuttons {
@@ -643,14 +643,14 @@ body.light {
 }
 .side-profile .small {
   margin-top: 3px;
-  font-size: 10px;
+  font-size: 12px;
 }
 .nav-heading {
   padding: 0 12px;
   margin: 0 0 11px;
   text-transform: uppercase;
   letter-spacing: 0.13em;
-  font-size: 9px;
+  font-size: 12px;
   font-weight: 750;
   color: var(--muted);
 }
@@ -708,7 +708,7 @@ body.light {
   padding: 14px 11px 10px;
   border-top: 1px solid var(--divider);
   color: var(--muted);
-  font-size: 10px;
+  font-size: 12px;
   line-height: 1.7;
 }
 .side-bottom .build b {
@@ -766,7 +766,7 @@ body.light {
   max-width: 450px;
 }
 .badge {
-  font-size: 10px;
+  font-size: 12px;
   font-weight: 650;
   color: var(--accent);
   padding: 7px 10px;
@@ -809,7 +809,7 @@ body.light {
 }
 .preview-copy div {
   color: rgba(255, 255, 255, 0.74);
-  font-size: 11px;
+  font-size: 12px;
 }
 .mini-dock {
   position: absolute;
@@ -841,7 +841,7 @@ body.light {
   background: linear-gradient(145deg, #e8d4fe, #a789e1);
 }
 .section-title {
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 750;
   letter-spacing: 0.015em;
   margin: 0 0 13px 2px;
@@ -874,7 +874,7 @@ body.light {
 }
 .setting .copy p {
   color: var(--muted);
-  font-size: 10.5px;
+  font-size: 12px;
   margin: 5px 0 0;
   line-height: 1.35;
 }
@@ -913,7 +913,7 @@ body.light {
   border-radius: 9px;
   background: var(--button);
   color: var(--ink);
-  font-size: 11px;
+  font-size: 12px;
   min-width: 105px;
   text-align: left;
 }
@@ -957,7 +957,7 @@ body.light {
   padding: 8px 12px;
   background: transparent;
   color: var(--muted);
-  font-size: 10px;
+  font-size: 12px;
 }
 .segment.active {
   background: var(--button);
@@ -966,7 +966,7 @@ body.light {
 }
 .footnote {
   color: var(--muted);
-  font-size: 10px;
+  font-size: 12px;
   line-height: 1.5;
 }
 .grid-options {
@@ -1018,7 +1018,7 @@ body.light {
   background: #5e697fc9;
 }
 .option span {
-  font-size: 10px;
+  font-size: 12px;
   font-weight: 650;
   display: block;
   margin: 10px 4px 4px;
@@ -1042,7 +1042,7 @@ body.light {
 .dock-search {
   padding: 6px 10px;
   border-radius: 10px;
-  font-size: 10px;
+  font-size: 12px;
   font-weight: 700;
   letter-spacing: 0.02em;
   color: #f8fbff;
@@ -1210,7 +1210,7 @@ body.light {
   color: #fff;
   border-radius: 8px;
   padding: 6px 9px;
-  font-size: 10px;
+  font-size: 12px;
   opacity: 0;
   transform: translateY(4px);
   transition: 0.2s;
@@ -1257,7 +1257,7 @@ body.glass-off .widget:after {
   border: 0;
   color: rgba(255, 255, 255, 0.8);
   border-radius: 10px;
-  font-size: 11px;
+  font-size: 12px;
 }
 .concept-switcher button:hover {
   background: #ffffff25;
@@ -1273,7 +1273,7 @@ body.glass-off .widget:after {
   background: #ffffff35;
 }
 .concept-label {
-  font-size: 9px;
+  font-size: 12px;
   text-transform: uppercase;
   letter-spacing: 0.12em;
   color: #ffffffa8;
@@ -1289,7 +1289,7 @@ body.glass-off .widget:after {
   border: 1px solid #ffffff36;
   padding: 10px 16px;
   border-radius: 12px;
-  font-size: 11px;
+  font-size: 12px;
   z-index: 70;
   opacity: 0;
   pointer-events: none;
@@ -1311,7 +1311,7 @@ body.glass-off .widget:after {
   color: var(--ink);
   padding: 8px 11px;
   border-radius: 12px;
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 650;
 }
 .media-chip.active {
@@ -1416,7 +1416,7 @@ body.light .glass-plane.frosted {
   width: 275px;
   max-width: calc(100vw - 36px);
   color: #edf4ff;
-  font-size: 11px;
+  font-size: 12px;
   border: 1px solid rgba(255, 255, 255, 0.28);
   border-radius: 16px;
   padding: 13px;
@@ -1433,7 +1433,7 @@ body.light .glass-plane.frosted {
   margin-bottom: 9px;
 }
 .glass-lab .lab-head span {
-  font-size: 9px;
+  font-size: 12px;
   color: #d1e0fc;
   font-weight: 500;
 }
@@ -1444,7 +1444,7 @@ body.light .glass-plane.frosted {
   border-radius: 9px;
   background: rgba(255, 255, 255, 0.1);
   padding: 5px 8px;
-  font-size: 11px;
+  font-size: 12px;
 }
 .glass-lab option {
   color: #171e33;
@@ -1479,11 +1479,11 @@ body.light .glass-plane.frosted {
   letter-spacing: -0.04em;
 }
 .lab-metrics span {
-  font-size: 9px;
+  font-size: 12px;
   color: #b9c7de;
 }
 .lab-status {
-  font-size: 10px;
+  font-size: 12px;
   line-height: 1.6;
   color: #d0def1;
   min-height: 30px;
@@ -1508,7 +1508,7 @@ body.light .glass-plane.frosted {
     font-size: 15px;
   }
   .glass-lab label {
-    font-size: 10px;
+    font-size: 12px;
   }
 }
 @media (max-width: 1100px) {
@@ -1597,7 +1597,7 @@ body.light .glass-plane.frosted {
     font-size: 25px;
   }
   .pagedesc {
-    font-size: 11px;
+    font-size: 12px;
     margin-bottom: 18px;
   }
   .preview {
@@ -1607,10 +1607,10 @@ body.light .glass-plane.frosted {
     padding: 13px 10px;
   }
   .setting .copy p {
-    font-size: 9px;
+    font-size: 12px;
   }
   .setting .copy strong {
-    font-size: 11px;
+    font-size: 12px;
   }
   .swatch {
     width: 17px;
@@ -1620,7 +1620,7 @@ body.light .glass-plane.frosted {
     bottom: 12px;
   }
   .dock-search {
-    font-size: 9px;
+    font-size: 12px;
     padding: 5px 8px;
   }
   .dock {

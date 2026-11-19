@@ -122,6 +122,35 @@ impl AccountState {
         self.set_unavailable(user_id, AccountStatus::Disabled, revoked_at)
     }
 
+    pub fn update_account_profile(
+        &mut self,
+        user_id: &UserId,
+        username: &str,
+        display_name: &str,
+    ) -> Result<(), AccountStateError> {
+        let account = self
+            .accounts
+            .get_mut(user_id)
+            .ok_or(AccountStateError::AccountNotFound)?;
+        account
+            .update_profile(username, display_name)
+            .map_err(AccountStateError::InvalidAccount)
+    }
+
+    pub fn enable_account(&mut self, user_id: &UserId) -> Result<(), AccountStateError> {
+        let account = self
+            .accounts
+            .get_mut(user_id)
+            .ok_or(AccountStateError::AccountNotFound)?;
+
+        if account.status() == AccountStatus::Locked {
+            return Err(AccountStateError::AccountUnavailable);
+        }
+
+        account.set_status(AccountStatus::Active);
+        Ok(())
+    }
+
     pub fn unlock_account(&mut self, user_id: &UserId) -> Result<(), AccountStateError> {
         let account = self
             .accounts

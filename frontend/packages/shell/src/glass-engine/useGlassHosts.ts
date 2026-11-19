@@ -1,7 +1,8 @@
 import { useEffect, useRef } from "react";
 import { GLASS_MATERIALS, glassColorTint, glassMaterialWithTint } from "@rumahl/ui/glass";
 import { useTheme } from "@rumahl/ui";
-import { useThemeTuning } from "../preferences/theme-tuning";
+import { resolveThemeScheme, useThemeTuning } from "../preferences/theme-tuning";
+import { useSystemMode } from "../shell/system-scheme";
 import { mountGlassHostHandle, type MountedGlassHost } from "./useGlassEngine";
 
 const HOST_SELECTOR = ".rumahl-glass-host[data-glass-material]";
@@ -16,9 +17,11 @@ const HOST_SELECTOR = ".rumahl-glass-host[data-glass-material]";
  * look without refraction.
  */
 export function useGlassHosts(): void {
-  const { tokens } = useTheme();
+  const { theme, tokens } = useTheme();
   const { tuning } = useThemeTuning();
-  const tint = glassColorTint(tuning.glassColor, tuning.glassTint, tokens["color.accent"] ?? "#beff2d");
+  const systemMode = useSystemMode();
+  const scheme = resolveThemeScheme(theme, tuning.mode, systemMode);
+  const tint = glassColorTint(tuning.glassColor, tuning.glassTint, tokens["color.accent"] ?? "#28694c", scheme);
   const tintRef = useRef(tint);
   tintRef.current = tint;
   const mounted = useRef(new Map<Element, { name: string; handle: MountedGlassHost }>()).current;

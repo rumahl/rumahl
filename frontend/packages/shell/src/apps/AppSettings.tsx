@@ -5,6 +5,7 @@ import { useOsModePolicy } from "../preferences/OsMode";
 import { useShell } from "../shell/ShellContext";
 import { UnavailablePage } from "../pages/UnavailablePage";
 import { AppErrorCard } from "../components/AppErrorCard";
+import { LoadingStatus } from "../components/LoadingStatus";
 import { useAppCatalog } from "./AppCatalog";
 import { AppDataBrowser } from "./AppDataBrowser";
 import { fetchAppSettings, type AppSetting, type AppSettings, type InstalledApp } from "./client";
@@ -19,7 +20,7 @@ export function InstalledAppSettings() {
   const { appId = "" } = useParams();
   const { apps, status } = useAppCatalog();
   const { t } = useI18n();
-  if (status === "loading") return <p role="status">{t("apps.loading")}</p>;
+  if (status === "loading") return <LoadingStatus label={t("apps.loading")} />;
   const app = apps.find((item) => item.id === appId);
   if (!app) return <UnavailablePage app />;
   return <AppSettingsBody key={`${app.installationId}:${app.version}`} app={app} />;
@@ -43,7 +44,7 @@ function AppSettingsBody({ app }: { app: InstalledApp }) {
   }, [live, app.id, app.installationId, app.version]);
 
   if (failed) return <AppErrorCard title={app.title} message={t("appSettings.unavailable")} />;
-  if (!settings) return <p role="status">{t("appSettings.loading")}</p>;
+  if (!settings) return <LoadingStatus label={t("appSettings.loading")} />;
   return <main className="app-settings" data-advanced={policy.advancedSettings ? "true" : "false"}>
     <h1>{app.title}</h1>
     <section aria-labelledby="app-settings-manifest">

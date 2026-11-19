@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useI18n } from "../i18n";
 import { browserProfile } from "../preferences/storage";
 import { useShell } from "../shell/ShellContext";
+import { LoadingStatus } from "../components/LoadingStatus";
 import { fetchAppData, type AppData, type InstalledApp } from "./client";
 
 /**
@@ -33,7 +34,7 @@ export function AppDataBrowser({ app, heading = true }: { app: InstalledApp; hea
     {failed
       ? <p role="alert">{t("appSettings.dataUnavailable")}</p>
       : !data
-        ? <p role="status">{t("apps.loading")}</p>
+        ? <LoadingStatus label={t("apps.loading")} />
         : data.kind === "directory"
           ? (data.entries.length === 0
               ? <p>{t("appSettings.dataEmpty")}</p>

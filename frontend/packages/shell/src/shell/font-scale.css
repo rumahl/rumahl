@@ -14,20 +14,21 @@
   height: calc(17px * var(--rumahl-ui-typography-scale, 1));
 }
 .shell .settings-content .setting {
-  gap: calc(15px * var(--rumahl-ui-typography-scale, 1));
-  min-height: calc(65px * var(--rumahl-ui-typography-scale, 1));
-  padding: calc(15px * var(--rumahl-ui-typography-scale, 1)) calc(18px * var(--rumahl-ui-typography-scale, 1));
+  gap: var(--group-row-gap);
+  min-height: calc(var(--group-row-height) * var(--rumahl-ui-typography-scale, 1));
+  padding: var(--group-row-padding);
 }
-.shell .settings-content .setting .copy strong { font-size: calc(12px * var(--rumahl-ui-typography-scale, 1)); }
-.shell .settings-content .setting .copy p { font-size: calc(10.5px * var(--rumahl-ui-typography-scale, 1)); }
-.shell .settings-content .section-title { font-size: calc(11px * var(--rumahl-ui-typography-scale, 1)); }
+.shell .settings-content .setting .copy strong { font-size: var(--group-title-size); font-weight: 600; line-height: 1.4; }
+.shell .settings-content .setting .copy p { font-size: var(--group-description-size); line-height: 1.5; }
+.shell .settings-content .section-title { font-size: calc(12px * var(--rumahl-ui-typography-scale, 1)); }
 .shell .settings-content .pagetitle,
 .shell .settings-content .settings-page-heading h1 { font-size: calc(30px * var(--rumahl-ui-typography-scale, 1)); }
 .shell .settings-content .pagedesc,
 .shell .settings-content .settings-page-heading p { font-size: calc(12px * var(--rumahl-ui-typography-scale, 1)); }
+.shell .settings-breadcrumb { font-size: calc(12px * var(--rumahl-ui-typography-scale, 1)); }
 .shell .settings-nav__text strong { font-size: calc(13px * var(--rumahl-ui-typography-scale, 1)); }
-.shell .settings-nav__text small { font-size: calc(11px * var(--rumahl-ui-typography-scale, 1)); }
-.shell .settings-footnote { font-size: calc(11px * var(--rumahl-ui-typography-scale, 1)); }
+.shell .settings-nav__text small { font-size: calc(12px * var(--rumahl-ui-typography-scale, 1)); }
+.shell .settings-footnote { font-size: calc(12px * var(--rumahl-ui-typography-scale, 1)); }
 .theme-text-size-custom { display: inline-flex; align-items: center; gap: 8px; }
 .theme-text-size-custom input { width: 82px; text-align: right; }
 .app-uninstall-dialog { width: min(440px, 100%); }
@@ -59,8 +60,8 @@
 .shell .app-management-modal { font-size: calc(13px * var(--rumahl-ui-typography-scale, 1)); }
 .shell .app-management-modal__head h2 { font-size: calc(22px * var(--rumahl-ui-typography-scale, 1)); }
 .shell .app-management__log strong { font-size: calc(12.5px * var(--rumahl-ui-typography-scale, 1)); }
-.shell .app-management__log p { font-size: calc(11px * var(--rumahl-ui-typography-scale, 1)); }
-.shell .app-management__log-grid dd { font-size: calc(11px * var(--rumahl-ui-typography-scale, 1)); }
+.shell .app-management__log p { font-size: calc(12px * var(--rumahl-ui-typography-scale, 1)); }
+.shell .app-management__log-grid dd { font-size: calc(12px * var(--rumahl-ui-typography-scale, 1)); }
 
 /* Selection controls, top bar and dock use explicit sizes in their own files;
    this final unlayered import scales them together with the controls. */
@@ -75,8 +76,8 @@
 .shell .topbar__island { min-height: calc(34px * var(--rumahl-ui-typography-scale, 1)); border-radius: calc(999px * var(--rumahl-ui-typography-scale, 1)); }
 .shell .topbar__button { width: calc(32px * var(--rumahl-ui-typography-scale, 1)) !important; height: calc(32px * var(--rumahl-ui-typography-scale, 1)) !important; }
 .shell .os-dock > a,
-.shell .os-dock button { width: calc(58px * var(--dock-unit)) !important; height: calc(58px * var(--dock-unit)) !important; border-radius: calc(17px * var(--dock-unit)) !important; }
-.shell .os-dock { padding: calc(11px * var(--dock-unit)) !important; gap: calc(8px * var(--dock-unit)) !important; border-radius: calc(28px * var(--dock-unit)) !important; }
+.shell .os-dock button { width: calc(58px * var(--dock-unit)) !important; height: calc(58px * var(--dock-unit)) !important; border-radius: var(--dock-item-radius, calc(17px * var(--dock-unit))) !important; }
+.shell .os-dock { padding: calc(11px * var(--dock-unit)) !important; gap: calc(8px * var(--dock-unit)) !important; border-radius: var(--dock-radius, calc(var(--rumahl-ui-shape-radius-dock, 28px) * var(--dock-unit))) !important; }
 .shell .os-dock svg { width: calc(30px * var(--dock-unit)); height: calc(30px * var(--dock-unit)); }
 .shell .rumahl-toggle-group,
 .shell .rumahl-button-group,
@@ -97,13 +98,17 @@
 .shell .app-tile { font-size: calc(13px * var(--rumahl-ui-typography-scale, 1)) !important; }
 .shell .desktop-icon { font-size: calc(12px * var(--rumahl-ui-typography-scale, 1)) !important; }
 .shell .app-tile__icon svg { width: calc(29px * var(--rumahl-ui-typography-scale, 1)); height: calc(29px * var(--rumahl-ui-typography-scale, 1)); }
-.shell .desktop-icon__art svg { width: calc(26px * var(--rumahl-ui-typography-scale, 1)); height: calc(26px * var(--rumahl-ui-typography-scale, 1)); }
+.shell .desktop-icon__art :is(svg, img) { width: calc(26px * var(--rumahl-ui-typography-scale, 1)); height: calc(26px * var(--rumahl-ui-typography-scale, 1)); }
 .shell .app-tile__status { top: calc(6px * var(--rumahl-ui-typography-scale, 1)); right: calc(6px * var(--rumahl-ui-typography-scale, 1)); width: calc(9px * var(--rumahl-ui-typography-scale, 1)); height: calc(9px * var(--rumahl-ui-typography-scale, 1)); }
 
 /* Group containers and the responsive appearance chooser follow the same scale. */
 .shell .settings-layout { --settings-nav-default: min(280px, calc(184px * var(--rumahl-ui-typography-scale, 1))); grid-template-columns: var(--settings-nav-width, var(--settings-nav-default)) minmax(0, 1fr); }
-.shell .settings-content { padding: calc(28px * var(--rumahl-ui-typography-scale, 1)) calc(30px * var(--rumahl-ui-typography-scale, 1)) calc(36px * var(--rumahl-ui-typography-scale, 1)); }
-.shell .settings-group { margin-bottom: calc(28px * var(--rumahl-ui-typography-scale, 1)); border-radius: calc(15px * var(--rumahl-ui-typography-scale, 1)); }
+.shell .settings-content { padding: 0 calc(30px * var(--rumahl-ui-typography-scale, 1)) calc(36px * var(--rumahl-ui-typography-scale, 1)); }
+.shell .settings-page-heading { padding-top: calc(28px * var(--rumahl-ui-typography-scale, 1)); }
+.shell .settings-content .settings-page-heading[data-stuck] { padding-block: calc(10px * var(--rumahl-ui-typography-scale, 1)); }
+.shell .settings-content .settings-page-heading[data-stuck] h1 { margin-block: 0; }
+.shell .settings-content .settings-page-heading[data-stuck] p { max-height: 0; margin-block: 0; opacity: 0; }
+.shell .settings-group { margin-bottom: calc(28px * var(--rumahl-ui-typography-scale, 1)); border-radius: var(--group-radius); }
 .shell .rumahl-toggle-group { flex-wrap: wrap !important; overflow-x: visible !important; }
 .shell .rumahl-toggle-group.appearance-choice__group {
   min-height: calc(32px * var(--rumahl-ui-typography-scale, 1)) !important;
@@ -194,7 +199,7 @@
   font-size: calc(13px * var(--rumahl-ui-typography-scale, 1));
 }
 .desktop-menu button svg { width: calc(14px * var(--rumahl-ui-typography-scale, 1)); height: calc(14px * var(--rumahl-ui-typography-scale, 1)); }
-.desktop-menu__title { font-size: calc(10px * var(--rumahl-ui-typography-scale, 1)); }
+.desktop-menu__title { font-size: calc(12px * var(--rumahl-ui-typography-scale, 1)); }
 .menubar__dropdown {
   min-width: calc(232px * var(--rumahl-ui-typography-scale, 1));
   padding: calc(6px * var(--rumahl-ui-typography-scale, 1));
@@ -210,7 +215,7 @@
   padding: calc(16px * var(--rumahl-ui-typography-scale, 1));
   border-radius: calc(18px * var(--rumahl-ui-typography-scale, 1));
 }
-.shell .desktop-widget__eyebrow { font-size: calc(10px * var(--rumahl-ui-typography-scale, 1)); }
+.shell .desktop-widget__eyebrow { font-size: calc(12px * var(--rumahl-ui-typography-scale, 1)); }
 .shell .desktop-widget__time { font-size: calc(30px * var(--rumahl-ui-typography-scale, 1)); }
 .shell .desktop-widget strong { font-size: calc(16px * var(--rumahl-ui-typography-scale, 1)); }
 .shell .desktop-widget > span { font-size: calc(12px * var(--rumahl-ui-typography-scale, 1)); }
@@ -239,7 +244,6 @@
   border-radius: calc(8px * var(--rumahl-ui-typography-scale, 1)) !important;
 }
 .shell .desktop-widgets {
-  width: min(calc(230px * var(--rumahl-ui-typography-scale, 1)), 42vw);
   gap: calc(12px * var(--rumahl-ui-typography-scale, 1));
 }
 .files-menu {
@@ -267,3 +271,6 @@
 /* Legacy reference layout forces a 700px minimum shell on narrow screens,
    which pushes the dock below the viewport. The shell must always fit. */
 .shell.scene { height: 100dvh; min-height: 320px; }
+.shell .desktop-icon__art.is-file :is(.folder-artwork, .desktop-file-art) { width: calc(54px * var(--rumahl-ui-typography-scale, 1)); height: calc(54px * var(--rumahl-ui-typography-scale, 1)); }
+.shell .desktop-icon__art > :is(.app-icon-default, img.icon),
+.shell .desktop-icon__art .app-icon-folder__art { width: 100% !important; height: 100% !important; }

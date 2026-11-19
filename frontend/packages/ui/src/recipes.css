@@ -58,6 +58,10 @@
   --group-row-height: 65px;
   --group-row-gap: 15px;
   --group-row-padding: 15px 18px;
+  --group-divider-inset: 18px;
+  --group-title-size: calc(13px * var(--rumahl-ui-typography-scale, 1));
+  --group-description-size: calc(12px * var(--rumahl-ui-typography-scale, 1));
+  --group-control-width: 202px;
   --group-divider: 1px solid
     var(--rumahl-ui-color-divider, rgba(255, 255, 255, 0.1));
 
@@ -68,14 +72,15 @@
     color-mix(in srgb, var(--rumahl-ui-color-text-primary) 10%, transparent);
   --window-title-size: 12px;
   --window-title-weight: 700;
-  --window-subtitle-size: 11px;
+  --window-subtitle-size: 12px;
   --window-control-width: 33px;
   --window-control-height: 30px;
   --window-control-radius: 8px;
   --window-background: var(--rumahl-ui-color-window-background);
   --window-background-solid: var(--rumahl-ui-color-window-background-solid);
   --window-border: 1px solid rgba(255, 255, 255, 0.12);
-  --window-radius: 23px;
+  --window-radius: var(--rumahl-ui-shape-radius-window, 23px);
+  --window-content-radius: 12px;
   --window-shadow: 0 30px 85px rgba(3, 8, 26, 0.43),
     0 4px 15px rgba(0, 0, 0, 0.11), inset 0 1px 0 rgba(255, 255, 255, 0.1);
   --window-backdrop: blur(45px) saturate(1.65);
@@ -186,7 +191,7 @@
   --island-backdrop: blur(24px) saturate(1.4);
   --island-item-radius: 20px;
   --island-item-height: 48px;
-  --island-item-font-size: 9px;
+  --island-item-font-size: 12px;
   --island-ink: rgb(255 255 255 / 0.64);
   --island-hover: rgb(255 255 255 / 0.08);
   --island-active-background: var(--rumahl-ui-color-accent);
@@ -281,6 +286,45 @@
   --range-thumb-radius: 50%;
   --range-thumb-border: 1px solid var(--control-border);
   --range-thumb-background: var(--control-thumb);
+
+  /* Typography roles. Themes may replace a role without rewriting every
+     component; values reproduce the approved Iris scale. */
+  --type-chrome-size: 12px;
+  --type-chrome-weight: 400;
+  --type-chrome-strong-weight: 650;
+  --type-body-size: 13px;
+  --type-body-weight: 400;
+  --type-label-size: 12px;
+  --type-label-weight: 600;
+  --type-compact-size: 12.5px;
+  --type-compact-weight: 520;
+  --type-title-size: 30px;
+  --type-title-weight: 680;
+  --type-window-title-size: 15px;
+  --type-window-title-weight: 540;
+
+  /* Motion roles. Durations stay component-specific where the Iris rhythm
+     needs it; these cover the common feedback, surface and spring gestures. */
+  --motion-feedback-duration: var(--rumahl-ui-motion-duration-fast, 120ms);
+  --motion-surface-duration: var(--rumahl-ui-motion-duration, 180ms);
+  --motion-hover-duration: 200ms;
+  --motion-control-duration: 150ms;
+  --motion-press-duration: 140ms;
+  --motion-state-duration: 160ms;
+  /* Wallpaper-sampled text cross-fades; opaque themes can remove the wait. */
+  --adaptive-color-duration: 1.4s;
+  --motion-easing-standard: cubic-bezier(0.2, 0.7, 0.2, 1);
+  --motion-easing-spring: var(--rumahl-ui-motion-easing-spring, cubic-bezier(0.32, 0.72, 0, 1));
+  --motion-spring-bouncy: cubic-bezier(0.34, 1.56, 0.64, 1);
+  --motion-spring-soft: cubic-bezier(0.22, 1, 0.36, 1);
+  --motion-spring-snap: cubic-bezier(0.2, 0.9, 0.2, 1);
+
+  /* Opaque fallback for the glass engine in reduced-transparency and
+     high-contrast modes. Iris keeps its deep navy; Ground maps it to its panel. */
+  --glass-solid-background: rgba(23, 31, 48, 0.92);
+  /* The dock is transparent by default so the glass engine owns the surface.
+     An opaque theme can replace it without fighting the shell rule. */
+  --dock-background: transparent;
 }
 
 /* Scheme-specific window rim/shadow (low specificity so themes can override). */

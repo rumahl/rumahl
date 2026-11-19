@@ -58,7 +58,7 @@ function useShellMaterial(): "solid" | "translucent" {
  */
 export function LauncherHome() {
   const { t, locale } = useI18n();
-  const { open, snapshot, live, state } = useShell();
+  const { open, snapshot, live, state, mode } = useShell();
   const allApps = useShellApps();
   const statusIndicators = useAppStatusIndicators();
   const safeMode = useSafeMode();
@@ -114,6 +114,7 @@ export function LauncherHome() {
   const size = useGridSize(board);
   const measured = size.width > 0 && size.height > 0;
   const compact = measured && size.width <= 560;
+  const mobileShell = mode === "mobile";
   const unit = compact ? MOBILE_CELL : CELL;
   const unitGap = compact ? MOBILE_GAP : GAP;
   const metrics = useMemo(
@@ -165,29 +166,57 @@ export function LauncherHome() {
   }, [page, pageCount]);
 
   // Position items with CSSOM (the strict style-src CSP blocks a `style` prop).
+  // On phones the grid is centred in the available width, and a row that is
+  // not full is centred inside the grid so both margins stay equal. While
+  // rearranging, items keep their raw cells so drag targets stay exact.
   useLayoutEffect(() => {
     const host = board.current;
     if (!host) return;
     const stepX = unit.width + unitGap, stepY = unit.height + unitGap;
+    const centred = (compact || mobileShell) && !editing;
+    const gridSpan = (cols - 1) * stepX + unit.width;
+    const gridOffset = centred ? Math.max(0, (size.width - gridSpan) / 2) : 0;
+    const rowOffsets = new Map<number, number>();
+    if (centred) {
+      const rowColumns = new Map<number, number[]>();
+      for (const token of pageItems) {
+        const cell = cellOf[token];
+        if (!cell) continue;
+        const row = cell.row - activePage * pageRows;
+        const columns = rowColumns.get(row) ?? [];
+        columns.push(cell.col);
+        rowColumns.set(row, columns);
+      }
+      for (const [row, columns] of rowColumns) {
+        columns.sort((a, b) => a - b);
+        const packed = columns.every((col, index) => col === index);
+        const slack = packed ? (cols - columns.length) * stepX : 0;
+        rowOffsets.set(row, gridOffset + slack / 2);
+      }
+    }
     for (const element of host.querySelectorAll<HTMLElement>("[data-grid-id]")) {
       const id = element.dataset.gridId;
       const cell: GridCell | undefined = id ? cellOf[id] : undefined;
       if (!id || !cell) continue;
+      const row = cell.row - activePage * pageRows;
+      const offset = centred ? rowOffsets.get(row) ?? gridOffset : 0;
       element.style.position = "absolute";
-      element.style.left = `${cell.col * stepX}px`;
-      element.style.top = `${(cell.row - activePage * pageRows) * stepY}px`;
+      element.style.left = `${cell.col * stepX + offset}px`;
+      element.style.top = `${row * stepY}px`;
       element.style.opacity = drag?.moved && drag.id === id ? "0" : "";
     }
-  }, [pageItems, cellOf, activePage, pageRows, drag, unit.width, unit.height, unitGap]);
+  }, [pageItems, cellOf, activePage, pageRows, drag, unit.width, unit.height, unitGap, compact, mobileShell, editing, cols, size.width]);
 
   const clock = now ? new Intl.DateTimeFormat(locale, { hour: "2-digit", minute: "2-digit" }).format(now) : "";
   const date = now ? new Intl.DateTimeFormat(locale, { weekday: "long", day: "numeric", month: "long" }).format(now) : "";
   const hour = now ? now.getHours() : null;
   const greeting = hour === null ? "launcher.greetingHello"
     : hour < 5 ? "launcher.greetingNight"
-    : hour < 12 ? "launcher.greetingMorning"
+    : hour < 11 ? "launcher.greetingMorning"
+    : hour < 14 ? "launcher.greetingNoon"
     : hour < 18 ? "launcher.greetingAfternoon"
-    : "launcher.greetingEvening";
+    : hour < 22 ? "launcher.greetingEvening"
+    : "launcher.greetingLateEvening";
 
   function step(delta: number) {
     setPage((value) => Math.min(Math.max(value + delta, 0), pageCount - 1));

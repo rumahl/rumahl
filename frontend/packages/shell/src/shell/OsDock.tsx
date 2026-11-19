@@ -14,14 +14,22 @@ import { StartMenu } from "./launcher/StartMenu";
 import { useGlassHost } from "../glass-engine/useGlassEngine";
 import { GLASS_MATERIALS, glassColorTint, glassMaterialWithTint } from "@rumahl/ui/glass";
 import { useTheme } from "@rumahl/ui";
-import { useThemeTuning } from "../preferences/theme-tuning";
+import { resolveThemeScheme, useThemeTuning } from "../preferences/theme-tuning";
+import { useSystemMode } from "./system-scheme";
 
 export function OsDock({ autoHide = false }: { autoHide?: boolean | undefined }) {
   const dockRef = useRef<HTMLElement>(null);
-  const { tokens } = useTheme();
+  const { theme, tokens } = useTheme();
   const { tuning } = useThemeTuning();
-  const tint = glassColorTint(tuning.glassColor, tuning.glassTint, tokens["color.accent"] ?? "#beff2d");
+  const systemMode = useSystemMode();
+  const scheme = resolveThemeScheme(theme, tuning.mode, systemMode);
+  const tint = glassColorTint(tuning.glassColor, tuning.glassTint, tokens["color.accent"] ?? "#28694c", scheme);
   useGlassHost(dockRef, glassMaterialWithTint(GLASS_MATERIALS.dock, tint));
+  // Keep the CSS glass layer and the adaptive-contrast sampler on the same
+  // tint as the refraction engine.
+  useLayoutEffect(() => {
+    dockRef.current?.style.setProperty("--glass-tint", tint);
+  }, [tint]);
   const { t } = useI18n();
   const apps = useShellApps();
   const { state, dispatch, open, mode } = useShell();
@@ -121,7 +129,7 @@ export function OsDock({ autoHide = false }: { autoHide?: boolean | undefined })
         {extraWindows.map((item) => {
           const appId = item.id.startsWith("app:") ? item.id.slice("app:".length) : undefined;
           const bouncing = appId !== undefined && isLaunching(appId);
-          return <button key={item.id} type="button" aria-label={item.title} title={item.title}
+          return <button key={item.id} type="button" aria-label={item.title} title={item.title} data-dock-app={appId}
             data-open="true" data-focused={!item.minimized && state.focusedWindowId === item.id || undefined} aria-pressed={!item.minimized && state.focusedWindowId === item.id} className={`dock-item dock-icon${magnify(item.id)}${item.minimized ? " is-minimized" : " is-running"}${bouncing ? " is-launching" : ""}`}
             onPointerEnter={() => setHover(item.id)}
             onClick={() => activate(item)}><span aria-hidden="true">{(() => { const app = apps.find(app => item.id === `app:${app.id}` || item.id === app.path || item.location === app.path); const systemLink = links.find(link => item.location === link.to || (link.to !== "/" && item.location?.startsWith(`${link.to}/`))); return app ? <AppIcon app={app}/> : systemLink?.icon ?? <GridIcon/>; })()}</span><i className={`dock-dot${item.minimized ? " is-minimized" : ""}`} aria-hidden="true" /></button>;

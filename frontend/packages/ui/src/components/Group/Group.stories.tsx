@@ -1,6 +1,9 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
+import { useId, useState } from "react";
 import {
   GroupContainer,
+  GroupFooter,
+  Button,
   GroupLink,
   GroupLinkContainer,
   GroupRow,
@@ -75,3 +78,32 @@ export const LinkContainer: Story = {
     </div>
   )
 };
+
+function FieldGroupsExample({ narrow = false }: { narrow?: boolean }) {
+  const id = useId();
+  const switchId = useId();
+  const [enabled, setEnabled] = useState(true);
+  const [location, setLocation] = useState("desktop");
+  return <div style={{ width: narrow ? 320 : 620, maxWidth: "100%" }}>
+    <h3>Notifications</h3>
+    <GroupContainer>
+      <GroupRow title="Show notifications" description="Keep updates within reach without interrupting your work." controlId={switchId}>
+        <input id={switchId} type="checkbox" role="switch" checked={enabled} onChange={event => setEnabled(event.target.checked)} />
+      </GroupRow>
+      <GroupRow title="Delivery" description="Choose where updates appear." controlId={id}>
+        <select id={id} className="rumahl-input" value={location} disabled={!enabled} onChange={event => setLocation(event.target.value)}>
+          <option value="desktop">Desktop</option><option value="center">Notification center</option>
+        </select>
+      </GroupRow>
+      <GroupRow title="Storage" value="This browser" />
+      <GroupFooter description="Only this group is reset; other preferences stay unchanged.">
+        <Button size="sm" disabled={enabled && location === "desktop"} onClick={() => { setEnabled(true); setLocation("desktop"); }}>Reset group</Button>
+      </GroupFooter>
+    </GroupContainer>
+  </div>;
+}
+
+/** Interactive field group; aligned controls and one shared inset divider. */
+export const FieldGroups: Story = { render: () => <FieldGroupsExample /> };
+/** Container-based wrapping; switches stay beside their label. */
+export const NarrowFieldGroups: Story = { render: () => <FieldGroupsExample narrow /> };
