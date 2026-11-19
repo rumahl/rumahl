@@ -96,11 +96,11 @@ export function EventMonitor({ request }: { request: ShellRequest }) {
             {events.map((event) => {
               const levelName = levelOf(event.outcome);
               return <tr key={event.sequence} data-level={levelName} className={selected?.sequence === event.sequence ? "is-selected" : ""} onClick={() => setSelected(event)}>
-                <td className={`event-monitor__level is-${levelName}`}>{t(`recovery.level.${levelName}`)}</td>
-                <td className="event-monitor__time">{formatTime(event.at)}</td>
-                <td className="event-monitor__source" title={event.actor}>{sourceOf(event.actor)}</td>
-                <td className="event-monitor__action">{label(event.action)}</td>
-                <td className="event-monitor__target" title={event.target ?? ""}>{event.target ?? "—"}</td>
+                <td data-label={t("recovery.col.level")} className={`event-monitor__level is-${levelName}`}>{t(`recovery.level.${levelName}`)}</td>
+                <td data-label={t("recovery.col.time")} className="event-monitor__time">{formatTime(event.at)}</td>
+                <td data-label={t("recovery.col.source")} className="event-monitor__source" title={event.actor}>{sourceOf(event.actor)}</td>
+                <td data-label={t("recovery.col.action")} className="event-monitor__action">{label(event.action)}</td>
+                <td data-label={t("recovery.col.target")} className="event-monitor__target" title={event.target ?? ""}>{event.target ?? "—"}</td>
               </tr>;
             })}
           </tbody>

@@ -80,6 +80,28 @@ impl LocalAccount {
         &self.display_name
     }
 
+    pub fn update_profile(
+        &mut self,
+        username: &str,
+        display_name: &str,
+    ) -> Result<(), LocalAccountError> {
+        let username =
+            AccountUsername::parse(username).map_err(LocalAccountError::InvalidUsername)?;
+        let display_name = display_name.trim();
+        if display_name.is_empty() {
+            return Err(LocalAccountError::EmptyDisplayName);
+        }
+        if display_name.chars().count() > MAX_DISPLAY_NAME_LENGTH {
+            return Err(LocalAccountError::DisplayNameTooLong);
+        }
+        if display_name.chars().any(char::is_control) {
+            return Err(LocalAccountError::DisplayNameContainsControlCharacter);
+        }
+        self.username = username;
+        self.display_name = display_name.to_owned();
+        Ok(())
+    }
+
     pub fn status(&self) -> AccountStatus {
         self.status
     }

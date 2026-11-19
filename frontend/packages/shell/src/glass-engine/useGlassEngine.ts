@@ -21,7 +21,7 @@ interface GlassHandle {
   destroy(): void;
 }
 interface GlassEngineInstance {
-  mount(element: Element, material?: GlassMaterial): GlassHandle;
+  mount(element: Element, material?: GlassMaterial, backend?: GlassBackend): GlassHandle;
   setBackend(backend: GlassBackend): void;
   setQuality(quality: GlassQuality): void;
   destroy(): void;
@@ -121,8 +121,8 @@ export interface MountedGlassHost {
  * Updating the material reuses the renderer/context instead of tearing it down;
  * this matters for live colour changes on many widget surfaces.
  */
-export function mountGlassHostHandle(element: HTMLElement, material: GlassMaterial): MountedGlassHost {
-  const handle = getEngine().mount(element, { ...material, ...adjust });
+export function mountGlassHostHandle(element: HTMLElement, material: GlassMaterial, backend?: GlassBackend): MountedGlassHost {
+  const handle = getEngine().mount(element, { ...material, ...adjust }, backend);
   handles.add(handle);
   return {
     update(next) { handle.update(next); },
@@ -154,6 +154,29 @@ export function useGlassHost(ref: RefObject<HTMLElement | null>, material: Glass
     // The host identity is the lifetime boundary; material changes update in place.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ref]);
+  useEffect(() => {
+    mounted.current?.update(material);
+  }, [key]);
+}
+
+/**
+ * Mounts the shared engine on a host chosen at runtime, optionally with a
+ * backend that only applies to this surface (e.g. the SVG mobile nav bar).
+ * The caller owns the host lifecycle and may toggle the effect at any time.
+ */
+export function useGlassElementHost(element: HTMLElement | null, material: GlassMaterial, enabled = true, backend?: GlassBackend): void {
+  const key = JSON.stringify(material);
+  const mounted = useRef<MountedGlassHost | null>(null);
+  useEffect(() => {
+    if (!enabled || !element || typeof window === "undefined" || typeof window.matchMedia !== "function") return;
+    mounted.current = mountGlassHostHandle(element, material, backend);
+    return () => {
+      mounted.current?.destroy();
+      mounted.current = null;
+    };
+    // Element identity and the per-host backend are the lifetime boundary.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [element, enabled, backend]);
   useEffect(() => {
     mounted.current?.update(material);
   }, [key]);

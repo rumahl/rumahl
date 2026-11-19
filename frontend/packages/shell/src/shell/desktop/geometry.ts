@@ -6,10 +6,14 @@ const REACHABLE = 48;
 export function constrainRect(rect: WindowRect, area: WorkArea): WindowRect {
   const width = Math.min(Math.max(280, rect.width), Math.max(1, area.width));
   const height = Math.min(Math.max(220, rect.height), Math.max(1, area.height));
-  // Windows may slide over any edge (including under the dock) but keep a strip
-  // on screen so the title bar stays draggable.
-  const minX = -(width - REACHABLE), maxX = area.width - REACHABLE;
-  const minY = -(height - REACHABLE), maxY = area.height - REACHABLE;
+  // A narrow/short desktop is a small screen, not a workspace where a window
+  // may hang mostly off-screen. Keep it fully visible there; on a normal
+  // desktop windows may slide over an edge but keep a grabbable strip.
+  const small = area.width < 700 || area.height < 500;
+  const minX = small ? 0 : -(width - REACHABLE);
+  const maxX = small ? Math.max(0, area.width - width) : area.width - REACHABLE;
+  const minY = small ? 0 : -(height - REACHABLE);
+  const maxY = small ? Math.max(0, area.height - height) : area.height - REACHABLE;
   return { width, height, x: Math.min(Math.max(rect.x, minX), maxX), y: Math.min(Math.max(rect.y, minY), maxY) };
 }
 export function placedRect(rect: WindowRect, placement: WindowPlacement, area: WorkArea, topInset = 0, bottomInset = 0): WindowRect {

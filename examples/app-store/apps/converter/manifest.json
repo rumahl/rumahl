@@ -1,0 +1,19 @@
+{
+  "formatVersion": 1,
+  "publisherId": "com.rumahl.examples",
+  "app": {
+    "appId": "com.rumahl.examples.converter",
+    "version": "1.0.0",
+    "displayName": "Unit Converter",
+    "runtime": {
+      "kind": "web",
+      "entrypoints": [
+        {
+          "id": "main",
+          "kind": "web-asset",
+          "path": "frontend/index.html"
+        }
+      ]
+    }
+  }
+}

@@ -1,20 +1,25 @@
 import { paletteTokens } from "./palette";
-import classicCss from "./classic.css?raw";
-import { defaultTokens, FONT_STACKS, type TokenId, type Tokens } from "./tokens";
-import { defaultVariants, type VariantSelection } from "./variants";
-import type { SlotName, SlotTemplate } from "./slots";
+import { defaultTokens, FONT_STACKS, mergeTokens, tokensForBase, type TokenId, type Tokens } from "./tokens";
+import { defaultVariants, resolveVariants, type VariantSelection } from "./variants";
+import { sanitizeSlots, type SlotName, type SlotTemplate } from "./slots";
+import { sanitizeIconPack, type IconPack } from "./icon-pack";
 
-const CLASSIC_PALETTE = paletteTokens("#3465a4");
 
 /**
  * A tunable theme parameter. Themes declare their own parameters; the shell
  * renders a control per `kind` and writes the resulting token override into the
  * user's appearance tuning. `labelKey`/`option.labelKey` are resolved by i18n.
  */
+export type ThemeLabel = string | { en?: string; de?: string };
+
 interface ParameterBase {
   id: string;
-  token: TokenId;
-  labelKey: string;
+  /** Any token id; theme packages may define their own. */
+  token: string;
+  /** Built-in i18n key. */
+  labelKey?: string;
+  /** Literal label, optionally per locale, shipped by a theme package. */
+  label?: ThemeLabel;
 }
 
 export interface RangeParameter extends ParameterBase {
@@ -22,6 +27,10 @@ export interface RangeParameter extends ParameterBase {
   min: number;
   max: number;
   step: number;
+  /** Suffix for package-defined ranges whose format lives in JSON. */
+  unit?: string | undefined;
+  /** Fixed decimal places for package-defined ranges (e.g. 2 for 0.72). */
+  decimals?: number | undefined;
   format: (value: number) => string;
   parse: (value: string) => number;
 }
@@ -32,7 +41,7 @@ export interface ColorParameter extends ParameterBase {
   seed?: boolean | undefined;
   /** Directly selectable colours. `id` maps to a CSS swatch class. */
   presets?:
-    | readonly { id: string; value: string; labelKey: string }[]
+    | readonly { id: string; value: string; labelKey?: string; label?: ThemeLabel }[]
     | undefined;
 }
 
@@ -40,7 +49,7 @@ export type AppearanceMode = "light" | "dark";
 
 export interface ChoiceParameter extends ParameterBase {
   kind: "choice";
-  options: readonly { value: string; labelKey: string }[];
+  options: readonly { value: string; labelKey?: string; label?: ThemeLabel }[];
 }
 
 export type ThemeParameter = RangeParameter | ColorParameter | ChoiceParameter;
@@ -50,12 +59,25 @@ export type ThemeParameter = RangeParameter | ColorParameter | ChoiceParameter;
  * the theme's own customization parameters.
  */
 /**
- * Base look a theme builds on. `rumahl` is the native OS look; `clean` strips
- * the component chrome (via the recipe variables) so a theme can build its own
- * presentation — a terminal, a dashboard, anything — without fighting the
- * defaults.
+ * Base look a theme builds on.
+ *
+ * - `iris` is the native rumahl OS base: native chrome, glass and the shared
+ *   component language.
+ * - `ground` is the open foundation: square, flat, shadow-less primitives for
+ *   a theme that wants to build its own presentation without fighting Iris.
+ *   It is a base, not a theme.
+ *
+ * Legacy manifests may still say `rumahl` (Iris) or `clean` (Ground); they are
+ * normalized at registration time.
  */
-export type ThemeBase = "rumahl" | "clean";
+export type ThemeBase = "iris" | "ground";
+
+/** Normalize a persisted/legacy theme base onto the current names. */
+export function normalizeThemeBase(value: unknown): ThemeBase | undefined {
+  if (value === "ground" || value === "clean") return "ground";
+  if (value === "iris" || value === "rumahl") return "iris";
+  return undefined;
+}
 
 export interface Theme {
   id: string;
@@ -67,6 +89,8 @@ export interface Theme {
   modes: readonly AppearanceMode[];
   /** Optional per-region markup the theme provides as safe templates. */
   slots?: Partial<Record<SlotName, SlotTemplate>> | undefined;
+  /** Optional artwork for the shell's system icons. */
+  icons?: IconPack | undefined;
   /** Optional theme stylesheet (applied CSP-safely, first-party themes). */
   css?: string | undefined;
   /** Optional built-in preset families. These are curated by the theme, not a
@@ -74,12 +98,26 @@ export interface Theme {
   presets?: { look?: boolean; material?: boolean } | undefined;
   /** Fixed opaque material, even when device settings request transparency. */
   material?: "solid" | undefined;
-  /** Base look (defaults to `rumahl`). */
+  /** Base look (defaults to `iris`). */
   base?: ThemeBase | undefined;
+  /** Fixed art direction: device colour/material tuning is ignored. */
+  locked?: boolean | undefined;
+  /**
+   * Whether device colour tuning may generate a light/dark palette from the
+   * theme accent. Set `false` for a Ground theme that owns every scheme token.
+   * Defaults to `true` to keep existing packages compatible.
+   */
+  paletteTuning?: boolean | undefined;
+  /** Portable package schema version (omitted means v1). */
+  schemaVersion?: number | undefined;
   /** Declared capabilities for code themes (`network`, `storage`, …). */
   capabilities?: readonly string[] | undefined;
   /** Custom code (module source) the shell applies for a trusted theme. */
   code?: string | undefined;
+  /** Optional real preview image (data URI or bundled asset). */
+  preview?: string | undefined;
+  /** Where the theme came from; installed packages set this on registration. */
+  origin?: "builtin" | "store" | "manual" | undefined;
 }
 
 function px(
@@ -168,6 +206,16 @@ const COLOR_PRESETS = [
 
 /** Parameters offered by the official rumahl theme (colour, wallpaper, glass). */
 const officialParameters: readonly ThemeParameter[] = [
+  {
+    kind: "choice",
+    id: "irisControls",
+    token: "iris.controls",
+    labelKey: "theme.irisControls",
+    options: [
+      { value: "soft", labelKey: "theme.irisControls.soft" },
+      { value: "glass", labelKey: "theme.irisControls.glass" },
+    ],
+  },
   {
     kind: "color",
     id: "accent",
@@ -262,138 +310,92 @@ const officialParameters: readonly ThemeParameter[] = [
       return Number.isFinite(parsed) ? parsed : 1.8;
     },
   },
-  px("shape.radius.dock", "radius", "theme.parameter.radius", 24, 40),
-  px("shape.radius.window", "window", "theme.parameter.window", 12, 32),
-  px("shape.radius.icon", "icon", "theme.parameter.icon", 15, 30),
-];
-
-/** The classic fixture offers its own, different set of parameters. */
-const classicParameters: readonly ThemeParameter[] = [
-  {
-    kind: "color",
-    id: "accent",
-    token: "color.accent",
-    labelKey: "theme.parameter.accent",
-    seed: true,
-  },
-  px("shape.radius.icon", "icon", "theme.parameter.icon", 6, 20),
-  px("shape.radius.window", "window", "theme.parameter.window", 4, 24),
+  px("shape.radius.dock", "radius", "theme.parameter.radius", 28, 40),
+  px("shape.radius.window", "window", "theme.parameter.window", 23, 32),
+  px("shape.radius.icon", "icon", "theme.parameter.icon", 18, 30),
 ];
 
 /** The rumahl brand default: green accent, glass materials, dock + springboard. */
 export const rumahlTheme: Theme = {
   id: "com.rumahl.default",
-  name: "Aura",
+  name: "Iris",
+  base: "iris",
   tokens: { ...defaultTokens, ...paletteTokens(defaultTokens["color.accent"]) },
   variants: defaultVariants,
   parameters: officialParameters,
   presets: { look: true, material: true },
   modes: ["light", "dark"],
+  origin: "builtin",
 };
+
+/** Ranges coming from a theme package have no functions; provide sane defaults. */
+export function normalizeParameter(parameter: ThemeParameter): ThemeParameter {
+  if (parameter.kind !== "range") return parameter;
+  return {
+    ...parameter,
+    format: typeof parameter.format === "function"
+      ? parameter.format
+      : (value: number) =>
+          parameter.decimals !== undefined
+            ? `${value.toFixed(parameter.decimals)}${parameter.unit ?? ""}`
+            : `${Math.round(value)}${parameter.unit ?? ""}`,
+    parse: typeof parameter.parse === "function"
+      ? parameter.parse
+      : (value: string) => {
+          const parsed = Number.parseFloat(value);
+          return Number.isFinite(parsed) ? parsed : parameter.min;
+        },
+  };
+}
+
+/** The shape of `theme.json` inside a theme package. */
+export interface ThemePackageManifest {
+  id: string;
+  name: string;
+  description?: string | undefined;
+  version?: string | undefined;
+  author?: string | undefined;
+  locked?: boolean | undefined;
+  paletteTuning?: boolean | undefined;
+  schemaVersion?: number | undefined;
+  modes?: readonly AppearanceMode[] | undefined;
+  variants?: Partial<VariantSelection> | undefined;
+  tokens?: Partial<Tokens> | undefined;
+  parameters?: readonly ThemeParameter[] | undefined;
+  preview?: string | undefined;
+  slots?: Partial<Record<SlotName, SlotTemplate>> | undefined;
+  icons?: unknown;
+  material?: "solid" | undefined;
+  base?: ThemeBase | "rumahl" | "clean" | undefined;
+}
 
 /**
- * Deliberately different fixture theme: an opaque, square classic look with a
- * taskbar and an app drawer. It exists to prove that a theme can swap the whole
- * shell structure and skin without touching component code.
+ * Turns a theme package (`theme.json` + optional stylesheet and code) into a
+ * normal theme. This is the same path an installed ZIP takes.
  */
-export const classicTheme: Theme = {
-  id: "com.rumahl.classic",
-  name: "Classic",
-  css: classicCss,
-  material: "solid",
-  tokens: {
-    ...defaultTokens,
-    ...CLASSIC_PALETTE,
-    "material.blur": "0px",
-    "material.saturation": "1",
-    "material.opacity": "1",
-    "material.morphism": "0",
-    "shape.radius.window": "4px",
-    "shape.radius.dock": "6px",
-    "shape.radius.icon": "6px",
-    "shape.icon.size": "40px",
-    "shape.icon.size.large": "56px",
-    "motion.duration": "90ms",
-    "motion.duration.fast": "70ms",
-    "motion.easing.spring": "ease-out",
-    "layout.dock.offset": "0px",
-    "icon.gradient": "linear-gradient(160deg, #5b8ac6, #3465a4)",
-    "texture.wallpaper": "none",
-    "typography.family": "Tahoma, Verdana, sans-serif",
-    "typography.scale": "0.95",
-  },
-  variants: {
-    shellLayout: "taskbar",
-    launcherLayout: "drawer",
-    windowChrome: "compact",
-  },
-  parameters: classicParameters,
-  modes: ["light", "dark"],
-  // The classic shell defines its own taskbar markup here (theme code), instead
-  // of relying on the shell's built-in variant.
-  slots: {
-    dock: [
-      {
-        tag: "div",
-        class: "taskbar slot-taskbar",
-        attrs: { role: "navigation", "aria-label": "Main navigation" },
-        children: [
-          {
-            tag: "button",
-            class: "taskbar__start",
-            action: "minimize-all",
-            children: [{ component: "brand" }],
-          },
-          {
-            tag: "div",
-            class: "taskbar__apps",
-            children: [
-              {
-                repeat: "apps",
-                as: "app",
-                children: [
-                  {
-                    tag: "button",
-                    class: "taskbar__button",
-                    attrs: {
-                      "data-open": "{{app.running}}",
-                      "data-focused": "{{app.focused}}",
-                    },
-                    action: "open",
-                    arg: "{{app.path}}",
-                    children: [{ text: "{{app.title}}" }],
-                  },
-                ],
-              },
-            ],
-          },
-          {
-            tag: "div",
-            class: "taskbar__windows",
-            children: [
-              {
-                repeat: "windows",
-                as: "win",
-                children: [
-                  {
-                    tag: "button",
-                    class: "taskbar__button taskbar__window",
-                    action: "focus-window",
-                    arg: "{{win.id}}",
-                    children: [{ text: "{{win.title}}" }],
-                  },
-                ],
-              },
-            ],
-          },
-          { component: "clock", class: "taskbar__clock" },
-        ],
-      },
-    ],
-  },
-};
+export function themeFromPackage(manifest: ThemePackageManifest, css?: string, code?: string): Theme {
+  const base = normalizeThemeBase(manifest.base) ?? "iris";
+  return {
+    id: manifest.id,
+    name: manifest.name,
+    tokens: mergeTokens(tokensForBase(base), manifest.tokens),
+    variants: resolveVariants(manifest.variants),
+    parameters: (manifest.parameters ?? []).map(normalizeParameter),
+    modes: manifest.modes ?? ["light"],
+    ...(manifest.locked ? { locked: true } : {}),
+    ...(typeof manifest.paletteTuning === "boolean" ? { paletteTuning: manifest.paletteTuning } : {}),
+    ...(typeof manifest.schemaVersion === "number" ? { schemaVersion: manifest.schemaVersion } : {}),
+    ...(manifest.slots ? { slots: sanitizeSlots(manifest.slots) } : {}),
+    ...(manifest.icons ? { icons: sanitizeIconPack(manifest.icons) } : {}),
+    ...(manifest.material ? { material: manifest.material } : {}),
+    ...(base === "iris" && !manifest.base ? {} : { base }),
+    ...(css ? { css } : {}),
+    ...(code ? { code } : {}),
+    ...(manifest.preview ? { preview: manifest.preview } : {}),
+  };
+}
 
-export const themes = [rumahlTheme, classicTheme] as const;
+export const themes = [rumahlTheme] as const;
 
 export const defaultTheme = rumahlTheme;
 export const DEFAULT_THEME_ID = rumahlTheme.id;

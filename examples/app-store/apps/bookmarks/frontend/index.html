@@ -1,0 +1,18 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Bookmarks</title>
+<style>*{box-sizing:border-box}body{margin:0;min-height:100vh;font:15px/1.55 system-ui,-apple-system,"Segoe UI",sans-serif;color:#e8eef0;background:radial-gradient(circle at 15% 10%,#24444d,#101719 60%);padding:2rem}main{max-width:760px;margin:auto}h1{font:600 2rem/1.1 Georgia,serif;margin:.2rem 0 .3rem}p.lead{color:#a9b7ba;margin:0 0 1.4rem}section{background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.13);border-radius:16px;padding:1.1rem;margin-bottom:1rem}input,textarea,button,select{font:inherit}input,textarea,select{width:100%;padding:.7rem .8rem;border:1px solid rgba(255,255,255,.18);border-radius:10px;background:rgba(0,0,0,.22);color:inherit}textarea{min-height:120px;resize:vertical}button{padding:.62rem .9rem;border:0;border-radius:10px;background:#5cc8a0;color:#061310;font-weight:750;cursor:pointer}button.secondary{background:rgba(255,255,255,.13);color:inherit}button.danger{background:#d56b62;color:#fff}.row{display:flex;gap:.6rem;flex-wrap:wrap}.row>*{flex:1 1 130px}.list{display:grid;gap:.5rem;margin-top:.8rem}.item{display:flex;align-items:center;justify-content:space-between;gap:.7rem;padding:.65rem .75rem;border-radius:10px;background:rgba(0,0,0,.2)}.item.done span{opacity:.5;text-decoration:line-through}.muted{color:#a9b7ba;font-size:.9rem}.stat{font:700 2.4rem/1 Georgia,serif;color:#8fe3c1}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:.7rem}.card{padding:.85rem;border-radius:12px;background:rgba(0,0,0,.2)}small{color:#9fb0b3}a{color:#8fe3c1}</style>
+<body>
+<main>
+<header><h1>Bookmarks</h1><p class="lead">A quick launchpad for useful links.</p></header>
+<section><div class="row"><input id="title" placeholder="Name"><input id="url" placeholder="https://…"><button id="add">Add</button></div><div class="list" id="list"></div></section>
+</main>
+<script>let bookmarks=JSON.parse(localStorage.getItem('rumahl.bookmarks')||'[]');
+const list=document.querySelector('#list');
+function save(){localStorage.setItem('rumahl.bookmarks',JSON.stringify(bookmarks));render();}
+function render(){list.innerHTML='';bookmarks.forEach((bookmark,index)=>{const item=document.createElement('div');item.className='item';item.innerHTML='<a href="'+bookmark.url+'" target="_blank" rel="noreferrer">'+bookmark.title+'</a><button class="secondary">Remove</button>';item.querySelector('button').onclick=()=>{bookmarks.splice(index,1);save();};list.append(item);});}
+document.querySelector('#add').onclick=()=>{const title=document.querySelector('#title').value.trim();let url=document.querySelector('#url').value.trim();if(!title||!url)return;if(!/^https?:\/\//.test(url))url='https://'+url;try{new URL(url);}catch{return;}bookmarks.push({title,url});document.querySelector('#title').value='';document.querySelector('#url').value='';save();};render();</script>
+</body>
+</html>

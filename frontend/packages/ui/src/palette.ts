@@ -68,7 +68,15 @@ export function paletteTokens(seed: string, options: PaletteOptions = {}): Parti
       "color.window.titlebar.foreground": ensureContrast("#f5f7f6", panel, targets.onSurface),
       "color.on.wallpaper": "#f5f5f7",
       "color.outline": "rgba(255, 255, 255, 0.14)",
-      "color.shadow": "rgba(0, 0, 0, 0.7)"
+      "color.shadow": "rgba(0, 0, 0, 0.7)",
+      "color.success": "#8fe0b4",
+      "color.success.surface": "#1f3b2d",
+      "color.warning": "#f4cf7a",
+      "color.warning.surface": "#3b311b",
+      "color.danger": "#ff9b92",
+      "color.danger.surface": "#3d2322",
+      "color.info": "#9bc6ff",
+      "color.info.surface": "#1c2d43"
     };
   }
 
@@ -84,6 +92,14 @@ export function paletteTokens(seed: string, options: PaletteOptions = {}): Parti
     "color.window.titlebar.foreground": ensureContrast("#1d1d1f", "#f5f5f7", targets.onSurface),
     "color.on.wallpaper": "#ffffff",
     "color.outline": "rgba(0, 0, 0, 0.12)",
-    "color.shadow": "rgba(0, 0, 0, 0.16)"
+    "color.shadow": "rgba(0, 0, 0, 0.16)",
+    "color.success": "#1e6b46",
+    "color.success.surface": "#e8f5ee",
+    "color.warning": "#7a4b00",
+    "color.warning.surface": "#fff3d6",
+    "color.danger": "#a3231c",
+    "color.danger.surface": "#fde9e7",
+    "color.info": "#1f5c91",
+    "color.info.surface": "#e8f2fc"
   };
 }

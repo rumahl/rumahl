@@ -545,6 +545,10 @@
     const forced = params.get('state');
     const reason = params.get('reason');
     const detail = params.get('detail');
+    // Boot and renderer crashes are client-side failures: automatically
+    // returning to the same shell would create a redirect loop. Keep the user
+    // on this screen and let "Try again" perform an explicit handover.
+    const autoReturn = reason !== 'boot' && reason !== 'crash';
     let lifecycleState = null;
     try {
       const stored = JSON.parse(localStorage.getItem('rumahl.lifecycle') || 'null');
@@ -554,30 +558,51 @@
     else if (reason === 'restart' || reason === 'reboot') lifecycleState = 'restarting';
     const path = 'M 9.47163 471.21342 Q 0 471.21342 0 461.74179 V 203.63996 C 0 80.50881 80.50883 0 201.27207 0 H 241.52649 Q 250.99811 0 250.99811 9.47163 V 94.71626 Q 250.99811 104.18789 241.52649 104.18789 H 210.74370 C 144.44231 104.18789 101.81999 144.44230 101.81999 210.74369 V 461.74179 Q 101.81999 471.21342 92.34836 471.21342 Z';
     const style = el('style', null, document.head);
-    style.textContent = '.hand{position:fixed;inset:0;z-index:2147483000;background:#000;color:#fff;display:grid;place-items:center;padding:32px}'
-      + '.hand__mark{position:absolute;top:24px;right:28px;width:24px;height:auto;color:#fff}'
-      + '.hand__center{max-width:440px;display:grid;gap:16px;justify-items:center;text-align:center}'
-      + '.hand__spinner{width:30px;height:30px;border-radius:50%;border:2px solid #ffffff24;border-top-color:#fff;animation:handspin .8s linear infinite}'
+    style.textContent = '.hand{position:fixed;inset:0;z-index:2147483000;display:flex;flex-direction:column;align-items:center;overflow-x:hidden;overflow-y:auto;padding:32px 24px 48px;background:radial-gradient(circle at 50% 42%,#ffffff0b,transparent 29%),radial-gradient(circle at 50% 115%,#ffffff07,transparent 42%),#050505;color:#fff;font-family:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}'
+      + '.hand__brand{position:absolute;left:50%;top:50%;z-index:1;width:clamp(72px,8.2vw,116px);aspect-ratio:1;display:grid;place-items:center;color:#fff;transform:translate(-50%,-50%);will-change:transform;animation:hand-brand-rise 1.2s cubic-bezier(.16,1,.3,1) .45s both}'
+      + '.hand__brand::before{content:"";position:absolute;inset:-58%;z-index:-1;border-radius:50%;background:radial-gradient(circle,#ffffff33 0%,#ffffff12 32%,#ffffff08 53%,transparent 70%);opacity:.2;animation:hand-brand-glow 3.4s ease-in-out infinite}'
+      + '.hand__brand svg{display:block;width:100%;height:100%;filter:drop-shadow(0 0 44px #ffffff16)}'
+      + '@keyframes hand-brand-rise{0%{opacity:0;transform:translate(-50%,calc(-50% + 10px)) scale(.93)}45%{opacity:1}100%{opacity:1;transform:translate(-50%,calc(-50dvh + clamp(32px,7vh,72px))) scale(.54)}}'
+      + '@keyframes hand-brand-glow{0%,100%{opacity:.16;transform:scale(.9)}50%{opacity:.55;transform:scale(1.08)}}'
+      + '.hand__center{position:relative;z-index:1;width:min(560px,100%);margin-top:clamp(150px,24vh,240px);display:grid;gap:14px;justify-items:center;text-align:center;opacity:0;animation:hand-content-in .65s .95s ease forwards}'
+      + '@keyframes hand-content-in{to{opacity:1}}'
+      + '.hand__status{display:flex;align-items:center;gap:9px;min-height:18px;color:#8f98a6;font-size:12px;font-weight:600;letter-spacing:.14em;text-transform:uppercase}'
+      + '.hand__spinner{width:15px;height:15px;flex:none;border-radius:50%;border:1.5px solid #ffffff24;border-top-color:#fff;animation:handspin .8s linear infinite}'
       + '@keyframes handspin{to{transform:rotate(360deg)}}'
-      + '.hand h1{margin:0;font-size:21px;font-weight:600;letter-spacing:-.01em}'
-      + '.hand p{margin:0;color:#9aa2ae;font-size:14px;line-height:1.6}'
-      + '.hand__tips{list-style:none;margin:2px 0 0;padding:0;display:grid;gap:8px;width:100%;text-align:left}'
-      + '.hand__tips li{padding:10px 12px;border:1px solid #ffffff1a;border-radius:10px;background:#ffffff0a;color:#c3cad6;font-size:13px}'
+      + '.hand h1{margin:0;font-size:clamp(23px,2.4vw,29px);font-weight:600;letter-spacing:-.03em;line-height:1.2}'
+      + '.hand p{margin:0;max-width:470px;color:#9aa2ae;font-size:14px;line-height:1.65}'
+      + '.hand__detail{width:100%;max-width:520px;padding:12px 14px;border:1px solid #ffffff1a;border-radius:12px;background:#ffffff0a;text-align:left}'
+      + '.hand__detail[hidden]{display:none}'
+      + '.hand__detail span{display:block;margin-bottom:6px;color:#7f8997;font-size:12px;font-weight:600;letter-spacing:.12em;text-transform:uppercase}'
+      + '.hand__detail code{display:block;max-height:150px;overflow:auto;white-space:pre-wrap;overflow-wrap:anywhere;color:#e7edf7;font:12px/1.55 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}'
+      + '.hand__tips{list-style:none;margin:2px 0 0;padding:0;display:grid;gap:8px;width:100%;max-width:470px;text-align:left}'
+      + '.hand__tips li{padding:9px 12px;border:1px solid #ffffff17;border-radius:10px;background:#ffffff08;color:#b8c1cc;font-size:12.5px}'
       + '.hand__tips[hidden]{display:none}'
       + '.hand__actions{display:flex;gap:10px;flex-wrap:wrap;justify-content:center;margin-top:4px}'
       + '.hand button{border:1px solid #ffffff26;background:#ffffff10;color:#fff;border-radius:10px;padding:9px 16px;font:inherit;cursor:pointer}'
-      + '.hand button.primary{background:#fff;color:#000;border-color:#fff}';
+      + '.hand button.primary{background:#fff;color:#000;border-color:#fff}'
+      + '@media (prefers-reduced-motion:reduce){.hand__brand,.hand__brand::before,.hand__center{animation:none!important}.hand__brand{transform:translate(-50%,calc(-50dvh + clamp(32px,7vh,72px))) scale(.54)}.hand__center{opacity:1}}';
     const overlay = el('div', null, document.body); overlay.className = 'hand';
     overlay.setAttribute('role', 'status'); overlay.setAttribute('aria-live', 'polite');
-    overlay.innerHTML = `<svg class="hand__mark" viewBox="0 0 251 472" fill="currentColor" aria-hidden="true"><path d="${path}"/></svg><div class="hand__center"><div class="hand__spinner"></div><h1></h1><p></p><ul class="hand__tips" hidden></ul><div class="hand__actions"></div></div>`;
+    const detailText = detail && detail.trim() ? detail.trim().slice(0, 2000) : '';
+    overlay.innerHTML = `<div class="hand__brand" aria-hidden="true"><svg viewBox="0 0 251 472" fill="currentColor"><path d="${path}"/></svg></div><div class="hand__center"><div class="hand__status"><span class="hand__spinner"></span><span class="hand__eyebrow">${reason ? 'rumahl OS · ' + escapeHtml(reason) : 'rumahl OS'}</span></div><h1></h1><p class="hand__description"></p><div class="hand__detail" hidden><span>Details</span><code></code></div><ul class="hand__tips" hidden></ul><div class="hand__actions"></div></div>`;
     const spinner = overlay.querySelector('.hand__spinner');
     const title = overlay.querySelector('h1');
-    const description = overlay.querySelector('p');
+    const description = overlay.querySelector('.hand__description');
+    const detailBox = overlay.querySelector('.hand__detail');
+    const detailCode = overlay.querySelector('.hand__detail code');
     const tips = overlay.querySelector('.hand__tips');
     const actionRow = overlay.querySelector('.hand__actions');
+    if (detailText) {
+      detailCode.textContent = detailText;
+      detailBox.hidden = false;
+    }
     const start = Date.now();
+    const RETURN_MIN_MS = 3200;
     let online = navigator.onLine !== false;
     let checking = false;
+    let healthyChecks = 0;
+    let returnTimer;
     let connectivity = 'unknown';
     let last = '';
     // The worker can probe the network; the page cannot (its CSP is connect-src
@@ -608,7 +633,7 @@
       if (state === 'slow') return [t('This is taking a little longer…'), t('The system is not responding yet. We keep trying.')];
       if (state === 'restarting') return [t('rumahl is restarting…'), t('The device is restarting. This usually takes under a minute.')];
       if (state === 'poweroff') return [t('rumahl OS has shut down'), t('The device is powered off. Turn it back on to continue.')];
-      return [t('rumahl OS is not reachable'), connectivity === 'server' ? t('Your connection seems fine, but the device itself is not responding.') : (detail && detail.trim() ? detail.slice(0, 200) : t('The device is not responding even after a longer time.'))];
+      return [t('rumahl OS is not reachable'), connectivity === 'server' ? t('Your connection seems fine, but the device itself is not responding.') : t('The device is not responding even after a longer time.')];
     }
     function tipsFor(state) {
       if (state === 'device') return [t("Check this device's Wi-Fi or the network cable."), t('Check that your router or switch is powered on.'), t('Test another device or a mobile connection.')];
@@ -630,7 +655,20 @@
       tips.hidden = list.length === 0;
       actionRow.replaceChildren();
       const retry = el('button', t('Try again'), actionRow);
-      retry.addEventListener('click', () => { last = ''; refreshConnectivity(); show(phase()); probe(); });
+      retry.addEventListener('click', () => {
+        last = '';
+        retry.disabled = true;
+        spinner.hidden = false;
+        title.textContent = t('Checking system…');
+        if (!autoReturn) {
+          // A short verification window before an explicit handover avoids a
+          // second recovery loop while the shell settles after a crash.
+          window.setTimeout(() => location.assign('/'), 1200);
+          return;
+        }
+        refreshConnectivity();
+        probe();
+      });
       if (state !== 'device' && state !== 'poweroff') {
         const tools = el('button', t('Open recovery tools'), actionRow);
         tools.className = 'primary';
@@ -638,18 +676,27 @@
       }
     }
     async function probe() {
-      if (checking || document.hidden || forced || lifecycleState === 'shutting-down') return;
+      if (!autoReturn || checking || document.hidden || forced || lifecycleState === 'shutting-down') return;
       checking = true;
       try {
         const response = await fetch('/', { credentials: 'same-origin', cache: 'no-store' });
         const type = response.headers.get('content-type') || '';
         if (response.ok && type.includes('text/html')) {
-          try { localStorage.removeItem('rumahl.lifecycle'); } catch (error) { /* ignore */ }
-          location.assign('/');
-          return;
+          healthyChecks += 1;
+          const elapsed = Date.now() - start;
+          if (elapsed >= RETURN_MIN_MS && healthyChecks >= 2) {
+            try { localStorage.removeItem('rumahl.lifecycle'); } catch (error) { /* ignore */ }
+            location.assign('/');
+            return;
+          }
+          clearTimeout(returnTimer);
+          returnTimer = window.setTimeout(probe, Math.max(350, Math.min(1200, RETURN_MIN_MS - elapsed)));
+        } else {
+          healthyChecks = 0;
         }
-      } catch (error) { /* keep waiting */ }
-      finally { checking = false; }
+      } catch (error) {
+        healthyChecks = 0;
+      } finally { checking = false; }
     }
     function refreshConnectivity() { classifyConnectivity().then(value => { connectivity = value; }); }
     function tick() { show(phase()); probe(); }
@@ -660,6 +707,9 @@
     tick();
     setInterval(tick, 5000);
     setInterval(refreshConnectivity, 10000);
+  }
+  function escapeHtml(value) {
+    return String(value).replace(/[&<>"']/g, character => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[character]);
   }
   async function loadWindow(name) {
     const content = document.querySelector(`.page[data-page="${name}"]`);

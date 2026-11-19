@@ -70,7 +70,7 @@ describe("shell routes and presentation", () => {
   });
 
   test("keeps the settings scope when a mode change remounts its presentation", async () => {
-    render(<App snapshot={demoSnapshot} initialLocation="/settings/display" />);
+    render(<App snapshot={demoSnapshot} initialLocation="/settings/display/appearance" />);
     choose("Save for", "This browser profile");
     setMode("Launcher");
     expect(await screen.findByRole("button", { name: "Save for" })).toHaveTextContent("This browser profile");
@@ -102,6 +102,27 @@ describe("shell routes and presentation", () => {
     fireEvent.click(within(settings).getByRole("button", { name: "Close Settings" }));
     expect(screen.queryByRole("region", { name: "Settings" })).toBeNull();
     expect(screen.getByRole("region", { name: "Files" })).toBeInTheDocument();
+  });
+
+  test("scopes view transitions to navigation inside settings", async () => {
+    const original = document.startViewTransition;
+    const calls = vi.fn((callback: () => void) => {
+      callback();
+      return { finished: Promise.resolve(), skipTransition: vi.fn() } as unknown as ViewTransition;
+    });
+    Object.defineProperty(document, "startViewTransition", { configurable: true, value: calls });
+    try {
+      render(<App snapshot={demoSnapshot} initialLocation="/app/files" />);
+      fireEvent.click(within(screen.getByRole("navigation", { name: "Main navigation" })).getByRole("link", { name: "Settings" }));
+      const settings = await screen.findByRole("region", { name: "Settings" });
+      expect(calls).not.toHaveBeenCalled();
+      fireEvent.click(within(settings).getByRole("link", { name: "Personalization" }));
+      expect(await screen.findByRole("heading", { name: "Personalization" })).toBeInTheDocument();
+      expect(calls).toHaveBeenCalledTimes(1);
+    } finally {
+      if (original) Object.defineProperty(document, "startViewTransition", { configurable: true, value: original });
+      else delete (document as unknown as { startViewTransition?: unknown }).startViewTransition;
+    }
   });
 
   test("does not invent an app or source URL from an unknown ID", () => {

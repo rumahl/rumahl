@@ -10,9 +10,23 @@ import { attachAppBridge, postAppBridgeEvent, type AppBridgeHandlers } from "./b
 import { attachProviderChannel } from "./provider-channel";
 import { invokeProvider, registerProviderChannel } from "./providers";
 import { readShellTheme } from "./shell-theme";
-import { BRIDGE_CAPABILITY_LIST } from "@rumahl/contracts/bridge";
+import {
+  BRIDGE_CAPABILITY_LIST,
+  BRIDGE_NOTIFICATION_ACTION_TOPIC,
+  BRIDGE_PET_ACTION_TOPIC,
+  BRIDGE_PET_INTERACTION_TOPIC,
+  type BridgePetActionRegistration,
+  type BridgeWeatherWarning
+} from "@rumahl/contracts/bridge";
 import { invokeCapability as requestCapabilityInvocation, launchApp, SafeModeError, type InstalledApp } from "./client";
+import { clearWeatherWarnings, publishWeatherWarnings, registerWarningSource } from "./warnings-client";
 import { setLaunching } from "./launching";
+import {
+  dispatchPetCommand,
+  getPetPublicState,
+  registerPetAction,
+  subscribePetInteractions
+} from "./pets/pet-extensions";
 import { showToast } from "../shell/toasts";
 import { Button, ButtonLink } from "../components/Button";
 import { UnavailablePage } from "../pages/UnavailablePage";
@@ -39,7 +53,7 @@ export function InstalledAppHost() {
   // No visible "Loading apps…" text: the launching app bounces in the dock.
   if (status === "loading") return <div className="installed-app-loading" role="status">
     <span className="installed-app-loading__spinner" aria-hidden="true" />
-    <span>{t("apps.loading")}</span>
+    <span className="visually-hidden">{t("apps.loading")}</span>
   </div>;
   const app = apps.find((item) => item.id === appId);
   if (!app?.launchable) return <UnavailablePage app />;
@@ -121,6 +135,7 @@ function AppFrame({ app }: { app: InstalledApp }) {
   // through postMessage. Rebound only when the frame changes; the handlers are
   // read through a ref so a shell re-render never detaches the listener.
   const bridge = useRef<AppBridgeHandlers | null>(null);
+  const petRegistrations = useRef(new Map<string, () => void>());
   bridge.current = {
     appId: app.id,
     appTitle: app.title,
@@ -129,7 +144,32 @@ function AppFrame({ app }: { app: InstalledApp }) {
     mode,
     capabilities: app.capabilities ?? BRIDGE_CAPABILITY_LIST,
     theme: readTheme,
-    notify: (notification) => showToast({ ...(notification.title ? { title: notification.title } : {}), message: notification.message, variant: notification.variant ?? "info", duration: 5000 }),
+    notify: (notification) => {
+      let notificationId = "";
+      const buttons = notification.buttons?.map((button, index) => ({
+        label: button.label,
+        variant: index === 0 ? "primary" as const : "default" as const,
+        onClick: () => {
+          postAppBridgeEvent(frameRef.current, BRIDGE_NOTIFICATION_ACTION_TOPIC, {
+            notificationId,
+            actionId: button.id
+          });
+        }
+      }));
+      notificationId = showToast({
+        ...(notification.title ? { title: notification.title } : {}),
+        message: notification.message,
+        ...(notification.description ? { description: notification.description } : {}),
+        variant: notification.variant ?? (notification.emergency ? "error" : "info"),
+        ...(notification.duration === undefined ? {} : { duration: notification.duration }),
+        ...(buttons ? { buttons } : {}),
+        ...(notification.meta ?? app.title ? { meta: notification.meta ?? app.title } : {}),
+        ...(notification.image ? { image: notification.image } : {}),
+        ...(notification.progress === undefined ? {} : { progress: notification.progress }),
+        source: { appId: app.id, appTitle: app.title },
+        ...(notification.emergency ? { emergency: true } : {})
+      });
+    },
     windowControl: (action) => {
       const id = `app:${app.id}`;
       if (action === "focus") dispatch({ type: "focus-window", id });
@@ -145,7 +185,43 @@ function AppFrame({ app }: { app: InstalledApp }) {
         return { capability, outcome: "invoked", ...(value === undefined ? {} : { result: value }) };
       }
       return { capability: result.capability, outcome: result.outcome, ...(result.result === undefined ? {} : { result: result.result }) };
-    }
+    },
+    petState: () => getPetPublicState(),
+    petInteract: (action) => getPetPublicState() !== null && dispatchPetCommand(action, `app:${app.id}`),
+    petRegisterAction: (action: BridgePetActionRegistration) => {
+      petRegistrations.current.get(action.id)?.();
+      const unregister = registerPetAction({
+        id: action.id,
+        label: action.label,
+        ...(action.icon ? { icon: action.icon } : {}),
+        appId: app.id,
+        invoke: () => postAppBridgeEvent(frameRef.current, BRIDGE_PET_ACTION_TOPIC, { id: action.id })
+      });
+      if (!unregister) return null;
+      petRegistrations.current.set(action.id, unregister);
+      return unregister;
+    },
+    petUnregisterAction: (id) => {
+      const unregister = petRegistrations.current.get(id);
+      if (!unregister) return false;
+      unregister();
+      petRegistrations.current.delete(id);
+      return true;
+    },
+    ...(live ? {
+      warningRegister: async () => {
+        const source = await registerWarningSource(live.request, app.id, new AbortController().signal);
+        return { source };
+      },
+      warningPublish: async (warnings: readonly BridgeWeatherWarning[]) => {
+        const accepted = await publishWeatherWarnings(live.request, app.id, warnings, new AbortController().signal);
+        return { accepted };
+      },
+      warningClear: async (ids?: string[]) => {
+        const cleared = await clearWeatherWarnings(live.request, app.id, ids, new AbortController().signal);
+        return { cleared };
+      }
+    } : {})
   };
   useEffect(() => {
     const iframe = frameRef.current;
@@ -158,6 +234,19 @@ function AppFrame({ app }: { app: InstalledApp }) {
     const unregister = registerProviderChannel(app.id, provider);
     return () => { appBridge.dispose(); unregister(); provider.dispose(); };
   }, [frame, app.id]);
+  // Pet menu actions belong to the app window that registered them. Closing
+  // or reloading the window drops them; the shell never keeps app code alive.
+  useEffect(() => () => {
+    for (const unregister of petRegistrations.current.values()) unregister();
+    petRegistrations.current.clear();
+  }, [app.id, frame]);
+  // Apps with the pet capability may react to every companion interaction.
+  useEffect(() => {
+    if (!(app.capabilities ?? BRIDGE_CAPABILITY_LIST).includes("com.rumahl.pets.interact")) return;
+    return subscribePetInteractions((interaction) => {
+      postAppBridgeEvent(frameRef.current, BRIDGE_PET_INTERACTION_TOPIC, interaction);
+    });
+  }, [app.id, frame, app.capabilities]);
   // Push `os.theme.changed` whenever the shell switches appearance: once when
   // the theme is (re)bound and on any DOM scheme/theme attribute change.
   useEffect(() => {
@@ -197,7 +286,7 @@ function AppFrame({ app }: { app: InstalledApp }) {
   </section>;
   if (!frame) return <div className="installed-app-loading" role="status">
     <span className="installed-app-loading__spinner" aria-hidden="true" />
-    <span>{t("apps.loading")}</span>
+    <span className="visually-hidden">{t("apps.loading")}</span>
   </div>;
   const url = new URL(frame);
   // Key the fragment off this window's location, not the shared browser URL, so

@@ -1,0 +1,96 @@
+{
+  "id": "com.rumahl.abyss",
+  "name": "Abyss",
+  "version": "1.7.0",
+  "author": "rumahl",
+  "description": "The Abyss look for Jellyfin, translated to rumahl OS: a full-bleed cinematic home with Jellyfin-style metadata chips and a white action pill, 16:9 artwork cards with titles, a floating pill header and Abyss glass throughout.",
+  "modes": [
+    "dark"
+  ],
+  "variants": {
+    "shellLayout": "dock",
+    "launcherLayout": "springboard",
+    "windowChrome": "standard"
+  },
+  "tokens": {
+    "color.accent": "#f5f5f7",
+    "color.accent.strong": "#ffffff",
+    "color.on.accent": "#121212",
+    "color.surface": "#2a2a2a",
+    "color.surface.strong": "#2a2a2a",
+    "color.outline": "rgba(245, 245, 247, 0.2)",
+    "color.on.wallpaper": "#f5f5f7",
+    "color.shadow": "rgba(0, 0, 0, 0.3)",
+    "color.text.primary": "#f5f5f7",
+    "color.text.muted": "#a1a1a6",
+    "color.canvas.background": "#090909",
+    "color.panel.background": "#1c1c1c",
+    "color.window.titlebar.background": "#2a2a2a",
+    "color.window.titlebar.foreground": "#f5f5f7",
+    "color.wallpaper.tint": "#00000000",
+    "material.blur": "23px",
+    "material.saturation": "1.2",
+    "material.opacity": "0.69",
+    "material.morphism": "0.9",
+    "shape.radius.window": "24px",
+    "shape.radius.dock": "32px",
+    "shape.radius.icon": "12px",
+    "icon.gradient": "linear-gradient(150deg, #3a3a3c, #1c1c1e)",
+    "texture.wallpaper": "default",
+    "typography.family": "\"Google Sans\", \"Outfit Variable\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
+    "typography.display": "\"Google Sans\", \"Outfit Variable\", system-ui, sans-serif",
+    "app.inputs": "glass"
+  },
+  "parameters": [
+    {
+      "kind": "color",
+      "id": "accent",
+      "token": "color.accent",
+      "label": {
+        "en": "Accent colour",
+        "de": "Akzentfarbe"
+      },
+      "seed": true
+    },
+    {
+      "kind": "range",
+      "id": "blur",
+      "token": "material.blur",
+      "label": {
+        "en": "Glass blur",
+        "de": "Glas-Unschärfe"
+      },
+      "min": 0,
+      "max": 60,
+      "step": 1,
+      "unit": "px"
+    },
+    {
+      "kind": "range",
+      "id": "opacity",
+      "token": "material.opacity",
+      "label": {
+        "en": "Surface opacity",
+        "de": "Flächen-Deckkraft"
+      },
+      "min": 0.2,
+      "max": 1,
+      "step": 0.01,
+      "decimals": 2
+    },
+    {
+      "kind": "range",
+      "id": "radius",
+      "token": "shape.radius.window",
+      "label": {
+        "en": "Window corners",
+        "de": "Fenster-Ecken"
+      },
+      "min": 0,
+      "max": 36,
+      "step": 1,
+      "unit": "px"
+    }
+  ],
+  "css": "styles.css"
+}

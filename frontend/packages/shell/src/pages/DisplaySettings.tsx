@@ -1,4 +1,5 @@
 import { RumahlButtonGroup } from "../components/RumahlButtonGroup";
+import { LoadingStatus } from "../components/LoadingStatus";
 import { useEffect, useRef, useState } from "react";
 import { useTheme } from "@rumahl/ui";
 import type { ColorParameter } from "@rumahl/ui/themes";
@@ -18,7 +19,11 @@ import { setTestMedia } from "../shell/test-media";
 import { RumahlSelect } from "../components/RumahlSelect";
 import { RumahlColorPicker } from "../components/RumahlColorPicker";
 import { Button } from "../components/Button";
+import { SettingsReset } from "../components/SettingsReset";
+import type { AppearanceResetGroup } from "../preferences/appearance-reset";
 import { SettingsHeading } from "../components/SettingsHeading";
+import { resolveThemeLabel } from "../components/theme-labels";
+import { ShellLink } from "../routing/ShellLink";
 import { dismissToast, showToast } from "../shell/toasts";
 import {
   setGlassAdjust,
@@ -70,8 +75,41 @@ function AppearanceChoice({ label, moreLabel, options, value, onChange }: {
     </span> : undefined} />;
 }
 
-export function DisplaySettings() {
+export type DisplaySection = "appearance" | "typography" | "surface" | "advanced";
+
+const sections: readonly { id: DisplaySection; title: MessageKey; help: MessageKey }[] = [
+  { id: "appearance", title: "theme.appearance", help: "theme.help" },
+  { id: "typography", title: "theme.typography", help: "theme.typographyHelp" },
+  { id: "surface", title: "theme.materials", help: "theme.surfaceHelp" },
+  { id: "advanced", title: "theme.advanced", help: "theme.advancedHelp" },
+];
+
+const overviewRows: readonly { to: string; title: MessageKey; help: MessageKey }[] = [
+  { to: "/settings/display/appearance", title: "theme.appearance", help: "theme.help" },
+  { to: "/settings/display/windows", title: "workspace.fullscreen", help: "workspace.fullscreenPageHelp" },
+  ...sections.filter((section) => section.id !== "appearance").map((section) => ({
+    to: `/settings/display/${section.id}`,
+    title: section.title,
+    help: section.help
+  })),
+  { to: "/settings/display/themes", title: "themes.manage", help: "themes.manageHelp" }
+];
+
+export function DisplayOverview() {
   const { t } = useI18n();
+  return <section className="display-settings">
+    <SettingsHeading title={t("settings.personalization")} help={t("settings.displayHelp")} back="/settings" />
+    <div className="settings-group settings-nav">
+      {overviewRows.map((row) => <ShellLink className="settings-nav__row" key={row.to} to={row.to}>
+        <span className="settings-nav__text"><strong>{t(row.title)}</strong><small>{t(row.help)}</small></span>
+        <span className="settings-nav__chevron" aria-hidden="true">›</span>
+      </ShellLink>)}
+    </div>
+  </section>;
+}
+
+export function DisplaySettings({ section = "appearance" }: { section?: DisplaySection } = {}) {
+  const { t, locale } = useI18n();
   const settings = useShellPreferences();
   const viewport = useDeviceViewport();
   const { scope, setScope } = settings;
@@ -126,7 +164,6 @@ export function DisplaySettings() {
     setMode,
     setToken,
     clearToken,
-    autoColors,
     setTransparency,
     setAutoColor,
     setWallpaperTint,
@@ -142,7 +179,12 @@ export function DisplaySettings() {
     setMaterialPreset,
     setAdaptiveType,
     setFontScale,
-    reset,
+    resetGroup,
+    resetParameters,
+    resetOverrides,
+    saving: tuningSaving,
+    ready: tuningReady,
+    error: tuningError,
   } = useThemeTuning();
   const [refraction, setRefraction] = useState(REFRACTION_DEFAULT);
   const [chromaPercent, setChromaPercent] = useState(CHROMA_DEFAULT);
@@ -209,10 +251,15 @@ export function DisplaySettings() {
       );
     },
   );
-  const ranges = activeTheme.parameters.filter(
+  // A locked theme is a fixed art direction: its parameters ARE the theme
+  // options and belong right next to the picker. Other themes keep their full
+  // tuning in the advanced section.
+  const themeOptions = activeTheme.locked ? activeTheme.parameters : [];
+  const tuningParams = activeTheme.locked ? [] : activeTheme.parameters;
+  const ranges = tuningParams.filter(
     (parameter) => parameter.kind === "range",
   );
-  const choices = activeTheme.parameters.filter(
+  const choices = tuningParams.filter(
     (parameter) => parameter.kind !== "range",
   );
   const seedParams = choices.filter(
@@ -231,8 +278,8 @@ export function DisplaySettings() {
   const renderParameter = (
     parameter: (typeof activeTheme.parameters)[number],
   ) => {
-    const label = t(parameter.labelKey as MessageKey);
-    const current = tokens[parameter.token];
+    const label = resolveThemeLabel(parameter.label, parameter.labelKey, locale, t);
+    const current = tokens[parameter.token] ?? "";
     if (parameter.kind === "range") {
       const value = parameter.parse(current);
       return (
@@ -272,7 +319,7 @@ export function DisplaySettings() {
             onChange={assign}
             presets={parameter.presets?.map((preset) => ({
               value: preset.value,
-              label: t(preset.labelKey as MessageKey),
+              label: resolveThemeLabel(preset.label, preset.labelKey, locale, t),
             }))}
           />
         </div>
@@ -287,7 +334,7 @@ export function DisplaySettings() {
           onChange={(value) => setToken(parameter.token, value)}
           options={parameter.options.map((option) => ({
             value: option.value,
-            label: t(option.labelKey as MessageKey),
+            label: resolveThemeLabel(option.label, option.labelKey, locale, t),
             // Typography pickers preview each face in its own font.
             font:
               parameter.token === "typography.family" ||
@@ -300,7 +347,7 @@ export function DisplaySettings() {
     );
   };
   const renderOverride = (parameter: ColorParameter) => {
-    const label = t(parameter.labelKey as MessageKey);
+    const label = resolveThemeLabel(parameter.label, parameter.labelKey, locale, t);
     const overridden = tuning.tokens[parameter.token] !== undefined;
     return (
       <div
@@ -315,11 +362,11 @@ export function DisplaySettings() {
         </span>
         <RumahlColorPicker
           label={label}
-          value={toHex(tokens[parameter.token])}
+          value={toHex(tokens[parameter.token] ?? "")}
           onChange={(value) => setToken(parameter.token, value)}
           presets={parameter.presets?.map((preset) => ({
             value: preset.value,
-            label: t(preset.labelKey as MessageKey),
+            label: resolveThemeLabel(preset.label, preset.labelKey, locale, t),
           }))}
         />
         {overridden ? (
@@ -337,14 +384,29 @@ export function DisplaySettings() {
   const activeLookPreset = appearancePresets.find((preset) => isLookActive(tuning, preset.appearance));
   const supportsLookPresets = activeTheme.presets?.look === true;
   const supportsMaterialPresets = activeTheme.presets?.material === true;
+  const groupReset = (group: AppearanceResetGroup) => <SettingsReset
+    label={t("settings.resetGroup")}
+    description={t("settings.resetGroupHelp")}
+    disabled={!tuningReady || tuningSaving}
+    onReset={() => {
+      if (group === "glass") {
+        setGlassColorDraft(null);
+        setRefraction(REFRACTION_DEFAULT); setChromaPercent(CHROMA_DEFAULT); setSaturationPercent(SATURATION_DEFAULT);
+        setGlassAdjust({ refraction: REFRACTION_DEFAULT, chroma: CHROMA_DEFAULT / 100, saturation: SATURATION_DEFAULT / 100 });
+        setTestMedia({ image: null, video: null });
+      }
+      resetGroup(group);
+    }}
+  />;
   return (
     <section className="display-settings">
       <SettingsHeading
-        title={t("settings.personalization")}
-        help={t("settings.displayHelp")}
-        back="/settings"
+        title={t(sections.find((item) => item.id === section)?.title ?? "theme.appearance")}
+        help={t(sections.find((item) => item.id === section)?.help ?? "theme.help")}
+        back="/settings/display"
       />
 
+      {section === "appearance" ? <>
       <h3 className="section-title">{t("theme.title")}</h3>
       <div className="settings-group">
         <div className="setting">
@@ -433,7 +495,7 @@ export function DisplaySettings() {
             <input
               ref={installRef}
               type="file"
-              accept="application/json,.json"
+              accept="application/json,.json,application/zip,.zip"
               hidden
               onChange={(event) => {
                 const file = event.target.files?.[0];
@@ -447,7 +509,9 @@ export function DisplaySettings() {
           </div>
         </div>
       </div>
+      </> : null}
 
+      {section === "typography" ? <>
       <h3 className="section-title">{t("theme.textSize")}</h3>
       <div className="settings-group">
         <div className="setting">
@@ -506,15 +570,27 @@ export function DisplaySettings() {
             </Button>
           </div>
         </div>
+        {groupReset("typography")}
       </div>
+      </> : null}
 
-      {supportsLookPresets || supportsMaterialPresets ? (
+      {section === "appearance" && themeOptions.length > 0 ? (
         <>
-          <h3 className="section-title">{t("theme.auraPresets")}</h3>
-          <p className="settings-section-help">{t("theme.auraPresetsHelp")}</p>
+          <h3 className="section-title">{t("theme.options")}</h3>
+          <div className="settings-group">
+            {themeOptions.map(renderParameter)}
+            <SettingsReset label={t("settings.resetGroup")} description={t("themes.resetOptionsHelp")} disabled={!tuningReady || tuningSaving} onReset={() => resetParameters(themeOptions)} />
+          </div>
+        </>
+      ) : null}
+
+      {section === "appearance" && (supportsLookPresets || supportsMaterialPresets) ? (
+        <>
+          <h3 className="section-title">{t("theme.irisPresets")}</h3>
+          <p className="settings-section-help">{t("theme.irisPresetsHelp")}</p>
           <div className="settings-group">
             {supportsLookPresets ? (
-              <div className="setting aura-preset-row">
+              <div className="setting iris-preset-row">
                 <div className="copy">
                   <strong>{t("theme.lookPresets")}</strong>
                   <p>{t("theme.lookPresetsHelp")}</p>
@@ -546,13 +622,25 @@ export function DisplaySettings() {
                 </div>
               </div>
             ) : null}
+            {(activeTheme.base ?? "iris") === "iris" && !activeTheme.locked ? <div className="setting">
+              <div className="copy">
+                <strong>{t("theme.irisControls")}</strong>
+                <p>{t("theme.irisControlsHelp")}</p>
+              </div>
+              <div className="visual">
+                <RumahlButtonGroup label={t("theme.irisControls")}
+                  value={tokens["iris.controls"] === "soft" ? "soft" : "glass"}
+                  onChange={value => setToken("iris.controls", value)}
+                  options={[{ value: "soft", label: t("theme.irisControls.soft") }, { value: "glass", label: t("theme.irisControls.glass") }]} />
+              </div>
+            </div> : null}
             {supportsMaterialPresets && activeTheme.material !== "solid" ? (
-              <div className="setting aura-preset-row">
+              <div className="setting iris-preset-row">
                 <div className="copy">
                   <strong>{t("theme.presets")}</strong>
                   <p>{t("theme.presetsHelp")}</p>
                 </div>
-                <div className="visual aura-material-presets">
+                <div className="visual iris-material-presets">
                   <div className="material-presets" role="group" aria-label={t("theme.presets")}>
                     {(["clear", "soft", "bold", "solid"] as const).map((preset) => (
                       <button
@@ -576,6 +664,7 @@ export function DisplaySettings() {
         </>
       ) : null}
 
+      {section === "surface" ? <>
       <h3 className="section-title">{t("theme.materials")}</h3>
       <div className="settings-group">
         <div className="setting">
@@ -647,6 +736,7 @@ export function DisplaySettings() {
             />
           </div>
         </div>
+        {groupReset("surface")}
       </div>
 
       {activeTheme.material !== "solid" ? (
@@ -719,7 +809,7 @@ export function DisplaySettings() {
                   type="color"
                   aria-label={t("theme.glass.color")}
                   disabled={reduced || transparencyOff || tuning.glassColor === false}
-                  value={glassColorDraft ?? tuning.glassTint ?? tokens["color.accent"] ?? "#beff2d"}
+                  value={glassColorDraft ?? tuning.glassTint ?? tokens["color.accent"] ?? "#28694c"}
                   onChange={(event) => setGlassColorDraft(event.target.value)}
                   onBlur={() => { if (glassColorDraft !== null) setGlassTint(glassColorDraft); }}
                 />
@@ -916,6 +1006,7 @@ export function DisplaySettings() {
                 </Button>
               </div>
             </div>
+            {groupReset("glass")}
           </div>
         </>
       ) : null}
@@ -952,9 +1043,13 @@ export function DisplaySettings() {
             />
           </div>
         </div>
+        {groupReset("performance")}
       </div>
 
-      {activeTheme.parameters.length > 0 ? (
+      </> : null}
+
+      {section === "advanced" ? <>
+      {tuningParams.length > 0 ? (
         <>
           <h3 className="section-title">{t("theme.customize")}</h3>
           <div className="settings-group">
@@ -970,14 +1065,7 @@ export function DisplaySettings() {
                 </div>
               </details>
             ) : null}
-            <div className="setting">
-              <div className="copy" />
-              <div className="visual">
-                <Button variant="danger" onClick={reset}>
-                  {t("theme.reset")}
-                </Button>
-              </div>
-            </div>
+            <SettingsReset label={t("settings.resetGroup")} description={t("themes.resetOptionsHelp")} disabled={!tuningReady || tuningSaving} onReset={() => resetParameters(tuningParams)} />
           </div>
         </>
       ) : null}
@@ -1001,40 +1089,38 @@ export function DisplaySettings() {
                   <span>{t("theme.parameter.mode")}</span>
                   <RumahlButtonGroup<"auto" | "light" | "dark">
                     label={t("theme.parameter.mode")}
-                    value={tuning.mode === null ? "auto" : tuning.mode}
+                    value={tuning.mode === "light" && !activeTheme.modes.includes("light") ? "dark" : tuning.mode === null ? "auto" : tuning.mode}
                     onChange={(value) => setMode(value === "auto" ? null : value)}
                     options={[
                       { value: "auto", label: t("theme.mode.auto") },
-                      { value: "light", label: t("theme.mode.light") },
+                      ...(activeTheme.modes.includes("light") ? [{ value: "light" as const, label: t("theme.mode.light") }] : []),
                       { value: "dark", label: t("theme.mode.dark") }
                     ]}
                   />
                 </div>
               ) : null}
               {overrideColors.map(renderOverride)}
-              <div className="setting">
-                <div className="copy" />
-                <div className="visual">
-                  <Button onClick={autoColors}>{t("theme.resetAuto")}</Button>
-                </div>
-              </div>
+              <SettingsReset label={t("theme.resetAuto")} description={t("settings.resetGroupHelp")} disabled={!tuningReady || tuningSaving}
+                onReset={() => resetOverrides(overrideColors.map(parameter => parameter.token))} />
             </details>
           </div>
         </>
       ) : null}
 
+      </> : null}
+
       <p>
         {t("preferences.effective")}: {t(`mode.${settings.mode}`)} ·{" "}
         {effectiveTheme?.name ?? settings.theme}
       </p>
-      <p role="status">
-        {settings.saving
-          ? t("preferences.saving")
-          : settings.error
-            ? t(`preferences.${settings.error}`)
-            : settings.ready
-              ? t("preferences.synced")
-              : t("preferences.loading")}
+      <p>
+        {settings.saving || tuningSaving
+          ? <LoadingStatus className="loading-status--inline" label={t("preferences.saving")} />
+          : settings.error || tuningError
+            ? <span role="status">{t(`preferences.${settings.error ?? (tuningError === "conflict" ? "conflict" : "unavailable")}`)}</span>
+            : settings.ready && tuningReady
+              ? <span role="status">{t("preferences.synced")}</span>
+              : <LoadingStatus className="loading-status--inline" label={t("preferences.loading")} />}
       </p>
       {settings.persistence !== "local" ? (
         <p>{t("preferences.temporary")}</p>

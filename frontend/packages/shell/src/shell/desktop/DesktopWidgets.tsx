@@ -5,7 +5,8 @@ import { useClock } from "../clock";
 import { useGlassHost } from "../../glass-engine/useGlassEngine";
 import { GLASS_MATERIALS, glassColorTint, glassMaterialWithTint } from "@rumahl/ui/glass";
 import { useTheme } from "@rumahl/ui";
-import { useThemeTuning } from "../../preferences/theme-tuning";
+import { resolveThemeScheme, useThemeTuning } from "../../preferences/theme-tuning";
+import { useSystemMode } from "../system-scheme";
 import { clampDesktopPosition, setDesktopPosition, useDesktopPositions } from "./desktop-positions";
 import { useShell } from "../ShellContext";
 import { WidgetFrame } from "../../components/WidgetFrame";
@@ -21,10 +22,12 @@ const TOP_EDGE = 60;
  */
 export function DesktopWidgets({ systemStatus }: { systemStatus: ShellSystemStatus }) {
   const { t, locale } = useI18n();
-  const { snapshot, live } = useShell();
-  const { tokens } = useTheme();
+  const { snapshot, live, open } = useShell();
+  const { theme, tokens } = useTheme();
   const { tuning } = useThemeTuning();
-  const tint = glassColorTint(tuning.glassColor, tuning.glassTint, tokens["color.accent"] ?? "#beff2d");
+  const systemMode = useSystemMode();
+  const scheme = resolveThemeScheme(theme, tuning.mode, systemMode);
+  const tint = glassColorTint(tuning.glassColor, tuning.glassTint, tokens["color.accent"] ?? "#28694c", scheme);
   const extensions = useMemo(
     () => snapshot.contributions.filter((item): item is Extract<ExtensionContribution, { kind: "widget" }> => item.kind === "widget" && item.slot === "dashboard_widgets"),
     [snapshot.contributions]
@@ -39,6 +42,13 @@ export function DesktopWidgets({ systemStatus }: { systemStatus: ShellSystemStat
   const [dragged, setDragged] = useState<null | { id: string; x: number; y: number }>(null);
   useGlassHost(clockRef, glassMaterialWithTint(GLASS_MATERIALS.widget, tint));
   useGlassHost(statusRef, glassMaterialWithTint(GLASS_MATERIALS.widget, tint));
+  // The CSS fallback and the adaptive-contrast sampler must see the same
+  // scheme-aware tint as the refraction engine.
+  useLayoutEffect(() => {
+    for (const element of [clockRef.current, statusRef.current, ...extensionRefs.current.values()]) {
+      element?.style.setProperty("--glass-tint", tint);
+    }
+  }, [tint, extensions]);
 
   const bindExtension = (id: string) => (element: HTMLElement | null) => {
     if (element) extensionRefs.current.set(id, element);
@@ -158,7 +168,13 @@ export function DesktopWidgets({ systemStatus }: { systemStatus: ShellSystemStat
       className="desktop-widget widget true-glass rumahl-glass-host desktop-widget--status">
       <p className="desktop-widget__eyebrow">{t("status.title")}</p>
       <strong>{protection}</strong>
-      <span>{t("status.apps.label")}: {systemStatus.installedAppCount}</span>
+      <span>{t("status.apps.value", { count: systemStatus.installedAppCount })}</span>
+      {systemStatus.protection !== "active" ? <button
+        type="button"
+        className="desktop-widget__action"
+        onPointerDown={(event) => event.stopPropagation()}
+        onClick={() => open("/settings/system")}
+      >{t("status.protection.open")}</button> : null}
     </article>
     {extensions.map((widget) => <article key={widget.id}
       ref={bindExtension(widget.id)}

@@ -183,7 +183,11 @@ function renderNodes(nodes: SlotTemplate, bindings: SlotBindings, scopes: Record
     }
     const props: Record<string, unknown> = { key };
     if (node.class) props.className = node.class;
-    if (node.attrs) Object.assign(props, node.attrs);
+    if (node.attrs) {
+      Object.assign(props, Object.fromEntries(
+        Object.entries(node.attrs).map(([name, value]) => [name, interpolate(value, scopes)]),
+      ));
+    }
     const action = node.action ? bindings.actions[node.action] : undefined;
     if (action) props.onClick = () => action(node.arg ? interpolate(node.arg, scopes) : undefined);
     const children = node.children ? renderNodes(node.children, bindings, scopes, `${key}.`) : [];

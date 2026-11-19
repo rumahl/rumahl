@@ -9,7 +9,8 @@ export const demoSnapshot = {
   revision: "demo-only-revision-001",
   user: {
     displayName: "Kaim",
-    locale: "en-US"
+    locale: "en-US",
+    role: "owner"
   },
   theme: {
     id: "com.rumahl.default",

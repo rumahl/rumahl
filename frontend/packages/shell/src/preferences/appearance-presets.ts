@@ -2,7 +2,7 @@ import { emptyAppearance, type AppearanceSettings } from "./Workspace";
 
 export interface AppearancePreset {
   id: string;
-  labelKey: "theme.look.aura" | "theme.look.neutral" | "theme.look.ocean" | "theme.look.rose" | "theme.look.amber";
+  labelKey: "theme.look.iris" | "theme.look.lime" | "theme.look.ocean" | "theme.look.rose" | "theme.look.amber";
   appearance: AppearanceSettings;
 }
 
@@ -17,13 +17,23 @@ const LIME_TOKENS = {
 };
 
 /**
- * One-click appearance looks. The first entry is the Aura default shown by the
- * public demo: lime accent, dark scheme and the local canvas material.
+ * One-click appearance looks layered over the Iris theme.
+ *
+ * Iris is the native default: the theme's own green seed, Inter/Space Grotesk
+ * and component language. The other looks change the accent and material only;
+ * they are tunings of Iris, not separate themes or identities.
  */
 export const appearancePresets: readonly AppearancePreset[] = [
   {
-    id: "aura",
-    labelKey: "theme.look.aura",
+    id: "iris",
+    labelKey: "theme.look.iris",
+    appearance: { ...emptyAppearance, tokens: {} }
+  },
+  {
+    // The former lime/Manrope/Outfit demo tuning. It remains available as an
+    // optional look, but it is not a second theme or default identity.
+    id: "lime",
+    labelKey: "theme.look.lime",
     appearance: {
       ...emptyAppearance,
       seed: "#beff2d",
@@ -35,11 +45,6 @@ export const appearancePresets: readonly AppearancePreset[] = [
       wallpaperMotion: false,
       tokens: LIME_TOKENS
     }
-  },
-  {
-    id: "neutral",
-    labelKey: "theme.look.neutral",
-    appearance: { ...emptyAppearance, tokens: {} }
   },
   {
     id: "ocean",
@@ -58,8 +63,8 @@ export const appearancePresets: readonly AppearancePreset[] = [
   }
 ];
 
-/** Shared default used by the public demo seed. */
-export const defaultLook = appearancePresets[0]!.appearance;
+/** The native Iris look: the theme defaults with no appearance override. */
+export const irisLook = appearancePresets[0]!.appearance;
 
 const KEYS = [
   "autoColor", "wallpaperTint", "wallpaperMotion", "glassReduced", "animations",
@@ -69,7 +74,7 @@ const KEYS = [
 
 function tokensKey(tokens: AppearanceSettings["tokens"]): string {
   return JSON.stringify(Object.keys(tokens)
-    .filter((key) => key !== "texture.wallpaper")
+    .filter((key) => key !== "texture.wallpaper" && key !== "iris.controls")
     .sort()
     .map((key) => [key, tokens[key]]));
 }
@@ -82,9 +87,16 @@ export function applyLook(current: AppearanceSettings, preset: AppearanceSetting
   const tokens = { ...preset.tokens };
   const wallpaper = current.tokens["texture.wallpaper"];
   if (wallpaper !== undefined) tokens["texture.wallpaper"] = wallpaper;
+  const controls = current.tokens["iris.controls"];
+  if (controls !== undefined) tokens["iris.controls"] = controls;
   return {
     ...preset,
     mode: current.mode,
+    ...(current.glassBackend !== undefined ? { glassBackend: current.glassBackend } : {}),
+    ...(current.glassQuality !== undefined ? { glassQuality: current.glassQuality } : {}),
+    ...(current.glassEnabled !== undefined ? { glassEnabled: current.glassEnabled } : {}),
+    ...(current.glassReduced !== undefined ? { glassReduced: current.glassReduced } : {}),
+    ...(current.mobileNavSvgGlass !== undefined ? { mobileNavSvgGlass: current.mobileNavSvgGlass } : {}),
     ...(current.glassColor !== undefined ? { glassColor: current.glassColor } : {}),
     ...(current.glassTint !== undefined ? { glassTint: current.glassTint } : {}),
     tokens
