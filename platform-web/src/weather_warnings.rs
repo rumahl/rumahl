@@ -704,6 +704,8 @@ mod tests {
             workspace: None,
             preferences: None,
             os_mode: Some(Arc::new(TestMode(mode))),
+
+            policies: None,
             host_files: None,
             weather_warnings: Some(warnings.clone()),
             oidc: None,

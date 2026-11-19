@@ -2,7 +2,10 @@
 //! deployment concerns; this crate never binds a public TCP listener.
 
 mod admin;
-pub use admin::{AdminAuditEntry, AdminError, AdminSession, AdminUser, Administration};
+pub use admin::{
+    AdminAuditEntry, AdminError, AdminGroup, AdminPolicyAssignment, AdminSession, AdminUser,
+    Administration,
+};
 
 mod backend;
 mod events;
@@ -60,6 +63,8 @@ mod preferences;
 
 mod host_files;
 pub use host_files::{HostArea, HostEntry, HostError, HostFiles};
+mod policy;
+pub use policy::PolicyEngine;
 
 mod os_mode;
 

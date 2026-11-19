@@ -350,6 +350,40 @@ impl PersonalFiles for SqlitePersonalFiles {
         tx.commit().map_err(db)
     }
 
+    fn entry(&self, u: UserId, id: &str) -> Result<PersonalFile, E> {
+        let c = self.connect().map_err(db)?;
+        let found = c
+            .query_row(
+                "SELECT id,parent,name,directory,size,(SELECT COUNT(*) FROM personal_files child WHERE child.owner=?1 AND child.parent=personal_files.id) FROM personal_files WHERE owner=?1 AND id=?2",
+                params![u.to_string(), id],
+                |r| {
+                    Ok(PersonalFile {
+                        id: r.get(0)?,
+                        parent: r.get(1)?,
+                        name: r.get(2)?,
+                        directory: r.get(3)?,
+                        size: r.get::<_, i64>(4)? as u64,
+                        children: r.get::<_, i64>(5)?.try_into().unwrap_or(0),
+                    })
+                },
+            )
+            .optional()
+            .map_err(db)?;
+        found.ok_or(E::Missing)
+    }
+
+    fn usage(&self, u: UserId) -> Result<u64, E> {
+        let c = self.connect().map_err(db)?;
+        let used: i64 = c
+            .query_row(
+                "SELECT COALESCE(SUM(size), 0) FROM personal_files WHERE owner = ?1 AND directory = 0",
+                params![u.to_string()],
+                |r| r.get(0),
+            )
+            .map_err(db)?;
+        Ok(used.max(0) as u64)
+    }
+
     fn path_trail(&self, u: UserId, path: &str) -> Result<Vec<PersonalFile>, E> {
         use rumahl_core::personal_path_segments;
         let segments = personal_path_segments(path)?;

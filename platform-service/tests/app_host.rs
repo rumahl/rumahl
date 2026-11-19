@@ -195,6 +195,8 @@ async fn catalog_and_launch_require_session_origin_and_current_installation() {
         apps: Some(apps.clone()),
         preferences: None,
         os_mode: None,
+
+        policies: None,
         workspace: None,
         files: None,
         oidc: None,

@@ -99,6 +99,9 @@ pub struct GatewayState {
     pub preferences: Option<Arc<dyn rumahl_core::ShellPreferencesRepository>>,
     /// Exposure-mode policy; None keeps the guided default.
     pub os_mode: Option<Arc<dyn rumahl_core::OsModeRepository>>,
+    /// Administrative policies (device, group, user). None keeps the
+    /// catalog defaults from the built-in engine.
+    pub policies: Option<Arc<dyn crate::PolicyEngine>>,
     /// Real host roots the explorer may browse; None disables them.
     pub host_files: Option<Arc<dyn crate::HostFiles>>,
     /// OS-owned severe-weather warning store; None disables that API.
@@ -3310,6 +3313,8 @@ mod tests {
             apps: None,
             preferences: None,
             os_mode: None,
+
+            policies: None,
             workspace: None,
             files: None,
             oidc: None,
@@ -3533,6 +3538,8 @@ mod tests {
             apps: None,
             preferences: None,
             os_mode: None,
+
+            policies: None,
             workspace: None,
             files: None,
             oidc: None,
@@ -3672,6 +3679,8 @@ mod tests {
             apps: None,
             preferences: None,
             os_mode: None,
+
+            policies: None,
             workspace: None,
             files: None,
             oidc: None,

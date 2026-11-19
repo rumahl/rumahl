@@ -666,6 +666,8 @@ mod tests {
             apps: None,
             preferences: None,
             os_mode: None,
+
+            policies: None,
             workspace: None,
             files: None,
             browser_sessions: None,

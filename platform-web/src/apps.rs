@@ -137,6 +137,9 @@ pub enum AppFileDeny {
     ApprovalRequired,
     /// A grant exists, but this specific file is outside its scope.
     OutsideScope,
+    /// The account's personal-files budget is exhausted. Consent cannot change
+    /// this; the shell reports it instead of asking for consent.
+    QuotaExceeded,
 }
 /// One rendered setting declared by an app manifest, typed for the shell.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -399,6 +402,26 @@ pub trait AppProvider: Send + Sync + 'static {
     ) -> Result<AppFileOutcome, AppAccessError> {
         Err(AppAccessError::Unavailable)
     }
+    /// The calling user's personal-files usage in bytes. Used by the quota
+    /// check; providers without a personal store fail closed (Unavailable) so
+    /// a write can never bypass the budget.
+    fn personal_files_usage(
+        &self,
+        _identity: ShellIdentity,
+        _installation: InstallationId,
+    ) -> Result<u64, AppAccessError> {
+        Err(AppAccessError::Unavailable)
+    }
+    /// One personal entry by id without reading its content. Only the owner's
+    /// ids resolve; anything else denies.
+    fn personal_files_entry(
+        &self,
+        _identity: ShellIdentity,
+        _installation: InstallationId,
+        _key: &str,
+    ) -> Result<rumahl_core::PersonalFile, AppAccessError> {
+        Err(AppAccessError::Denied)
+    }
     /// The recorded runtime environment of an installed app. Fails closed
     /// when no runtime record store is wired.
     fn app_runtime_environment(
@@ -435,6 +458,7 @@ pub struct AppAccess {
     suffix: String,
     port: Option<u16>,
     leases: Mutex<HashMap<String, Lease>>,
+    policies: Option<Arc<dyn crate::PolicyEngine>>,
 }
 pub struct AppLaunch {
     pub app: CatalogApp,
@@ -505,8 +529,43 @@ impl AppAccess {
         access: &AppFileAccess,
     ) -> Result<AppFileOutcome, AppAccessError> {
         let app = self.installed(identity, id, installation)?;
-        self.provider
-            .app_file(identity, app.installation_id, access)
+        self.app_file_checked(identity, &app.installation_id, access)
+    }
+
+    /// Consent-checked access after the app (not the installation) has been
+    /// resolved; also the path the channel takes, where the installation is
+    /// known but the app id is not.
+    fn app_file_checked(
+        &self,
+        identity: ShellIdentity,
+        installation: &InstallationId,
+        access: &AppFileAccess,
+    ) -> Result<AppFileOutcome, AppAccessError> {
+        if let AppFileAction::Write { bytes } = &access.action {
+            let quota = self
+                .policies
+                .clone()
+                .map_or(rumahl_core::DEFAULT_PERSONAL_QUOTA_BYTES, |engine| {
+                    engine.personal_file_quota(identity.user_id)
+                });
+            let used = self
+                .provider
+                .personal_files_usage(identity, *installation)
+                .map_err(|_| AppAccessError::Unavailable)?;
+            let replaced = self
+                .provider
+                .personal_files_entry(identity, *installation, &access.key)
+                .map(|entry| entry.size)
+                .unwrap_or(0);
+            if used
+                .saturating_sub(replaced)
+                .saturating_add(bytes.len() as u64)
+                > quota
+            {
+                return Ok(AppFileOutcome::Denied(AppFileDeny::QuotaExceeded));
+            }
+        }
+        self.provider.app_file(identity, *installation, access)
     }
     /// The recorded runtime environment of an installed app.
     pub fn app_runtime_environment(
@@ -565,8 +624,7 @@ impl AppAccess {
             .into_iter()
             .find(|app| app.installation_id == installation)
             .ok_or(AppAccessError::Denied)?;
-        self.provider
-            .app_file(identity, app.installation_id, access)
+        self.app_file_checked(identity, &app.installation_id, access)
     }
     pub fn new(
         provider: Arc<dyn AppProvider>,
@@ -593,7 +651,15 @@ impl AppAccess {
             suffix: suffix.into(),
             port: shell_origin.port(),
             leases: Mutex::new(HashMap::new()),
+            policies: None,
         })
+    }
+
+    /// Attach the policy engine so consented app file writes respect the
+    /// account's personal-files budget, exactly like the shell's own routes.
+    pub fn with_policies(mut self, policies: Arc<dyn crate::PolicyEngine>) -> Self {
+        self.policies = Some(policies);
+        self
     }
     fn authority(&self, installation: InstallationId) -> String {
         format!(

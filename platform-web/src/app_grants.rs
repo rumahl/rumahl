@@ -75,6 +75,11 @@ fn file_denied(reason: AppFileDeny) -> Response {
         AppFileDeny::NoGrant => denied_outcome("no-grant"),
         AppFileDeny::ApprovalRequired => denied_outcome("approval-required"),
         AppFileDeny::OutsideScope => denied_outcome("outside-scope"),
+        // Not a consent question: the account's storage budget is exhausted.
+        AppFileDeny::QuotaExceeded => json_response(
+            serde_json::json!({"outcome": "denied", "reason": "quota"}),
+            StatusCode::PAYLOAD_TOO_LARGE,
+        ),
     }
 }
 

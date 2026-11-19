@@ -61,6 +61,7 @@ async fn raising_the_mode_requires_reauthentication() {
         os_mode: Some(Arc::new(
             SqliteOsModeRepository::open(root.join("preferences.sqlite")).unwrap(),
         )),
+        policies: None,
     });
 
     let endpoint = "/api/v1/shell/os-mode?device=00000000-0000-4000-8000-000000000001";

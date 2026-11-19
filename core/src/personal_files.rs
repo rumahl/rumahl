@@ -65,6 +65,11 @@ pub trait PersonalFiles: Send + Sync {
     /// target. An empty path resolves to the root and yields an empty trail.
     /// Every entry before the last must be a directory.
     fn path_trail(&self, user: UserId, path: &str) -> Result<Vec<PersonalFile>, FileError>;
+    /// One entry by id, without reading its content. Used by quota checks and
+    /// anything that needs a file's size without its bytes.
+    fn entry(&self, user: UserId, id: &str) -> Result<PersonalFile, FileError>;
+    /// The bytes the account's documents occupy, files only.
+    fn usage(&self, user: UserId) -> Result<u64, FileError>;
     /// The stable id and kind of a home-relative path. An empty path is the
     /// root. This is what lets paths be addressed without exposing row ids.
     fn resolve_path(&self, user: UserId, path: &str) -> Result<(String, bool), FileError> {

@@ -37,6 +37,7 @@ fn gateway(root: &std::path::Path, config: Option<PlatformConfig>) -> axum::Rout
         os_mode: Some(Arc::new(
             SqliteOsModeRepository::open(root.join("preferences.sqlite")).unwrap(),
         )),
+        policies: None,
         platform_config: config.map(Arc::new),
     })
 }

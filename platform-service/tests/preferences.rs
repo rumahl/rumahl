@@ -62,6 +62,7 @@ async fn preferences_are_session_scoped_csrf_protected_and_revision_checked() {
         os_mode: Some(Arc::new(
             SqliteOsModeRepository::open(root.join("preferences.sqlite")).unwrap(),
         )),
+        policies: None,
     });
     let endpoint = "/api/v1/shell/preferences?device=00000000-0000-4000-8000-000000000001";
     let request = |token: Option<&str>, origin: Option<&str>, body: Option<serde_json::Value>| {

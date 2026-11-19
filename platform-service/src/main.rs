@@ -238,13 +238,17 @@ async fn run() -> Result<(), ServiceError> {
         Some(adapters) => apps_provider.with_runtime_adapters(adapters),
         None => apps_provider,
     };
+    // Administrative policies resolve from the identity store on every check.
+    let policies: Arc<dyn rumahl_platform_web::PolicyEngine> =
+        Arc::new(rumahl_platform_service::policy_engine::LocalPolicyEngine::open(&accounts)?);
     let apps = Arc::new(
         rumahl_platform_web::AppAccess::new(
             Arc::new(apps_provider),
             &config.public_origin,
             &app_suffix,
         )
-        .map_err(|_| std::io::Error::other("invalid app host configuration"))?,
+        .map_err(|_| std::io::Error::other("invalid app host configuration"))?
+        .with_policies(policies.clone()),
     );
     let events = Arc::new(InMemoryShellEvents::new(128));
     // Kept for the shutdown signal: the OS tells every client when it stops.
@@ -269,6 +273,9 @@ async fn run() -> Result<(), ServiceError> {
         Ok(ensured) => eprintln!("rumahl platform: {ensured} account home(s) available"),
         Err(error) => eprintln!("rumahl platform: account homes unavailable: {error}"),
     }
+    // Administrative policies resolve from the identity store on every check.
+    let policies: Arc<dyn rumahl_platform_web::PolicyEngine> =
+        Arc::new(rumahl_platform_service::policy_engine::LocalPolicyEngine::open(&accounts)?);
     // App containers reach the OS over this socket; the supervisor mounts it
     // and the token descriptor lives in each app's private data directory.
     match rumahl_platform_service::channel::start(
@@ -328,6 +335,7 @@ async fn run() -> Result<(), ServiceError> {
             )?),
             audit.clone(),
         ))),
+        policies: Some(policies),
         host_files: Some(Arc::new(
             rumahl_platform_service::host_files::LocalHostFiles::from_environment(&accounts),
         )),

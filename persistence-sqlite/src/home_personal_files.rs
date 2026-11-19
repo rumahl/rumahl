@@ -504,6 +504,78 @@ impl PersonalFiles for HomePersonalFiles {
         Ok(())
     }
 
+    fn entry(&self, owner: UserId, id: &str) -> Result<PersonalFile, E> {
+        let (path, relative) = self.resolve(owner, id)?;
+        let meta = std::fs::symlink_metadata(&path).map_err(io_error)?;
+        if meta.file_type().is_symlink() {
+            return Err(E::Invalid);
+        }
+        let directory = meta.is_dir();
+        let name = path
+            .file_name()
+            .map(|name| name.to_string_lossy().into_owned())
+            .unwrap_or_default();
+        let parent_id = if relative.is_empty() {
+            "root".to_owned()
+        } else {
+            match relative.rsplit_once('/') {
+                Some((parent, _)) => self
+                    .connect()
+                    .map_err(db)
+                    .and_then(|c| Self::id_for_path(&c, owner, parent))
+                    .unwrap_or_default(),
+                None => "root".to_owned(),
+            }
+        };
+        Ok(PersonalFile {
+            id: id.to_owned(),
+            parent: parent_id,
+            name,
+            directory,
+            size: if directory { 0 } else { meta.len() },
+            children: 0,
+        })
+    }
+
+    fn usage(&self, owner: UserId) -> Result<u64, E> {
+        let home = self.home(owner)?;
+        let mut used = 0_u64;
+        let mut visited = 0_usize;
+        // Bounded like every other walk: a home that grew past these bounds
+        // reports its whole budget as used instead of hanging a request.
+        const MAX_USAGE_ENTRIES: usize = 100_000;
+        const MAX_USAGE_DEPTH: usize = 64;
+        fn walk_bounded(
+            dir: &Path,
+            depth: usize,
+            used: &mut u64,
+            visited: &mut usize,
+        ) -> std::io::Result<()> {
+            if depth > MAX_USAGE_DEPTH {
+                return Ok(());
+            }
+            for entry in std::fs::read_dir(dir)? {
+                let entry = entry?;
+                let meta = std::fs::symlink_metadata(entry.path())?;
+                if meta.file_type().is_symlink() {
+                    continue;
+                }
+                *visited += 1;
+                if *visited >= MAX_USAGE_ENTRIES {
+                    return Ok(());
+                }
+                if meta.is_dir() {
+                    walk_bounded(&entry.path(), depth + 1, used, visited)?;
+                } else if meta.is_file() {
+                    *used = used.saturating_add(meta.len());
+                }
+            }
+            Ok(())
+        }
+        walk_bounded(&home, 0, &mut used, &mut visited).map_err(|_| E::Unavailable)?;
+        Ok(used)
+    }
+
     fn path_trail(&self, owner: UserId, path: &str) -> Result<Vec<PersonalFile>, E> {
         let segments = rumahl_core::personal_path_segments(path)?;
         let home = self.home(owner)?;

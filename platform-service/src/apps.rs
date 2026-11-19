@@ -856,6 +856,29 @@ impl AppProvider for PersistentApps {
     ) -> Result<AppFileOutcome, AppAccessError> {
         self.app_file_access(identity, installation, access)
     }
+    fn personal_files_usage(
+        &self,
+        identity: ShellIdentity,
+        _installation: InstallationId,
+    ) -> Result<u64, AppAccessError> {
+        self.authenticate(identity)?;
+        let files = self.files.as_ref().ok_or(AppAccessError::Unavailable)?;
+        files
+            .usage(identity.user_id)
+            .map_err(|_| AppAccessError::Unavailable)
+    }
+    fn personal_files_entry(
+        &self,
+        identity: ShellIdentity,
+        _installation: InstallationId,
+        key: &str,
+    ) -> Result<rumahl_core::PersonalFile, AppAccessError> {
+        self.authenticate(identity)?;
+        let files = self.files.as_ref().ok_or(AppAccessError::Unavailable)?;
+        files
+            .entry(identity.user_id, key)
+            .map_err(|_| AppAccessError::Denied)
+    }
     fn resolve_channel_path(
         &self,
         identity: ShellIdentity,

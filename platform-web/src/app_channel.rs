@@ -494,6 +494,7 @@ fn handle_file_request<W: Write + Send>(
             AppFileDeny::NoGrant => "no-grant",
             AppFileDeny::ApprovalRequired => "approval-required",
             AppFileDeny::OutsideScope => "outside-scope",
+            AppFileDeny::QuotaExceeded => "quota",
         }),
         Err(AppAccessError::Denied) => deny("denied"),
         Err(AppAccessError::Unavailable) => deny("unavailable"),

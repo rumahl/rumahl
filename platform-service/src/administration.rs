@@ -7,10 +7,13 @@ use rumahl_core::{
     UserId, UserRole,
 };
 use rumahl_persistence_sqlite::{
-    BrowserSessionError, SqliteAccountRoles, SqliteAccountStateRepository,
-    SqliteBrowserSessionRepository, SqliteLocalAccountAdministrationRepository,
+    BrowserSessionError, PolicyStoreError, SqliteAccountRoles, SqliteAccountStateRepository,
+    SqliteBrowserSessionRepository, SqliteLocalAccountAdministrationRepository, SqlitePolicyStore,
 };
-use rumahl_platform_web::{AdminAuditEntry, AdminError, AdminSession, AdminUser, Administration};
+use rumahl_platform_web::{
+    AdminAuditEntry, AdminError, AdminGroup, AdminPolicyAssignment, AdminSession, AdminUser,
+    Administration,
+};
 use rumahl_ui_contracts::ShellUserRole;
 use std::path::Path;
 
@@ -27,6 +30,7 @@ pub struct LocalAdministration {
     passwords: PasswordAdministration,
     sessions: SqliteBrowserSessionRepository,
     audit: Option<Arc<dyn AuditLog>>,
+    policies: SqlitePolicyStore,
     /// Home root for new accounts; `None` leaves home creation to the
     /// deployment.
     home_root: Option<std::path::PathBuf>,
@@ -45,6 +49,7 @@ impl LocalAdministration {
             ),
             sessions: SqliteBrowserSessionRepository::open(path)?,
             audit,
+            policies: SqlitePolicyStore::open(path)?,
             home_root: None,
         })
     }
@@ -373,6 +378,136 @@ impl Administration for LocalAdministration {
                     .collect()
             })
             .map_err(|_| AdminError::Unavailable)
+    }
+
+    fn list_policy_assignments(
+        &self,
+        actor: UserId,
+    ) -> Result<Vec<AdminPolicyAssignment>, AdminError> {
+        self.require_admin(actor)?;
+        let assignments = self
+            .policies
+            .assignments()
+            .map_err(|_| AdminError::Unavailable)?;
+        Ok(assignments
+            .into_iter()
+            .map(|assignment| AdminPolicyAssignment {
+                subject: assignment.subject.encode(),
+                key: assignment.key.to_string(),
+                value: match assignment.value {
+                    rumahl_core::PolicyValue::Boolean(value) => serde_json::json!(value),
+                    rumahl_core::PolicyValue::Number(value) => serde_json::json!(value),
+                },
+            })
+            .collect())
+    }
+
+    fn set_policy_assignment(
+        &self,
+        actor: UserId,
+        subject: rumahl_core::PolicySubject,
+        key: rumahl_core::PolicyKey,
+        value: Option<rumahl_core::PolicyValue>,
+    ) -> Result<(), AdminError> {
+        self.require_admin(actor)?;
+        let error = match self.policies.set_assignment(subject, key, value) {
+            Ok(()) => return Ok(()),
+            Err(error) => error,
+        };
+        Err(match error {
+            PolicyStoreError::InvalidPolicy(_) => AdminError::Invalid,
+            PolicyStoreError::UnknownSubject | PolicyStoreError::UnknownGroup => {
+                AdminError::NotFound
+            }
+            PolicyStoreError::DuplicateGroupName => AdminError::Conflict,
+            PolicyStoreError::Storage | PolicyStoreError::LockPoisoned => AdminError::Unavailable,
+        })
+    }
+
+    fn list_groups(&self, actor: UserId) -> Result<Vec<AdminGroup>, AdminError> {
+        self.require_admin(actor)?;
+        let groups = self
+            .policies
+            .groups()
+            .map_err(|_| AdminError::Unavailable)?;
+        Ok(groups
+            .into_iter()
+            .map(|group| AdminGroup {
+                id: group.id.to_string(),
+                name: group.name,
+                members: group.members.iter().map(|user| user.to_string()).collect(),
+            })
+            .collect())
+    }
+
+    fn create_group(&self, actor: UserId, name: &str) -> Result<AdminGroup, AdminError> {
+        self.require_admin(actor)?;
+        let group = match self.policies.create_group(name) {
+            Ok(group) => group,
+            Err(error) => {
+                return Err(match error {
+                    PolicyStoreError::InvalidPolicy(_) => AdminError::Invalid,
+                    PolicyStoreError::DuplicateGroupName => AdminError::Conflict,
+                    PolicyStoreError::Storage | PolicyStoreError::LockPoisoned => {
+                        AdminError::Unavailable
+                    }
+                    PolicyStoreError::UnknownSubject | PolicyStoreError::UnknownGroup => {
+                        AdminError::NotFound
+                    }
+                });
+            }
+        };
+        Ok(AdminGroup {
+            id: group.id.to_string(),
+            name: group.name,
+            members: Vec::new(),
+        })
+    }
+
+    fn delete_group(&self, actor: UserId, id: rumahl_core::GroupId) -> Result<(), AdminError> {
+        self.require_admin(actor)?;
+        match self.policies.delete_group(&id) {
+            Ok(()) => Ok(()),
+            Err(PolicyStoreError::UnknownGroup) => Err(AdminError::NotFound),
+            Err(PolicyStoreError::Storage | PolicyStoreError::LockPoisoned) => {
+                Err(AdminError::Unavailable)
+            }
+            Err(
+                PolicyStoreError::InvalidPolicy(_)
+                | PolicyStoreError::UnknownSubject
+                | PolicyStoreError::DuplicateGroupName,
+            ) => Err(AdminError::Invalid),
+        }
+    }
+
+    fn update_group_members(
+        &self,
+        actor: UserId,
+        id: rumahl_core::GroupId,
+        add: Vec<UserId>,
+        remove: Vec<UserId>,
+    ) -> Result<AdminGroup, AdminError> {
+        self.require_admin(actor)?;
+        let group = match self.policies.update_members(&id, &add, &remove) {
+            Ok(group) => group,
+            Err(error) => {
+                return Err(match error {
+                    PolicyStoreError::UnknownGroup => AdminError::NotFound,
+                    PolicyStoreError::UnknownSubject => AdminError::NotFound,
+                    PolicyStoreError::Storage | PolicyStoreError::LockPoisoned => {
+                        AdminError::Unavailable
+                    }
+                    PolicyStoreError::InvalidPolicy(_) | PolicyStoreError::DuplicateGroupName => {
+                        AdminError::Invalid
+                    }
+                });
+            }
+        };
+        Ok(AdminGroup {
+            id: group.id.to_string(),
+            name: group.name,
+            members: group.members.iter().map(|user| user.to_string()).collect(),
+        })
     }
 }
 

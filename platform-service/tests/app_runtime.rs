@@ -120,6 +120,7 @@ fn gateway(root: &std::path::Path) -> axum::Router {
         os_mode: Some(Arc::new(
             SqliteOsModeRepository::open(root.join("preferences.sqlite")).unwrap(),
         )),
+        policies: None,
         platform_config: None,
     })
 }

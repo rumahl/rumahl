@@ -287,7 +287,9 @@ async fn context(
 }
 
 /// The user's own home is their data, not a system surface: it needs no
-/// exposure mode. Installed apps and the system tree stay advanced-only.
+/// exposure mode. Installed apps and the system tree stay advanced-only, and a
+/// policy can close the advanced areas for this account even when a stored
+/// mode still says advanced.
 async fn authorize_area(
     state: &Arc<GatewayState>,
     user: UserId,
@@ -308,17 +310,92 @@ async fn authorize_area(
     if !mode.policy().can_browse_system_files() {
         return Err(error(StatusCode::FORBIDDEN));
     }
+    if !state
+        .policies
+        .clone()
+        .is_none_or(|policies| policies.advanced_mode_allowed(user))
+    {
+        return Err(error(StatusCode::FORBIDDEN));
+    }
     Ok(())
 }
 
 /// Mutating requests need the origin check, exactly like every other write in
-/// the shell; reads stay plain authenticated requests.
-fn allow_mutation(state: &GatewayState, headers: &HeaderMap) -> Option<Response> {
+/// the shell; reads stay plain authenticated requests. A write that names
+/// another user is refused outright: cross-user access is read-only.
+fn allow_mutation(
+    state: &GatewayState,
+    headers: &HeaderMap,
+    query: &HashMap<String, String>,
+) -> Option<Response> {
+    if query.contains_key("user") {
+        return Some(error(StatusCode::FORBIDDEN));
+    }
     if valid_origin(headers, &state.config.public_origin) {
         None
     } else {
         Some(error(StatusCode::FORBIDDEN))
     }
+}
+
+#[allow(clippy::result_large_err)]
+/// Authorizes an administrator to look into another account's home. Policy and
+/// role both have to allow it, and every access is audited.
+async fn authorize_cross_user(
+    state: &Arc<GatewayState>,
+    actor: UserId,
+    username: &str,
+) -> Result<UserId, Response> {
+    // Without an administration there is nobody who could be an administrator:
+    // the cross-user path is denied, not unavailable.
+    let Some(admin) = state.admin.clone() else {
+        return Err(error(StatusCode::FORBIDDEN));
+    };
+    // The role comes first: the user list below is administrator-only, so a
+    // non-admin must never reach it (and must never learn account names).
+    let role = match tokio::task::spawn_blocking({
+        let admin = Arc::clone(&admin);
+        move || admin.role(actor)
+    })
+    .await
+    {
+        Ok(Ok(role)) => role,
+        Ok(Err(_)) => return Err(error(StatusCode::SERVICE_UNAVAILABLE)),
+        Err(_) => return Err(error(StatusCode::SERVICE_UNAVAILABLE)),
+    };
+    if !role.is_administrator() {
+        return Err(error(StatusCode::FORBIDDEN));
+    }
+    let users = match tokio::task::spawn_blocking({
+        let admin = Arc::clone(&admin);
+        move || admin.list_users(actor)
+    })
+    .await
+    {
+        Ok(Ok(users)) => users,
+        Ok(Err(_)) => return Err(error(StatusCode::SERVICE_UNAVAILABLE)),
+        Err(_) => return Err(error(StatusCode::SERVICE_UNAVAILABLE)),
+    };
+    let allowed = state
+        .policies
+        .clone()
+        .is_some_and(|policies| policies.home_cross_user_read(actor));
+    if !allowed {
+        return Err(error(StatusCode::FORBIDDEN));
+    }
+    let target = users
+        .iter()
+        .find(|candidate| candidate.username.eq_ignore_ascii_case(username))
+        .ok_or_else(|| error(StatusCode::NOT_FOUND))?;
+    let id = UserId::parse(&target.id).map_err(|_| error(StatusCode::NOT_FOUND))?;
+    record_audit(
+        state,
+        rumahl_core::AuditActor::User(actor),
+        AuditAction::Maintenance,
+        AuditOutcome::Success,
+        Some(&format!("home-cross-read:{username}")),
+    );
+    Ok(id)
 }
 
 #[allow(clippy::result_large_err)]
@@ -409,8 +486,8 @@ async fn resolve_path(
             }
         }
         PathTarget::Home { username, relative } => {
-            // The account name in an internal path must be the caller's. It is
-            // never accepted from the client without that comparison.
+            // The account name in an internal path must be the caller's, or an
+            // administrator opening another home under the cross-user policy.
             let Some(provider) = state.host_files.clone() else {
                 return error(StatusCode::SERVICE_UNAVAILABLE);
             };
@@ -421,16 +498,25 @@ async fn resolve_path(
                     Ok(Err(failure)) => return fail(failure),
                     Err(_) => return error(StatusCode::SERVICE_UNAVAILABLE),
                 };
-            if username.as_deref().is_some_and(|name| name != account) {
-                return error(StatusCode::FORBIDDEN);
+            let cross_user = username
+                .as_deref()
+                .is_some_and(|name| !name.eq_ignore_ascii_case(&account));
+            let mut owner = user;
+            if cross_user {
+                let Some(username) = username.as_deref() else {
+                    unreachable!("the branch above checked for a name");
+                };
+                owner = match authorize_cross_user(&state, user, username).await {
+                    Ok(target) => target,
+                    Err(response) => return response,
+                };
             }
-            let provider = match state.host_files.clone() {
-                Some(provider) => provider,
-                None => return error(StatusCode::SERVICE_UNAVAILABLE),
+            let Some(provider) = state.host_files.clone() else {
+                return error(StatusCode::SERVICE_UNAVAILABLE);
             };
             let requested = relative.clone();
             let (name, directory) = match tokio::task::spawn_blocking(move || {
-                provider.stat(HostArea::Home, &requested, user)
+                provider.stat(HostArea::Home, &requested, owner)
             })
             .await
             {
@@ -438,45 +524,57 @@ async fn resolve_path(
                 Ok(Err(failure)) => return fail(failure),
                 Err(_) => return error(StatusCode::SERVICE_UNAVAILABLE),
             };
-            // The personal store is the same home; its stable ids make the
-            // path a store trail the Files app can navigate.
-            let (id, trail) = match state.files.clone() {
-                Some(files) => {
-                    let requested = relative.clone();
-                    match tokio::task::spawn_blocking(move || files.path_trail(user, &requested))
+            // The personal store is the same home, so the caller's own path
+            // carries its stable ids and trail. Another account's home stays
+            // read-only with neither: it is never the caller's store.
+            let (id, trail) = if cross_user {
+                (None, None)
+            } else {
+                match state.files.clone() {
+                    Some(files) => {
+                        let requested = relative.clone();
+                        match tokio::task::spawn_blocking(move || {
+                            files.path_trail(user, &requested)
+                        })
                         .await
-                    {
-                        Ok(Ok(entries)) => {
-                            let trail = entries
-                                .iter()
-                                .map(|entry| {
-                                    serde_json::json!({
-                                        "id": entry.id,
-                                        "name": entry.name,
-                                        "directory": entry.directory,
+                        {
+                            Ok(Ok(entries)) => {
+                                let trail = entries
+                                    .iter()
+                                    .map(|entry| {
+                                        serde_json::json!({
+                                            "id": entry.id,
+                                            "name": entry.name,
+                                            "directory": entry.directory,
+                                        })
                                     })
-                                })
-                                .collect::<Vec<_>>();
-                            let id = entries
-                                .last()
-                                .map(|entry| entry.id.clone())
-                                .unwrap_or_else(|| "root".to_owned());
-                            (Some(id), Some(trail))
+                                    .collect::<Vec<_>>();
+                                let id = entries
+                                    .last()
+                                    .map(|entry| entry.id.clone())
+                                    .unwrap_or_else(|| "root".to_owned());
+                                (Some(id), Some(trail))
+                            }
+                            Ok(Err(_)) => (None, None),
+                            Err(_) => return error(StatusCode::SERVICE_UNAVAILABLE),
                         }
-                        Ok(Err(_)) => (None, None),
-                        Err(_) => return error(StatusCode::SERVICE_UNAVAILABLE),
                     }
+                    None => (None, None),
                 }
-                None => (None, None),
+            };
+            let home_account = if cross_user {
+                username.clone().unwrap_or_default()
+            } else {
+                account
             };
             (
-                internal_path(&account, &relative),
+                internal_path(&home_account, &relative),
                 rumahl_path(HostArea::Home, &relative),
                 "home",
                 relative,
                 name,
                 directory,
-                true,
+                !cross_user,
                 id,
                 trail,
             )
@@ -517,6 +615,27 @@ fn audit_change(
     );
 }
 
+/// Resolves who a read request acts for. Without a `user` parameter it is the
+/// caller; with one it must be an administrator opening another home under the
+/// cross-user policy. Writes never carry `user`.
+async fn read_actor(
+    state: &Arc<GatewayState>,
+    query: &HashMap<String, String>,
+    area: HostArea,
+    caller: UserId,
+) -> Result<UserId, Response> {
+    let Some(username) = query.get("user") else {
+        return Ok(caller);
+    };
+    if username.is_empty() || username.len() > MAX_NAME_BYTES {
+        return Err(error(StatusCode::BAD_REQUEST));
+    }
+    if area != HostArea::Home {
+        return Err(error(StatusCode::FORBIDDEN));
+    }
+    authorize_cross_user(state, caller, username).await
+}
+
 async fn list(
     State(state): State<Arc<GatewayState>>,
     Query(query): Query<HashMap<String, String>>,
@@ -524,6 +643,10 @@ async fn list(
 ) -> Response {
     let (area, path, provider, user) = match context(&state, &headers, &query).await {
         Ok(value) => value,
+        Err(response) => return response,
+    };
+    let user = match read_actor(&state, &query, area, user).await {
+        Ok(user) => user,
         Err(response) => return response,
     };
     let requested = path.clone();
@@ -564,6 +687,10 @@ async fn download(
         Ok(value) => value,
         Err(response) => return response,
     };
+    let user = match read_actor(&state, &query, area, user).await {
+        Ok(user) => user,
+        Err(response) => return response,
+    };
     match tokio::task::spawn_blocking(move || provider.read(area, &path, user)).await {
         Ok(Ok((name, data))) => {
             let encoded = name
@@ -594,7 +721,7 @@ async fn write(
     headers: HeaderMap,
     body: Bytes,
 ) -> Response {
-    if let Some(response) = allow_mutation(&state, &headers) {
+    if let Some(response) = allow_mutation(&state, &headers, &query) {
         return response;
     }
     let (area, path, provider, user) = match context(&state, &headers, &query).await {
@@ -629,7 +756,7 @@ async fn create(
     Query(query): Query<HashMap<String, String>>,
     headers: HeaderMap,
 ) -> Response {
-    if let Some(response) = allow_mutation(&state, &headers) {
+    if let Some(response) = allow_mutation(&state, &headers, &query) {
         return response;
     }
     let (area, parent, provider, user) = match context(&state, &headers, &query).await {
@@ -677,7 +804,7 @@ async fn rename(
     Query(query): Query<HashMap<String, String>>,
     headers: HeaderMap,
 ) -> Response {
-    if let Some(response) = allow_mutation(&state, &headers) {
+    if let Some(response) = allow_mutation(&state, &headers, &query) {
         return response;
     }
     let (area, path, provider, user) = match context(&state, &headers, &query).await {
@@ -712,7 +839,7 @@ async fn remove(
     Query(query): Query<HashMap<String, String>>,
     headers: HeaderMap,
 ) -> Response {
-    if let Some(response) = allow_mutation(&state, &headers) {
+    if let Some(response) = allow_mutation(&state, &headers, &query) {
         return response;
     }
     let (area, path, provider, user) = match context(&state, &headers, &query).await {

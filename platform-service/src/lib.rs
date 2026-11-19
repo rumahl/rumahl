@@ -800,6 +800,7 @@ pub mod channel;
 pub mod file_migration;
 pub mod host_files;
 pub mod install;
+pub mod policy_engine;
 pub mod user_homes;
 
 #[cfg(test)]

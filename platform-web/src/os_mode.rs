@@ -139,6 +139,18 @@ async fn save(
         return error(StatusCode::BAD_REQUEST);
     };
 
+    // A policy can close advanced mode entirely; that must not be
+    // bypassable with a password, so it is checked before anything else.
+    if let Some(mode) = mode
+        && matches!(mode, OsMode::Advanced | OsMode::Developer)
+        && !state
+            .policies
+            .clone()
+            .is_none_or(|policies| policies.advanced_mode_allowed(user))
+    {
+        return error(StatusCode::FORBIDDEN);
+    }
+
     // Raising the mode requires re-authentication; anything else must not carry a password.
     let raising = matches!(mode, Some(OsMode::Advanced) | Some(OsMode::Developer));
     let has_password = object.contains_key("password");

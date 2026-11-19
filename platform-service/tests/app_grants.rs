@@ -138,6 +138,8 @@ fn gateway(root: &std::path::Path) -> axum::Router {
         workspace: None,
         preferences: None,
         os_mode: None,
+
+        policies: None,
     })
 }
 

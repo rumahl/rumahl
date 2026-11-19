@@ -10,6 +10,13 @@ pub mod identity;
 pub mod permissions;
 pub mod persistence;
 pub mod platform;
+pub mod policies;
+
+pub use policies::{
+    DEFAULT_PERSONAL_QUOTA_BYTES, PolicyAssignment, PolicyDefinition, PolicyKey, PolicyKeyError,
+    PolicyKind, PolicySubject, PolicyValue, policy_catalog, policy_definition, resolve_policy,
+    validate_assignment,
+};
 pub mod resources;
 pub mod runtime;
 pub mod secrets;
@@ -52,9 +59,9 @@ pub use databases::{
 };
 
 pub use identity::{
-    AppId, AppIdError, AppIdentity, Identity, InstallationId, InstallationIdError, PublisherId,
-    PublisherIdError, ServiceId, ServiceIdError, ServiceIdentity, SessionId, SessionIdError,
-    UserId, UserIdError, UserIdentity,
+    AppId, AppIdError, AppIdentity, GroupId, GroupIdError, Identity, InstallationId,
+    InstallationIdError, PublisherId, PublisherIdError, ServiceId, ServiceIdError, ServiceIdentity,
+    SessionId, SessionIdError, UserId, UserIdError, UserIdentity,
 };
 
 pub use resources::{

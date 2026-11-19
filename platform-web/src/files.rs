@@ -12,7 +12,7 @@ use axum::{
     response::{IntoResponse, Response},
     routing::get,
 };
-use rumahl_core::FileError;
+use rumahl_core::{FileError, UserId};
 use std::{collections::HashMap, sync::Arc};
 pub(crate) fn routes() -> Router<Arc<GatewayState>> {
     Router::new()
@@ -39,6 +39,31 @@ fn key(q: &HashMap<String, String>, name: &str) -> Option<String> {
         })
         .cloned()
 }
+/// Enforces the account's personal-files budget before a write. `replaced`
+/// subtracts the size of a file that is about to be overwritten.
+fn enforce_quota(
+    repo: &Arc<dyn rumahl_core::PersonalFiles>,
+    policies: &Option<Arc<dyn crate::PolicyEngine>>,
+    user: UserId,
+    incoming: usize,
+    replaced: Option<u64>,
+) -> Result<(), FileError> {
+    let quota = policies
+        .clone()
+        .map_or(rumahl_core::DEFAULT_PERSONAL_QUOTA_BYTES, |engine| {
+            engine.personal_file_quota(user)
+        });
+    let used = repo.usage(user)?;
+    let used = match replaced {
+        Some(size) => used.saturating_sub(size),
+        None => used,
+    };
+    if used.saturating_add(incoming as u64) > quota {
+        return Err(FileError::Limit);
+    }
+    Ok(())
+}
+
 fn completed(r: Result<Result<(), FileError>, tokio::task::JoinError>) -> Response {
     match r {
         Ok(Ok(())) => error(StatusCode::NO_CONTENT),
@@ -136,8 +161,12 @@ async fn create(
     let Some(repo) = s.files.clone() else {
         return error(StatusCode::SERVICE_UNAVAILABLE);
     };
+    let policies = s.policies.clone();
     completed(
         tokio::task::spawn_blocking(move || {
+            if !directory {
+                enforce_quota(&repo, &policies, u, b.len(), None)?;
+            }
             repo.create(u, &p, &n, if directory { None } else { Some(b.to_vec()) })
         })
         .await,
@@ -210,7 +239,15 @@ async fn write(
     let Some(repo) = s.files.clone() else {
         return error(StatusCode::SERVICE_UNAVAILABLE);
     };
-    completed(tokio::task::spawn_blocking(move || repo.write(u, &id, b.to_vec())).await)
+    let policies = s.policies.clone();
+    completed(
+        tokio::task::spawn_blocking(move || {
+            let replaced = repo.entry(u, &id).map(|entry| entry.size).ok();
+            enforce_quota(&repo, &policies, u, b.len(), replaced)?;
+            repo.write(u, &id, b.to_vec())
+        })
+        .await,
+    )
 }
 async fn download(
     State(s): State<Arc<GatewayState>>,
