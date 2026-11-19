@@ -56,6 +56,17 @@ describe("demo backend", () => {
     expect(await content.text()).toBe("hello");
     const renamed = await json(await backend.request(`/api/v1/files?id=${created.id as string}&name=renamed.txt`, { method: "PUT" }));
     expect(renamed).toMatchObject({ name: "renamed.txt" });
+    const written = await backend.request(`/api/v1/files/content?id=${created.id as string}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/octet-stream" },
+      body: "edited in the text editor"
+    });
+    expect(written.status).toBe(204);
+    const edited = await backend.request(`/api/v1/files/content?id=${created.id as string}`);
+    expect(await edited.text()).toBe("edited in the text editor");
+    const listed = await json(await backend.request("/api/v1/files?parent=root")) as unknown as { name: string; size: number }[];
+    expect(listed.find((entry) => entry.name === "renamed.txt")?.size).toBe(25);
+    expect((await backend.request("/api/v1/files/content?id=missing", { method: "PUT", body: "x" })).status).toBe(404);
   });
 
   test("keeps created files and preferences in browser storage across reloads", async () => {

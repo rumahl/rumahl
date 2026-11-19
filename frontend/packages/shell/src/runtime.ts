@@ -31,7 +31,7 @@ export async function startShell({
   hydrate = hydrateShell,
   readEmbedded = readEmbeddedShellSnapshot,
   renderFailure = renderStartupFailure,
-  request = globalThis.fetch,
+  request = globalThis.fetch.bind(globalThis),
   openEvents = browserEventSocket,
   allowDevelopmentLoopback = false,
   demo

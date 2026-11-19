@@ -23,9 +23,14 @@ describe("adaptive ink tones", () => {
       expect(contrastRatio(muted, background).ratio).toBeGreaterThanOrEqual(4.5);
     }
   });
+
+  test("raises muted text on mid-dark glass instead of stopping at a washed tone", () => {
+    const muted = adaptiveMuted("#5e726e");
+    expect(contrastRatio(muted, "#5e726e").ratio).toBeGreaterThanOrEqual(4.5);
+  });
 });
 
-import { decideInk, ensureReadableTextColor, worstContrast } from "./adaptive-colors";
+import { adaptiveShadow, averageColor, colorsInCssBackground, decideInk, ensureReadableTextColor, worstContrast } from "./adaptive-colors";
 import { hexToHsl } from "@rumahl/ui/color";
 
 describe("adaptive decisions", () => {
@@ -53,6 +58,41 @@ describe("adaptive decisions", () => {
   test("uses the least favourable sample, not an average", () => {
     expect(worstContrast("#ffffff", ["#000000", "#ffffff"])).toBe(1);
     expect(worstContrast("#ffffff", ["#000000", "#202020"])).toBeGreaterThan(10);
+  });
+
+  test("ties the halo polarity to the ink, not the first wallpaper sample", () => {
+    expect(adaptiveShadow("#eef3f4")).toContain("rgba(0, 0, 0");
+    expect(adaptiveShadow("#9fb1b6")).toContain("rgba(0, 0, 0");
+    expect(adaptiveShadow("#1a2126")).toContain("rgba(255, 255, 255");
+  });
+
+  test("strengthens the halo when no ink can clear the critical contrast", () => {
+    const safe = adaptiveShadow("#eef3f4", 6);
+    const critical = adaptiveShadow("#eef3f4", 2);
+    expect(safe).not.toContain("0 0 6px");
+    expect(critical).toContain("0 0 6px");
+  });
+
+  test("reads opaque colour stops from CSS gradients", () => {
+    expect(colorsInCssBackground("linear-gradient(140deg, #ffffff, #d4b4ac 45%, #586eb1)")).toEqual([
+      "#ffffff",
+      "#d4b4ac",
+      "#586eb1"
+    ]);
+    expect(colorsInCssBackground("radial-gradient(circle, rgba(255,255,255,0.8), transparent)")).toEqual([
+      "rgba(255,255,255,0.8)"
+    ]);
+    expect(colorsInCssBackground("linear-gradient(#00000000, #000000)")).toEqual(["#000000"]);
+    expect(colorsInCssBackground("linear-gradient(rgb(0, 0, 0), rgb(0, 0, 0))")).toEqual([
+      "rgb(0, 0, 0)"
+    ]);
+    expect(colorsInCssBackground("linear-gradient(rgba(0, 0, 0, 0), #ffffff)")).toEqual(["#ffffff"]);
+  });
+
+  test("derives a representative tone from a gradient", () => {
+    expect(averageColor(["#000000", "#ffffff"])).toBe("#808080");
+    expect(averageColor(["#586eb1", "#b8bcdd", "#d4b4ac"])).toMatch(/^#[0-9a-f]{6}$/);
+    expect(averageColor([])).toBe("#808080");
   });
 });
 

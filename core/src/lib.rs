@@ -13,6 +13,7 @@ pub mod platform;
 pub mod resources;
 pub mod runtime;
 pub mod secrets;
+pub mod weather;
 
 pub use accounts::{
     AccountRegistry, AccountRegistryError, AccountSession, AccountSessionError,
@@ -38,7 +39,8 @@ pub use apps::{
     OidcClientType, OidcScope, PlatformDeregistrationReport, PlatformRegistrar,
     PlatformRegistrarError, PlatformRegistration, PlatformRegistrationError, PreferredStreamSize,
     RuntimeLifecycle, STREAMING_ENGINE_CAPABILITY, SearchContributionDeclaration,
-    StreamPresentation, StreamPresentationError,
+    StreamPresentation, StreamPresentationError, SurfaceDeclaration, SurfaceIcon, SurfaceKind,
+    SurfacePlacement, SurfaceSize, SurfaceSlot, SurfaceTone,
 };
 
 pub use context::{CorrelationId, CorrelationIdError, OperationContext};
@@ -63,6 +65,13 @@ pub use resources::{
 pub use secrets::{
     SecretId, SecretIdError, SecretPurpose, SecretPurposeError, SecretRecord, SecretStore,
     SecretValue, SecretValueError,
+};
+
+pub use weather::{
+    MAX_ACTIVE_WARNINGS, MAX_WARNINGS_PER_SOURCE, OS_WARNING_SOURCE_ID, WEATHER_WARNING_CAPABILITY,
+    WarningLevel, WarningLogAction, WarningSource, WeatherWarning, WeatherWarningDraft,
+    WeatherWarningError, WeatherWarningLogEntry, WeatherWarningRepository,
+    valid_warning_source_name,
 };
 
 pub use runtime::{

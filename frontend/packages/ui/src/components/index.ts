@@ -1,5 +1,6 @@
 export * from "./Sidenav/Sidenav";
 export * from "./MobileIslandNav/MobileIslandNav";
+export * from "./MobileIslandNav/MobileNavSlot";
 export * from "./AppNavLayout/AppNavLayout";
 export * from "./Navbar/Navbar";
 export * from "./GlassSurface/GlassSurface";

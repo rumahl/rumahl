@@ -3,6 +3,7 @@ import type { ExtensionContribution } from "@rumahl/contracts";
 import { parseWidgetFrameDescriptor } from "@rumahl/contracts/widget";
 import type { ShellRequest } from "../snapshot-client";
 import { useI18n } from "../i18n";
+import { LoadingStatus } from "./LoadingStatus";
 
 type Widget = Extract<ExtensionContribution, { kind: "widget" }>;
 
@@ -72,7 +73,7 @@ export function WidgetFrame({ widget, request, allowDevelopmentLoopback = false,
   }, [frameUrl, reachable, frameLoaded]);
 
   if (unavailable || reachable === "unavailable") return <small role="status">{t("contribution.widgetUnavailable")}</small>;
-  if (!frameUrl || reachable !== "ready") return <small role="status">{t("contribution.widgetLoading")}</small>;
+  if (!frameUrl || reachable !== "ready") return <LoadingStatus className="loading-status--inline" label={t("contribution.widgetLoading")} />;
   return <IsolatedFrame onLoad={() => setFrameLoaded(true)} onError={() => setUnavailable(true)} title={widget.title} url={frameUrl} />;
 }
 

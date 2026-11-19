@@ -12,25 +12,32 @@ import { MobileSettings } from "./MobileSettings";
 import { StoreSettings } from "./StoreSettings";
 import { themes } from "@rumahl/ui/themes";
 import { useTheme } from "@rumahl/ui";
-import { useEffect, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from "react";
+import { GroupContainer, GroupRow } from "@rumahl/ui/components";
+import { useEffect, useId, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { useShellPreferences } from "../preferences/ShellPreferences";
 import { WorkspaceSettings } from "../preferences/WorkspaceSettings";
-import { useLocation, useParams, useRoutes } from "react-router";
-import { DisplaySettings } from "./DisplaySettings";
+import { FullscreenChromeSettings } from "../preferences/FullscreenChromeSettings";
+import { Navigate, useLocation, useParams, useRoutes } from "react-router";
+import { DisplayOverview, DisplaySettings } from "./DisplaySettings";
+import { ThemeManager } from "./ThemeManager";
+import { ThemeSettings } from "./ThemeSettings";
+import { AdminAuditSettings, AdminSessionsSettings, AdminUserDetailSettings, AdminUsersSettings, isAdministrator } from "./AdminSettings";
 import { SystemInfo } from "./SystemInfo";
+import { buildLabel, versionLabel } from "../system-labels";
 import { OsModeSettings } from "./OsModeSettings";
 import { RumahlMark } from "../components/RumahlMark";
 import { SettingsHeading } from "../components/SettingsHeading";
+import { LoadingStatus } from "../components/LoadingStatus";
 import { Button, ButtonLink } from "../components/Button";
 import { RumahlButtonGroup } from "../components/RumahlButtonGroup";
-import { SettingsIcon, DesktopIcon, GridIcon, PulseIcon, ShieldIcon, InfoIcon, DocumentIcon, ExternalLinkIcon, PhoneIcon, StoreIcon, PlayIcon, StopIcon, RefreshIcon } from "../icons";
+import { HomeIcon, SettingsIcon, DesktopIcon, GridIcon, PulseIcon, ShieldIcon, InfoIcon, DocumentIcon, ExternalLinkIcon, PhoneIcon, StoreIcon, PlayIcon, StopIcon, RefreshIcon, UserIcon } from "../icons";
 import { useI18n } from "../i18n";
 import { ShellLink } from "../routing/ShellLink";
 import { UnavailablePage } from "./UnavailablePage";
 import { useThemeTuning } from "../preferences/theme-tuning";
 import { useShell } from "../shell/ShellContext";
-import { osName, versionLabel } from "../system-labels";
+import { osName } from "../system-labels";
 
 const WEBSITE_URL = "https://rumahl.dev";
 const SOURCE_URL = "https://github.com/rumahl/rumahl";
@@ -49,6 +56,7 @@ export function SettingsPage() {
   const preferences = useShellPreferences();
   const { theme } = useTheme();
   const { snapshot, live, mode } = useShell();
+  const admin = isAdministrator(snapshot.user.role);
   const [navWidth, setNavWidth] = useState<number | null>(null);
   const [resizing, setResizing] = useState(false);
   const stopResize = useRef<(() => void) | null>(null);
@@ -103,8 +111,16 @@ export function SettingsPage() {
   };
   const content = useRoutes([
     { index: true, element: <SettingsOverview /> },
-    { path: "device", Component: DeviceSettings },
-    { path: "display", Component: DisplaySettings },
+    { path: "device", element: <Navigate to="/settings/system/device" replace /> },
+    { path: "account", Component: AccountSettings },
+    { path: "display", Component: DisplayOverview },
+    { path: "display/appearance", element: <DisplaySettings section="appearance" /> },
+    { path: "display/typography", element: <DisplaySettings section="typography" /> },
+    { path: "display/surface", element: <DisplaySettings section="surface" /> },
+    { path: "display/advanced", element: <DisplaySettings section="advanced" /> },
+    { path: "display/windows", Component: FullscreenChromeSettings },
+    { path: "display/themes", Component: ThemeManager },
+    { path: "display/themes/settings", Component: ThemeSettings },
     { path: "workspace", Component: WorkspaceSettings },
     { path: "store", Component: StoreSettings },
     { path: "apps", Component: AppsSettings },
@@ -113,8 +129,18 @@ export function SettingsPage() {
     { path: "mobile", Component: MobileSettings },
     { path: "os", Component: OsModeSettings },
     { path: "system", Component: SystemSettings },
+    { path: "system/device", Component: DeviceSettings },
+    { path: "system/version", Component: SystemVersion },
     { path: "system/about", Component: AboutSettings },
     { path: "system/licenses", Component: LicenseSettings },
+    ...(admin ? [
+      { path: "admin/users", Component: AdminUsersSettings },
+      { path: "admin/users/roles", element: <Navigate to="/settings/admin/users" replace /> },
+      { path: "admin/users/:id", Component: AdminUserDetailSettings },
+      { path: "admin/roles", element: <Navigate to="/settings/admin/users" replace /> },
+      { path: "admin/sessions", Component: AdminSessionsSettings },
+      { path: "admin/audit", Component: AdminAuditSettings }
+    ] : []),
     { path: "*", Component: UnavailablePage }
   ]);
   const layoutStyle = navWidth === null ? undefined : ({ "--settings-nav-width": `${navWidth}px` } as CSSProperties);
@@ -123,23 +149,31 @@ export function SettingsPage() {
       <span className="settings-avatar" aria-hidden="true">{snapshot.user.displayName.slice(0, 1).toUpperCase()}</span>
       <div><strong>{snapshot.user.displayName}</strong><div className="small">{t(`mode.${preferences.mode}`)} · {themes.find(item => item.id === theme.id)?.name ?? theme.name}</div></div>
     </div>
-    <div className="nav-heading">{t("preferences.user")}</div>
     <nav aria-label={t("nav.settings")}>
+      <ShellLink className="nav-item" to="/settings" aria-current={pathname === "/settings" ? "page" : undefined}><HomeIcon /><span>{t("settings.start")}</span></ShellLink>
+      <div className="nav-heading">{t("settings.group.personal")}</div>
+      <ShellLink className="nav-item" to="/settings/account" aria-current={pathname.startsWith("/settings/account") ? "page" : undefined}><UserIcon /><span>{t("settings.account")}</span></ShellLink>
       <ShellLink className="nav-item" to="/settings/display" aria-current={pathname.startsWith("/settings/display") ? "page" : undefined}><DesktopIcon /><span>{t("settings.personalization")}</span></ShellLink>
       <ShellLink className="nav-item" to="/settings/workspace" aria-current={pathname.startsWith("/settings/workspace") ? "page" : undefined}><GridIcon /><span>{t("workspace.title")}</span></ShellLink>
-      <ShellLink className="nav-item" to="/settings/store" aria-current={pathname.startsWith("/settings/store") ? "page" : undefined}><StoreIcon /><span>{t("storeSources.title")}</span></ShellLink>
-      <ShellLink className="nav-item" to="/settings/apps" aria-current={pathname.startsWith("/settings/apps") ? "page" : undefined}><GridIcon /><span>{t("settings.apps")}</span></ShellLink>
       <ShellLink className="nav-item" to="/settings/accessibility" aria-current={pathname.startsWith("/settings/accessibility") ? "page" : undefined}><PulseIcon /><span>{t("settings.accessibility")}</span></ShellLink>
       {mode === "mobile" ? <ShellLink className="nav-item" to="/settings/mobile" aria-current={pathname.startsWith("/settings/mobile") ? "page" : undefined}><PhoneIcon /><span>{t("settings.mobile")}</span></ShellLink> : null}
+      <div className="nav-heading">{t("settings.group.apps")}</div>
+      <ShellLink className="nav-item" to="/settings/store" aria-current={pathname.startsWith("/settings/store") ? "page" : undefined}><StoreIcon /><span>{t("storeSources.title")}</span></ShellLink>
+      <ShellLink className="nav-item" to="/settings/apps" aria-current={pathname.startsWith("/settings/apps") ? "page" : undefined}><GridIcon /><span>{t("settings.apps")}</span></ShellLink>
+      <div className="nav-heading">{t("settings.group.system")}</div>
       <ShellLink className="nav-item" to="/settings/os" aria-current={pathname.startsWith("/settings/os") ? "page" : undefined}><ShieldIcon /><span>{t("settings.osMode")}</span></ShellLink>
-      <ShellLink className="nav-item" to="/settings/device" aria-current={pathname.startsWith("/settings/device") ? "page" : undefined}><DesktopIcon /><span>{t("device.title")}</span></ShellLink>
       <ShellLink className="nav-item" to="/settings/system" aria-current={pathname.startsWith("/settings/system") ? "page" : undefined}><ShieldIcon /><span>{t("settings.system")}</span></ShellLink>
-      <ShellLink className="nav-item" to="/settings" aria-current={pathname === "/settings" ? "page" : undefined}><SettingsIcon /><span>{t("nav.settings")}</span></ShellLink>
+      {admin ? <>
+        <div className="nav-heading">{t("settings.group.admin")}</div>
+        <ShellLink className="nav-item" to="/settings/admin/users" aria-current={pathname.startsWith("/settings/admin/users") ? "page" : undefined}><UserIcon /><span>{t("settings.admin.users")}</span></ShellLink>
+        <ShellLink className="nav-item" to="/settings/admin/sessions" aria-current={pathname.startsWith("/settings/admin/sessions") ? "page" : undefined}><PulseIcon /><span>{t("settings.admin.sessions")}</span></ShellLink>
+        <ShellLink className="nav-item" to="/settings/admin/audit" aria-current={pathname.startsWith("/settings/admin/audit") ? "page" : undefined}><DocumentIcon /><span>{t("settings.admin.audit")}</span></ShellLink>
+      </> : null}
     </nav>
     <div className="side-bottom"><div className="build">{live?.demo ? osName(true) : <>rumahl OS <b>Preview</b></>}<br />{themes.find(item => item.id === theme.id)?.name ?? theme.name}</div></div>
   </aside>
   <div className="settings-resizer" role="separator" aria-orientation="vertical" aria-label={t("settings.resizeSidebar")}
-    aria-valuemin={150} aria-valuemax={420} aria-valuenow={navWidth === null ? undefined : Math.round(navWidth)} tabIndex={0}
+    aria-valuemin={150} aria-valuemax={420} aria-valuenow={Math.round(navWidth ?? 184)} tabIndex={0}
     onPointerDown={beginResize} onKeyDown={resizeWithKeyboard}
     onDoubleClick={() => { setNavWidth(null); try { localStorage.removeItem("rumahl.settings.sidenav-width"); } catch { /* ignore */ } }} />
   <div className="content settings-content" key={pathname}>{content}</div></div>;
@@ -148,25 +182,64 @@ export function SettingsPage() {
 function SettingsOverview() {
   const { t } = useI18n();
   const settings = useShellPreferences();
-  const { mode } = useShell();
+  const { mode, snapshot } = useShell();
   const { theme } = useTheme();
   return <section className="display-settings">
-    <header className="settings-page-heading"><h1 className="pagetitle">{t("nav.settings")}</h1><p className="pagedesc">{t("settings.overviewHelp")}</p></header>
+    <SettingsHeading title={t("settings.start")} help={t("settings.overviewHelp")} />
+    <h3 className="section-title">{t("settings.group.personal")}</h3>
     <div className="settings-group settings-nav">
+      <NavRow to="/settings/account" icon={<UserIcon />} title={t("settings.account")} subtitle={t("settings.accountHelp")} />
       <NavRow to="/settings/display" icon={<DesktopIcon />} title={t("settings.personalization")} subtitle={`${t(`mode.${settings.mode}`)} · ${themes.find(item => item.id === theme.id)?.name ?? theme.name}`} />
       <NavRow to="/settings/workspace" icon={<GridIcon />} title={t("workspace.title")} subtitle={t("settings.workspaceHelp")} />
-      <NavRow to="/settings/store" icon={<StoreIcon />} title={t("storeSources.title")} subtitle={t("storeSources.overviewHelp")} />
-      <NavRow to="/settings/apps" icon={<GridIcon />} title={t("settings.apps")} subtitle={t("settings.appsHelp")} />
       <NavRow to="/settings/accessibility" icon={<PulseIcon />} title={t("settings.accessibility")} subtitle={t("settings.accessibilityHelp")} />
       {mode === "mobile" ? <NavRow to="/settings/mobile" icon={<PhoneIcon />} title={t("settings.mobile")} subtitle={t("mobile.help")} /> : null}
+    </div>
+    <h3 className="section-title">{t("settings.group.apps")}</h3>
+    <div className="settings-group settings-nav">
+      <NavRow to="/settings/store" icon={<StoreIcon />} title={t("storeSources.title")} subtitle={t("storeSources.overviewHelp")} />
+      <NavRow to="/settings/apps" icon={<GridIcon />} title={t("settings.apps")} subtitle={t("settings.appsHelp")} />
+    </div>
+    <h3 className="section-title">{t("settings.group.system")}</h3>
+    <div className="settings-group settings-nav">
       <NavRow to="/settings/os" icon={<ShieldIcon />} title={t("settings.osMode")} subtitle={t("settings.osModeHelp")} />
-      <NavRow to="/settings/device" icon={<DesktopIcon />} title={t("device.title")} subtitle={t("device.help")} />
       <NavRow to="/settings/system" icon={<ShieldIcon />} title={t("settings.system")} subtitle={t("settings.systemHelp")} />
     </div>
+    {isAdministrator(snapshot.user.role) ? <>
+      <h3 className="section-title">{t("settings.group.admin")}</h3>
+      <div className="settings-group settings-nav">
+        <NavRow to="/settings/admin/users" icon={<UserIcon />} title={t("settings.admin.users")} subtitle={t("settings.admin.usersHelp")} />
+        <NavRow to="/settings/admin/sessions" icon={<PulseIcon />} title={t("settings.admin.sessions")} subtitle={t("settings.admin.sessionsHelp")} />
+        <NavRow to="/settings/admin/audit" icon={<DocumentIcon />} title={t("settings.admin.audit")} subtitle={t("settings.admin.auditHelp")} />
+      </div>
+    </> : null}
+  </section>;
+}
+
+function AccountSettings() {
+  const { t } = useI18n();
+  const { snapshot } = useShell();
+  const initial = snapshot.user.displayName.slice(0, 1).toUpperCase();
+  return <section className="display-settings">
+    <SettingsHeading title={t("settings.account")} help={t("settings.accountHelp")} back="/settings" />
+    <h3 className="section-title">{t("settings.account.profile")}</h3>
+    <GroupContainer>
+      <GroupRow title={t("settings.account.displayName")} description={snapshot.user.displayName}>
+        <span className="settings-account-avatar" aria-hidden="true">{initial}</span>
+      </GroupRow>
+      <GroupRow title={t("settings.account.locale")} value={snapshot.user.locale} />
+      <GroupRow title={t("settings.account.role")} value={t(`admin.role.${snapshot.user.role ?? "user"}`)} />
+    </GroupContainer>
+    <h3 className="section-title">{t("settings.account.session")}</h3>
+    <GroupContainer>
+      <GroupRow title={t("settings.account.signOut")} description={t("settings.account.signOutHelp")}>
+        <Button variant="danger" type="submit" form="rumahl-sign-out">{t("settings.account.signOut")}</Button>
+      </GroupRow>
+    </GroupContainer>
   </section>;
 }
 
 function AppsSettings() {
+  const statusId = useId();
   const { t } = useI18n();
   const { dispatch } = useShell();
   const statusIndicators = useAppStatusIndicators();
@@ -176,12 +249,11 @@ function AppsSettings() {
   const systemApps = managed.filter((app) => app.system && app.kind === "app");
   return <section className="display-settings">
     <SettingsHeading title={t("settings.apps")} help={t("settings.appsHelp")} back="/settings" />
-    <div className="settings-group">
-      <div className="setting">
-        <div className="copy"><strong>{t("settings.appStatusIndicators")}</strong><p>{t("settings.appStatusIndicatorsHelp")}</p></div>
-        <div className="visual"><input type="checkbox" role="switch" aria-label={t("settings.appStatusIndicators")} checked={statusIndicators} onChange={(event) => setAppStatusIndicators(event.target.checked)} /></div>
-      </div>
-    </div>
+    <GroupContainer>
+      <GroupRow title={t("settings.appStatusIndicators")} description={t("settings.appStatusIndicatorsHelp")} controlId={statusId}>
+        <input id={statusId} type="checkbox" role="switch" checked={statusIndicators} onChange={(event) => setAppStatusIndicators(event.target.checked)} />
+      </GroupRow>
+    </GroupContainer>
     {apps.length
       ? <div className="settings-group settings-nav">
           {apps.map((app) => <NavRow key={app.id} to={app.managePath!} title={app.title}
@@ -208,7 +280,7 @@ function AppManagement() {
   const shellApps = useShellApps({ includeDisabled: true });
   const { t } = useI18n();
   const app = shellApps.find((entry) => entry.id === appId && entry.managePath);
-  if (status === "loading" && !app) return <p role="status">{t("apps.loading")}</p>;
+  if (status === "loading" && !app) return <LoadingStatus label={t("apps.loading")} />;
   if (!app) return <section className="display-settings">
     <SettingsHeading title={t("settings.apps")} help={t("settings.appsHelp")} back="/settings/apps" />
     <p role="alert">{t("settings.appMissing")}</p>
@@ -460,7 +532,7 @@ function AppManagementBody({ app, details }: { app: ShellApp; details?: Installe
                 <div className="visual"><span className="app-management__value">{metric.value}{metric.unit}</span></div>
               </div>)}
               {sensors.uptime !== null ? <div className="setting setting--value"><div className="copy"><strong>{t("settings.appUptime")}</strong></div><div className="visual"><span className="app-management__value">{formatUptime(sensors.uptime)}</span></div></div> : null}
-            </> : <div className="setting"><div className="copy"><strong>{sensorsError ? t("settings.appResourcesUnavailable") : t("settings.appResourcesLoading")}</strong></div></div>}
+            </> : <div className="setting"><div className="copy">{sensorsError ? <strong>{t("settings.appResourcesUnavailable")}</strong> : <LoadingStatus className="loading-status--inline" label={t("settings.appResourcesLoading")} />}</div></div>}
           </div>
         </> : null}
 
@@ -521,7 +593,7 @@ function AppManagementBody({ app, details }: { app: ShellApp; details?: Installe
           </header>
           <div className="app-management-modal__body" role="log" aria-live="polite">
             {logs === null
-              ? <p className="settings-footnote" role="status">{t("settings.appLogsLoading")}</p>
+              ? <p className="settings-footnote"><LoadingStatus className="loading-status--inline" label={t("settings.appLogsLoading")} /></p>
               : logs.length === 0
                 ? <p className="settings-footnote">{logsError ? t("settings.appLogsUnavailable") : t("settings.appLogsEmpty")}</p>
                 : logs.map((event) => logsView === "simple"
@@ -601,8 +673,25 @@ function SystemSettings() {
     <SystemInfo />
     <h3 className="section-title">{t("settings.system.sections")}</h3>
     <div className="settings-group settings-nav">
+      <NavRow to="/settings/system/device" icon={<DesktopIcon />} title={t("device.title")} subtitle={t("device.help")} />
+      <NavRow to="/settings/system/version" icon={<InfoIcon />} title={t("settings.system.version")} subtitle={t("settings.system.versionHelp")} />
       <NavRow to="/settings/system/about" icon={<InfoIcon />} title={t("settings.system.about")} subtitle={t("settings.system.aboutHelp")} />
       <NavRow to="/settings/system/licenses" icon={<DocumentIcon />} title={t("settings.system.licenses")} subtitle={t("settings.system.licensesHelp")} />
+    </div>
+  </section>;
+}
+
+function SystemVersion() {
+  const { t } = useI18n();
+  const { snapshot, live } = useShell();
+  const demo = Boolean(live?.demo);
+  return <section className="display-settings">
+    <SettingsHeading title={t("settings.system.version")} help={t("settings.system.versionHelp")} back="/settings/system" />
+    <h3 className="section-title">{t("settings.system.frontend")}</h3>
+    <div className="settings-group">
+      <div className="setting setting--value"><div className="copy"><strong>{t("settings.system.frontendVersion")}</strong></div><div className="visual"><code>{versionLabel(demo)}</code></div></div>
+      <div className="setting setting--value"><div className="copy"><strong>{t("settings.system.build")}</strong></div><div className="visual"><code>{buildLabel(snapshot.shellBuildId, demo)}</code></div></div>
+      <div className="setting setting--value"><div className="copy"><strong>{t("settings.system.revision")}</strong></div><div className="visual"><code>{snapshot.revision || t("settings.system.unavailable")}</code></div></div>
     </div>
   </section>;
 }
@@ -624,7 +713,6 @@ function AboutSettings() {
     <h3 className="section-title">{t("settings.system.session")}</h3>
     <div className="settings-group">
       <div className="setting setting--value"><div className="copy"><strong>{t("settings.system.user")}</strong></div><div className="visual"><span>{snapshot.user.displayName}</span></div></div>
-      <div className="setting setting--value"><div className="copy"><strong>{t("settings.system.version")}</strong></div><div className="visual"><code>{versionLabel(Boolean(live?.demo))}</code></div></div>
       <div className="setting setting--value"><div className="copy"><strong>{t("settings.system.mode")}</strong></div><div className="visual"><span>{t(`mode.${mode}`)}</span></div></div>
       <div className="setting setting--value"><div className="copy"><strong>{t("settings.system.theme")}</strong></div><div className="visual"><span>{theme.name}</span></div></div>
     </div>
@@ -680,11 +768,11 @@ function Links() {
 function NavRow({ to, href, icon, title, subtitle }: { to?: string; href?: string; icon?: ReactNode; title: string; subtitle?: string }) {
   const external = href !== undefined;
   const body = <>
-    {icon ? <span className="settings-nav__icon" aria-hidden="true">{icon}</span> : null}
-    <span className="settings-nav__text"><strong>{title}</strong>{subtitle ? <small>{subtitle}</small> : null}</span>
+    {icon ? <span className="settings-nav__icon rumahl-group__link-icon" aria-hidden="true">{icon}</span> : null}
+    <span className="settings-nav__text rumahl-group__link-text"><strong>{title}</strong>{subtitle ? <small>{subtitle}</small> : null}</span>
     {external ? <ExternalLinkIcon className="settings-nav__ext" /> : <span className="settings-nav__chevron" aria-hidden="true">›</span>}
   </>;
   return external
-    ? <a className="settings-nav__row" href={href} target="_blank" rel="noreferrer noopener">{body}</a>
-    : <ShellLink className="settings-nav__row" to={to!}>{body}</ShellLink>;
+    ? <a className="settings-nav__row rumahl-group__link" href={href} target="_blank" rel="noreferrer noopener">{body}</a>
+    : <ShellLink className="settings-nav__row rumahl-group__link" to={to!}>{body}</ShellLink>;
 }

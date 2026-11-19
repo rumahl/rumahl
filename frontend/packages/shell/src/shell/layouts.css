@@ -15,8 +15,8 @@
 .menubar__dropdown button:hover:not(:disabled) { background: color-mix(in srgb, var(--rumahl-ui-color-accent, var(--rumahl-color-accent-primary)) 14%, transparent); }
 .menubar__dropdown button:disabled { opacity: .45; cursor: default; }
 .menubar__dropdown button[role="menuitemradio"][aria-checked="true"]::after { margin-left: 12px; color: var(--rumahl-ui-color-accent, var(--rumahl-color-accent-primary)); content: "✓"; }
-.menubar__about { display: grid; gap: 2px; margin: 2px 4px 4px; padding: 6px 8px; color: var(--rumahl-ui-color-text-muted, var(--rumahl-color-text-muted)); font-size: 11px; }
-.menubar__about small { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 10px; }
+.menubar__about { display: grid; gap: 2px; margin: 2px 4px 4px; padding: 6px 8px; color: var(--rumahl-ui-color-text-muted, var(--rumahl-color-text-muted)); font-size: 12px; }
+.menubar__about small { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; }
 .menubar__empty { margin: 4px 6px; color: var(--rumahl-ui-color-text-muted, var(--rumahl-color-text-muted)); font-size: 12px; }
 .menubar__separator { height: 1px; margin: 5px 4px; background: var(--line); }
 .menubar__spotlight svg { width: 15px; height: 15px; stroke: currentColor; stroke-width: 1.8; }
@@ -27,7 +27,7 @@
 .menubar__clock { color: inherit; font-size: 12px; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .menubar__user, .menubar__user:hover, .menubar__user[aria-expanded="true"] { width: 26px; height: 26px; padding: 0; justify-content: center; border-radius: 50%; color: #fff; background: #b66f49; font-weight: 760; }
 .menubar__user:hover { filter: brightness(1.08); }
-.menubar__error { color: #a64335; font-size: 11px; }
+.menubar__error { color: #a64335; font-size: 12px; }
 .workspace-surfaces { position: relative; flex: 1; min-height: 0; margin: 12px 16px 94px; isolation: isolate; }
 .desktop-workspace, .launcher-workspace { position: absolute; inset: 0; overflow: auto; min-height: 0; padding: 0; }
 .desktop-workspace { background: radial-gradient(ellipse at 65% 70%, #42666e66, transparent 60%); }
@@ -40,7 +40,7 @@
 .desktop-home { min-height: 100%; position: relative; padding: 12px; display: flex; flex-direction: column; gap: 12px; }
 .desktop-shortcuts { position: relative; z-index: 1; flex: 1; min-height: 0; overflow: auto; touch-action: pan-y; }
 .desktop-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); gap: 6px; align-content: start; }
-.desktop-icon { display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 10px 4px; border: 1px solid transparent; border-radius: 14px; color: #eef5f6; text-decoration: none; text-align: center; font-size: 12px; line-height: 1.25; cursor: default; }
+.desktop-icon { display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 10px 4px; border: 1px solid transparent; border-radius: 14px; color: var(--rumahl-ui-color-on-wallpaper, #eef5f6); text-decoration: none; text-align: center; font-size: 12px; line-height: 1.25; cursor: default; }
 .desktop-icon:hover { background: #ffffff14; border-color: #ffffff1f; }
 .desktop-icon.is-selected { background: color-mix(in srgb, var(--rumahl-ui-color-accent, var(--rumahl-color-accent-primary)) 30%, transparent); border-color: color-mix(in srgb, var(--rumahl-ui-color-accent, var(--rumahl-color-accent-primary)) 55%, transparent); }
 .desktop-icon.is-dragging { opacity: .45; }
@@ -48,7 +48,7 @@
 .desktop-icon__art { width: 54px; height: 54px; display: grid; place-items: center; border-radius: 16px; color: white; background: var(--rumahl-ui-icon-gradient, linear-gradient(140deg, #3f9e74, #28694c)); box-shadow: 0 6px 18px #0003; }
 .desktop-icon__art.is-system { background: linear-gradient(140deg, var(--rumahl-ui-color-accent, var(--rumahl-color-accent-primary)), #488887); }
 .desktop-icon__art svg { width: 26px; height: 26px; stroke: currentColor; stroke-width: 1.5; }
-.desktop-icon__label { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.desktop-icon__label { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; max-width: 100%; max-height: 2.4em !important; overflow: hidden; overflow-wrap: anywhere; line-height: 1.2 !important; white-space: normal; }
 .desktop-marquee { position: absolute; z-index: 3; border: 1px solid color-mix(in srgb, var(--rumahl-ui-color-accent, var(--rumahl-color-accent-primary)) 70%, transparent); background: color-mix(in srgb, var(--rumahl-ui-color-accent, var(--rumahl-color-accent-primary)) 18%, transparent); border-radius: 6px; pointer-events: none; }
 .desktop-search { align-self: flex-start; display: flex; align-items: center; gap: 10px; width: min(340px, 100%); padding: 10px 14px; border: 1px solid #ffffff26; border-radius: 12px; color: #dbe8ea; background: #0d1c2299; backdrop-filter: blur(12px); text-align: left; }
 .desktop-search span { flex: 1; }
@@ -56,7 +56,7 @@
 .desktop-search kbd { border-color: #ffffff26; background: #ffffff14; color: inherit; }
 .desktop-widgets { position: absolute; top: 16px; right: 16px; z-index: 1; display: flex; flex-direction: column; gap: 12px; width: min(230px, 42vw); }
 .desktop-widget { padding: 16px; border: 1px solid #ffffff1f; border-radius: 18px; color: #e7f1f2; background: #0d1c2299; backdrop-filter: blur(14px); box-shadow: 0 14px 38px #0004; }
-.desktop-widget__eyebrow { margin: 0 0 6px; color: #9fb7bd; font-size: 10px; font-weight: 720; letter-spacing: .12em; text-transform: uppercase; }
+.desktop-widget__eyebrow { margin: 0 0 6px; color: #b9d0d5; font-size: 12px; font-weight: 720; letter-spacing: .12em; text-transform: uppercase; }
 .desktop-widget__time { display: block; font-size: 30px; font-variant-numeric: tabular-nums; letter-spacing: -.03em; }
 .desktop-widget strong { display: block; font-size: 16px; }
 .desktop-widget > span { display: block; margin-top: 3px; color: #b9cdd2; font-size: 12px; }
@@ -65,7 +65,7 @@
 .desktop-menu button svg { width: 14px; height: 14px; flex: none; }
 .desktop-menu button:disabled { opacity: .45; }
 .desktop-menu button:hover { background: color-mix(in srgb, var(--rumahl-ui-color-accent, var(--rumahl-color-accent-primary)) 12%, transparent); }
-.desktop-menu__title { margin: 4px 6px; padding-bottom: 4px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--rumahl-ui-color-text-muted, var(--rumahl-color-text-muted)); font-size: 10px; font-weight: 720; letter-spacing: .1em; text-transform: uppercase; }
+.desktop-menu__title { margin: 4px 6px; padding-bottom: 4px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--rumahl-ui-color-text-muted, var(--rumahl-color-text-muted)); font-size: 12px; font-weight: 720; letter-spacing: .1em; text-transform: uppercase; }
 .desktop-menu__separator { height: 1px; margin: 6px 4px; background: var(--line); }
 .desktop-wordmark { position: absolute; right: 9%; bottom: 16%; display: grid; gap: 10px; text-align: right; color: #dfedf0; pointer-events: none; }
 .desktop-wordmark > span { font-size: clamp(48px, 9vw, 128px); font-weight: 650; letter-spacing: -.075em; opacity: .85; }
@@ -93,7 +93,7 @@
 .launcher-pages button[aria-current="page"] { width: 26px; border-radius: 999px; background: var(--rumahl-ui-color-accent, var(--rumahl-color-accent-primary)); }
 .launcher-view--deck { grid-template-columns: minmax(0, .9fr) minmax(0, 1.1fr); align-items: start; }
 .launcher-deck-hero { padding: 24px; border: 1px solid var(--line); border-radius: 20px; background: var(--rumahl-ui-color-panel-background, var(--rumahl-color-panel-background)); }
-.launcher-deck-eyebrow { margin: 0 0 8px; color: var(--rumahl-ui-color-accent, var(--rumahl-color-accent-primary)); font-size: 11px; font-weight: 720; letter-spacing: .14em; text-transform: uppercase; }
+.launcher-deck-eyebrow { margin: 0 0 8px; color: var(--rumahl-ui-color-accent, var(--rumahl-color-accent-primary)); font-size: 12px; font-weight: 720; letter-spacing: .14em; text-transform: uppercase; }
 .launcher-deck-hero h2 { margin: 0 0 18px; font: 500 27px/1.15 Georgia, serif; letter-spacing: -.035em; }
 .launcher-chips { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 16px; }
 .launcher-chips button { padding: 8px 12px; border: 1px solid var(--line); border-radius: 999px; background: transparent; font-size: 12px; }
@@ -105,7 +105,7 @@
 .launcher-row__art.is-system, .launcher-card__art.is-system { background: linear-gradient(140deg, var(--rumahl-ui-color-accent, var(--rumahl-color-accent-primary)), #488887); }
 .launcher-row__art svg, .launcher-card__art svg { width: 22px; height: 22px; stroke: currentColor; stroke-width: 1.5; }
 .launcher-row__text { display: grid; gap: 2px; flex: 1; min-width: 0; }
-.launcher-row__text small { overflow: hidden; color: var(--rumahl-ui-color-text-muted, var(--rumahl-color-text-muted)); font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
+.launcher-row__text small { overflow: hidden; color: var(--rumahl-ui-color-text-muted, var(--rumahl-color-text-muted)); font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
 .launcher-row > svg { color: var(--rumahl-ui-color-text-muted, var(--rumahl-color-text-muted)); stroke: currentColor; }
 .launcher-view--canvas .launcher-canvas { display: flex; gap: 16px; overflow-x: auto; padding-bottom: 14px; scroll-snap-type: x mandatory; }
 .launcher-card { flex: 0 0 auto; display: grid; gap: 8px; width: min(300px, 72vw); padding: 22px; border: 1px solid var(--line); border-radius: 20px; background: var(--rumahl-ui-color-panel-background, var(--rumahl-color-panel-background)); text-align: left; scroll-snap-align: center; }
@@ -145,13 +145,15 @@
 .start-menu__search input { width: 100%; padding: 12px 16px; border: 1px solid var(--line); border-radius: 12px; background: var(--rumahl-ui-color-canvas-background, var(--rumahl-color-canvas-background)); }
 .start-menu__body { flex: 1; min-height: 0; overflow-y: auto; display: grid; gap: 22px; padding: 4px 2px 8px; }
 .start-menu__section { display: grid; gap: 12px; align-content: start; }
-.start-menu__section > h3 { margin: 0; color: var(--rumahl-ui-color-text-muted, var(--rumahl-color-text-muted)); font-size: 11px; font-weight: 720; letter-spacing: .12em; text-transform: uppercase; }
+.start-menu__section > h3 { margin: 0; color: var(--rumahl-ui-color-text-muted, var(--rumahl-color-text-muted)); font-size: 12px; font-weight: 720; letter-spacing: .12em; text-transform: uppercase; }
 .start-menu__section .app-grid { grid-template-columns: repeat(auto-fill, minmax(104px, 1fr)); gap: 10px; }
 .start-menu__back { justify-self: start; padding: 7px 12px; border: 1px solid var(--line); border-radius: 9px; background: var(--rumahl-ui-color-canvas-background, var(--rumahl-color-canvas-background)); }
 .start-menu__footer { display: flex; justify-content: flex-end; padding-top: 12px; border-top: 1px solid var(--line); margin-top: 6px; }
 .start-menu__footer button { padding: 9px 16px; border: 1px solid var(--line); border-radius: 10px; background: var(--rumahl-ui-color-canvas-background, var(--rumahl-color-canvas-background)); }
 .shell .window-layer { position: absolute; inset: 0; z-index: 10; pointer-events: none; }
 .window-position { position: absolute; inset: 0; pointer-events: none; }
+/* Entrance animation lives on an inner layer; the outer wrapper owns focus z-index. */
+.shell .window-position > .window-motion { position: absolute; inset: 0; pointer-events: none; }
 .window-position[hidden] { display: none; }
 .shell .shell-window, .shell .shell-window.is-focused { position: absolute; display: flex; flex-direction: column; min-width: 0; min-height: 0; max-width: 100%; max-height: 100%; transform: none; opacity: 1; transition: none; }
 .shell .shell-window { border: 1px solid var(--line); box-shadow: 0 14px 40px #0005; }
@@ -160,6 +162,8 @@
 .shell-window__titlebar > div:first-child { min-width: 0; }
 .shell .shell-window__titlebar[data-custom] { container-type: inline-size; container-name: window-topbar; }
 .shell-window__topbar-fallback { display: flex; flex: 1; align-items: center; min-width: 0; }
+.shell .shell-window__titlebar[data-custom] .shell-window__app-topbar { position: absolute; inset: 0 var(--window-controls-safe, 132px) 0 0; pointer-events: none; }
+.shell .shell-window__titlebar[data-custom] .shell-window__controls { position: relative; z-index: 8; }
 .shell-window__app-topbar { display: flex; flex: 1; align-items: center; min-width: 0; }
 .shell-window__app-topbar:empty { display: none; }
 .shell .shell-window__titlebar[data-custom]:has(.shell-window__app-topbar:not(:empty)) .shell-window__topbar-fallback { display: none; }
@@ -179,7 +183,7 @@
   .shell .menubar { gap: 6px; padding: 0 6px; }
   .menubar__item { padding: 0 7px; }
   .menubar__protection, .menubar__error { display: none; }
-  .menubar__clock { font-size: 11px; }
+  .menubar__clock { font-size: 12px; }
   .os-dock { bottom: 9px; gap: 2px; padding: 6px; border-radius: 18px; }
   .os-dock > a, .os-dock button { width: 36px; height: 40px; }
   .dock-windows { max-width: 22vw; }
@@ -218,10 +222,23 @@
   height: 100%;
   color: inherit;
 }
+.folder-artwork {
+  display: inline-flex;
+  width: 1em;
+  height: 1em;
+  flex: none;
+  color: var(--rumahl-ui-color-accent);
+}
+.folder-artwork > svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
 .app-icon-folder__art {
   width: 76%;
   height: 76%;
   flex: none;
+  object-fit: contain;
   color: currentColor;
   filter: drop-shadow(0 2px 2px #00000029);
 }

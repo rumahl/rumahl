@@ -1,6 +1,8 @@
 import { render, screen, within } from "@testing-library/react";
 import { describe, expect, test } from "vitest";
-import { classicTheme } from "@rumahl/ui/themes";
+import { loadThemePackage } from "../test/theme-packages";
+
+const classicTheme = loadThemePackage("classic");
 import { App } from "../App";
 import { demoSnapshot } from "../demo/snapshot";
 

@@ -1,0 +1,154 @@
+{
+  "id": "com.example.retro",
+  "name": "Retro Desk",
+  "version": "1.0.0",
+  "base": "ground",
+  "paletteTuning": false,
+  "modes": [
+    "light"
+  ],
+  "material": "solid",
+  "tokens": {
+    "color.accent": "#b23a2b",
+    "color.accent.strong": "#d65a43",
+    "color.on.accent": "#fff8e7",
+    "color.canvas.background": "#c8b89a",
+    "color.panel.background": "#f3e4c4",
+    "color.surface": "#f7ead2",
+    "color.surface.strong": "#fff8e7",
+    "color.outline": "#4a3b2b",
+    "color.shadow": "rgba(44, 36, 27, 0.45)",
+    "color.text.primary": "#2c241b",
+    "color.text.muted": "#6b5d4f",
+    "color.on.wallpaper": "#2c241b",
+    "color.wallpaper.tint": "transparent",
+    "color.success": "#2f6b3a",
+    "color.success.surface": "#dcebd8",
+    "color.warning": "#7a4b00",
+    "color.warning.surface": "#f3e2b8",
+    "color.danger": "#a3231c",
+    "color.danger.surface": "#f1d3ce",
+    "color.info": "#1f5c91",
+    "color.info.surface": "#d8e6f0",
+    "color.window.titlebar.background": "#e6d2ad",
+    "color.window.titlebar.foreground": "#2c241b",
+    "material.blur": "0px",
+    "material.saturation": "1",
+    "material.opacity": "1",
+    "material.morphism": "0",
+    "shape.radius.window": "0px",
+    "shape.radius.dock": "0px",
+    "shape.radius.icon": "0px",
+    "shape.icon.size": "54px",
+    "shape.icon.size.large": "64px",
+    "typography.family": "\"Courier New\", ui-monospace, SFMono-Regular, Menlo, monospace",
+    "typography.display": "\"Instrument Serif\", Georgia, serif",
+    "typography.scale": "1",
+    "motion.duration": "0ms",
+    "motion.duration.fast": "0ms",
+    "motion.easing.spring": "linear",
+    "layout.dock.offset": "18px",
+    "icon.gradient": "linear-gradient(150deg, #d65a43, #7a2318)",
+    "texture.wallpaper": "repeating-linear-gradient(0deg, #cdbb9a 0 2px, #c4b08c 2px 4px)",
+    "app.inputs": "solid"
+  },
+  "css": "/* Retro Desk \u2014 a fully independent Ground theme. No Iris chrome, no glass. */\n:root, .shell {\n  --ground-radius: 0px;\n  --window-radius: 0px;\n  --window-content-radius: 0px;\n  --window-control-radius: 0px;\n  --dock-radius: 0px;\n  --dock-item-radius: 0px;\n  --group-radius: 0px;\n  --toolbar-radius: 0px;\n  --command-palette-radius: 0px;\n  --menu-radius: 0px;\n  --menu-item-radius: 0px;\n  --dock-background: var(--rumahl-ui-color-panel-background);\n  --dock-surface: var(--rumahl-ui-color-panel-background);\n  --dock-surface-border: 2px solid var(--rumahl-ui-color-outline);\n  --dock-surface-shadow: 4px 4px 0 var(--rumahl-ui-color-outline);\n  --dock-sheen: none;\n  --dock-shadow: none;\n  --label-ink: var(--rumahl-ui-color-text-primary);\n  --adaptive-color-duration: 0ms;\n  --menu-background: var(--rumahl-ui-color-surface-strong);\n  --menu-border: 2px solid var(--rumahl-ui-color-outline);\n  --menu-shadow: 4px 4px 0 var(--rumahl-ui-color-outline);\n  --menu-backdrop: none;\n  --menu-item-hover: color-mix(in srgb, var(--rumahl-ui-color-accent) 18%, transparent);\n  --widget-background: var(--rumahl-ui-color-surface-strong);\n  --widget-border: 2px solid var(--rumahl-ui-color-outline);\n  --widget-shadow: 4px 4px 0 var(--rumahl-ui-color-outline);\n  --widget-ink: var(--rumahl-ui-color-text-primary);\n  --widget-muted: var(--rumahl-ui-color-text-muted);\n  --glass-solid-background: var(--rumahl-ui-color-surface-strong);\n  --motion-feedback-duration: 0ms;\n  --motion-surface-duration: 0ms;\n  --motion-hover-duration: 0ms;\n  --motion-control-duration: 0ms;\n  --motion-press-duration: 0ms;\n  --motion-state-duration: 0ms;\n  --motion-easing-standard: linear;\n  --motion-easing-spring: linear;\n  --motion-spring-bouncy: linear;\n  --motion-spring-soft: linear;\n  --motion-spring-snap: linear;\n}\n.shell {\n  background: var(--rumahl-ui-color-canvas-background);\n  color: var(--rumahl-ui-color-text-primary);\n  font-family: var(--rumahl-ui-typography-family);\n}\n.shell .wallpaper {\n  background: var(--rumahl-ui-texture-wallpaper);\n}\n.shell :is(.topbar__island, .menubar, .taskbar) {\n  background: var(--rumahl-ui-color-panel-background);\n  border: 2px solid var(--rumahl-ui-color-outline);\n  border-radius: 0;\n  box-shadow: 3px 3px 0 var(--rumahl-ui-color-outline);\n  backdrop-filter: none;\n  -webkit-backdrop-filter: none;\n  color: var(--rumahl-ui-color-text-primary);\n}\n.shell .shell-window {\n  background: var(--rumahl-ui-color-surface-strong);\n  border: 2px solid var(--rumahl-ui-color-outline);\n  border-radius: 0;\n  box-shadow: 6px 6px 0 var(--rumahl-ui-color-outline);\n  backdrop-filter: none;\n  -webkit-backdrop-filter: none;\n  color: var(--rumahl-ui-color-text-primary);\n}\n.shell .shell-window__titlebar {\n  background: var(--rumahl-ui-color-panel-background);\n  border-bottom: 2px solid var(--rumahl-ui-color-outline);\n  color: var(--rumahl-ui-color-text-primary);\n}\n.shell .shell-window__controls button,\n.shell .window-control {\n  border: 2px solid var(--rumahl-ui-color-outline);\n  border-radius: 0;\n  background: var(--rumahl-ui-color-surface-strong);\n  color: var(--rumahl-ui-color-text-primary);\n  box-shadow: 1px 1px 0 var(--rumahl-ui-color-outline);\n}\n.shell .shell-window__controls button:hover,\n.shell .window-control:hover {\n  background: var(--rumahl-ui-color-accent);\n  color: var(--rumahl-ui-color-on-accent);\n}\n.shell .os-dock :is(.dock-item, .dock-icon, button, a) {\n  border: 1px solid var(--rumahl-ui-color-outline);\n  border-radius: 0;\n  background: var(--rumahl-ui-color-surface-strong);\n  box-shadow: 2px 2px 0 var(--rumahl-ui-color-outline);\n}\n.shell .os-dock :is(.dock-item, .dock-icon, button, a):hover {\n  background: var(--rumahl-ui-color-panel-background);\n}\n.shell .desktop-widget {\n  border: 2px solid var(--rumahl-ui-color-outline);\n  border-radius: 0;\n  box-shadow: 4px 4px 0 var(--rumahl-ui-color-outline);\n}\n.shell .desktop-icon__art {\n  border: 2px solid var(--rumahl-ui-color-outline);\n  border-radius: 0;\n  background: var(--rumahl-ui-color-surface-strong);\n  box-shadow: 2px 2px 0 var(--rumahl-ui-color-outline);\n}\n.shell .desktop-icon__label {\n  padding: 1px 3px;\n  border: 1px solid var(--rumahl-ui-color-outline);\n  border-radius: 0;\n  background: var(--rumahl-ui-color-surface-strong);\n  text-shadow: none;\n}\n.shell .desktop-icon:hover,\n.shell .desktop-icon.is-selected {\n  border-color: var(--rumahl-ui-color-accent);\n  background: color-mix(in srgb, var(--rumahl-ui-color-accent) 18%, transparent);\n}\n.shell .desktop-search {\n  border: 2px solid var(--rumahl-ui-color-outline);\n  border-radius: 0;\n  background: var(--rumahl-ui-color-surface-strong);\n  color: var(--rumahl-ui-color-text-primary);\n  text-shadow: none;\n}\n.shell :is(.settings-group, .rumahl-group) {\n  border: 2px solid var(--rumahl-ui-color-outline);\n  border-radius: 0;\n  background: var(--rumahl-ui-color-surface-strong);\n  box-shadow: 4px 4px 0 var(--rumahl-ui-color-outline);\n}\n.shell .settings-nav__row.is-active,\n.shell .files-nav.is-active {\n  background: var(--rumahl-ui-color-accent);\n  color: var(--rumahl-ui-color-on-accent);\n}\n.shell .files-app__sidebar {\n  background: var(--rumahl-ui-color-panel-background);\n  border-right: 2px solid var(--rumahl-ui-color-outline);\n}\n.shell .files-nav {\n  border-radius: 0;\n}\n.shell .files-view-switch,\n.shell .files-view-switch__thumb,\n.shell .files-crumbs__root,\n.shell .files-icon-btn {\n  border-radius: 0;\n}\n.shell :is(.store-grid-card, .store-edit-card, .store-card, .store-product-hero) {\n  border: 2px solid var(--rumahl-ui-color-outline);\n  border-radius: 0;\n  background: var(--rumahl-ui-color-surface-strong);\n  box-shadow: 4px 4px 0 var(--rumahl-ui-color-outline);\n}\n.shell :is(.store-grid-card__media, .store-shot, .store-art, .store-cover) {\n  border-radius: 0;\n}\n.shell :is(.btn, .rumahl-input, input:not([type=\"checkbox\"]):not([type=\"radio\"]), select, textarea) {\n  border: 2px solid var(--rumahl-ui-color-outline);\n  border-radius: 0;\n  background: var(--rumahl-ui-color-surface-strong);\n  color: var(--rumahl-ui-color-text-primary);\n  box-shadow: 2px 2px 0 var(--rumahl-ui-color-outline);\n}\n.shell .btn:hover {\n  background: var(--rumahl-ui-color-panel-background);\n}\n.shell .btn:active {\n  box-shadow: none;\n  transform: translate(2px, 2px);\n}\n.shell :is(.section-title, .settings-section-title, .settings-content .section-title) {\n  font-family: var(--rumahl-ui-typography-display);\n  color: var(--rumahl-ui-color-accent);\n  letter-spacing: 0.08em;\n  text-transform: uppercase;\n}\n.shell :focus-visible {\n  outline: 3px solid var(--rumahl-ui-color-accent);\n  outline-offset: 2px;\n}\n.shell ::selection {\n  background: var(--rumahl-ui-color-accent);\n  color: var(--rumahl-ui-color-on-accent);\n}",
+  "icons": {
+    "search": {
+      "viewBox": "0 0 24 24",
+      "shapes": [
+        {
+          "tag": "rect",
+          "attrs": {
+            "x": 3,
+            "y": 3,
+            "width": 13,
+            "height": 13,
+            "rx": 1.5
+          }
+        },
+        {
+          "tag": "path",
+          "attrs": {
+            "d": "M16 16L21.5 21.5"
+          }
+        }
+      ]
+    },
+    "home": {
+      "shapes": [
+        {
+          "tag": "path",
+          "attrs": {
+            "d": "M3 11L12 3l9 8"
+          }
+        },
+        {
+          "tag": "path",
+          "attrs": {
+            "d": "M5 11v10h14V11"
+          }
+        },
+        {
+          "tag": "rect",
+          "attrs": {
+            "x": 10,
+            "y": 15,
+            "width": 4,
+            "height": 6
+          }
+        }
+      ]
+    },
+    "settings": {
+      "shapes": [
+        {
+          "tag": "rect",
+          "attrs": {
+            "x": 6,
+            "y": 6,
+            "width": 12,
+            "height": 12,
+            "rx": 1
+          }
+        },
+        {
+          "tag": "path",
+          "attrs": {
+            "d": "M12 2v4M12 18v4M2 12h4M18 12h4M5 5l2.5 2.5M16.5 16.5L19 19M19 5l-2.5 2.5M7.5 16.5L5 19"
+          }
+        }
+      ]
+    },
+    "info": {
+      "shapes": [
+        {
+          "tag": "rect",
+          "attrs": {
+            "x": 3,
+            "y": 3,
+            "width": 18,
+            "height": 18,
+            "rx": 1
+          }
+        },
+        {
+          "tag": "path",
+          "attrs": {
+            "d": "M12 10v7M12 6.5v1"
+          }
+        }
+      ]
+    },
+    "window-close": {
+      "shapes": [
+        {
+          "tag": "path",
+          "attrs": {
+            "d": "M6 6L18 18M18 6L6 18"
+          }
+        }
+      ]
+    }
+  }
+}

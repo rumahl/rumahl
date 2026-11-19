@@ -1,0 +1,26 @@
+/* Example composition only; all application chrome comes from @rumahl/ui. */
+.layout-demo__islands {
+  display: grid;
+  grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr);
+  gap: 20px;
+  align-items: start;
+}
+.layout-demo__mail {
+  display: grid;
+  grid-template-columns: minmax(180px, 1fr) minmax(280px, 2fr) minmax(240px, 1fr);
+  min-height: 520px;
+}
+.layout-demo__command { max-width: 780px; margin: 48px auto; }
+.layout-demo__command-body { display: grid; grid-template-columns: 1fr 1fr; min-height: 280px; }
+.layout-demo__viewer { position: relative; height: 640px; max-height: 90dvh; min-height: 400px; overflow: hidden; }
+.layout-demo__artwork { width: 100%; height: 100%; display: block; }
+.layout-demo__viewer-top { position: absolute; top: 16px; left: 16px; right: 16px; }
+.layout-demo__viewer-bottom { position: absolute; bottom: 16px; left: 16px; right: 16px; }
+@media (max-width: 1000px) {
+  .layout-demo__mail { grid-template-columns: minmax(180px, 1fr) minmax(280px, 2fr); }
+  .layout-demo__mail > aside { grid-column: 1 / -1; }
+}
+@media (max-width: 640px) {
+  .layout-demo__islands, .layout-demo__mail, .layout-demo__command-body { grid-template-columns: minmax(0, 1fr); }
+  .layout-demo__command { margin-block: 0; }
+}

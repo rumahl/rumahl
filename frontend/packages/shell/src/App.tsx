@@ -7,8 +7,9 @@ import { I18nProvider } from "./i18n";
 import { watchShellUpdates, type ShellLiveSource } from "./live-updates";
 import { ShellRouter, type ShellRouterOptions } from "./routing/ShellRouter";
 import { ShellPreferencesProvider, useShellPreferences } from "./preferences/ShellPreferences";
+import { useThemeRegistry } from "./preferences/installed-themes";
 import { OsModeProvider } from "./preferences/OsMode";
-import { applyThemeTuning, useThemeTuning } from "./preferences/theme-tuning";
+import { applyThemeTuning, resolveThemeScheme, useThemeTuning } from "./preferences/theme-tuning";
 import { WorkspaceProvider } from "./preferences/Workspace";
 import { AppCatalog } from "./apps/AppCatalog";
 import { ShellLayout } from "./shell/ShellLayout";
@@ -25,6 +26,7 @@ export function App({ snapshot, live, theme, ...routing }: ShellRouterOptions & 
   theme?: Theme | undefined;
 }) {
   const [current, setCurrent] = useState(snapshot);
+  const [warningsRevision, setWarningsRevision] = useState(0);
   const redirecting = useRef(false);
   useEffect(() => {
     if (!live) return;
@@ -40,7 +42,7 @@ export function App({ snapshot, live, theme, ...routing }: ShellRouterOptions & 
       // offline/recovery screen shows the right message, then hand over.
       try { localStorage.setItem("rumahl.lifecycle", JSON.stringify({ state, at: Date.now() })); } catch { /* ignore */ }
       location.assign(`/recovery?reason=${state === "shutting-down" ? "poweroff" : "restart"}`);
-    });
+    }, () => setWarningsRevision((value) => value + 1));
   }, [live, snapshot.revision]);
   // The platform resolves the account theme and ships its tokens and variants.
   // Device overrides are resolved from the local theme registry.
@@ -53,7 +55,7 @@ export function App({ snapshot, live, theme, ...routing }: ShellRouterOptions & 
             <AppCatalog live={live} revision={current.revision} initial={current.apps}>
               <WorkspaceProvider live={live} initial={current.workspace}>
                 <ShellThemeGate override={theme} serverTheme={serverTheme}>
-                  <ShellLayout snapshot={current} live={live} />
+                  <ShellLayout snapshot={current} live={live} warningsRevision={warningsRevision} />
                 </ShellThemeGate>
               </WorkspaceProvider>
             </AppCatalog>
@@ -68,15 +70,18 @@ function ShellThemeGate({ override, serverTheme, children }: PropsWithChildren<{
   const preferences = useShellPreferences();
   const { tuning } = useThemeTuning();
   const systemMode = useSystemMode();
+  // Installed/removed themes change the registry, not the preference, so the
+  // resolved theme must be recomputed when the registry changes.
+  const registry = useThemeRegistry();
   const adaptiveScale = useAdaptiveTypeScale(tuning.adaptiveType === true);
   const theme = useMemo(() => {
     const selected = override ?? resolveActiveTheme(serverTheme, preferences.theme);
     const tokens = { ...resolveTokens(applyThemeTuning(selected, tuning, systemMode)) };
     if (tuning.adaptiveType === true) tokens["typography.scale"] = String(adaptiveScale);
     return { ...selected, tokens };
-  }, [override, preferences.theme, serverTheme, tuning, systemMode, adaptiveScale]);
+  }, [override, preferences.theme, serverTheme, tuning, systemMode, adaptiveScale, registry]);
   useEffect(() => {
-    rememberLoginAppearance(theme, tuning.mode ?? systemMode);
+    rememberLoginAppearance(theme, resolveThemeScheme(theme, tuning.mode, systemMode));
   }, [theme, tuning.mode, systemMode]);
   useEffect(() => {
     const root = document.documentElement;

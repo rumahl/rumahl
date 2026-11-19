@@ -148,7 +148,7 @@
 }
 .event-monitor__scroll { max-height: min(58vh, 620px); overflow: auto; border: 1px solid var(--emg-line); border-radius: 14px; background: #000; }
 .event-monitor__table { width: 100%; border-collapse: collapse; font-size: 13px; }
-.event-monitor__table thead th { position: sticky; top: 0; text-align: left; padding: 9px 12px; background: #0a0a0b; color: #7c869c; font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; }
+.event-monitor__table thead th { position: sticky; top: 0; text-align: left; padding: 9px 12px; background: #0a0a0b; color: #7c869c; font-size: 12px; text-transform: uppercase; letter-spacing: 0.05em; }
 .event-monitor__table td { padding: 8px 12px; border-top: 1px solid var(--emg-line); vertical-align: top; }
 .event-monitor__seq, .event-monitor__time { color: #8a93a8; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .event-monitor__actor, .event-monitor__target { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; color: #c7d0ea; word-break: break-all; max-width: 260px; }
@@ -202,9 +202,9 @@
 .keypalette__list { list-style: none; margin: 0; padding: 8px; max-height: 46vh; overflow: auto; }
 .keypalette__item { display: flex; align-items: center; justify-content: space-between; gap: 16px; width: 100%; text-align: left; padding: 11px 13px; border: 0; border-radius: 10px; background: transparent; color: #e6eaf5; font: inherit; font-size: 14px; cursor: pointer; }
 .keypalette__item.is-active { background: color-mix(in srgb, var(--rumahl-ui-color-accent, #5b8cff) 26%, transparent); }
-.keypalette__item kbd { flex: none; padding: 2px 8px; border-radius: 6px; background: rgba(255, 255, 255, 0.08); border: 1px solid rgba(255, 255, 255, 0.14); font: 600 11px ui-monospace, SFMono-Regular, Menlo, monospace; color: #cdd3e0; }
+.keypalette__item kbd { flex: none; padding: 2px 8px; border-radius: 6px; background: rgba(255, 255, 255, 0.08); border: 1px solid rgba(255, 255, 255, 0.14); font: 600 12px ui-monospace, SFMono-Regular, Menlo, monospace; color: #cdd3e0; }
 .keypalette__item:disabled { opacity: .42; cursor: not-allowed; }
-.keypalette__unavailable { flex: none; color: #9aa3b7; font-size: 11px; }
+.keypalette__unavailable { flex: none; color: #9aa3b7; font-size: 12px; }
 .keypalette__empty { padding: 14px; color: #8a93a8; }
 
 @media (max-width: 720px) {

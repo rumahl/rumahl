@@ -3,7 +3,8 @@ import { useTheme } from "@rumahl/ui";
 import { BoltIcon, MoonIcon, PulseIcon, SettingsIcon, SparkIcon, WindowStackIcon } from "../icons";
 import { useI18n } from "../i18n";
 import type { MessageKey } from "../i18n/locales/en";
-import { useThemeTuning } from "../preferences/theme-tuning";
+import { resolveThemeScheme, useThemeTuning } from "../preferences/theme-tuning";
+import { useSystemMode } from "./system-scheme";
 
 /** Quick settings popover (dark mode, transparency, motion, performance). */
 export function ControlCenter({ protection, state, error, userName, windowCount, onOpenSettings, onOpenSwitcher, onOpenTour, onClose }: {
@@ -31,13 +32,21 @@ export function ControlCenter({ protection, state, error, userName, windowCount,
   }, []);
   const { theme, tokens } = useTheme();
   const tuning = useThemeTuning();
-  const dark = tuning.tuning.mode === "dark";
+  const systemMode = useSystemMode();
+  // The toggle must describe the scheme the shell actually renders. With mode
+  // "auto" (null) the shell follows the browser, so a system-dark desktop has
+  // to show the toggle as on even though no explicit dark mode was saved.
+  const dark = resolveThemeScheme(theme, tuning.tuning.mode, systemMode) === "dark";
   const supportsDark = (theme.modes ?? []).includes("dark");
-  const supportsTransparency = Number(tokens["material.morphism"]) > 0;
-  const transparency = Number(tokens["material.opacity"]) < 1 && Number(tokens["material.morphism"]) > 0;
+  const supportsLight = (theme.modes ?? []).includes("light");
+  // Transparency is a theme capability, not a property of the current tokens.
+  // A user who turns it off must be able to turn it back on from here.
+  const supportsTransparency = theme.material !== "solid" && theme.locked !== true;
   const animations = tuning.tuning.animations !== false;
   const performance = tuning.tuning.performanceMode === true;
   const ultra = tuning.tuning.ultraPerformance === true;
+  const transparency = !performance && !ultra &&
+    Number(tokens["material.opacity"]) < 1 && Number(tokens["material.morphism"]) > 0;
 
   const tile = (active: boolean, onClick: () => void, icon: ReactNode, label: string, disabled = false) =>
     <button type="button" className={`control-center__tile${active ? " is-on" : ""}`} aria-pressed={active}
@@ -57,7 +66,7 @@ export function ControlCenter({ protection, state, error, userName, windowCount,
       <WindowStackIcon aria-hidden="true" /><span>{t("controlCenter.windows")}</span><b>{windowCount}</b>
     </button> : null}
     <div className="control-center__grid">
-      {tile(dark, () => tuning.setMode(dark ? "light" : "dark"), <MoonIcon />, t("controlCenter.darkMode"), !supportsDark)}
+      {tile(dark, () => tuning.setMode(dark && supportsLight ? "light" : "dark"), <MoonIcon />, t("controlCenter.darkMode"), !supportsDark || !supportsLight)}
       {tile(transparency, () => tuning.setTransparency(!transparency), <SparkIcon />, t("controlCenter.transparency"), !supportsTransparency)}
       {tile(animations, () => tuning.setAnimations(!animations), <PulseIcon />, t("controlCenter.animations"))}
       {tile(performance, () => tuning.setPerformanceMode(!performance), <SettingsIcon />, t("controlCenter.performance"))}

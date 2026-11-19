@@ -15,6 +15,9 @@ pub type EventReceiver = broadcast::Receiver<ShellEventMessage>;
 /// Replace this with a durable event feed without changing the WebSocket route.
 pub trait ShellEventSource: Send + Sync + 'static {
     fn subscribe(&self) -> EventReceiver;
+    /// Delivers a system event to every connected client. Used for OS-wide
+    /// state such as severe-weather warnings, which are not user-scoped.
+    fn publish_all(&self, event: ShellEvent);
 }
 
 #[derive(Clone)]
@@ -41,5 +44,9 @@ impl InMemoryShellEvents {
 impl ShellEventSource for InMemoryShellEvents {
     fn subscribe(&self) -> EventReceiver {
         self.sender.subscribe()
+    }
+
+    fn publish_all(&self, event: ShellEvent) {
+        let _ = self.sender.send(ShellEventMessage::ForAll(event));
     }
 }
