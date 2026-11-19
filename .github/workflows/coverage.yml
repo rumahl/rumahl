@@ -34,7 +34,7 @@ jobs:
           tool: cargo-llvm-cov
       - name: Generate Rust coverage
         run: cargo llvm-cov --workspace --locked --lcov --output-path lcov-rust.info
-      - uses: codecov/codecov-action@0fb7174895f61a3b6b78fc075e0cd60383518dac # v5
+      - uses: codecov/codecov-action@303a32d7a59b442fa8d48b6a1cc6825c09c847a5 # v7.1.1
         with:
           files: lcov-rust.info
           flags: rust
@@ -63,7 +63,7 @@ jobs:
       - name: Generate frontend coverage
         run: pnpm test:coverage
         working-directory: frontend
-      - uses: codecov/codecov-action@0fb7174895f61a3b6b78fc075e0cd60383518dac # v5
+      - uses: codecov/codecov-action@303a32d7a59b442fa8d48b6a1cc6825c09c847a5 # v7.1.1
         with:
           files: frontend/packages/*/coverage/lcov.info
           flags: frontend
