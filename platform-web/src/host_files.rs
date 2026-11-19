@@ -734,6 +734,16 @@ async fn write(
     if body.len() > MAX_WRITE_BYTES {
         return error(StatusCode::PAYLOAD_TOO_LARGE);
     }
+    // The account's per-file cap, as with personal-store uploads.
+    let maximum = state
+        .policies
+        .clone()
+        .map_or(rumahl_core::DEFAULT_MAX_FILE_BYTES, |engine| {
+            engine.max_file_bytes(user)
+        });
+    if body.len() as u64 > maximum {
+        return error(StatusCode::PAYLOAD_TOO_LARGE);
+    }
     let data = body.to_vec();
     let audited = path.clone();
     match tokio::task::spawn_blocking(move || provider.write(area, &path, user, &data)).await {

@@ -11,7 +11,7 @@ use std::time::Duration;
 
 use rumahl_core::{
     GroupId, PolicyAssignment, PolicyKey, PolicyKeyError, PolicySubject, PolicyValue, UserId,
-    resolve_policy,
+    resolve_device_policy, resolve_policy,
 };
 use rusqlite::{Connection, OptionalExtension, TransactionBehavior};
 
@@ -371,13 +371,13 @@ impl SqlitePolicyStore {
         let encoded_subject = subject.encode();
         match value {
             Some(value) => {
-                rumahl_core::validate_assignment(subject, key.clone(), value)
+                let assignment = rumahl_core::validate_assignment(subject, key.clone(), value)
                     .map_err(PolicyStoreError::InvalidPolicy)?;
                 transaction
                     .execute(
                         "INSERT INTO policy_assignment (subject, key, value) VALUES (?1, ?2, ?3)
                          ON CONFLICT(subject, key) DO UPDATE SET value = excluded.value",
-                        rusqlite::params![encoded_subject, key.as_str(), value.encode()],
+                        rusqlite::params![encoded_subject, key.as_str(), assignment.value.encode()],
                     )
                     .map_err(|_| PolicyStoreError::Storage)?;
             }
@@ -402,6 +402,14 @@ impl SqlitePolicyStore {
         let groups = self.groups_of(user)?;
         let assignments = self.assignments()?;
         Ok(resolve_policy(key, user, &groups, &assignments))
+    }
+
+    /// The effective value of a device-wide key. Group and user assignments
+    /// for such a key are dead letters: the machine's rules never depend on
+    /// who is asking.
+    pub fn effective_device(&self, key: &PolicyKey) -> Result<PolicyValue, PolicyStoreError> {
+        let assignments = self.assignments()?;
+        Ok(resolve_device_policy(key, &assignments))
     }
 
     /// Inserts an account row so user subjects resolve in tests. Production
@@ -566,6 +574,63 @@ mod tests {
     }
 
     #[test]
+    fn text_and_list_assignments_round_trip() {
+        let store = store();
+        let publishers = key("rumahl.apps.allowed_publishers");
+        // The default is the empty list: every trusted publisher.
+        assert_eq!(
+            store.effective_device(&publishers).unwrap(),
+            PolicyValue::List(Vec::new())
+        );
+        store
+            .set_assignment(
+                PolicySubject::Device,
+                publishers.clone(),
+                Some(PolicyValue::List(vec![
+                    "com.rumahl".to_owned(),
+                    "org.example".to_owned(),
+                ])),
+            )
+            .unwrap();
+        assert_eq!(
+            store.effective_device(&publishers).unwrap(),
+            PolicyValue::List(vec!["com.rumahl".to_owned(), "org.example".to_owned()])
+        );
+        // Device-wide keys ignore user and group assignments entirely.
+        store
+            .update_members(&store.create_group("Staff").unwrap().id, &[user()], &[])
+            .unwrap();
+        store
+            .set_assignment(
+                PolicySubject::User(user()),
+                publishers.clone(),
+                Some(PolicyValue::List(vec!["net.evil".to_owned()])),
+            )
+            .unwrap();
+        assert_eq!(
+            store.effective_device(&publishers).unwrap(),
+            PolicyValue::List(vec!["com.rumahl".to_owned(), "org.example".to_owned()])
+        );
+        // Malformed and out-of-bounds items never reach storage.
+        assert!(
+            store
+                .set_assignment(
+                    PolicySubject::Device,
+                    publishers.clone(),
+                    Some(PolicyValue::List(vec![String::new()]))
+                )
+                .is_err()
+        );
+        store
+            .set_assignment(PolicySubject::Device, publishers.clone(), None)
+            .unwrap();
+        assert_eq!(
+            store.effective_device(&publishers).unwrap(),
+            PolicyValue::List(Vec::new())
+        );
+    }
+
+    #[test]
     fn effective_resolution_follows_user_group_device() {
         let store = store();
         let mode = key("rumahl.os.advanced_mode");
@@ -627,7 +692,7 @@ mod tests {
         store
             .set_assignment(PolicySubject::Device, quota.clone(), None)
             .unwrap();
-        let default = policy_definition(&mode).unwrap().default;
+        let default = policy_definition(&mode).unwrap().default.to_value();
         assert_eq!(store.effective(user(), &mode).unwrap(), default);
         assert_eq!(
             store.effective(user(), &quota).unwrap(),

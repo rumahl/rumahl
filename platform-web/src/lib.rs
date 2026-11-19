@@ -64,7 +64,7 @@ mod preferences;
 mod host_files;
 pub use host_files::{HostArea, HostEntry, HostError, HostFiles};
 mod policy;
-pub use policy::PolicyEngine;
+pub use policy::{PasswordRules, PolicyEngine};
 
 mod os_mode;
 

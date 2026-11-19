@@ -89,6 +89,17 @@ pub struct AdminPolicyAssignment {
     pub value: serde_json::Value,
 }
 
+/// One catalog policy as the administration UI sees it, with the bounds the
+/// editor needs to offer legal values only.
+fn policy_json_value(value: &rumahl_core::PolicyValue) -> serde_json::Value {
+    match value {
+        rumahl_core::PolicyValue::Boolean(value) => serde_json::json!(value),
+        rumahl_core::PolicyValue::Number(value) => serde_json::json!(value),
+        rumahl_core::PolicyValue::Text(value) => serde_json::json!(value),
+        rumahl_core::PolicyValue::List(values) => serde_json::json!(values),
+    }
+}
+
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AdminGroup {
@@ -523,11 +534,9 @@ fn policy_json(assignments: Vec<AdminPolicyAssignment>) -> serde_json::Value {
         .map(|definition| {
             serde_json::json!({
                 "key": definition.key,
+                "area": definition.area(),
                 "kind": definition.kind.as_str(),
-                "default": match definition.default {
-                    rumahl_core::PolicyValue::Boolean(value) => serde_json::json!(value),
-                    rumahl_core::PolicyValue::Number(value) => serde_json::json!(value),
-                },
+                "default": policy_json_value(&definition.default.to_value()),
                 "minimum": if definition.minimum == 0 { serde_json::Value::Null } else { serde_json::json!(definition.minimum) },
                 "maximum": if definition.maximum == 0 { serde_json::Value::Null } else { serde_json::json!(definition.maximum) },
                 "description": definition.description,

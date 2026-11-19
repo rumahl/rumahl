@@ -7,10 +7,13 @@ use axum::{
     http::{Request, StatusCode},
 };
 use http_body_util::BodyExt;
-use rumahl_core::AuditLog;
+use rumahl_core::{AuditLog, InstallationId};
 use rumahl_persistence_sqlite::SqliteAuditLog;
 use rumahl_platform_service::*;
-use rumahl_platform_web::{GatewayConfig, GatewayState, InMemoryShellEvents, router};
+use rumahl_platform_web::{
+    AppAccess, AppAccessError, AppAsset, AppData, AppSettingInfo, CatalogApp, GatewayConfig,
+    GatewayState, ImportedApp, InMemoryShellEvents, PackageUploadFile, ShellIdentity, router,
+};
 use std::{path::Path, sync::Arc};
 use tower::ServiceExt;
 
@@ -23,15 +26,13 @@ fn password() -> String {
         .to_string()
 }
 
-fn app(root: &Path) -> Router {
+/// The shared gateway state: administration, audit, policies, files.
+fn state_of(
+    root: &Path,
+    admin: Arc<LocalAdministration>,
+    audit: Arc<dyn AuditLog>,
+) -> GatewayState {
     let accounts = root.join("accounts.sqlite");
-    let audit: Arc<dyn AuditLog> =
-        Arc::new(SqliteAuditLog::open(root.join("audit.sqlite")).unwrap());
-    let admin = Arc::new(
-        LocalAdministration::open(&accounts, Some(audit.clone()))
-            .unwrap()
-            .with_home_root(root.join("home")),
-    );
     let policies: Arc<dyn rumahl_platform_web::PolicyEngine> = Arc::new(
         rumahl_platform_service::policy_engine::LocalPolicyEngine::open(&accounts).unwrap(),
     );
@@ -43,7 +44,7 @@ fn app(root: &Path) -> Router {
         )
         .unwrap(),
     );
-    router(GatewayState {
+    GatewayState {
         host_files: Some(Arc::new(
             rumahl_platform_service::host_files::LocalHostFiles::new(
                 root.join("apps"),
@@ -55,7 +56,11 @@ fn app(root: &Path) -> Router {
         config: GatewayConfig::new("https://rumahl.test", root.join("ssr.sock")).unwrap(),
         backend: shell_backend(&accounts, &root.join("platform.sqlite"), "build-test", "en")
             .unwrap(),
-        browser_sessions: Some(Arc::new(LocalBrowserSessions::open(&accounts).unwrap())),
+        browser_sessions: Some(Arc::new(
+            LocalBrowserSessions::open(&accounts)
+                .unwrap()
+                .with_policies(policies.clone()),
+        )),
         admin: Some(admin),
         login_slots: Arc::new(tokio::sync::Semaphore::new(2)),
         audit: Some(audit),
@@ -76,7 +81,19 @@ fn app(root: &Path) -> Router {
         workspace: None,
         files: Some(files),
         oidc: None,
-    })
+    }
+}
+
+fn app(root: &Path) -> Router {
+    let accounts = root.join("accounts.sqlite");
+    let audit: Arc<dyn AuditLog> =
+        Arc::new(SqliteAuditLog::open(root.join("audit.sqlite")).unwrap());
+    let admin = Arc::new(
+        LocalAdministration::open(&accounts, Some(audit.clone()))
+            .unwrap()
+            .with_home_root(root.join("home")),
+    );
+    router(state_of(root, admin, audit))
 }
 
 async fn login(app: &Router, username: &str, password: &str) -> String {
@@ -213,9 +230,20 @@ async fn administrators_manage_groups_and_assignments() {
     assert_eq!(
         keys,
         vec![
+            "rumahl.password.min_length",
+            "rumahl.password.require_classes",
+            "rumahl.password.attempt_limit",
+            "rumahl.password.lockout_seconds",
+            "rumahl.session.lifetime_seconds",
             "rumahl.os.advanced_mode",
+            "rumahl.os.allow_store_install",
+            "rumahl.os.allow_app_uninstall",
             "rumahl.home.cross_user_read",
-            "rumahl.files.quota_bytes"
+            "rumahl.files.quota_bytes",
+            "rumahl.files.max_file_bytes",
+            "rumahl.files.durable_grants",
+            "rumahl.apps.storage_quota_bytes",
+            "rumahl.apps.allowed_publishers"
         ]
     );
     assert_eq!(value["assignments"].as_array().unwrap().len(), 0);
@@ -531,4 +559,387 @@ async fn cross_user_home_access_needs_admin_role_and_policy() {
         std::fs::read(temp.path().join("home/bob/Documents/secret.txt")).unwrap(),
         b"bob's secret"
     );
+}
+
+/// A login that returns the whole response, for asserting cookie attributes.
+async fn login_raw(app: &Router, username: &str, password: &str) -> axum::http::Response<Body> {
+    app.clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/login")
+                .header("content-type", "application/x-www-form-urlencoded")
+                .header("origin", "https://rumahl.test")
+                .body(Body::from(format!(
+                    "username={username}&password={password}"
+                )))
+                .unwrap(),
+        )
+        .await
+        .unwrap()
+}
+
+#[tokio::test]
+async fn password_rules_reach_account_creation() {
+    let temp = tempfile::tempdir().unwrap();
+    let (app, alice, _bob) = seeded(temp.path()).await;
+
+    // Raise the bar: 24 characters from all four classes.
+    let (status, _) = json(
+        &app,
+        "PUT",
+        "/api/v1/admin/policies",
+        Some(&alice),
+        Some(serde_json::json!({
+            "subject": "device",
+            "key": "rumahl.password.min_length",
+            "value": 24
+        })),
+    )
+    .await;
+    assert_eq!(status, StatusCode::NO_CONTENT);
+    let (status, _) = json(
+        &app,
+        "PUT",
+        "/api/v1/admin/policies",
+        Some(&alice),
+        Some(serde_json::json!({
+            "subject": "device",
+            "key": "rumahl.password.require_classes",
+            "value": 4
+        })),
+    )
+    .await;
+    assert_eq!(status, StatusCode::NO_CONTENT);
+
+    // A short one-class password is refused; the account never appears.
+    let (status, _) = json(
+        &app,
+        "POST",
+        "/api/v1/admin/users",
+        Some(&alice),
+        Some(serde_json::json!({
+            "username": "carol", "displayName": "Carol",
+            "password": "onlylowercase", "role": "user"
+        })),
+    )
+    .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    let (_, users) = json(&app, "GET", "/api/v1/admin/users", Some(&alice), None).await;
+    assert!(
+        users["users"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .all(|user| user["username"] != "carol")
+    );
+
+    // A compliant password creates the account.
+    let (status, _) = json(
+        &app,
+        "POST",
+        "/api/v1/admin/users",
+        Some(&alice),
+        Some(serde_json::json!({
+            "username": "carol", "displayName": "Carol",
+            "password": "Four-Class-Password_2026!", "role": "user"
+        })),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+
+    // Lowering the rule back lets simpler passwords in again.
+    let (status, _) = json(
+        &app,
+        "PUT",
+        "/api/v1/admin/policies",
+        Some(&alice),
+        Some(serde_json::json!({
+            "subject": "device",
+            "key": "rumahl.password.require_classes",
+            "value": null
+        })),
+    )
+    .await;
+    assert_eq!(status, StatusCode::NO_CONTENT);
+    let (status, _) = json(
+        &app,
+        "POST",
+        "/api/v1/admin/users",
+        Some(&alice),
+        Some(serde_json::json!({
+            "username": "dave", "displayName": "Dave",
+            "password": "lowercase-but-long-enough", "role": "user"
+        })),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+}
+
+#[tokio::test]
+async fn the_session_lifetime_follows_the_policy() {
+    let temp = tempfile::tempdir().unwrap();
+    let root = temp.path();
+    let accounts = root.join("accounts.sqlite");
+    let alice_password = password();
+    provision(
+        &accounts,
+        "alice",
+        "Alice",
+        alice_password.clone(),
+        LocalPasswordBlocklist::default(),
+    )
+    .unwrap();
+    let router = app(root);
+
+    // The default lifetime is 12 hours.
+    let response = login_raw(&router, "alice", &alice_password).await;
+    assert_eq!(response.status(), StatusCode::SEE_OTHER);
+    let cookie = response.headers()["set-cookie"].to_str().unwrap();
+    assert!(cookie.contains("Max-Age=43200"), "{cookie}");
+
+    let alice = login(&router, "alice", &alice_password).await;
+    let (status, _) = json(
+        &router,
+        "PUT",
+        "/api/v1/admin/policies",
+        Some(&alice),
+        Some(serde_json::json!({
+            "subject": "device",
+            "key": "rumahl.session.lifetime_seconds",
+            "value": 600
+        })),
+    )
+    .await;
+    assert_eq!(status, StatusCode::NO_CONTENT);
+
+    // A policy shortens it to 10 minutes; the cookie follows the very next
+    // login, without a restart.
+    let response = login_raw(&router, "alice", &alice_password).await;
+    let cookie = response.headers()["set-cookie"].to_str().unwrap();
+    assert!(cookie.contains("Max-Age=600"), "{cookie}");
+}
+
+/// One fixed installation so route-level tests can address it.
+fn gate_installation() -> InstallationId {
+    InstallationId::parse("01990000-0000-7000-8000-0000000000aa").unwrap()
+}
+
+/// A minimal provider so the import/uninstall gates can be exercised without
+/// a signed package or a runtime: one web app, one fixed installation.
+struct GateApps;
+
+impl rumahl_platform_web::AppProvider for GateApps {
+    fn catalog(&self, _identity: ShellIdentity) -> Result<Vec<CatalogApp>, AppAccessError> {
+        Ok(vec![CatalogApp {
+            id: "com.rumahl.gate".into(),
+            installation_id: gate_installation(),
+            title: "Gate".into(),
+            version: "1.0.0".into(),
+            launchable: true,
+            capabilities: Vec::new(),
+            runtime: "web".into(),
+            lifecycle: "on-demand".into(),
+            connectors: Vec::new(),
+        }])
+    }
+    fn entrypoint(
+        &self,
+        _identity: ShellIdentity,
+        _installation: InstallationId,
+    ) -> Result<String, AppAccessError> {
+        Ok("/index.html".into())
+    }
+    fn asset(
+        &self,
+        _identity: ShellIdentity,
+        _installation: InstallationId,
+        _path: &str,
+    ) -> Result<AppAsset, AppAccessError> {
+        Err(AppAccessError::Denied)
+    }
+    fn settings(
+        &self,
+        _identity: ShellIdentity,
+        _installation: InstallationId,
+    ) -> Result<Vec<AppSettingInfo>, AppAccessError> {
+        Ok(Vec::new())
+    }
+    fn data(
+        &self,
+        _identity: ShellIdentity,
+        _installation: InstallationId,
+        _path: &str,
+    ) -> Result<AppData, AppAccessError> {
+        Err(AppAccessError::Denied)
+    }
+    fn import_package(
+        &self,
+        _identity: ShellIdentity,
+        _files: Vec<PackageUploadFile>,
+    ) -> Result<ImportedApp, AppAccessError> {
+        Ok(ImportedApp {
+            id: "com.rumahl.gate".into(),
+            installation_id: gate_installation(),
+            title: "Gate".into(),
+            version: "1.0.0".into(),
+        })
+    }
+    fn uninstall_app(
+        &self,
+        _identity: ShellIdentity,
+        _installation: InstallationId,
+    ) -> Result<(), AppAccessError> {
+        Ok(())
+    }
+}
+
+/// The policy-test gateway, this time with a minimal app catalog.
+fn app_with_apps(root: &Path) -> Router {
+    let accounts = root.join("accounts.sqlite");
+    let audit: Arc<dyn AuditLog> =
+        Arc::new(SqliteAuditLog::open(root.join("audit.sqlite")).unwrap());
+    let admin = Arc::new(
+        LocalAdministration::open(&accounts, Some(audit.clone()))
+            .unwrap()
+            .with_home_root(root.join("home")),
+    );
+    let mut state = state_of(root, admin, audit);
+    let policies = state.policies.clone().unwrap();
+    let origin = GatewayConfig::new("https://rumahl.test", root.join("ssr.sock"))
+        .unwrap()
+        .public_origin;
+    state.apps = Some(Arc::new(
+        AppAccess::new(Arc::new(GateApps), &origin, "apps.rumahl.test")
+            .unwrap()
+            .with_policies(policies),
+    ));
+    router(state)
+}
+
+#[tokio::test]
+async fn installs_and_uninstalls_can_be_reserved_for_administrators() {
+    let temp = tempfile::tempdir().unwrap();
+    let root = temp.path();
+    let accounts = root.join("accounts.sqlite");
+    let alice_password = password();
+    provision(
+        &accounts,
+        "alice",
+        "Alice",
+        alice_password.clone(),
+        LocalPasswordBlocklist::default(),
+    )
+    .unwrap();
+    let router = app_with_apps(root);
+    let alice = login(&router, "alice", &alice_password).await;
+
+    // A second, normal account to be refused by the gates.
+    let (status, _) = json(
+        &router,
+        "POST",
+        "/api/v1/admin/users",
+        Some(&alice),
+        Some(serde_json::json!({
+            "username": "bob", "displayName": "Bob",
+            "password": "a-long-enough-development-password", "role": "user"
+        })),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    let bob = login(&router, "bob", "a-long-enough-development-password").await;
+
+    let (status, _) = json(
+        &router,
+        "PUT",
+        "/api/v1/admin/policies",
+        Some(&alice),
+        Some(serde_json::json!({
+            "subject": "device",
+            "key": "rumahl.os.allow_store_install",
+            "value": false
+        })),
+    )
+    .await;
+    assert_eq!(status, StatusCode::NO_CONTENT);
+
+    let body = serde_json::json!({
+        "importVersion": 1,
+        "device": "00000000-0000-4000-8000-000000000001",
+        "installOrigin": "store",
+        "files": [
+            {"path": "package/manifest.json", "content": "e30="}
+        ]
+    });
+    let import = |cookie: &str| {
+        router.clone().oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/v1/shell/apps/import")
+                .header("content-type", "application/json")
+                .header("origin", "https://rumahl.test")
+                .header("cookie", format!("__Host-rumahl_session={cookie}"))
+                .body(Body::from(body.to_string()))
+                .unwrap(),
+        )
+    };
+    // A normal user is refused by the policy; the owner still imports.
+    let response = import(&bob).await.unwrap();
+    assert_eq!(response.status(), StatusCode::FORBIDDEN);
+    let response = import(&alice).await.unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+
+    // The uninstall gate follows the same pattern.
+    let (status, _) = json(
+        &router,
+        "PUT",
+        "/api/v1/admin/policies",
+        Some(&alice),
+        Some(serde_json::json!({
+            "subject": "device",
+            "key": "rumahl.os.allow_app_uninstall",
+            "value": false
+        })),
+    )
+    .await;
+    assert_eq!(status, StatusCode::NO_CONTENT);
+    let uninstall = |cookie: &str| {
+        router.clone().oneshot(
+            Request::builder()
+                .method("DELETE")
+                .uri("/api/v1/shell/apps/com.rumahl.gate")
+                .header("content-type", "application/json")
+                .header("origin", "https://rumahl.test")
+                .header("cookie", format!("__Host-rumahl_session={cookie}"))
+                .body(Body::from(
+                    serde_json::json!({"installationId": gate_installation().to_string()})
+                        .to_string(),
+                ))
+                .unwrap(),
+        )
+    };
+    let response = uninstall(&bob).await.unwrap();
+    assert_eq!(response.status(), StatusCode::FORBIDDEN);
+    let response = uninstall(&alice).await.unwrap();
+    assert_eq!(response.status(), StatusCode::NO_CONTENT);
+
+    // Turning the policies back returns both rights to everyone.
+    for key in [
+        "rumahl.os.allow_store_install",
+        "rumahl.os.allow_app_uninstall",
+    ] {
+        let (status, _) = json(
+            &router,
+            "PUT",
+            "/api/v1/admin/policies",
+            Some(&alice),
+            Some(serde_json::json!({"subject": "device", "key": key, "value": null})),
+        )
+        .await;
+        assert_eq!(status, StatusCode::NO_CONTENT);
+    }
+    let response = import(&bob).await.unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    let response = uninstall(&bob).await.unwrap();
+    assert_eq!(response.status(), StatusCode::NO_CONTENT);
 }

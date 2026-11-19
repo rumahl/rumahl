@@ -138,8 +138,9 @@ fn gateway(root: &std::path::Path) -> axum::Router {
         workspace: None,
         preferences: None,
         os_mode: None,
-
-        policies: None,
+        policies: Some(Arc::new(
+            rumahl_platform_service::policy_engine::LocalPolicyEngine::open(&accounts).unwrap(),
+        )),
     })
 }
 
@@ -792,4 +793,113 @@ async fn channel_paths_resolve_only_the_callers_home() {
             .resolve(identity, installation, "/home/alice/../etc/passwd")
             .is_err()
     );
+}
+
+#[tokio::test]
+async fn a_policy_can_cap_consent_at_the_session() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path();
+    let accounts = root.join("accounts.sqlite");
+    let password = rumahl_account_auth::SessionToken::generate()
+        .unwrap()
+        .encode()
+        .to_string();
+    provision(
+        &accounts,
+        "alice",
+        "Alice",
+        password.clone(),
+        LocalPasswordBlocklist::default(),
+    )
+    .unwrap();
+    let sessions = LocalBrowserSessions::open(&accounts).unwrap();
+    let alice = sessions.login("alice", password).unwrap();
+    let installation = seed_files_app(root, "alice");
+    let files = SqlitePersonalFiles::open(root.join("files.sqlite")).unwrap();
+    let user_id = {
+        let state = SqliteAccountStateRepository::open(&accounts)
+            .unwrap()
+            .load()
+            .unwrap();
+        *state
+            .accounts()
+            .accounts()
+            .iter()
+            .find(|user| user.username().as_str() == "alice")
+            .unwrap()
+            .user_id()
+    };
+    files
+        .create(user_id, "root", "notes.txt", Some(b"hello".to_vec()))
+        .unwrap();
+    let notes = files.list(user_id, "root").unwrap().remove(0);
+
+    // The policy store caps consent at the session, like a restart would see.
+    let policies = rumahl_persistence_sqlite::SqlitePolicyStore::open(&accounts).unwrap();
+    policies
+        .set_assignment(
+            rumahl_core::PolicySubject::Device,
+            rumahl_core::PolicyKey::parse("rumahl.files.durable_grants").unwrap(),
+            Some(rumahl_core::PolicyValue::Boolean(false)),
+        )
+        .unwrap();
+    drop(policies);
+
+    let app = gateway(root);
+    // A durable consent is refused with a policy reason; a session consent
+    // still works.
+    let durable = app
+        .clone()
+        .oneshot(
+            axum::http::Request::builder()
+                .method("PUT")
+                .uri(format!(
+                    "/api/v1/shell/apps/com.rumahl.files-app/grants?installationId={installation}"
+                ))
+                .header("cookie", format!("__Host-rumahl_session={}", &*alice))
+                .header("origin", ORIGIN)
+                .header("content-type", "application/json")
+                .body(axum::body::Body::from(
+                    serde_json::json!({
+                        "permission": "rumahl.files.read",
+                        "resources": [notes.id],
+                        "validity": "durable"
+                    })
+                    .to_string(),
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(durable.status(), axum::http::StatusCode::FORBIDDEN);
+    let bytes = http_body_util::BodyExt::collect(durable.into_body())
+        .await
+        .unwrap()
+        .to_bytes();
+    let value: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+    assert_eq!(value["reason"], "durable-grants-disabled");
+
+    let session = app
+        .oneshot(
+            axum::http::Request::builder()
+                .method("PUT")
+                .uri(format!(
+                    "/api/v1/shell/apps/com.rumahl.files-app/grants?installationId={installation}"
+                ))
+                .header("cookie", format!("__Host-rumahl_session={}", &*alice))
+                .header("origin", ORIGIN)
+                .header("content-type", "application/json")
+                .body(axum::body::Body::from(
+                    serde_json::json!({
+                        "permission": "rumahl.files.read",
+                        "resources": [notes.id],
+                        "validity": "session"
+                    })
+                    .to_string(),
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(session.status(), axum::http::StatusCode::OK);
 }

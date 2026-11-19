@@ -36,8 +36,24 @@ use rumahl_platform_buildroot::{
 /// apps have no external runtime and are accepted as a no-op.
 struct PlatformRuntimeProvider {
     supervisor: UnixAppRuntimeProvider,
-    storage: Option<(PathBuf, u64)>,
+    storage: Option<(PathBuf, QuotaSource)>,
     channel: Option<std::sync::Arc<crate::channel::ChannelTokens>>,
+}
+
+/// Where the per-app storage quota comes from: a fixed deployment value or a
+/// live policy the administrator can change while the platform runs.
+enum QuotaSource {
+    Fixed(u64),
+    Live(std::sync::Arc<dyn Fn() -> u64 + Send + Sync>),
+}
+
+impl QuotaSource {
+    fn resolve(&self) -> u64 {
+        match self {
+            Self::Fixed(quota) => *quota,
+            Self::Live(resolve) => resolve(),
+        }
+    }
 }
 
 #[derive(Debug)]
@@ -79,9 +95,20 @@ impl PlatformRuntimeProvider {
         }
     }
 
-    /// Enforces the per-app storage quota before a container app starts.
+    /// Enforces a fixed per-app storage quota before a container app starts.
     fn with_storage_quota(mut self, root: PathBuf, quota: u64) -> Self {
-        self.storage = Some((root, quota));
+        self.storage = Some((root, QuotaSource::Fixed(quota)));
+        self
+    }
+
+    /// Enforces a live per-app storage quota, resolved before every start so a
+    /// policy change applies without a platform restart.
+    fn with_storage_quota_resolver(
+        mut self,
+        root: PathBuf,
+        resolve: std::sync::Arc<dyn Fn() -> u64 + Send + Sync>,
+    ) -> Self {
+        self.storage = Some((root, QuotaSource::Live(resolve)));
         self
     }
 
@@ -131,9 +158,10 @@ impl PlatformRuntimeProvider {
         let Some((root, quota)) = self.storage.as_ref() else {
             return Ok(());
         };
+        let quota = quota.resolve();
         match crate::apps::app_storage_usage_at(root, app.identity().app_id().as_str()) {
             // A missing directory is empty, not over quota.
-            Ok(used) if used >= *quota => Err(PlatformRuntimeError::QuotaExceeded),
+            Ok(used) if used >= quota => Err(PlatformRuntimeError::QuotaExceeded),
             _ => Ok(()),
         }
     }
@@ -303,8 +331,30 @@ fn runtime_provider(
     }
     let mut provider = PlatformRuntimeProvider::new(UnixAppRuntimeProvider::new(provider_config));
     if let Some(root) = data_root {
-        let quota = crate::apps::storage_quota_from_env().map_err(InstallError::Io)?;
-        provider = provider.with_storage_quota(root, quota);
+        // An explicit deployment override caps the machine; otherwise the
+        // device policy decides, resolved live before every app start.
+        match crate::apps::storage_quota_override() {
+            Some(quota) => {
+                provider = provider.with_storage_quota(root, quota);
+            }
+            None => {
+                let engine = crate::policy_engine::LocalPolicyEngine::open(
+                    &state_dir.join("accounts.sqlite"),
+                )
+                .map_err(|error| {
+                    InstallError::provider(std::io::Error::other(format!(
+                        "policy engine unavailable: {error}"
+                    )))
+                })?;
+                let engine = std::sync::Arc::new(engine);
+                provider = provider.with_storage_quota_resolver(
+                    root,
+                    std::sync::Arc::new(move || {
+                        rumahl_platform_web::PolicyEngine::app_storage_quota(engine.as_ref())
+                    }),
+                );
+            }
+        }
     }
     // The channel is independent of app storage: a container without `/data`
     // simply has nowhere to receive its descriptor and stays disconnected.
@@ -500,8 +550,25 @@ fn install_with(
     )
     .map_err(InstallError::Importer)?;
 
+    // The publisher allowlist is a device policy; an empty list keeps every
+    // trusted publisher installable.
+    let allowed_engine = crate::policy_engine::LocalPolicyEngine::open(
+        &state_dir.join("accounts.sqlite"),
+    )
+    .map_err(|error| {
+        InstallError::provider(std::io::Error::other(format!(
+            "policy engine unavailable: {error}"
+        )))
+    })?;
+    let allowed_publishers = rumahl_platform_web::PolicyEngine::allowed_publishers(&allowed_engine);
     let installed = importer
-        .install(&runner, package_dir, &mut state, &mut grants)
+        .install(
+            &runner,
+            package_dir,
+            &mut state,
+            &mut grants,
+            &allowed_publishers,
+        )
         .map_err(InstallError::Import)?;
 
     // Public metadata of the freshly installed app, read from the trusted snapshot.

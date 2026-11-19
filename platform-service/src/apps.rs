@@ -102,18 +102,18 @@ pub const DEFAULT_APP_STORAGE_QUOTA: u64 = 256 * 1024 * 1024;
 /// Reads `RUMAHL_APP_STORAGE_MIB`; an unset value keeps the default and an
 /// invalid one is a configuration error, never a silent fallback.
 pub fn storage_quota_from_env() -> Result<u64, std::io::Error> {
-    let Some(value) = std::env::var("RUMAHL_APP_STORAGE_MIB").ok() else {
-        return Ok(DEFAULT_APP_STORAGE_QUOTA);
-    };
-    let mib: u64 = value.trim().parse().map_err(|_| {
-        std::io::Error::other("RUMAHL_APP_STORAGE_MIB must be a whole number of MiB")
-    })?;
-    if mib == 0 || mib > 1024 * 1024 {
-        return Err(std::io::Error::other(
-            "RUMAHL_APP_STORAGE_MIB is out of range",
-        ));
+    match storage_quota_override() {
+        Some(quota) => Ok(quota),
+        None => Ok(DEFAULT_APP_STORAGE_QUOTA),
     }
-    Ok(mib * 1024 * 1024)
+}
+
+/// An explicit deployment override for the per-app storage quota, in MiB.
+/// Without one the device policy decides.
+pub fn storage_quota_override() -> Option<u64> {
+    let value = std::env::var("RUMAHL_APP_STORAGE_MIB").ok()?;
+    let mib: u64 = value.trim().parse().ok()?;
+    (mib > 0 && mib <= 1024 * 1024).then(|| mib * 1024 * 1024)
 }
 /// Bound for one usage measurement: unlimited walks would let a huge tree
 /// stall a request, so the report stops and says "at least this much".
@@ -709,8 +709,20 @@ impl AppProvider for PersistentApps {
                 .unwrap_or(0)
         ));
         let result = write_staging(&staging, &files).and_then(|()| {
-            crate::install::install_package_dir(state_dir, &staging)
-                .map_err(|_| AppAccessError::Unavailable)
+            crate::install::install_package_dir(state_dir, &staging).map_err(|error| {
+                // A policy denial is a denial, not an outage: the publisher
+                // allowlist refuses this package's publisher.
+                if matches!(
+                    error,
+                    crate::install::InstallError::Import(
+                        rumahl_platform_buildroot::PackageImportError::PublisherNotAllowed
+                    )
+                ) {
+                    AppAccessError::Denied
+                } else {
+                    AppAccessError::Unavailable
+                }
+            })
         });
         let _ = std::fs::remove_dir_all(&staging);
         let info = result?;

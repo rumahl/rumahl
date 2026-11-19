@@ -64,6 +64,25 @@ fn enforce_quota(
     Ok(())
 }
 
+/// Enforces the account's per-file cap. The route body limit stays the
+/// transport ceiling; this is the policy an administrator can lower per
+/// account, group or device.
+fn enforce_file_size(
+    policies: &Option<Arc<dyn crate::PolicyEngine>>,
+    user: UserId,
+    incoming: usize,
+) -> Result<(), FileError> {
+    let maximum = policies
+        .clone()
+        .map_or(rumahl_core::DEFAULT_MAX_FILE_BYTES, |engine| {
+            engine.max_file_bytes(user)
+        });
+    if incoming as u64 > maximum {
+        return Err(FileError::Limit);
+    }
+    Ok(())
+}
+
 fn completed(r: Result<Result<(), FileError>, tokio::task::JoinError>) -> Response {
     match r {
         Ok(Ok(())) => error(StatusCode::NO_CONTENT),
@@ -165,6 +184,7 @@ async fn create(
     completed(
         tokio::task::spawn_blocking(move || {
             if !directory {
+                enforce_file_size(&policies, u, b.len())?;
                 enforce_quota(&repo, &policies, u, b.len(), None)?;
             }
             repo.create(u, &p, &n, if directory { None } else { Some(b.to_vec()) })
@@ -242,6 +262,7 @@ async fn write(
     let policies = s.policies.clone();
     completed(
         tokio::task::spawn_blocking(move || {
+            enforce_file_size(&policies, u, b.len())?;
             let replaced = repo.entry(u, &id).map(|entry| entry.size).ok();
             enforce_quota(&repo, &policies, u, b.len(), replaced)?;
             repo.write(u, &id, b.to_vec())

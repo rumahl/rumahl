@@ -1,7 +1,8 @@
 //! Composition root for the first locally hosted OS shell.
 use rumahl_account_auth::{
-    LocalAccountAdministrationService, PasswordAuthenticationError, PasswordAuthenticationService,
-    PasswordBlocklist, SessionToken, StoredSessionCredentialResolver,
+    LocalAccountAdministrationService, PasswordAttemptPolicy, PasswordAuthenticationError,
+    PasswordAuthenticationService, PasswordBlocklist, PasswordPolicy, SessionToken,
+    StoredSessionCredentialResolver,
 };
 use rumahl_core::{
     AccountStateRepository, AuditAction, AuditActor, AuditLog, AuditOutcome, BrowserProfileId,
@@ -27,7 +28,11 @@ use rumahl_ui_contracts::{
 };
 use sha2::{Digest, Sha256};
 use std::os::unix::fs::PermissionsExt;
-use std::{collections::HashSet, path::Path, sync::Arc};
+use std::{
+    collections::HashSet,
+    path::Path,
+    sync::{Arc, Mutex},
+};
 use zeroize::Zeroizing;
 
 pub type ServiceError = Box<dyn std::error::Error + Send + Sync>;
@@ -191,24 +196,32 @@ pub fn apps_data_root() -> Option<std::path::PathBuf> {
     }
 }
 
+type PasswordService =
+    PasswordAuthenticationService<SqlitePasswordCredentialRepository, LocalPasswordBlocklist>;
+
 pub struct LocalBrowserSessions {
     accounts: SqliteAccountStateRepository,
-    passwords:
-        PasswordAuthenticationService<SqlitePasswordCredentialRepository, LocalPasswordBlocklist>,
+    credentials_path: std::path::PathBuf,
     sessions: SqliteBrowserSessionRepository,
+    /// Built from the current device password policy; rebuilt when the policy
+    /// changes so a new rule applies to the very next login. Building one
+    /// costs an Argon2id hash for the unknown-account verifier, so it is
+    /// cached until the rules change.
+    passwords: Mutex<Option<(rumahl_platform_web::PasswordRules, Arc<PasswordService>)>>,
     /// Optional append-only audit trail; never receives secrets.
     audit: Option<Arc<dyn AuditLog>>,
+    /// Administrative policies; None keeps the account defaults.
+    policies: Option<Arc<dyn rumahl_platform_web::PolicyEngine>>,
 }
 impl LocalBrowserSessions {
     pub fn open(path: &Path) -> Result<Self, ServiceError> {
         Ok(Self {
             accounts: SqliteAccountStateRepository::open(path)?,
-            passwords: PasswordAuthenticationService::new(
-                SqlitePasswordCredentialRepository::open(path)?,
-                LocalPasswordBlocklist::default(),
-            )?,
+            credentials_path: path.to_path_buf(),
             sessions: SqliteBrowserSessionRepository::open(path)?,
+            passwords: Mutex::new(None),
             audit: None,
+            policies: None,
         })
     }
 
@@ -216,6 +229,67 @@ impl LocalBrowserSessions {
     pub fn with_audit(mut self, audit: Arc<dyn AuditLog>) -> Self {
         self.audit = Some(audit);
         self
+    }
+
+    /// Resolves password rules and session lifetimes from the policy store.
+    pub fn with_policies(mut self, policies: Arc<dyn rumahl_platform_web::PolicyEngine>) -> Self {
+        self.policies = Some(policies);
+        self
+    }
+
+    /// The authentication service for the current password policy. Building
+    /// one costs one Argon2id hash for the unknown-account verifier, so the
+    /// service is cached until the rules change.
+    fn passwords(&self) -> Result<Arc<PasswordService>, ShellBackendError> {
+        let rules = self
+            .policies
+            .clone()
+            .map_or(rumahl_platform_web::PasswordRules::default(), |engine| {
+                engine.password_rules()
+            });
+        let mut cached = self
+            .passwords
+            .lock()
+            .map_err(|_| ShellBackendError::Unavailable)?;
+        if let Some((current, service)) = cached.as_ref()
+            && *current == rules
+        {
+            return Ok(Arc::clone(service));
+        }
+        let repository = SqlitePasswordCredentialRepository::open(&self.credentials_path)
+            .map_err(|_| ShellBackendError::Unavailable)?;
+        let password_policy = PasswordPolicy::with_character_classes(
+            rules.minimum_characters.min(usize::MAX as u64) as usize,
+            1024,
+            rules.required_character_classes.min(4) as u32,
+        )
+        .map_err(|_| ShellBackendError::Unavailable)?;
+        let attempt_policy = PasswordAttemptPolicy::new(
+            rules.attempt_limit.min(u32::MAX as u64) as u32,
+            rules.lockout_seconds.max(1),
+        )
+        .map_err(|_| ShellBackendError::Unavailable)?;
+        let service = Arc::new(
+            PasswordAuthenticationService::with_policies(
+                repository,
+                LocalPasswordBlocklist::default(),
+                password_policy,
+                attempt_policy,
+            )
+            .map_err(|_| ShellBackendError::Unavailable)?,
+        );
+        *cached = Some((rules, Arc::clone(&service)));
+        Ok(service)
+    }
+
+    /// The session lifetime for one user, from the policy store.
+    fn session_lifetime(&self, user: UserId) -> u64 {
+        self.policies
+            .clone()
+            .map_or(SESSION_SECONDS, |engine| {
+                engine.session_lifetime_seconds(user)
+            })
+            .clamp(60, 2_592_000)
     }
 
     fn record(
@@ -263,17 +337,24 @@ impl BrowserSessions for LocalBrowserSessions {
         username: &str,
         password: String,
     ) -> Result<Zeroizing<String>, ShellBackendError> {
+        self.login_session(username, password)
+            .map(|(token, _)| token)
+    }
+
+    fn login_session(
+        &self,
+        username: &str,
+        password: String,
+    ) -> Result<(Zeroizing<String>, u64), ShellBackendError> {
         let mut password = Zeroizing::new(password);
         let now = UnixTimestamp::now().map_err(|_| ShellBackendError::Unavailable)?;
         let state = self
             .accounts
             .load()
             .map_err(|_| ShellBackendError::Unavailable)?;
+        let passwords = self.passwords()?;
         let proof =
-            match self
-                .passwords
-                .authenticate(&state, username, std::mem::take(&mut *password), now)
-            {
+            match passwords.authenticate(&state, username, std::mem::take(&mut *password), now) {
                 Ok(proof) => proof,
                 Err(error) => {
                     if matches!(error, PasswordAuthenticationError::InvalidCredentials) {
@@ -293,9 +374,10 @@ impl BrowserSessions for LocalBrowserSessions {
                 }
             };
         let user_id = *proof.user_id();
+        let lifetime = self.session_lifetime(user_id);
         let expires = UnixTimestamp::from_seconds(
             now.as_seconds()
-                .checked_add(SESSION_SECONDS)
+                .checked_add(lifetime)
                 .ok_or(ShellBackendError::Unavailable)?,
         );
         self.sessions
@@ -307,7 +389,7 @@ impl BrowserSessions for LocalBrowserSessions {
                     AuditOutcome::Success,
                     None,
                 );
-                token.encode()
+                (token.encode(), lifetime)
             })
             .map_err(|error| match error {
                 BrowserSessionError::InvalidProof => ShellBackendError::Unauthorized,
@@ -328,10 +410,8 @@ impl BrowserSessions for LocalBrowserSessions {
             .find(|account| *account.user_id() == user_id)
             .map(|account| account.username().as_str().to_owned())
             .ok_or(ShellBackendError::Unauthorized)?;
-        match self
-            .passwords
-            .authenticate(&state, &username, std::mem::take(&mut *password), now)
-        {
+        let passwords = self.passwords()?;
+        match passwords.authenticate(&state, &username, std::mem::take(&mut *password), now) {
             Ok(_) => {
                 self.record(
                     AuditActor::User(user_id),

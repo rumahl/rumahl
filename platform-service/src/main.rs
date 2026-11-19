@@ -222,10 +222,18 @@ async fn run() -> Result<(), ServiceError> {
             }
         }
     };
+    // Administrative policies resolve from the identity store on every check.
+    let policies: Arc<dyn rumahl_platform_web::PolicyEngine> =
+        Arc::new(rumahl_platform_service::policy_engine::LocalPolicyEngine::open(&accounts)?);
     let apps_provider = apps::PersistentApps::open(&accounts, &platform, app_root)?
         .with_account_roles(&accounts)?
         .with_personal_files(personal_files.clone())
-        .with_storage_quota(apps::storage_quota_from_env()?);
+        // The displayed budget follows the same precedence as the enforced
+        // one: an explicit deployment override, then the device policy.
+        .with_storage_quota(match apps::storage_quota_override() {
+            Some(quota) => quota,
+            None => policies.app_storage_quota(),
+        });
     let apps_provider = match apps_data_root() {
         Some(data_root) => apps_provider.with_data_root(data_root)?,
         None => apps_provider,
@@ -238,9 +246,6 @@ async fn run() -> Result<(), ServiceError> {
         Some(adapters) => apps_provider.with_runtime_adapters(adapters),
         None => apps_provider,
     };
-    // Administrative policies resolve from the identity store on every check.
-    let policies: Arc<dyn rumahl_platform_web::PolicyEngine> =
-        Arc::new(rumahl_platform_service::policy_engine::LocalPolicyEngine::open(&accounts)?);
     let apps = Arc::new(
         rumahl_platform_web::AppAccess::new(
             Arc::new(apps_provider),
@@ -273,9 +278,6 @@ async fn run() -> Result<(), ServiceError> {
         Ok(ensured) => eprintln!("rumahl platform: {ensured} account home(s) available"),
         Err(error) => eprintln!("rumahl platform: account homes unavailable: {error}"),
     }
-    // Administrative policies resolve from the identity store on every check.
-    let policies: Arc<dyn rumahl_platform_web::PolicyEngine> =
-        Arc::new(rumahl_platform_service::policy_engine::LocalPolicyEngine::open(&accounts)?);
     // App containers reach the OS over this socket; the supervisor mounts it
     // and the token descriptor lives in each app's private data directory.
     match rumahl_platform_service::channel::start(
@@ -310,7 +312,9 @@ async fn run() -> Result<(), ServiceError> {
         config,
         backend: shell_backend(&accounts, &platform, build_id, &locale)?,
         browser_sessions: Some(Arc::new(
-            LocalBrowserSessions::open(&accounts)?.with_audit(audit.clone()),
+            LocalBrowserSessions::open(&accounts)?
+                .with_audit(audit.clone())
+                .with_policies(policies.clone()),
         )),
         admin: Some(administration),
         login_slots: Arc::new(tokio::sync::Semaphore::new(2)),

@@ -667,6 +667,18 @@ async fn app_data(
     }
 }
 
+/// Whether the user holds an administrator role. Policies that reserve an
+/// action for administrators check this beside the policy.
+async fn administrator(state: &Arc<GatewayState>, user: rumahl_core::UserId) -> bool {
+    let Some(admin) = state.admin.clone() else {
+        return false;
+    };
+    match tokio::task::spawn_blocking(move || admin.role(user)).await {
+        Ok(Ok(role)) => role.is_administrator(),
+        _ => false,
+    }
+}
+
 async fn app_uninstall(
     State(state): State<Arc<GatewayState>>,
     UrlPath(id): UrlPath<String>,
@@ -705,6 +717,15 @@ async fn app_uninstall(
     let Some(apps) = state.apps.clone() else {
         return error(StatusCode::SERVICE_UNAVAILABLE);
     };
+    // A policy can reserve uninstalls for administrators.
+    if !state
+        .policies
+        .clone()
+        .is_none_or(|policies| policies.app_uninstall_allowed(identity.user_id))
+        && !administrator(&state, identity.user_id).await
+    {
+        return error(StatusCode::FORBIDDEN);
+    }
     let user = identity.user_id;
     let audit_id = id.clone();
     match tokio::task::spawn_blocking(move || apps.uninstall(identity, &id, &installation)).await {
@@ -1082,6 +1103,15 @@ async fn app_import(
     if !(mode.policy().can_install_apps() || store_install && mode.policy().is_guided()) {
         return error(StatusCode::FORBIDDEN);
     }
+    // A policy can reserve installs for administrators.
+    if !state
+        .policies
+        .clone()
+        .is_none_or(|policies| policies.store_install_allowed(identity.user_id))
+        && !administrator(&state, identity.user_id).await
+    {
+        return error(StatusCode::FORBIDDEN);
+    }
     let Some(files) = value.get("files").and_then(|v| v.as_array()) else {
         return error(StatusCode::BAD_REQUEST);
     };
@@ -1131,6 +1161,17 @@ async fn app_import(
                 "version": app.version,
             }))
             .into_response();
+            secure_headers(&mut response);
+            response
+        }
+        // A denial is a policy decision (exposure mode, install policy,
+        // publisher allowlist), not a missing app.
+        Ok(Err(crate::AppAccessError::Denied)) => {
+            let mut response = axum::Json(serde_json::json!({
+                "error": "denied"
+            }))
+            .into_response();
+            *response.status_mut() = StatusCode::FORBIDDEN;
             secure_headers(&mut response);
             response
         }

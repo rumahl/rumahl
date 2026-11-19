@@ -17,6 +17,7 @@ pub struct Password(Zeroizing<String>);
 pub struct PasswordPolicy {
     minimum_characters: usize,
     maximum_characters: usize,
+    required_character_classes: u32,
 }
 
 pub trait PasswordBlocklist {
@@ -27,9 +28,11 @@ pub trait PasswordBlocklist {
 pub enum PasswordPolicyError {
     TooShort { minimum: usize },
     TooLong { maximum: usize },
+    MissingCharacterClasses { required: u32 },
     ContainsControlCharacter,
     Blocked,
     InvalidLengthRange,
+    InvalidCharacterClassRequirement,
 }
 
 #[derive(Clone, PartialEq, Eq)]
@@ -88,17 +91,36 @@ impl PasswordPolicy {
         minimum_characters: usize,
         maximum_characters: usize,
     ) -> Result<Self, PasswordPolicyError> {
+        Self::with_character_classes(minimum_characters, maximum_characters, 0)
+    }
+
+    /// A policy that additionally requires `required_character_classes` of
+    /// the four classes (lowercase, uppercase, digits, other symbols).
+    pub fn with_character_classes(
+        minimum_characters: usize,
+        maximum_characters: usize,
+        required_character_classes: u32,
+    ) -> Result<Self, PasswordPolicyError> {
         if minimum_characters == 0
             || maximum_characters < minimum_characters
             || maximum_characters > DEFAULT_MAXIMUM_CHARACTERS
         {
             return Err(PasswordPolicyError::InvalidLengthRange);
         }
+        if required_character_classes > 4 {
+            return Err(PasswordPolicyError::InvalidCharacterClassRequirement);
+        }
 
         Ok(Self {
             minimum_characters,
             maximum_characters,
+            required_character_classes,
         })
+    }
+
+    /// How many of the four character classes the password must use.
+    pub fn required_character_classes(&self) -> u32 {
+        self.required_character_classes
     }
 
     pub fn validate<B>(&self, password: &Password, blocklist: &B) -> Result<(), PasswordPolicyError>
@@ -116,6 +138,21 @@ impl PasswordPolicy {
         if character_count > self.maximum_characters {
             return Err(PasswordPolicyError::TooLong {
                 maximum: self.maximum_characters,
+            });
+        }
+
+        let classes = [
+            password.expose().chars().any(|c| c.is_lowercase()),
+            password.expose().chars().any(|c| c.is_uppercase()),
+            password.expose().chars().any(|c| c.is_ascii_digit()),
+            password.expose().chars().any(|c| !c.is_alphanumeric()),
+        ]
+        .iter()
+        .filter(|present| **present)
+        .count() as u32;
+        if classes < self.required_character_classes {
+            return Err(PasswordPolicyError::MissingCharacterClasses {
+                required: self.required_character_classes,
             });
         }
 
@@ -140,6 +177,7 @@ impl Default for PasswordPolicy {
         Self {
             minimum_characters: DEFAULT_MINIMUM_CHARACTERS,
             maximum_characters: DEFAULT_MAXIMUM_CHARACTERS,
+            required_character_classes: 0,
         }
     }
 }
@@ -238,11 +276,20 @@ impl fmt::Display for PasswordPolicyError {
             Self::TooLong { maximum } => {
                 write!(f, "password must contain at most {maximum} characters")
             }
+            Self::MissingCharacterClasses { required } => {
+                write!(
+                    f,
+                    "password must use at least {required} different character classes"
+                )
+            }
             Self::ContainsControlCharacter => {
                 write!(f, "password must not contain control characters")
             }
             Self::Blocked => write!(f, "password appears in the configured blocklist"),
             Self::InvalidLengthRange => write!(f, "password policy length range is invalid"),
+            Self::InvalidCharacterClassRequirement => {
+                write!(f, "character class requirement must be between 0 and 4")
+            }
         }
     }
 }
@@ -383,5 +430,50 @@ mod tests {
             PasswordHashRecord::parse(weak_hash).unwrap_err(),
             PasswordHashRecordError::ParametersTooWeak
         );
+    }
+}
+
+#[cfg(test)]
+mod class_tests {
+    use super::*;
+
+    fn policy(required: u32) -> PasswordPolicy {
+        PasswordPolicy::with_character_classes(8, 128, required).unwrap()
+    }
+
+    fn blocklist() -> impl PasswordBlocklist {
+        struct None;
+        impl PasswordBlocklist for None {
+            fn contains(&self, _: &str) -> bool {
+                false
+            }
+        }
+        None
+    }
+
+    #[test]
+    fn required_classes_are_enforced() {
+        let list = blocklist();
+        assert_eq!(policy(0).required_character_classes(), 0);
+        assert!(PasswordPolicy::with_character_classes(8, 128, 5).is_err());
+
+        // One class is not two.
+        let one = Password::prepare("onlylowercase".to_owned()).unwrap();
+        assert!(matches!(
+            policy(2).validate(&one, &list),
+            Err(PasswordPolicyError::MissingCharacterClasses { required: 2 })
+        ));
+        // Two classes satisfy two.
+        let two = Password::prepare("lowercase123".to_owned()).unwrap();
+        assert!(policy(2).validate(&two, &list).is_ok());
+        // Four classes satisfy four.
+        let four = Password::prepare("Lowercase123!".to_owned()).unwrap();
+        assert!(policy(4).validate(&four, &list).is_ok());
+        assert!(matches!(
+            policy(4).validate(&two, &list),
+            Err(PasswordPolicyError::MissingCharacterClasses { required: 4 })
+        ));
+        // Zero keeps today's behavior: length and blocklist only.
+        assert!(policy(0).validate(&one, &list).is_ok());
     }
 }

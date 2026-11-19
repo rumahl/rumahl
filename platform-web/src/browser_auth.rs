@@ -36,6 +36,17 @@ pub trait BrowserSessions: Send + Sync + 'static {
         username: &str,
         password: String,
     ) -> Result<Zeroizing<String>, ShellBackendError>;
+
+    /// Login that also reports the session's lifetime in seconds, so the
+    /// cookie can match the policy-resolved expiry instead of a constant.
+    fn login_session(
+        &self,
+        username: &str,
+        password: String,
+    ) -> Result<(Zeroizing<String>, u64), ShellBackendError> {
+        self.login(username, password)
+            .map(|token| (token, SESSION_SECONDS))
+    }
     /// Re-checks the account password without creating a new session. Used to
     /// gate security-sensitive changes such as the exposure mode.
     fn reauthenticate(&self, user_id: UserId, password: String) -> Result<(), ShellBackendError>;
@@ -202,13 +213,13 @@ async fn login(
     let sessions = Arc::clone(sessions);
     let result = tokio::task::spawn_blocking(move || {
         let _permit = permit;
-        sessions.login(&username, std::mem::take(&mut *password))
+        sessions.login_session(&username, std::mem::take(&mut *password))
     })
     .await;
     match result {
-        Ok(Ok(token)) => {
+        Ok(Ok((token, lifetime))) => {
             let cookie = Zeroizing::new(format!(
-                "__Host-rumahl_session={}; Path=/; Secure; HttpOnly; SameSite=Lax; Max-Age={SESSION_SECONDS}",
+                "__Host-rumahl_session={}; Path=/; Secure; HttpOnly; SameSite=Lax; Max-Age={lifetime}",
                 token.as_str()
             ));
             let Ok(mut cookie) = HeaderValue::from_str(&cookie) else {

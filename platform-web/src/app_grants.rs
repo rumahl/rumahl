@@ -283,6 +283,27 @@ async fn issue(
         return error(StatusCode::BAD_REQUEST);
     }
 
+    // A policy can cap consent at the session: the strongest form an
+    // administrator can force, so it is checked before anything else.
+    if matches!(validity, GrantValidityChoice::Durable { .. })
+        && !state
+            .policies
+            .clone()
+            .is_none_or(|policies| policies.durable_grants_allowed(identity.user_id))
+    {
+        record_audit(
+            &state,
+            rumahl_core::AuditActor::User(identity.user_id),
+            AuditAction::GrantIssued,
+            AuditOutcome::Denied,
+            Some(&format!("{installation}:{permission}")),
+        );
+        return json_response(
+            serde_json::json!({"outcome": "denied", "reason": "durable-grants-disabled"}),
+            StatusCode::FORBIDDEN,
+        );
+    }
+
     // A durable write consent is the strongest thing a user can hand an app:
     // it survives restarts and covers the named files until revoked. Proving
     // it is really the account owner costs one password entry.

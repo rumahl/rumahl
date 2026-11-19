@@ -71,6 +71,9 @@ pub enum PackageImportError {
     UnsupportedRuntime(RuntimeKind),
     MissingWebEntrypoint,
     MissingContainerArtifact,
+    /// The publisher allowlist policy does not include this package's
+    /// publisher.
+    PublisherNotAllowed,
 }
 
 impl PackageImporterConfig {
@@ -174,6 +177,7 @@ impl<I: ContainerImageImporter> PackageImporter<I> {
         package_root: &Path,
         state: &mut PlatformState,
         grants: &mut InMemoryGrantStore,
+        allowed_publishers: &[String],
     ) -> Result<InstalledPackage, PackageImportError>
     where
         J: AppOperationRepository,
@@ -189,6 +193,16 @@ impl<I: ContainerImageImporter> PackageImporter<I> {
         let manifest = verified
             .to_app_manifest()
             .map_err(PackageImportError::Manifest)?;
+        // The publisher allowlist is an install policy, not a trust decision:
+        // the signature must verify against the trust store either way, and an
+        // empty allowlist means every trusted publisher.
+        if !allowed_publishers.is_empty()
+            && !allowed_publishers
+                .iter()
+                .any(|publisher| publisher == manifest.publisher_id().as_str())
+        {
+            return Err(PackageImportError::PublisherNotAllowed);
+        }
         let app_id = verified.manifest().app().app_id().clone();
         let update_from = state
             .installed_apps()
@@ -363,6 +377,12 @@ impl fmt::Display for PackageImportError {
                     "container package declares no container-artifact entrypoint"
                 )
             }
+            Self::PublisherNotAllowed => {
+                write!(
+                    f,
+                    "the publisher allowlist does not include this package's publisher"
+                )
+            }
         }
     }
 }
@@ -378,7 +398,8 @@ impl Error for PackageImportError {
             Self::Install(error) => Some(error),
             Self::UnsupportedRuntime(_)
             | Self::MissingWebEntrypoint
-            | Self::MissingContainerArtifact => None,
+            | Self::MissingContainerArtifact
+            | Self::PublisherNotAllowed => None,
         }
     }
 }
@@ -1034,7 +1055,7 @@ mod tests {
         let mut grants = InMemoryGrantStore::new();
 
         let first = importer
-            .install(&runner, v1.directory.path(), &mut state, &mut grants)
+            .install(&runner, v1.directory.path(), &mut state, &mut grants, &[])
             .unwrap();
         let installation_id = *first.installation_id();
         let identity = state.installed_apps().apps()[0].identity().clone();
@@ -1062,7 +1083,7 @@ mod tests {
         // installation.
         let v2 = container_package_version("1.1.0");
         let updated = importer
-            .install(&runner, v2.directory.path(), &mut state, &mut grants)
+            .install(&runner, v2.directory.path(), &mut state, &mut grants, &[])
             .unwrap();
 
         assert_eq!(updated.installation_id(), &installation_id);
@@ -1075,6 +1096,70 @@ mod tests {
         // Grants survive the update.
         assert_eq!(grants.len(), 1);
         assert!(runner.journal().list_incomplete().unwrap().is_empty());
+
+        fs::remove_dir_all(asset_root).unwrap();
+        fs::remove_dir_all(image_root).unwrap();
+    }
+
+    #[test]
+    fn the_publisher_allowlist_decides_which_packages_install() {
+        let package = container_package();
+        let (_trust_dir, trust_store) = trust_store_file(&package);
+        let asset_root = unique_test_root('a');
+        let image_root = unique_test_root('g');
+        let importer = PackageImporter::new(
+            PackageImporterConfig::new(&trust_store, &asset_root).unwrap(),
+            TestImageImporter {
+                image_root: image_root.clone(),
+            },
+        )
+        .unwrap();
+        let runner = AppOperationRunner::new(
+            MemoryJournal::default(),
+            NoopDatabases,
+            AppRuntimeServices::new(
+                StagingRuntime {
+                    image_root: image_root.clone(),
+                },
+                NoopSecretDelivery,
+            ),
+            NoopOidc,
+            TestOrigin,
+            MemorySnapshot::default(),
+            NoopSecrets,
+        );
+        let mut state = PlatformState::new();
+        let mut grants = InMemoryGrantStore::new();
+
+        // An allowlist that does not include this publisher refuses the
+        // install before anything is staged or journaled.
+        let refused = importer.install(
+            &runner,
+            package.directory.path(),
+            &mut state,
+            &mut grants,
+            &["org.example".to_owned()],
+        );
+        assert!(matches!(
+            refused,
+            Err(PackageImportError::PublisherNotAllowed)
+        ));
+        assert_eq!(state.installed_apps().len(), 0);
+        assert!(runner.journal().list_incomplete().unwrap().is_empty());
+
+        // An allowlist that includes the publisher installs normally. (An
+        // empty allowlist meaning "every trusted publisher" is what every
+        // other install test exercises with `&[]`.)
+        importer
+            .install(
+                &runner,
+                package.directory.path(),
+                &mut state,
+                &mut grants,
+                &[PUBLISHER.to_owned()],
+            )
+            .unwrap();
+        assert_eq!(state.installed_apps().len(), 1);
 
         fs::remove_dir_all(asset_root).unwrap();
         fs::remove_dir_all(image_root).unwrap();
@@ -1113,7 +1198,13 @@ mod tests {
         let mut grants = InMemoryGrantStore::new();
 
         let installed = importer
-            .install(&runner, package.directory.path(), &mut state, &mut grants)
+            .install(
+                &runner,
+                package.directory.path(),
+                &mut state,
+                &mut grants,
+                &[],
+            )
             .unwrap();
 
         assert_eq!(state.installed_apps().len(), 1);
