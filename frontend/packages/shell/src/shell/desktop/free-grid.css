@@ -1,0 +1,27 @@
+/*
+ * Free grids (desktop + launcher springboard). Items are absolutely positioned
+ * from their stored cells (set via CSSOM), so the wrappers are plain positioned
+ * layers instead of CSS grids. Imported unlayered so it supersedes the layered
+ * `.desktop-grid` / `.launcher-board` / `.springboard-grid` rules.
+ */
+.shell .desktop-grid,
+.desktop-grid {
+  position: absolute;
+  inset: 0;
+  display: block;
+}
+.shell .launcher-board,
+.launcher-board {
+  position: relative;
+  display: block;
+}
+.shell .springboard-grid,
+.springboard-grid {
+  position: absolute;
+  inset: 0;
+  display: block;
+}
+.shell .springboard-cell,
+.springboard-cell {
+  width: 92px;
+}

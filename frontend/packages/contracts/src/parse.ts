@@ -32,7 +32,7 @@ export function parseShellSnapshot(value: unknown): ShellSnapshotV1 {
     !validApps(value.apps) ||
     !validWorkspace(value.workspace) ||
     !validSystemStatus(value.systemStatus) ||
-    (value.mode !== "desktop" && value.mode !== "launcher") ||
+    (value.mode !== "desktop" && value.mode !== "launcher" && value.mode !== "mobile") ||
     !Array.isArray(value.contributions) ||
     value.contributions.length > 512 ||
     !value.contributions.every(validContribution)
@@ -47,9 +47,11 @@ export function parseShellSnapshot(value: unknown): ShellSnapshotV1 {
 }
 
 function validUser(value: unknown): boolean {
-  return hasKeys(value, ["displayName", "locale"]) &&
+  return hasKeysWithOptional(value, ["displayName", "locale"], ["role"]) &&
     validTitle(value.displayName, 128) &&
-    typeof value.locale === "string" && LOCALE.test(value.locale);
+    typeof value.locale === "string" && LOCALE.test(value.locale) &&
+    (value.role === undefined || value.role === "user" || value.role === "manager" ||
+      value.role === "administrator" || value.role === "owner");
 }
 
 function validTheme(value: unknown): boolean {
@@ -108,9 +110,27 @@ function validContribution(value: unknown): boolean {
   if (value.kind === "command" || value.kind === "search_provider") {
     return hasKeys(value, ["kind", "id", "title", "capability"]) && validNamespacedId(value.capability);
   }
+  if (value.kind === "surface") {
+    return hasKeysWithOptional(value, [
+        "kind", "id", "app", "title", "slot", "surface", "size", "placement", "tone", "icon"
+      ], ["entrypoint"]) &&
+      validNamespacedId(value.app) &&
+      (value.slot === "desktop" || value.slot === "launcher" || value.slot === "both") &&
+      (value.surface === "companion" || value.surface === "badge" || value.surface === "panel") &&
+      (value.size === "small" || value.size === "medium" || value.size === "large") &&
+      (value.placement === "top-left" || value.placement === "top-right" ||
+        value.placement === "bottom-left" || value.placement === "bottom-right") &&
+      (value.tone === "accent" || value.tone === "neutral" || value.tone === "warm" ||
+        value.tone === "cool" || value.tone === "rose" || value.tone === "mint") &&
+      (value.icon === "dot" || value.icon === "star" || value.icon === "bolt" ||
+        value.icon === "leaf" || value.icon === "moon" || value.icon === "heart" ||
+        value.icon === "orbit" || value.icon === "pulse") &&
+      (value.entrypoint === undefined || validSimpleId(value.entrypoint));
+  }
   return value.kind === "widget" &&
-    hasKeys(value, ["kind", "id", "title", "slot", "entrypoint"]) &&
-    value.slot === "dashboard_widgets" && validSimpleId(value.entrypoint);
+    hasKeysWithOptional(value, ["kind", "id", "title", "slot", "entrypoint"], ["size"]) &&
+    value.slot === "dashboard_widgets" && validSimpleId(value.entrypoint) &&
+    (value.size === undefined || value.size === "small" || value.size === "medium" || value.size === "large");
 }
 
 function validOpaqueId(value: unknown): boolean {
@@ -142,6 +162,14 @@ function nonNegativeInteger(value: unknown): value is number {
 function hasKeys(value: unknown, expected: readonly string[]): value is Record<string, unknown> {
   return isRecord(value) && Object.keys(value).length === expected.length &&
     expected.every((key) => Object.hasOwn(value, key));
+}
+
+function hasKeysWithOptional(value: unknown, required: readonly string[], optional: readonly string[]): value is Record<string, unknown> {
+  if (!isRecord(value)) return false;
+  const keys = Object.keys(value);
+  return required.every((key) => Object.hasOwn(value, key)) &&
+    keys.every((key) => required.includes(key) || optional.includes(key)) &&
+    keys.length <= required.length + optional.length;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

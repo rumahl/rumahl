@@ -8,6 +8,8 @@ use std::{
     time::Duration,
 };
 
+use crate::schema::ensure_column;
+
 const DEVICE_LIMIT: i64 = 128;
 
 /// Separate from account/session tables; no credentials are stored here.
@@ -240,23 +242,4 @@ fn read_workspace(
     device: BrowserProfileId,
 ) -> Result<rumahl_core::WorkspacePreferences, Error> {
     connection.query_row("SELECT revision, (SELECT value FROM shell_workspaces WHERE user_id=?1 AND profile=''), (SELECT value FROM shell_workspaces WHERE user_id=?1 AND profile=?2) FROM shell_workspace_revisions WHERE user_id=?1", params![user.to_string(), device.to_string()], |r| Ok(rumahl_core::WorkspacePreferences { revision: r.get::<_, i64>(0)? as u64, user: r.get(1)?, device: r.get(2)? })).optional().map(|v| v.unwrap_or_default()).map_err(|_| Error::Unavailable)
-}
-
-/// Adds a column to an existing table exactly once. Identifiers are internal constants.
-fn ensure_column(
-    connection: &Connection,
-    table: &str,
-    column: &str,
-    definition: &str,
-) -> Result<(), rusqlite::Error> {
-    let mut statement = connection.prepare(&format!("PRAGMA table_info({table})"))?;
-    let columns = statement
-        .query_map([], |row| row.get::<_, String>(1))?
-        .collect::<Result<Vec<_>, _>>()?;
-    if !columns.iter().any(|name| name == column) {
-        connection.execute_batch(&format!(
-            "ALTER TABLE {table} ADD COLUMN {column} {definition}"
-        ))?;
-    }
-    Ok(())
 }

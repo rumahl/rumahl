@@ -3,6 +3,7 @@ import { RumahlInput, RumahlCheckbox } from "../components/RumahlInputs";
 import { RumahlSelect } from "../components/RumahlSelect";
 import { Button } from "../components/Button";
 import { SettingsHeading } from "../components/SettingsHeading";
+import { LoadingStatus } from "../components/LoadingStatus";
 import { useState } from "react";
 import { useWorkspace, type AppFolder } from "./Workspace";
 import { useShell } from "../shell/ShellContext";
@@ -29,19 +30,21 @@ export function WorkspaceSettings() {
   return <section className="display-settings">
     <SettingsHeading title={t("workspace.title")} help={t("workspace.help")} back="/settings" />
 
-    <h3 className="section-title">{t("preferences.scope")}</h3>
+    <h3 className="section-title">{t("workspace.scope")}</h3>
+    <p className="settings-section-help">{t("workspace.scopeHelp")}</p>
     <div className="settings-group">
       <div className="setting">
-        <div className="copy"><strong>{t("preferences.scope")}</strong><p>{t("preferences.precedence")}</p></div>
+        <div className="copy"><strong>{t("preferences.scope")}</strong></div>
         <div className="visual"><RumahlSelect label={t("preferences.scope")} value={settings.scope} onChange={value => settings.setScope(value === "user" ? "user" : "device")}
           options={[{ value: "user", label: t("preferences.user") }, { value: "device", label: t("preferences.device") }]} /></div>
       </div>
     </div>
 
     <h3 className="section-title">{t("workspace.layout")}</h3>
+    <p className="settings-section-help">{t("workspace.layoutHelp")}</p>
     <div className="settings-group">
       <div className="setting">
-        <div className="copy"><strong>{t("workspace.layout")}</strong><p>{t("workspace.help")}</p></div>
+        <div className="copy"><strong>{t("workspace.openWindows")}</strong><p>{t("workspace.openWindowsHelp")}</p></div>
         <div className="visual workspace-actions">
           <Button variant="primary" disabled={busy}
             onClick={() => void workspace.save(settings.scope, { ...workspace.effective, windows: state.windows.filter(w => w.location && !w.streamId && !isInternalTarget(w.location)).slice(0, 32).map(w => ({ location: w.location!, rect: w.rect ?? { x: 36, y: 24, width: 760, height: 540 }, placement: w.placement ?? "floating", minimized: w.minimized })) })}>{t("workspace.save")}</Button>
@@ -52,8 +55,9 @@ export function WorkspaceSettings() {
     </div>
 
     <h3 className="section-title">{t("workspace.folders")}</h3>
+    <p className="settings-section-help">{t("workspace.foldersHelp")}</p>
     <div className="settings-group">
-      {folders.length === 0 ? <p className="settings-empty">{t("workspace.folders")} – {t("workspace.create")}</p> : folders.map(folder => (
+      {folders.length === 0 ? <p className="settings-empty">{t("workspace.foldersEmpty")}</p> : folders.map(folder => (
         <div className="setting" key={folder.id}>
           <div className="copy"><strong>{folder.name}</strong><p>{folder.apps.length}</p></div>
           <div className="visual workspace-actions">
@@ -66,7 +70,7 @@ export function WorkspaceSettings() {
 
     <details className="theme-custom-variant" open={editing !== null}>
       <summary>{t(editing ? "workspace.edit" : "workspace.create")}</summary>
-      <p className="theme-custom-variant__help">{t("workspace.help")}</p>
+      <p className="theme-custom-variant__help">{t("workspace.folderFormHelp")}</p>
       <form onSubmit={event => {
         event.preventDefault();
         void updateFolders([...folders.filter(f => f.id !== editing).map(f => ({ ...f, apps: f.apps.filter(id => !selected.includes(id)) })), { id: editing ?? crypto.randomUUID(), name: name.trim(), apps: selected }]).then(ok => { if (ok) cancelEdit(); });
@@ -85,6 +89,12 @@ export function WorkspaceSettings() {
       </form>
     </details>
 
-    <p role="status">{workspace.error ? t(`preferences.${workspace.error === "conflict" ? "conflict" : "unavailable"}`) : workspace.busy ? t("preferences.saving") : workspace.ready ? t("preferences.synced") : t("preferences.loading")}</p>
+    {workspace.error
+      ? <p role="status">{t(`preferences.${workspace.error === "conflict" ? "conflict" : "unavailable"}`)}</p>
+      : workspace.busy
+        ? <LoadingStatus className="loading-status--inline" label={t("preferences.saving")} />
+        : workspace.ready
+          ? <p role="status">{t("preferences.synced")}</p>
+          : <LoadingStatus className="loading-status--inline" label={t("preferences.loading")} />}
   </section>;
 }

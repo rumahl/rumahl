@@ -12,6 +12,14 @@ describe("desktop shell", () => {
     expect(within(menu).getByRole("menuitem", { name: "Settings" })).toBeInTheDocument();
   });
 
+  test("opens an app's settings from its desktop context menu", async () => {
+    render(<App snapshot={demoSnapshot} initialLocation="/" />);
+    fireEvent.contextMenu(screen.getByRole("link", { name: "Store" }));
+    const menu = screen.getByRole("menu", { name: "Desktop menu" });
+    fireEvent.click(within(menu).getByRole("menuitem", { name: "App settings" }));
+    expect(await screen.findByRole("heading", { name: "Store sources" })).toBeInTheDocument();
+  });
+
   test("removes a shortcut from the desktop and keeps it recoverable", () => {
     render(<App snapshot={demoSnapshot} initialLocation="/" />);
     fireEvent.contextMenu(screen.getByRole("link", { name: "Files" }));
@@ -25,11 +33,28 @@ describe("desktop shell", () => {
     expect(screen.getByRole("link", { name: "Notes" })).toBeInTheDocument();
   });
 
+  test("disambiguates installed apps with the same title", () => {
+    render(<App snapshot={{ ...demoSnapshot, apps: [
+      { id: "com.example.notes", title: "Notes", launchable: true },
+      { id: "com.rumahl.examples.notes", title: "Notes", launchable: true }
+    ] }} initialLocation="/" />);
+    expect(screen.getByRole("link", { name: "Notes · example" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Notes · examples" })).toBeInTheDocument();
+  });
+
+  test("exposes desktop selection without invalid link ARIA", () => {
+    render(<App snapshot={demoSnapshot} initialLocation="/" />);
+    const files = screen.getByRole("link", { name: "Files" });
+    expect(files).not.toHaveAttribute("aria-pressed");
+    fireEvent.click(files, { metaKey: true });
+    expect(files).toHaveAttribute("aria-current", "true");
+  });
+
   test("opens a workspace folder from the desktop", async () => {
     localStorage.setItem("rumahl.demo.workspace", JSON.stringify({ version: 1, windows: [], folders: [{ id: "tools", name: "Tools", apps: ["files"] }] }));
     render(<App snapshot={demoSnapshot} initialLocation="/" />);
     fireEvent.click(await screen.findByRole("button", { name: "Tools" }));
-    expect(await screen.findByRole("link", { name: "Files" })).toBeInTheDocument();
-    expect(screen.queryByRole("link", { name: "App manager" })).toBeNull();
+    const dialog = await screen.findByRole("dialog", { name: "Tools" });
+    expect(within(dialog).getByRole("link", { name: "Files" })).toBeInTheDocument();
   });
 });

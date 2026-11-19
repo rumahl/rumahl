@@ -1,0 +1,49 @@
+import { useI18n } from "../../i18n";
+import { ArrowLeftIcon, ArrowRightIcon, ArrowUpIcon, FilePlusIcon, MoveIcon, PlusIcon, UploadIcon } from "./icons";
+import { SearchField } from "./SearchField";
+import { ViewSwitch } from "./ViewSwitch";
+
+export interface ToolbarProps {
+  writable: boolean;
+  canBack: boolean;
+  canForward: boolean;
+  canUp: boolean;
+  busy: boolean;
+  canPaste: boolean;
+  view: "grid" | "list";
+  search: string;
+  onBack: () => void;
+  onForward: () => void;
+  onUp: () => void;
+  onView: (view: "grid" | "list") => void;
+  onSearch: (value: string) => void;
+  onNewFolder: () => void;
+  onNewFile: () => void;
+  onUpload: (file: File) => void;
+  onPaste: () => void;
+}
+
+export function Toolbar(props: ToolbarProps) {
+  const { t } = useI18n();
+  return <div className="files-toolbar" role="toolbar" aria-label={t("files.actions")}>
+    <div className="files-toolbar__group files-toolbar__group--nav">
+      <button className="btn files-icon-btn" type="button" disabled={!props.canBack} onClick={props.onBack} aria-label={t("files.back")} title={t("files.back")}><ArrowLeftIcon /></button>
+      <button className="btn files-icon-btn" type="button" disabled={!props.canForward} onClick={props.onForward} aria-label={t("files.forward")} title={t("files.forward")}><ArrowRightIcon /></button>
+      <button className="btn files-icon-btn" type="button" disabled={!props.canUp} onClick={props.onUp} aria-label={t("files.up")} title={t("files.up")}><ArrowUpIcon /></button>
+    </div>
+    {props.writable
+      ? <div className="files-toolbar__group files-toolbar__group--actions">
+          <button className="btn files-icon-btn files-action-btn" type="button" disabled={props.busy} onClick={props.onNewFolder} aria-label={t("files.newFolder")} title={t("files.newFolder")}><PlusIcon /><span className="files-action-label">{t("files.newFolder")}</span></button>
+          <button className="btn files-icon-btn files-action-btn" type="button" disabled={props.busy} onClick={props.onNewFile} aria-label={t("files.newFile")} title={t("files.newFile")}><FilePlusIcon /><span className="files-action-label">{t("files.newFile")}</span></button>
+          <label className="btn files-icon-btn files-action-btn files-upload" title={t("files.upload")}>
+            <UploadIcon /><span className="files-action-label">{t("files.upload")}</span>
+            <input aria-label={t("files.upload")} disabled={props.busy} type="file" onChange={(event) => { const file = event.target.files?.[0]; event.target.value = ""; if (file) props.onUpload(file); }} />
+          </label>
+          {props.canPaste ? <button className="btn files-icon-btn files-action-btn" type="button" disabled={props.busy} onClick={props.onPaste} aria-label={t("files.moveHere")} title={t("files.moveHere")}><MoveIcon /><span className="files-action-label">{t("files.moveHere")}</span></button> : null}
+        </div>
+      : <span className="files-readonly">{t("files.readOnly")}</span>}
+    <span className="files-toolbar__spacer" />
+    <SearchField className="files-search" value={props.search} onChange={props.onSearch} />
+    <ViewSwitch view={props.view} onView={props.onView} />
+  </div>;
+}

@@ -1,0 +1,21 @@
+[
+  { "name": "backend", "color": "0e8a16", "description": "Rust backend: core, platform, auth, persistence, apps" },
+  { "name": "frontend", "color": "1d76db", "description": "Frontend: shell, ssr, ui, contracts" },
+  { "name": "ci", "color": "5319e7", "description": "CI, workflows and automation" },
+  { "name": "dependencies", "color": "0366d6", "description": "Dependency updates" },
+  { "name": "docs", "color": "0075ca", "description": "Documentation" },
+  { "name": "assets", "color": "fbca04", "description": "Artwork and the asset pipeline" },
+  { "name": "security", "color": "b60205", "description": "Security-sensitive changes" },
+  { "name": "core", "color": "c5def5", "description": "core/ domain model and platform policies" },
+  { "name": "auth", "color": "d4c5f9", "description": "account-auth/ and oidc-provider/" },
+  { "name": "persistence", "color": "bfdadc", "description": "persistence-sqlite/" },
+  { "name": "platform", "color": "fef2c0", "description": "platform-api/, platform-service/, platform-web/" },
+  { "name": "buildroot", "color": "f9d0c4", "description": "platform-buildroot/ OS image integration" },
+  { "name": "app-operations", "color": "c2e0c6", "description": "app-operations/" },
+  { "name": "app-packages", "color": "e6c5f9", "description": "app-packages/ signing and manifests" },
+  { "name": "ui-contracts", "color": "bfd4f2", "description": "ui-contracts/" },
+  { "name": "frontend/shell", "color": "0052cc", "description": "frontend/packages/shell" },
+  { "name": "frontend/ssr", "color": "006b75", "description": "frontend/packages/ssr" },
+  { "name": "frontend/ui", "color": "2a9d3a", "description": "frontend/packages/ui" },
+  { "name": "frontend/contracts", "color": "6f42c1", "description": "frontend/packages/contracts" }
+]

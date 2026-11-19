@@ -1,12 +1,27 @@
 //! Local HTTP transport for the shell. TLS termination and socket ownership are
 //! deployment concerns; this crate never binds a public TCP listener.
 
+mod admin;
+pub use admin::{AdminAuditEntry, AdminError, AdminSession, AdminUser, Administration};
+
 mod backend;
 mod events;
 mod oidc;
+mod sensors;
 mod server;
 mod ssr;
+mod store;
 mod streams;
+
+pub use sensors::{
+    DiskDevice, Sensors, Storage, read_disks, read_sensors, read_storage, run_disk_test,
+};
+
+mod recovery_settings;
+pub use recovery_settings::RecoverySettings;
+
+mod recovery_tools;
+pub use recovery_tools::{read_boot, read_logs, read_network, read_system, run_network_test};
 
 pub use backend::{
     PlatformShellBackend, ShellAuthenticationError, ShellBackend, ShellBackendError, ShellIdentity,
@@ -22,12 +37,30 @@ pub use streams::{
 };
 
 mod browser_auth;
-pub use browser_auth::{BrowserSessions, SESSION_SECONDS};
+mod offline;
+pub use browser_auth::{BrowserSessions, LoginAccount, SESSION_SECONDS};
 
 mod apps;
-pub use apps::{AppAccess, AppAccessError, AppAsset, AppProvider, CatalogApp, app_error};
+pub use apps::{
+    AppAccess, AppAccessError, AppAsset, AppData, AppDataEntry, AppProvider, AppSettingInfo,
+    AppSettingOptionInfo, AppSettingsInfo, BrowserDelivery, CapabilityOutcome, CapabilityResource,
+    CapabilityResult, CatalogApp, ImportedApp, PackageUploadFile, RuntimeAction, RuntimeState,
+    app_error,
+};
+
+mod app_channel;
+pub use app_channel::{
+    CHANNEL_PROTOCOL, ChannelAuthenticator, ChannelFrame, ChannelTokenStore, SocketRuntimeChannel,
+    read_hello, run_connection, serve_channel_listener,
+};
 
 mod preferences;
 
+mod host_files;
+pub use host_files::{HostArea, HostEntry, HostError, HostFiles};
+
+mod os_mode;
+
 mod files;
+mod weather_warnings;
 mod workspace;

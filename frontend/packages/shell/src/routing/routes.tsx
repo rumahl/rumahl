@@ -3,15 +3,16 @@ import { DesignLab } from "../pages/DesignLab";
 import type { ReactNode } from "react";
 import { matchRoutes, useRoutes, useLocation, type RouteObject } from "react-router";
 import { findFirstPartyApp } from "../apps/registry";
-import { SectionPlaceholder } from "../components/SectionPlaceholder";
+import { ActivityPage } from "../pages/ActivityPage";
+import { Resolver } from "../pages/Resolver";
 import { SettingsPage } from "../pages/SettingsPage";
 import { HomePage } from "../pages/HomePage";
-import { AppsPage } from "../pages/AppsPage";
 import { AppPage } from "../pages/AppPage";
 import { StreamPage } from "../pages/StreamPage";
-import { UnavailablePage } from "../pages/UnavailablePage";
 import type { ShellSection } from "../shell-state";
 import type { MessageKey } from "../i18n/locales/en";
+import { WindowLocationContext } from "./window-location";
+export { useWindowLocation } from "./window-location";
 
 export interface ShellRouteHandle {
   section: ShellSection;
@@ -25,12 +26,11 @@ function route(path: string, element: ReactNode, handle: ShellRouteHandle): Rout
 // API, login, recovery and untrusted app resources are not shell routes.
 export const shellRoutes: RouteObject[] = [
   route("/", <HomePage />, { section: "home", title: "nav.home", presentation: "page" }),
-  route("/apps", <AppsPage />, { section: "apps", title: "nav.apps", presentation: "page" }),
-  route("/activity", <SectionPlaceholder section="activity" />, { section: "activity", title: "nav.activity", presentation: "window" }),
+  route("/activity", <ActivityPage />, { section: "activity", title: "nav.activity", presentation: "window" }),
   route("/settings/*", <SettingsPage />, { section: "settings", title: "nav.settings", presentation: "window" }),
   route("/app/:appId/*", <AppPage />, { section: "apps", title: "route.appUnavailable", presentation: "window" }),
   route("/streams/:sessionId", <StreamPage />, { section: "apps", title: "stream.subtitle", presentation: "window" }),
-  route("*", <UnavailablePage />, { section: "home", title: "route.notFound", presentation: "page" })
+  route("*", <Resolver />, { section: "home", title: "route.notFound", presentation: "page" })
 ];
 export function describeRoute(location: string) {
   if (shellLocation(location) === DESIGN_URI) return {
@@ -51,7 +51,8 @@ export function describeRoute(location: string) {
 }
 export function ShellRoutes({ location }: { location?: string }) {
   const current = useLocation();
-  const internal = shellLocation(location ?? current.pathname + current.search + current.hash) === DESIGN_URI;
+  const target = location ?? current.pathname + current.search + current.hash;
+  const internal = shellLocation(target) === DESIGN_URI;
   const element = useRoutes(shellRoutes, internal ? "/" : location);
-  return internal ? <DesignLab /> : element;
+  return <WindowLocationContext value={target}>{internal ? <DesignLab /> : element}</WindowLocationContext>;
 }

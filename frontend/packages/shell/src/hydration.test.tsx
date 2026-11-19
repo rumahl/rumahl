@@ -1,5 +1,5 @@
 import { act } from "react";
-import { fireEvent, screen } from "@testing-library/react";
+import { fireEvent, screen, within } from "@testing-library/react";
 import { afterEach, expect, test, vi } from "vitest";
 import { renderShellDocument } from "../../ssr/src/render";
 import { hydrateShell } from "./bootstrap";
@@ -41,7 +41,7 @@ test("hydrates the server markup with the same snapshot and interactive controls
       .map(String)
       .filter((message) => !message.includes("Detected multiple renderers concurrently"))
   ).toEqual([]);
-  fireEvent.click(screen.getByRole("link", { name: "App manager" }));
-  expect(screen.getByRole("region", { name: "App manager" })).toBeInTheDocument();
+  fireEvent.click(within(screen.getByRole("navigation", { name: "Main navigation" })).getByRole("link", { name: "Settings" }));
+  expect(screen.getByRole("region", { name: "Settings" })).toBeInTheDocument();
   await act(async () => root?.unmount());
 });

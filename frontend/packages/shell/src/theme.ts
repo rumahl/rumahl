@@ -1,19 +1,26 @@
 import type { ShellSnapshotV1 } from "@rumahl/contracts";
 import { getTheme } from "@rumahl/ui/sdk";
-import { applyTokens, defaultTokens, type Tokens } from "@rumahl/ui/tokens";
+import { applyTokens, mergeTokens, tokensForBase, type Tokens } from "@rumahl/ui/tokens";
 import type { Theme } from "@rumahl/ui/themes";
 import { resolveWallpaper } from "./wallpapers";
 import { emptyAppearance, parseWorkspace } from "./preferences/Workspace";
-import { applyTuning } from "./preferences/theme-tuning";
+import { applyThemeTuning } from "./preferences/theme-tuning";
+import { adaptiveTypographicScale, monitorSize } from "./preferences/adaptive-type";
 
 /** Builds the server-resolved theme, substituting the bundled wallpaper. */
 export function buildSnapshotTheme(snapshot: ShellSnapshotV1): Theme {
-  const base: Tokens = { ...defaultTokens, ...(snapshot.theme.tokens as Partial<Tokens>) };
-  const tokens = { ...base, "texture.wallpaper": resolveWallpaper(base["texture.wallpaper"]) };
+  const registered = getTheme(snapshot.theme.id);
+  const base = registered?.base ?? "iris";
+  const tokens: Tokens = mergeTokens(
+    tokensForBase(base),
+    registered?.tokens,
+    snapshot.theme.tokens as Partial<Tokens>
+  );
   return {
+    ...registered,
     id: snapshot.theme.id,
     name: snapshot.theme.id,
-    tokens,
+    tokens: { ...tokens, "texture.wallpaper": resolveWallpaper(tokens["texture.wallpaper"]) },
     variants: {
       shellLayout: snapshot.theme.shellLayout,
       launcherLayout: snapshot.theme.launcherLayout,
@@ -53,5 +60,12 @@ export function preloadAppearance(snapshot: ShellSnapshotV1): void {
   if (typeof document === "undefined") return;
   const serverTheme = buildSnapshotTheme(snapshot);
   const active = resolveActiveTheme(serverTheme, snapshot.theme.id);
-  applyTokens(document.documentElement, resolveTokens(applyTuning(active.tokens, tuningFromSnapshot(snapshot))));
+  const systemMode = typeof window.matchMedia === "function" && window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+  const appearance = tuningFromSnapshot(snapshot);
+  const tokens = { ...resolveTokens(applyThemeTuning(active, appearance, systemMode)) };
+  if (appearance.adaptiveType === true) {
+    const { width, height } = monitorSize();
+    tokens["typography.scale"] = String(adaptiveTypographicScale(width, height));
+  }
+  applyTokens(document.documentElement, tokens);
 }

@@ -12,7 +12,7 @@ use rumahl_core::{
     AppId, AppManifest, AppOperationRepository, AppVersion, InMemoryGrantStore, InstallationId,
     InstalledApp, OidcCallbackPath, OidcClientDeclaration, OidcClientType, OidcScope, PackagePath,
     PlatformState, PublisherId, RuntimeDescriptor, RuntimeEndpointId, RuntimeEntrypoint,
-    RuntimeEntrypointId,
+    RuntimeEntrypointId, RuntimeLifecycle,
 };
 use rumahl_oidc_provider::InstalledAppOriginResolver;
 use rumahl_persistence_sqlite::{
@@ -277,6 +277,9 @@ fn container_manifest() -> AppManifest {
             .unwrap(),
         )
         .unwrap();
+    // The lifecycle test installs, runs and uninstalls a real container, so it
+    // is an always-on service (an on-demand container is not activated at install).
+    manifest.set_lifecycle(RuntimeLifecycle::AlwaysOn);
     manifest
 }
 

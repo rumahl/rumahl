@@ -1,6 +1,6 @@
 import { ShellLink } from "../routing/ShellLink";
 import type { ComponentType, SVGProps } from "react";
-import { GridIcon, HomeIcon, PulseIcon, SettingsIcon } from "../icons";
+import { HomeIcon, PulseIcon, SettingsIcon } from "../icons";
 import { RumahlMark } from "./RumahlMark";
 import { useI18n } from "../i18n";
 import type { ShellSection } from "../shell-state";
@@ -17,7 +17,6 @@ export function Navigation({ active }: NavigationProps) {
     label: string;
   }[] = [
     { id: "home", label: t("nav.home"), icon: HomeIcon },
-    { id: "apps", label: t("nav.apps"), icon: GridIcon },
     { id: "activity", label: t("nav.activity"), icon: PulseIcon },
     { id: "settings", label: t("nav.settings"), icon: SettingsIcon }
   ];

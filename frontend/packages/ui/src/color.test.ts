@@ -1,27 +1,27 @@
-import { describe, expect, test } from "vitest";
-import { RUMAHL_COLORS, contrastRatio, generateColorShades, themeColorValues, withAlpha } from "./color";
+import { describe, expect, it } from "vitest";
+import { WCAG, contrastRatio, ensureContrast, readablePair, themeColorValues } from "./color";
 
-describe("rumahl colour system", () => {
-  test("generates a primary table and a secondary palette", () => {
-    const palette = generateColorShades(RUMAHL_COLORS.base);
-    expect(palette.primary.light).toHaveLength(21);
-    expect(palette.primary.dark).toHaveLength(21);
-    expect(palette.secondary.light).toHaveLength(21);
-    expect(palette.secondary.dark).toHaveLength(21);
-    for (const shade of palette.primary.light) expect(shade.hex).toMatch(/^#[0-9A-F]{6}$/i);
+describe("contrast engine", () => {
+  it("keeps a background that already meets the target", () => {
+    expect(ensureContrast("#000000", "#ffffff", WCAG.AA)).toBe("#000000");
   });
 
-  test("computes WCAG contrast", () => {
-    const black = contrastRatio("#000000", "#ffffff");
-    expect(black.ratio).toBeCloseTo(21, 0);
-    expect(black.aaa).toBe(true);
+  it("adjusts a background until the ink reaches the target", () => {
+    const adjusted = ensureContrast("#808080", "#ffffff", WCAG.AA);
+    expect(contrastRatio("#ffffff", adjusted).ratio).toBeGreaterThanOrEqual(WCAG.AA);
   });
 
-  test("derives theme colour values from the seed", () => {
-    const values = themeColorValues(RUMAHL_COLORS.base);
-    expect(values.accent).toBe(RUMAHL_COLORS.base);
-    expect(values.surface).toMatch(/^#[0-9a-f]{8}$/);
-    expect(values.onAccent).toBe("#ffffff");
-    expect(withAlpha("#28694c", 0.5)).toBe("#28694c80");
+  it("readablePair guarantees the target for a mid-tone", () => {
+    const { ink, background } = readablePair("#9aa0a6", WCAG.AA);
+    expect(contrastRatio(ink, background).ratio).toBeGreaterThanOrEqual(WCAG.AA);
+  });
+
+  it("leaves a dark seed's accent untouched", () => {
+    expect(themeColorValues("#28694c").accent).toBe("#28694c");
+  });
+
+  it("guarantees on-accent contrast even for an awkward seed", () => {
+    const values = themeColorValues("#7f7f7f", { contrast: { onAccent: WCAG.AA } });
+    expect(contrastRatio(values.onAccent, values.accent).ratio).toBeGreaterThanOrEqual(WCAG.AA);
   });
 });

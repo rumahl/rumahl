@@ -26,7 +26,6 @@ export function Taskbar() {
   const windows = [...state.windows].sort((a, b) => a.id.localeCompare(b.id));
   const links = [
     { to: "/", label: t("nav.home"), icon: <HomeIcon /> },
-    { to: "/apps", label: t("nav.apps"), icon: <GridIcon /> },
     { to: "/activity", label: t("nav.activity"), icon: <PulseIcon /> },
     { to: "/settings", label: t("nav.settings"), icon: <SettingsIcon /> }
   ];
@@ -45,7 +44,7 @@ export function Taskbar() {
           const item = windows.find(window => windowBelongsToLink(window, link.to));
           const focused = item ? !item.minimized && state.focusedWindowId === item.id : active === describeRoute(link.to).id;
           return <ShellLink key={link.to} className="taskbar__button" to={item?.location ?? link.to} aria-label={link.label} title={link.label}
-            data-open={!!item || (link.to === "/apps" && focused) || undefined} data-focused={focused || undefined}
+            data-open={!!item || undefined} data-focused={focused || undefined}
             onClick={event => { if (item && !event.ctrlKey && !event.metaKey && !event.shiftKey && event.button === 0) { event.preventDefault(); dispatch({ type: "focus-window", id: item.id }); open(item.location ?? link.to); } }}>
             {link.icon}<span>{link.label}</span>
           </ShellLink>;

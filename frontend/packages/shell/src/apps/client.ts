@@ -1,13 +1,51 @@
 import type { ShellRequest } from "../snapshot-client";
+import type { BridgeCapabilityOutcome, BridgeCapabilityResource } from "@rumahl/contracts/bridge";
 import { APP_ID } from "../routing/paths";
 const INSTALLATION = /^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 const LEASE = /^[0-9a-f]{64}$/;
+const SETTING_KEY = /^[a-z0-9._-]{1,64}$/;
+const SETTING_TYPES = ["text", "number", "boolean", "select"] as const;
+export type AppSettingType = (typeof SETTING_TYPES)[number];
+export interface AppSettingOption {
+  value: string;
+  label: string;
+}
+export interface AppSetting {
+  key: string;
+  title: string;
+  description?: string;
+  type: AppSettingType;
+  required: boolean;
+  options: readonly AppSettingOption[];
+}
+export interface AppSettings {
+  id: string;
+  installationId: string;
+  manifest: readonly AppSetting[];
+  extended: null;
+}
+export interface AppDataEntry {
+  name: string;
+  directory: boolean;
+  size: number;
+}
+export type AppData =
+  | { kind: "directory"; path: string; entries: readonly AppDataEntry[] }
+  | { kind: "file"; path: string; size: number; contentType: string; text: string | null };
 export interface InstalledApp {
   id: string;
   installationId: string;
   title: string;
   version: string;
   launchable: boolean;
+  /** Permission ids the app's manifest declares (used to gate the OS bridge). */
+  capabilities?: readonly string[];
+  /** Runtime kind declared by the app. Container apps can be controlled. */
+  runtime?: "web" | "native" | "container";
+  /** Runtime lifecycle declared by the app: `always-on` (service) or `on-demand`. */
+  lifecycle?: "always-on" | "on-demand";
+  /** External services the app ships a connector bundle for. */
+  connectors?: readonly string[];
 }
 function record(value: unknown): Record<string, unknown> {
   if (typeof value !== "object" || !value || Array.isArray(value)) throw new Error("invalid app response");
@@ -29,8 +67,31 @@ export function parseCatalog(value: unknown): readonly InstalledApp[] {
         typeof app.installationId !== "string" || !INSTALLATION.test(app.installationId) ||
         typeof app.title !== "string" || !app.title.trim() || app.title.length > 256 ||
         typeof app.version !== "string" || app.version.length > 128 || typeof app.launchable !== "boolean") throw new Error("invalid app entry");
+    let capabilities: readonly string[] | undefined;
+    if (app.capabilities !== undefined) {
+      if (!Array.isArray(app.capabilities) || app.capabilities.length > 64 ||
+          app.capabilities.some((entry) => typeof entry !== "string" || entry.length === 0 || entry.length > 255)) throw new Error("invalid app capabilities");
+      capabilities = app.capabilities as string[];
+    }
+    let runtime: "web" | "native" | "container" | undefined;
+    if (app.runtime !== undefined) {
+      if (app.runtime !== "web" && app.runtime !== "native" && app.runtime !== "container")
+        throw new Error("invalid app runtime kind");
+      runtime = app.runtime;
+    }
+    let lifecycle: "always-on" | "on-demand" | undefined;
+    if (app.lifecycle !== undefined) {
+      if (app.lifecycle !== "always-on" && app.lifecycle !== "on-demand") throw new Error("invalid app lifecycle");
+      lifecycle = app.lifecycle;
+    }
+    let connectors: readonly string[] | undefined;
+    if (app.connectors !== undefined) {
+      if (!Array.isArray(app.connectors) || app.connectors.length > 64 ||
+          app.connectors.some((entry) => typeof entry !== "string" || entry.length === 0 || entry.length > 64)) throw new Error("invalid app connectors");
+      connectors = app.connectors as string[];
+    }
     ids.add(app.id);
-    return { id: app.id, installationId: app.installationId, title: app.title, version: app.version, launchable: app.launchable };
+    return { id: app.id, installationId: app.installationId, title: app.title, version: app.version, launchable: app.launchable, ...(capabilities ? { capabilities } : {}), ...(runtime ? { runtime } : {}), ...(lifecycle ? { lifecycle } : {}), ...(connectors ? { connectors } : {}) };
   });
 }
 export async function fetchCatalog(request: ShellRequest, signal: AbortSignal): Promise<readonly InstalledApp[]> {
@@ -38,23 +99,261 @@ export async function fetchCatalog(request: ShellRequest, signal: AbortSignal): 
     cache: "no-store", credentials: "same-origin", headers: { Accept: "application/json" }, signal
   }), 256 * 1024));
 }
+export class SafeModeError extends Error {
+  constructor() {
+    super("safe mode blocks app launches");
+    this.name = "SafeModeError";
+  }
+}
 export interface AppLaunch { frameUrl: string; lease: string; renewAfterSeconds: number }
-export function parseLaunch(value: unknown, app: InstalledApp, shellOrigin: string): AppLaunch {
+export function parseLaunch(value: unknown, app: InstalledApp, shellOrigin: string, demo?: { frameOrigin: string } | undefined): AppLaunch {
   const object = record(value);
   if (object.launchVersion !== 1 || object.id !== app.id || object.installationId !== app.installationId ||
       typeof object.lease !== "string" || !LEASE.test(object.lease) || typeof object.frameUrl !== "string" || object.frameUrl.length > 2048 ||
       object.renewAfterSeconds !== 30) throw new Error("invalid app launch");
   const url = new URL(object.frameUrl);
   const shell = new URL(shellOrigin);
+  const demoFrame = demo !== undefined && url.origin === demo.frameOrigin &&
+    url.pathname === `/apps/${encodeURIComponent(app.id)}/`;
+  if (demoFrame) {
+    if (url.username || url.password || url.search || url.hash)
+      throw new Error("invalid demo app origin");
+    return { frameUrl: url.href, lease: object.lease, renewAfterSeconds: 30 };
+  }
   if (url.protocol !== "https:" || url.hostname === shell.hostname ||
       !url.hostname.startsWith(`${app.installationId}.`) || url.username || url.password || url.search || url.hash ||
       !url.pathname.startsWith(`/launch/${object.lease}/`)) throw new Error("invalid isolated app origin");
   return { frameUrl: url.href, lease: object.lease, renewAfterSeconds: 30 };
 }
-export async function launchApp(request: ShellRequest, app: InstalledApp, shellOrigin: string, signal: AbortSignal, lease?: string): Promise<AppLaunch> {
-  return parseLaunch(await payload(await request(`/api/v1/shell/apps/${encodeURIComponent(app.id)}/launch`, {
+export async function launchApp(request: ShellRequest, app: InstalledApp, shellOrigin: string, signal: AbortSignal, lease?: string, demo?: { frameOrigin: string } | undefined): Promise<AppLaunch> {
+  const response = await request(`/api/v1/shell/apps/${encodeURIComponent(app.id)}/launch`, {
     method: "POST", cache: "no-store", credentials: "same-origin", signal,
     headers: { Accept: "application/json", "Content-Type": "application/json" },
     body: JSON.stringify({ installationId: app.installationId, ...(lease ? { lease } : {}) })
-  }), 4096), app, shellOrigin);
+  });
+  if (response.status === 423) throw new SafeModeError();
+  return parseLaunch(await payload(response, 4096), app, shellOrigin, demo);
+}
+export interface SurfaceFrame {
+  surfaceId: string;
+  appId: string;
+  installationId: string;
+  frameUrl: string;
+  lease: string;
+  renewAfterSeconds: number;
+}
+export function parseSurfaceFrame(value: unknown, app: InstalledApp, surfaceId: string, shellOrigin: string): SurfaceFrame {
+  const object = record(value);
+  if (object.frameVersion !== 1 || object.surfaceId !== surfaceId || object.appId !== app.id ||
+      object.installationId !== app.installationId || typeof object.lease !== "string" || !LEASE.test(object.lease) ||
+      typeof object.frameUrl !== "string" || object.frameUrl.length > 2048 || object.renewAfterSeconds !== 30)
+    throw new Error("invalid surface frame");
+  const url = new URL(object.frameUrl);
+  const shell = new URL(shellOrigin);
+  if (url.protocol !== "https:" || url.hostname === shell.hostname ||
+      !url.hostname.startsWith(`${app.installationId}.`) || url.username || url.password || url.search || url.hash ||
+      !url.pathname.startsWith(`/launch/${object.lease}/`)) throw new Error("invalid isolated surface origin");
+  return {
+    surfaceId, appId: app.id, installationId: app.installationId,
+    frameUrl: url.href, lease: object.lease, renewAfterSeconds: 30
+  };
+}
+export async function requestSurfaceFrame(
+  request: ShellRequest, app: InstalledApp, surfaceId: string, shellOrigin: string,
+  signal: AbortSignal, lease?: string
+): Promise<SurfaceFrame> {
+  const response = await request(`/api/v1/shell/surfaces/${encodeURIComponent(surfaceId)}/frame`, {
+    method: "POST", cache: "no-store", credentials: "same-origin", signal,
+    headers: { Accept: "application/json", "Content-Type": "application/json" },
+    body: JSON.stringify({ installationId: app.installationId, ...(lease ? { lease } : {}) })
+  });
+  if (response.status === 423) throw new SafeModeError();
+  return parseSurfaceFrame(await payload(response, 4096), app, surfaceId, shellOrigin);
+}
+/** One file of a signed directory package, base64 encoded, path relative to the package root. */
+export interface PackageFile { path: string; content: string }
+export interface ImportedApp { id: string; installationId: string; title: string; version: string }
+export function parseImport(value: unknown): ImportedApp {
+  const object = record(value);
+  if (object.importVersion !== 1 || typeof object.id !== "string" || !APP_ID.test(object.id) ||
+      typeof object.installationId !== "string" || !INSTALLATION.test(object.installationId) ||
+      typeof object.title !== "string" || !object.title.trim() || object.title.length > 256 ||
+      typeof object.version !== "string" || object.version.length > 128) throw new Error("invalid app import");
+  return { id: object.id, installationId: object.installationId, title: object.title, version: object.version };
+}
+export async function importPackage(request: ShellRequest, files: readonly PackageFile[], device: string, signal: AbortSignal, origin?: "store"): Promise<ImportedApp> {
+  return parseImport(await payload(await request("/api/v1/shell/apps/import", {
+    method: "POST", cache: "no-store", credentials: "same-origin", signal,
+    headers: { Accept: "application/json", "Content-Type": "application/json" },
+    body: JSON.stringify({ importVersion: 1, device, files, ...(origin ? { installOrigin: origin } : {}) })
+  }), 4096));
+}
+export type AppRuntimeAction = "start" | "stop";
+export interface AppRuntime {
+  id: string;
+  installationId: string;
+  state: "running" | "stopped";
+}
+export interface AppRuntimeTarget {
+  id: string;
+  installationId: string;
+}
+export function parseAppRuntime(value: unknown, app: AppRuntimeTarget): AppRuntime {
+  const object = record(value);
+  if (object.runtimeVersion !== 1 || object.id !== app.id ||
+      object.installationId !== app.installationId ||
+      (object.state !== "running" && object.state !== "stopped"))
+    throw new Error("invalid app runtime");
+  return { id: app.id, installationId: app.installationId, state: object.state };
+}
+export async function fetchAppRuntime(request: ShellRequest, app: AppRuntimeTarget, signal: AbortSignal): Promise<AppRuntime> {
+  return parseAppRuntime(await payload(await request(
+    `/api/v1/shell/apps/${encodeURIComponent(app.id)}/runtime?installationId=${encodeURIComponent(app.installationId)}`,
+    { cache: "no-store", credentials: "same-origin", headers: { Accept: "application/json" }, signal }
+  ), 4096), app);
+}
+export async function controlAppRuntime(request: ShellRequest, app: AppRuntimeTarget, action: AppRuntimeAction, signal: AbortSignal): Promise<AppRuntime> {
+  return parseAppRuntime(await payload(await request(`/api/v1/shell/apps/${encodeURIComponent(app.id)}/runtime`, {
+    method: "POST", cache: "no-store", credentials: "same-origin", signal,
+    headers: { Accept: "application/json", "Content-Type": "application/json" },
+    body: JSON.stringify({ installationId: app.installationId, action })
+  }), 4096), app);
+}
+export async function uninstallApp(request: ShellRequest, app: AppRuntimeTarget, signal: AbortSignal): Promise<void> {
+  const response = await request(`/api/v1/shell/apps/${encodeURIComponent(app.id)}`, {
+    method: "DELETE", cache: "no-store", credentials: "same-origin", signal,
+    headers: { Accept: "application/json", "Content-Type": "application/json" },
+    body: JSON.stringify({ installationId: app.installationId })
+  });
+  if (!response.ok) throw new Error(response.status === 403 ? "denied" : "unavailable");
+}
+export interface CapabilityBrowserDelivery {
+  appId: string;
+  installationId: string;
+}
+export interface CapabilityInvocation {
+  capability: string;
+  outcome: BridgeCapabilityOutcome;
+  result?: unknown;
+  /** Set when a web provider must be reached through the shell (its iframe). */
+  browser?: CapabilityBrowserDelivery;
+}
+export function parseCapabilityInvocation(value: unknown, capability: string): CapabilityInvocation {
+  const object = record(value);
+  if (object.capabilityVersion !== 1 || (object.outcome !== "invoked" && object.outcome !== "denied"))
+    throw new Error("invalid capability invocation");
+  const result = object.result;
+  let browser: CapabilityBrowserDelivery | undefined;
+  if (object.browser !== undefined && object.browser !== null) {
+    const delivery = record(object.browser);
+    if (typeof delivery.appId !== "string" || !APP_ID.test(delivery.appId) ||
+        typeof delivery.installationId !== "string" || !INSTALLATION.test(delivery.installationId))
+      throw new Error("invalid capability delivery");
+    browser = { appId: delivery.appId, installationId: delivery.installationId };
+  }
+  return {
+    capability,
+    outcome: object.outcome,
+    ...(result === undefined || result === null ? {} : { result }),
+    ...(browser ? { browser } : {})
+  };
+}
+export async function invokeCapability(request: ShellRequest, capability: string, resource: BridgeCapabilityResource | undefined, signal: AbortSignal): Promise<CapabilityInvocation> {
+  return parseCapabilityInvocation(await payload(await request("/api/v1/shell/capabilities/invoke", {
+    method: "POST", cache: "no-store", credentials: "same-origin", signal,
+    headers: { Accept: "application/json", "Content-Type": "application/json" },
+    body: JSON.stringify({ capability, ...(resource ? { resource } : {}) })
+  }), 4096), capability);
+}
+/** Reads selected package files into base64 payloads, stripping the chosen folder prefix. */
+export async function readPackageFiles(selected: readonly File[]): Promise<PackageFile[]> {
+  const files: PackageFile[] = [];
+  for (const file of selected) {
+    const relative = (file.webkitRelativePath || file.name).split("/").slice(1).join("/") || file.name;
+    if (!relative || relative.split("/").some((segment) => segment === ".." || segment === "")) continue;
+    const bytes = new Uint8Array(await file.arrayBuffer());
+    let binary = "";
+    for (const byte of bytes) binary += String.fromCharCode(byte);
+    files.push({ path: relative, content: btoa(binary) });
+  }
+  return files;
+}
+export function parseAppSettings(value: unknown): AppSettings {
+  const object = record(value);
+  if (object.settingsVersion !== 1 || typeof object.id !== "string" || !APP_ID.test(object.id) ||
+      typeof object.installationId !== "string" || !INSTALLATION.test(object.installationId) ||
+      !Array.isArray(object.manifest) || object.manifest.length > 64 || object.extended !== null)
+    throw new Error("invalid app settings");
+  const keys = new Set<string>();
+  const manifest = object.manifest.map((value: unknown) => {
+    const setting = record(value);
+    const type = setting.type;
+    const description = setting.description;
+    if (typeof setting.key !== "string" || !SETTING_KEY.test(setting.key) || keys.has(setting.key) ||
+        typeof setting.title !== "string" || !setting.title.trim() || setting.title.length > 120 ||
+        !(description === null || description === undefined || (typeof description === "string" && description.length <= 500)) ||
+        typeof type !== "string" || !(SETTING_TYPES as readonly string[]).includes(type) ||
+        typeof setting.required !== "boolean" || !Array.isArray(setting.options) || setting.options.length > 64)
+      throw new Error("invalid app setting");
+    keys.add(setting.key);
+    const options = setting.options.map((value: unknown) => {
+      const option = record(value);
+      if (typeof option.value !== "string" || !option.value || option.value.length > 128 ||
+          typeof option.label !== "string" || !option.label.trim() || option.label.length > 120)
+        throw new Error("invalid app setting option");
+      return { value: option.value, label: option.label };
+    });
+    if (type === "select" && !options.length) throw new Error("select setting without options");
+    if (type !== "select" && options.length) throw new Error("options on a non-select setting");
+    return {
+      key: setting.key,
+      title: setting.title,
+      ...(typeof description === "string" ? { description } : {}),
+      type: type as AppSettingType,
+      required: setting.required,
+      options,
+    };
+  });
+  return { id: object.id, installationId: object.installationId, manifest, extended: null };
+}
+export async function fetchAppSettings(request: ShellRequest, app: InstalledApp, signal: AbortSignal): Promise<AppSettings> {
+  return parseAppSettings(await payload(await request(
+    `/api/v1/shell/apps/${encodeURIComponent(app.id)}/settings?installationId=${encodeURIComponent(app.installationId)}`,
+    { cache: "no-store", credentials: "same-origin", headers: { Accept: "application/json" }, signal }
+  ), 256 * 1024));
+}
+export function parseAppData(value: unknown): AppData {
+  const object = record(value);
+  if (object.dataVersion !== 1 || typeof object.path !== "string" || object.path.length > 2048 ||
+      object.path.includes("\0") ||
+      object.path.split("/").some((segment) => segment === "." || segment === ".." || segment.includes("\\")))
+    throw new Error("invalid app data");
+  if (object.kind === "directory") {
+    if (!Array.isArray(object.entries) || object.entries.length > 1024) throw new Error("invalid app data");
+    const entries = object.entries.map((value: unknown) => {
+      const entry = record(value);
+      if (typeof entry.name !== "string" || !entry.name || entry.name.length > 255 ||
+          entry.name === "." || entry.name === ".." || entry.name.includes("/") || entry.name.includes("\0") ||
+          typeof entry.directory !== "boolean" ||
+          typeof entry.size !== "number" || !Number.isInteger(entry.size) || entry.size < 0 || entry.size > 64 * 1024 * 1024)
+        throw new Error("invalid app data entry");
+      return { name: entry.name, directory: entry.directory, size: entry.size };
+    });
+    return { kind: "directory", path: object.path, entries };
+  }
+  if (object.kind === "file") {
+    if (typeof object.contentType !== "string" || object.contentType.length > 128 ||
+        typeof object.size !== "number" || !Number.isInteger(object.size) || object.size < 0 || object.size > 2 * 1024 * 1024 ||
+        !(object.text === null || typeof object.text === "string"))
+      throw new Error("invalid app data file");
+    return { kind: "file", path: object.path, size: object.size, contentType: object.contentType, text: object.text };
+  }
+  throw new Error("invalid app data kind");
+}
+export async function fetchAppData(request: ShellRequest, app: InstalledApp, path: string, device: string, signal: AbortSignal): Promise<AppData> {
+  const query = new URLSearchParams({ installationId: app.installationId, device, path });
+  return parseAppData(await payload(await request(
+    `/api/v1/shell/apps/${encodeURIComponent(app.id)}/data?${query.toString()}`,
+    { cache: "no-store", credentials: "same-origin", headers: { Accept: "application/json" }, signal }
+  ), 512 * 1024));
 }

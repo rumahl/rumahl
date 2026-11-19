@@ -7,15 +7,19 @@ export interface ShellWindow {
   subtitle: string;
   streamId?: string;
   location?: string;
+  /** Preferred initial size for a newly opened window. */
+  preferredSize?: { width: number; height: number };
   minimized: boolean;
   rect?: WindowRect;
   placement?: WindowPlacement;
+  fullscreen?: boolean;
 }
 
 export interface ShellState {
   windows: readonly ShellWindow[];
   focusedWindowId: string | null;
   commandPaletteOpen: boolean;
+  appSwitcherOpen: boolean;
 }
 
 export type ShellAction =
@@ -26,13 +30,17 @@ export type ShellAction =
   | { type: "focus-window"; id: string }
   | { type: "set-window-rect"; id: string; rect: WindowRect }
   | { type: "set-window-placement"; id: string; placement: WindowPlacement }
+  | { type: "set-window-fullscreen"; id: string; fullscreen: boolean }
   | { type: "minimize-all" }
-  | { type: "toggle-command-palette" };
+  | { type: "toggle-command-palette" }
+  | { type: "toggle-app-switcher" }
+  | { type: "close-app-switcher" };
 
 export const initialShellState: ShellState = {
   windows: [],
   focusedWindowId: null,
-  commandPaletteOpen: false
+  commandPaletteOpen: false,
+  appSwitcherOpen: false
 };
 
 export function shellReducer(state: ShellState, action: ShellAction): ShellState {
@@ -40,12 +48,15 @@ export function shellReducer(state: ShellState, action: ShellAction): ShellState
     case "restore-workspace": return { ...state, windows: action.windows, focusedWindowId: action.windows.filter(w => !w.minimized).at(-1)?.id ?? null };
     case "open-window": {
       const existing = state.windows.find((window) => window.id === action.window.id);
+      // Keep the array order stable so opening or focusing an existing window
+      // never reorders the DOM (and thus never replays the window entry
+      // animation); stacking uses the z-index map.
       const windows = existing
         ? state.windows.map((window) =>
             window.id === action.window.id ? { ...window, ...action.window, minimized: false } : window
           )
-        : [...state.windows, { ...action.window, rect: { x: 36 + state.windows.length % 6 * 28, y: 24 + state.windows.length % 6 * 28, width: 760, height: 540 }, placement: "floating" as const, minimized: false }];
-      return { ...state, windows: [...windows.filter((item) => item.id !== action.window.id), windows.find((item) => item.id === action.window.id)!], focusedWindowId: action.window.id };
+        : [...state.windows, { placement: "floating" as const, ...action.window, minimized: false }];
+      return { ...state, windows, focusedWindowId: action.window.id };
     }
     case "close-window": {
       const windows = state.windows.filter((window) => window.id !== action.id);
@@ -79,9 +90,21 @@ export function shellReducer(state: ShellState, action: ShellAction): ShellState
       return { ...state, windows: state.windows.map((item) => item.id === action.id ? { ...item, rect: action.rect } : item) };
     case "set-window-placement":
       return { ...state, windows: state.windows.map((item) => item.id === action.id ? { ...item, placement: action.placement } : item) };
+    case "set-window-fullscreen":
+      return {
+        ...state,
+        focusedWindowId: action.fullscreen ? action.id : state.focusedWindowId,
+        windows: state.windows.map((item) => item.id === action.id
+          ? { ...item, fullscreen: action.fullscreen, minimized: action.fullscreen ? false : item.minimized }
+          : item)
+      };
     case "minimize-all":
       return { ...state, windows: state.windows.map((item) => ({ ...item, minimized: true })), focusedWindowId: null };
     case "toggle-command-palette":
       return { ...state, commandPaletteOpen: !state.commandPaletteOpen };
+    case "toggle-app-switcher":
+      return { ...state, appSwitcherOpen: !state.appSwitcherOpen };
+    case "close-app-switcher":
+      return { ...state, appSwitcherOpen: false };
   }
 }

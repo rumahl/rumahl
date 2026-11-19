@@ -1,102 +1,1319 @@
 /* Settings composition: one persistent navigation area and one content scroller. */
-.shell-window__content:has(> .settings-layout) { display: flex; overflow: hidden; padding: 0; container-type: inline-size; container-name: settings; }
-.settings-layout { display: grid; grid-template-columns: 184px minmax(0, 1fr); width: 100%; height: 100%; min-height: 0; }
-.settings-sidebar { min-height: 0; overflow-y: auto; padding: 24px 12px; background: var(--material-sidebar, var(--surface-fill)); border-right: 1px solid var(--material-line, var(--surface-edge)); }
-.settings-identity { display: grid; grid-template-columns: 34px minmax(0, 1fr); gap: 4px 10px; align-items: center; padding: 0 8px 26px; }
-.settings-identity svg { width: 28px; height: 32px; grid-row: span 2; color: var(--rumahl-ui-color-accent); }
-.settings-identity strong { font-size: 14px; letter-spacing: -.02em; }
-.settings-identity span { font-size: 11px; line-height: 1.4; overflow-wrap: anywhere; color: var(--rumahl-ui-color-text-muted); }
-.settings-sidebar nav { display: grid; gap: 4px; }
-.settings-sidebar a { display: flex; gap: 9px; align-items: center; padding: 10px; border-radius: 9px; color: var(--rumahl-ui-color-text-primary); text-decoration: none; font-size: 13px; line-height: 1.4; }
-.settings-sidebar a svg { width: 17px; height: 17px; flex-shrink: 0; }
-.settings-sidebar a:hover { background: var(--material-line, #0000000a); }
-.settings-sidebar a[aria-current="page"] { background: var(--rumahl-ui-color-accent); color: var(--rumahl-ui-color-on-accent); }
-.settings-content { min-width: 0; min-height: 0; overflow-y: auto; padding: 28px 30px 36px; scrollbar-gutter: stable; }
-.settings-page-heading { margin-bottom: 28px; }
-.settings-page-heading > span { font-size: 11px; color: var(--rumahl-ui-color-text-muted); }
-.shell .settings-content .settings-page-heading h1 { margin: 8px 0; font-size: 26px; font-weight: 650; letter-spacing: -.04em; }
-.settings-content p { font-size: 13px; line-height: 1.6; color: var(--rumahl-ui-color-text-primary); }
-.settings-overview-links { display: grid; }
-.settings-overview-links a { display: flex; align-items: center; gap: 16px; padding: 20px 0; border-bottom: 1px solid var(--material-line); color: inherit; text-decoration: none; }
-.settings-overview-links a > svg { width: 26px; height: 26px; color: var(--rumahl-ui-color-accent); }
-.settings-overview-links a > span:nth-child(2) { flex: 1; display: grid; gap: 6px; }
-.settings-overview-links strong { font-size: 14px; font-weight: 600; }
-.settings-overview-links small { font-size: 12px; line-height: 1.5; }
-.shell .settings-content fieldset { border: 0; border-top: 1px solid var(--material-line); border-radius: 0; padding: 18px 0 4px; margin: 26px 0 0; background: transparent; }
-.shell .settings-content legend { padding: 0 8px 0 0; font-size: 13px; font-weight: 600; color: var(--rumahl-ui-color-text-primary); }
-.settings-row, .settings-content .theme-parameter { display: grid; grid-template-columns: minmax(100px, 1fr) minmax(110px, 1fr); align-items: center; gap: 12px; padding: 14px 0; margin: 0; border-bottom: 1px solid var(--material-line); font-size: 13px; }
-.settings-content .theme-parameter input[type="color"] { justify-self: end; width: 36px; height: 28px; border-radius: 8px; }
-.settings-content .theme-parameter .theme-swatches { grid-column: 2; justify-self: end; display: flex; gap: 5px; }
-.settings-content .theme-parameter output { grid-column: 2; justify-self: end; font-size: 11px; color: var(--rumahl-ui-color-text-muted); }
-.settings-content .appearance-switch { border-bottom: 1px solid var(--material-line); padding: 16px 0; gap: 18px; font-size: 13px; }
-.settings-content .appearance-switch small { font-size: 12px; line-height: 1.5; }
-.shell .settings-content :is(button:not(.theme-swatch), select, input[type="text"], input:not([type]), textarea) {
-  border: 1px solid var(--material-line); border-radius: 9px; padding: 8px 11px; background: var(--material-soft, var(--surface-base)); color: var(--rumahl-ui-color-text-primary); font: inherit; font-size: 13px; max-width: 100%; box-shadow: none; backdrop-filter: none; -webkit-backdrop-filter: none;
+.shell .shell-window__content:has(> .settings-layout) {
+  display: flex;
+  overflow: hidden;
+  padding: 0;
+  container-type: inline-size;
+  container-name: settings;
 }
-.shell .settings-content button[aria-pressed="true"] { background: var(--rumahl-ui-color-accent); color: var(--rumahl-ui-color-on-accent); border-color: transparent; }
-.shell .settings-content :is(.segmented, .appearance-switch input) { backdrop-filter: none; -webkit-backdrop-filter: none; box-shadow: none; }
-.settings-content :is(button, select, input, a):focus-visible { outline: 2px solid var(--rumahl-ui-color-accent); outline-offset: 3px; }
-.shell .settings-content .theme-custom-variant { background: transparent; border: 1px solid var(--material-line); box-shadow: none; }
-.settings-content .material-presets { gap: 8px; }
-.settings-content .theme-custom-variant { margin-top: 22px; }
+.settings-layout {
+  position: relative;
+  display: grid;
+  grid-template-columns: var(--settings-nav-width, 184px) minmax(0, 1fr);
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+}
+.settings-layout[data-resizing="true"] { cursor: col-resize; }
+.settings-sidebar {
+  position: relative;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 24px 12px;
+  background: var(--material-sidebar, var(--surface-fill));
+  border-right: 1px solid var(--material-line, var(--surface-edge));
+}
+.settings-resizer {
+  position: absolute;
+  z-index: 4;
+  top: 0;
+  bottom: 0;
+  left: var(--settings-nav-width, var(--settings-nav-default, 184px));
+  width: 9px;
+  border: 0;
+  background: transparent;
+  transform: translateX(-4px);
+  cursor: col-resize;
+  touch-action: none;
+  outline: none;
+}
+.settings-resizer::after {
+  content: "";
+  position: absolute;
+  top: 12px;
+  bottom: 12px;
+  left: 4px;
+  width: 1px;
+  border-radius: 1px;
+  background: transparent;
+  transition: background 140ms ease;
+}
+.settings-resizer:hover::after,
+.settings-resizer:focus-visible::after,
+.settings-layout[data-resizing="true"] .settings-resizer::after {
+  background: var(--rumahl-ui-color-accent);
+}
+.settings-resizer:focus-visible::after {
+  left: 3px;
+  width: 2px;
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--rumahl-ui-color-accent) 22%, transparent);
+}
+.settings-identity {
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr);
+  gap: 4px 10px;
+  align-items: center;
+  padding: 0 8px 26px;
+}
+.settings-identity svg {
+  width: 28px;
+  height: 32px;
+  grid-row: span 2;
+  color: var(--rumahl-ui-color-accent);
+}
+.settings-identity strong {
+  font-size: 14px;
+  letter-spacing: -0.02em;
+}
+.settings-identity span {
+  font-size: 12px;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+  color: var(--rumahl-ui-color-text-muted);
+}
+.settings-sidebar nav {
+  display: grid;
+  gap: 4px;
+}
+.settings-sidebar a {
+  display: flex;
+  gap: 9px;
+  align-items: center;
+  padding: 10px;
+  border-radius: 9px;
+  color: var(--rumahl-ui-color-text-primary);
+  text-decoration: none;
+  font-size: 13px;
+  line-height: 1.4;
+}
+.settings-sidebar a svg {
+  width: 17px;
+  height: 17px;
+  flex-shrink: 0;
+}
+.settings-sidebar a:hover {
+  background: var(--material-line, #0000000a);
+}
+.settings-sidebar a[aria-current="page"] {
+  background: var(--rumahl-ui-color-accent);
+  color: var(--rumahl-ui-color-on-accent);
+}
+.settings-content {
+  min-width: 0;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 0 30px 36px;
+  scrollbar-gutter: stable;
+}
+.settings-account-avatar {
+  display: grid;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  border-radius: 999px;
+  background: var(--rumahl-ui-color-accent);
+  color: var(--rumahl-ui-color-on-accent);
+  font-size: 15px;
+  font-weight: 700;
+}
+.settings-heading-wrap { display: contents; }
+.settings-page-heading {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  margin: 0 -30px 28px;
+  padding: 28px 30px 12px;
+  border-bottom: 1px solid transparent;
+  background: transparent;
+  transition: background-color 180ms ease, border-color 180ms ease, box-shadow 180ms ease, padding 180ms ease;
+}
+.settings-page-heading p {
+  max-height: 12em;
+  overflow: hidden;
+  transition: opacity 140ms ease, max-height 180ms ease, margin 180ms ease;
+}
+.settings-page-heading[data-stuck] {
+  padding-block: 10px;
+  background: var(--material-sidebar, var(--window-background, var(--material-solid, #f8faf7)));
+  border-bottom-color: var(--material-line, var(--surface-edge));
+  box-shadow: 0 10px 24px color-mix(in srgb, #000 8%, transparent);
+  backdrop-filter: blur(20px) saturate(1.2);
+  -webkit-backdrop-filter: blur(20px) saturate(1.2);
+}
+.settings-page-heading[data-stuck] h1,
+.settings-page-heading[data-stuck] .settings-heading {
+  margin-block: 0;
+}
+.settings-page-heading[data-stuck] p {
+  max-height: 0;
+  margin-block: 0;
+  opacity: 0;
+}
+.settings-breadcrumb {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  margin: 0 0 4px;
+  color: var(--rumahl-ui-color-text-muted);
+  font-size: 12px;
+  line-height: 1.4;
+}
+.settings-breadcrumb__item {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.settings-breadcrumb a {
+  color: var(--rumahl-ui-color-text-muted);
+  text-decoration: none;
+}
+.settings-breadcrumb a:hover {
+  color: var(--rumahl-ui-color-accent);
+  text-decoration: underline;
+}
+.settings-breadcrumb [aria-current="page"] {
+  color: var(--rumahl-ui-color-text-primary);
+}
+.settings-breadcrumb__separator {
+  opacity: 0.45;
+}
+.settings-page-heading > span {
+  font-size: 12px;
+  color: var(--rumahl-ui-color-text-muted);
+}
+.shell .settings-content .settings-page-heading h1 {
+  margin: 8px 0;
+  font-size: 26px;
+  font-weight: 650;
+  letter-spacing: -0.04em;
+}
+.settings-content p {
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--rumahl-ui-color-text-primary);
+}
+.settings-overview-links {
+  display: grid;
+}
+.settings-overview-links a {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 20px 0;
+  border-bottom: 1px solid var(--material-line);
+  color: inherit;
+  text-decoration: none;
+}
+.settings-overview-links a > svg {
+  width: 26px;
+  height: 26px;
+  color: var(--rumahl-ui-color-accent);
+}
+.settings-overview-links a > span:nth-child(2) {
+  flex: 1;
+  display: grid;
+  gap: 6px;
+}
+.settings-overview-links strong {
+  font-size: 14px;
+  font-weight: 600;
+}
+.settings-overview-links small {
+  font-size: 12px;
+  line-height: 1.5;
+}
+.shell .settings-content fieldset {
+  border: 0;
+  border-top: 1px solid var(--material-line);
+  border-radius: 0;
+  padding: 18px 0 4px;
+  margin: 26px 0 0;
+  background: transparent;
+}
+.shell .settings-content legend {
+  padding: 0 8px 0 0;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--rumahl-ui-color-text-primary);
+}
+.settings-row,
+.settings-content .theme-parameter {
+  display: grid;
+  grid-template-columns: minmax(100px, 1fr) minmax(110px, 1fr);
+  align-items: center;
+  gap: 12px;
+  padding: 14px 0;
+  margin: 0;
+  border-bottom: 1px solid var(--material-line);
+  font-size: 13px;
+}
+.settings-content .theme-parameter input[type="color"] {
+  justify-self: end;
+  width: 36px;
+  height: 28px;
+  border-radius: 8px;
+}
+.settings-content .theme-parameter .theme-swatches {
+  grid-column: 2;
+  justify-self: end;
+  display: flex;
+  gap: 5px;
+}
+.settings-content .theme-parameter output {
+  grid-column: 2;
+  justify-self: end;
+  font-size: 12px;
+  color: var(--rumahl-ui-color-text-muted);
+}
+.settings-content .appearance-switch {
+  border-bottom: 1px solid var(--material-line);
+  padding: 16px 0;
+  gap: 18px;
+  font-size: 13px;
+}
+.settings-content .appearance-switch small {
+  font-size: 12px;
+  line-height: 1.5;
+}
+.shell
+  .settings-content
+  :is(
+    button:not(.theme-swatch),
+    select,
+    input[type="text"],
+    input:not([type]),
+    textarea
+  ) {
+  border: 1px solid var(--material-line);
+  border-radius: 9px;
+  padding: 8px 11px;
+  background: var(--material-soft, var(--surface-base));
+  color: var(--rumahl-ui-color-text-primary);
+  font: inherit;
+  font-size: 13px;
+  max-width: 100%;
+  box-shadow: none;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+.shell .settings-content button[aria-pressed="true"] {
+  background: var(--rumahl-ui-color-accent);
+  color: var(--rumahl-ui-color-on-accent);
+  border-color: transparent;
+}
+.shell .settings-content :is(.segmented, .appearance-switch input) {
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  box-shadow: none;
+}
+.settings-content :is(button, select, input, a):focus-visible {
+  outline: 2px solid var(--rumahl-ui-color-accent);
+  outline-offset: 3px;
+}
+.shell .settings-content .theme-custom-variant {
+  background: transparent;
+  border: 1px solid var(--material-line);
+  box-shadow: none;
+}
+.settings-content .material-presets {
+  gap: 8px;
+}
+.settings-content .theme-custom-variant {
+  margin-top: 22px;
+}
 @container settings (max-width: 580px) {
-  .settings-layout { grid-template-columns: 140px minmax(0, 1fr); }
-  .settings-sidebar { padding: 18px 8px; }
-  .settings-identity { grid-template-columns: 1fr; }
-  .settings-identity svg { display: none; }
-  .settings-content { padding: 20px 16px; }
-  .settings-content .theme-parameter, .settings-row { grid-template-columns: 1fr; }
-  .settings-content .theme-parameter :is(output, .theme-swatches) { grid-column: 1; }
-  .settings-content .appearance-switch { flex-wrap: wrap; }
-  .settings-content .material-presets { grid-template-columns: 1fr; }
+  .settings-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .settings-sidebar {
+    display: none;
+  }
+  /* The single-pane layout has no rail to resize. Leaving this focusable
+     would put an invisible 9px drag target over the content. */
+  .settings-resizer {
+    display: none;
+  }
+  .settings-content {
+    padding: 0 16px 28px;
+  }
+  .settings-page-heading {
+    margin: 0 -16px 22px;
+    padding: 20px 16px 12px;
+  }
+  .settings-content .theme-parameter,
+  .settings-row {
+    grid-template-columns: 1fr;
+  }
+  .settings-content .theme-parameter :is(output, .theme-swatches) {
+    grid-column: 1;
+  }
+  .settings-content .appearance-switch {
+    flex-wrap: wrap;
+  }
+  .settings-content .material-presets {
+    grid-template-columns: 1fr;
+  }
 }
 @container settings (max-width: 380px) {
-  .settings-layout { grid-template-columns: 100px minmax(0, 1fr); }
-  .settings-sidebar a { padding: 9px 5px; font-size: 12px; }
-  .settings-sidebar a svg { display: none; }
-  .settings-identity { padding-inline: 4px; }
+  .settings-layout {
+    grid-template-columns: 100px minmax(0, 1fr);
+  }
+  .settings-sidebar a {
+    padding: 9px 5px;
+    font-size: 12px;
+  }
+  .settings-sidebar a svg {
+    display: none;
+  }
+  .settings-identity {
+    padding-inline: 4px;
+  }
 }
-.settings-sidebar a svg, .settings-overview-links svg { stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
-.settings-identity span { color: var(--rumahl-ui-color-text-primary); }
+.settings-sidebar a svg,
+.settings-overview-links svg {
+  stroke: currentColor;
+  stroke-width: 1.7;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.settings-identity span {
+  color: var(--rumahl-ui-color-text-primary);
+}
 
 /* Drill-in navigation rows (Settings overview, System sub-pages, links). */
-.settings-nav__row { display: flex; align-items: center; gap: 15px; padding: 15px 18px; color: inherit; text-decoration: none; transition: background .15s ease; }
-.settings-nav__row + .settings-nav__row { border-top: 1px solid var(--divider); }
-.settings-nav__row:hover { background: color-mix(in srgb, var(--accent) 10%, transparent); }
-.settings-nav__icon { display: grid; place-items: center; width: 34px; height: 34px; flex: none; border-radius: 10px; color: var(--accent); background: color-mix(in srgb, var(--accent) 16%, transparent); }
-.settings-nav__icon svg { width: 18px; height: 18px; }
-.settings-nav__text { flex: 1; min-width: 0; display: grid; gap: 4px; }
-.settings-nav__text strong { font-size: 13px; font-weight: 620; color: var(--rumahl-ui-color-text-primary); }
-.settings-nav__text small { font-size: 11.5px; color: var(--muted); }
-.settings-nav__chevron { color: var(--muted); font-size: 17px; line-height: 1; }
-.settings-nav__ext { width: 15px; height: 15px; flex: none; color: var(--muted); }
-.settings-nav svg { stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+.settings-nav__row {
+  display: flex;
+  align-items: center;
+  gap: 15px;
+  padding: 15px 18px;
+  border-radius: 0;
+  color: inherit;
+  text-decoration: none;
+  transition: background 0.15s ease, transform 0.14s ease, box-shadow 0.14s ease;
+}
+.settings-group.settings-nav > .settings-nav__row:first-child {
+  border-top-left-radius: var(--group-radius, 15px);
+  border-top-right-radius: var(--group-radius, 15px);
+}
+.settings-group.settings-nav > .settings-nav__row:last-child {
+  border-bottom-left-radius: var(--group-radius, 15px);
+  border-bottom-right-radius: var(--group-radius, 15px);
+}
+.settings-nav__row:active {
+  transform: translateY(1px);
+  background: color-mix(in srgb, var(--accent) 16%, transparent);
+  border-top-color: transparent;
+  box-shadow: inset 0 2px 5px color-mix(in srgb, #000 18%, transparent);
+}
+.settings-nav__row + .settings-nav__row {
+  border-top: 1px solid var(--divider);
+}
+.settings-nav__row:hover {
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+}
+.settings-nav__icon {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  flex: none;
+  border-radius: 10px;
+  color: var(--rumahl-ui-color-accent-ink, var(--accent));
+  background: color-mix(in srgb, var(--accent) 16%, transparent);
+}
+.settings-nav__icon svg {
+  width: 18px;
+  height: 18px;
+}
+.settings-nav__app {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  overflow: hidden;
+  border-radius: 8px;
+  color: #fff;
+  background: var(--rumahl-ui-icon-gradient, linear-gradient(140deg, #3f9e74, #28694c));
+  box-shadow: 0 2px 6px #0002;
+}
+.settings-nav__app img.icon {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.settings-nav__app svg {
+  width: 17px;
+  height: 17px;
+}
+.settings-nav__app .app-icon-glyph {
+  font-size: 0.8rem;
+}
+.settings-nav__app .app-icon-folder__art {
+  width: 21px;
+  height: 21px;
+}
+.app-management__identity {
+  align-items: center;
+}
+.app-management__icon {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 52px;
+  height: 52px;
+  overflow: hidden;
+  border-radius: 14px;
+  color: #fff;
+  background: var(--rumahl-ui-icon-gradient, linear-gradient(140deg, #3f9e74, #28694c));
+  box-shadow: 0 5px 16px #0002;
+}
+.app-management__icon img.icon {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.app-management__icon svg {
+  width: 27px;
+  height: 27px;
+}
+.app-management__icon .app-icon-glyph {
+  font-size: 1.15rem;
+}
+.app-management__icon .app-icon-folder__art {
+  width: 40px;
+  height: 40px;
+}
+.app-management__granted {
+  color: var(--accent);
+  font-weight: 620;
+}
+.app-management__value {
+  color: var(--muted);
+  font-size: 12px;
+}
+.app-management__status {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--muted);
+  font-weight: 620;
+}
+.app-management__status i {
+  width: 7px;
+  height: 7px;
+  flex: none;
+  border-radius: 50%;
+  background: currentColor;
+  box-shadow: 0 0 0 3px color-mix(in srgb, currentColor 15%, transparent);
+}
+.app-management__status--running { color: var(--rumahl-ui-color-success, #2f9e68); }
+.app-management__status--stopped { color: #d14a4a; }
+.app-management__status--unknown { color: var(--muted); }
+.app-management__actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+.app-management__outcome {
+  font-size: 12px;
+  font-weight: 680;
+  text-transform: capitalize;
+}
+.app-management__outcome--failure,
+.app-management__outcome--denied {
+  color: color-mix(in srgb, var(--rumahl-ui-color-danger, #d34a4a) 85%, var(--ink));
+}
+.app-management__live {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--accent);
+  font-size: 12px;
+  font-weight: 750;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+}
+.app-management__live i {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: currentColor;
+  box-shadow: 0 0 0 3px color-mix(in srgb, currentColor 18%, transparent);
+  animation: app-management-live 1.8s ease-in-out infinite;
+}
+@keyframes app-management-live {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: .45; transform: scale(.8); }
+}
+.app-management-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 240;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: #06101880;
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+}
+.app-management-modal__surface {
+  display: flex;
+  flex-direction: column;
+  width: min(760px, 100%);
+  max-height: min(80dvh, 720px);
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  background: var(--rumahl-ui-color-panel-background, var(--rumahl-color-panel-background));
+  box-shadow: 0 28px 90px #0008;
+}
+.app-management-modal__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 14px;
+  padding: 16px 18px;
+  border-bottom: 1px solid var(--divider);
+}
+.app-management-modal__title { flex: 1; min-width: 0; }
+.app-management-modal__head h2 { margin: 2px 0 0; font-size: 22px; letter-spacing: -.035em; }
+.app-management-modal__eyebrow {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+}
+.app-management-modal__close {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  color: var(--ink);
+  background: var(--control-fill, color-mix(in srgb, currentColor 7%, transparent));
+  font-size: 22px;
+  line-height: 1;
+}
+.app-management-modal__body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 4px 18px;
+}
+.app-management-modal__body .settings-footnote { margin-block: 24px; text-align: center; }
+.app-management__log {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 18px;
+  padding: 11px 0;
+  border-bottom: 1px solid var(--divider);
+}
+.app-management__log:last-child { border-bottom: 0; }
+.app-management__log strong { font-size: 12.5px; font-weight: 650; text-transform: capitalize; }
+.app-management__log p { margin: 2px 0 0; color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; }
+.app-management__log--detailed { display: block; }
+.app-management__log-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.app-management__log-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 9px 18px;
+  margin: 9px 0 0;
+}
+.app-management__log-grid > div { display: grid; gap: 1px; min-width: 0; }
+.app-management__log-grid dt {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 720;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+.app-management__log-grid dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+.app-management-modal__foot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 12px 18px;
+  border-top: 1px solid var(--divider);
+}
+.app-management-modal__pager,
+.app-management-modal__actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.app-management-modal__pager span {
+  min-width: 58px;
+  color: var(--muted);
+  font-size: 12px;
+  text-align: center;
+}
+@media (max-width: 620px) {
+  .app-management-modal {
+    padding: 12px;
+  }
+  .app-management__log-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .app-management-modal__foot {
+    justify-content: center;
+  }
+}
+.settings-nav__text {
+  flex: 1;
+  min-width: 0;
+  display: grid;
+  gap: 4px;
+}
+.settings-nav__text strong {
+  font-size: 13px;
+  font-weight: 620;
+  color: var(--rumahl-ui-color-text-primary);
+}
+.settings-nav__text small {
+  font-size: 12px;
+  color: var(--muted);
+}
+.settings-nav__chevron {
+  color: var(--muted);
+  font-size: 17px;
+  line-height: 1;
+}
+.settings-nav__ext {
+  width: 15px;
+  height: 15px;
+  flex: none;
+  color: var(--muted);
+}
+.settings-nav svg {
+  stroke: currentColor;
+  stroke-width: 1.7;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
 
-.about-identity__mark { display: grid; place-items: center; width: 44px; height: 44px; flex: none; border-radius: 13px; background: #0b0d12; color: #ffffff; }
-.about-identity__mark svg { width: 24px; height: 27px; }
-body.light .about-identity__mark { background: #ffffff; color: #0b0d12; }
+.about-identity__mark {
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  flex: none;
+  border-radius: 13px;
+  background: #0b0d12;
+  color: #ffffff;
+}
+.about-identity__mark svg {
+  width: 24px;
+  height: 27px;
+}
+body.light .about-identity__mark {
+  background: #ffffff;
+  color: #0b0d12;
+}
 
 /* Read-only value rows are styled in reference.css (unlayered) so they win over
    the base `.setting` rules. */
-.theme-parameter__auto { margin-left: 7px; color: var(--muted); font-size: 10px; font-style: normal; font-weight: 600; }
-.theme-custom-variant__state { color: var(--muted); font-size: 10.5px; font-weight: 600; }
+.theme-parameter__auto {
+  margin-left: 7px;
+  color: var(--muted);
+  font-size: 12px;
+  font-style: normal;
+  font-weight: 600;
+}
+.theme-custom-variant__state {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 600;
+}
 
-.settings-footnote { margin-top: 10px; font-size: 11.5px; color: var(--muted); }
+.settings-footnote {
+  margin-top: 10px;
+  font-size: 12px;
+  color: var(--muted);
+}
 
-.workspace-actions { display: flex; flex-wrap: wrap; gap: 8px; justify-content: flex-end; }
-.settings-empty { padding: 16px 18px; color: var(--muted); font-size: 12.5px; }
-
+.workspace-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-end;
+}
+.settings-empty {
+  padding: 16px 18px;
+  color: var(--muted);
+  font-size: 12.5px;
+}
 
 /* Settings sub-page header: back button before the title. */
-.settings-heading { display: flex; align-items: center; gap: 12px; margin: 8px 0; }
-.settings-heading .pagetitle { margin: 0; }
-.settings-back { display: grid; place-items: center; width: 34px; height: 34px; flex: none; border: 1px solid var(--control-border); border-radius: 999px; background: var(--control-fill); color: var(--rumahl-ui-color-text-primary); box-shadow: var(--control-inset); transition: background 150ms ease, border-color 150ms ease; }
-.settings-back:hover { background: var(--control-hover); border-color: var(--control-border-hover); }
-.settings-back svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.settings-heading {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 8px 0;
+}
+.settings-heading .pagetitle {
+  margin: 0;
+}
+.settings-back {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  flex: none;
+  border: 1px solid var(--control-border);
+  border-radius: 999px;
+  background: var(--control-fill);
+  color: var(--rumahl-ui-color-text-primary);
+  box-shadow: var(--control-inset);
+  transition:
+    background var(--motion-control-duration, 150ms) ease,
+    border-color var(--motion-control-duration, 150ms) ease;
+}
+.settings-back:hover {
+  background: var(--control-hover);
+  border-color: var(--control-border-hover);
+}
+.settings-back svg {
+  width: 16px;
+  height: 16px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
 
 /* Settings always use the readable text token (never an inherited white). */
-.settings-layout, .settings-content, .settings-sidebar { color: var(--rumahl-ui-color-text-primary); }
+.settings-layout,
+.settings-content,
+.settings-sidebar {
+  color: var(--rumahl-ui-color-text-primary);
+}
 
 /* Settings identity: the signed-in user instead of the rumahl OS brand. */
-.settings-identity .settings-avatar { display: grid; place-items: center; width: 34px; height: 34px; grid-row: span 2; border-radius: 50%; background: linear-gradient(135deg, var(--rumahl-ui-color-accent), color-mix(in srgb, var(--rumahl-ui-color-accent) 55%, #65caa8)); color: var(--rumahl-ui-color-on-accent, #152136); font-size: 14px; font-weight: 800; }
-.settings-identity .small { color: var(--rumahl-ui-color-text-muted); font-size: 11px; line-height: 1.4; overflow-wrap: anywhere; }
+.settings-identity .settings-avatar {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  grid-row: span 2;
+  border-radius: 50%;
+  background: linear-gradient(
+    135deg,
+    var(--rumahl-ui-color-accent),
+    color-mix(in srgb, var(--rumahl-ui-color-accent) 55%, var(--accent-strong, #65caa8))
+  );
+  color: var(--rumahl-ui-color-on-accent, #152136);
+  font-size: 14px;
+  font-weight: 800;
+}
+.settings-identity .small {
+  color: var(--rumahl-ui-color-text-muted);
+  font-size: 12px;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+
+/* Live miniature of the selected theme: shape, accent, glass and dock. */
+.theme-preview {
+  position: relative;
+  width: 100%;
+  max-width: 330px;
+  height: 108px;
+  margin-top: 12px;
+  overflow: hidden;
+  border: 1px solid color-mix(in srgb, var(--rumahl-ui-color-text-primary) 13%, transparent);
+  border-radius: var(--rumahl-ui-shape-radius-window, 14px);
+  background:
+    radial-gradient(circle at 24% 18%, color-mix(in srgb, var(--rumahl-ui-color-accent) 26%, transparent), transparent 42%),
+    linear-gradient(135deg, #13202a, #0a1118);
+}
+.theme-preview__window {
+  position: absolute;
+  left: 12%;
+  top: 15%;
+  display: grid;
+  align-content: start;
+  gap: 7px;
+  width: 55%;
+  height: 62%;
+  padding: 11px;
+  border: 1px solid color-mix(in srgb, var(--rumahl-ui-color-text-primary) 16%, transparent);
+  border-radius: var(--rumahl-ui-shape-radius-window, 12px);
+  background: color-mix(in srgb, var(--rumahl-ui-color-panel-background) calc(var(--rumahl-ui-material-opacity, 0.78) * 100%), transparent);
+  box-shadow: inset 0 1px #ffffff33, 0 10px 24px #0004;
+  backdrop-filter: blur(calc(var(--rumahl-ui-material-blur, 12px) / 2));
+}
+.theme-preview__window::before {
+  content: "";
+  height: 16px;
+  margin: -11px -11px 0;
+  border-bottom: 1px solid color-mix(in srgb, var(--rumahl-ui-color-text-primary) 12%, transparent);
+  background: color-mix(in srgb, var(--rumahl-ui-color-surface-strong) 76%, transparent);
+}
+.theme-preview__window i {
+  display: block;
+  width: 78%;
+  height: 5px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--rumahl-ui-color-text-primary) 22%, transparent);
+}
+.theme-preview__window i:first-of-type {
+  width: 42%;
+  background: var(--rumahl-ui-color-accent);
+}
+.theme-preview__dock {
+  position: absolute;
+  left: 50%;
+  bottom: 9%;
+  display: flex;
+  align-items: center;
+  justify-content: space-around;
+  width: 58%;
+  height: 19%;
+  padding: 4px;
+  border: 1px solid #ffffff2e;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--rumahl-ui-color-panel-background) 42%, transparent);
+  box-shadow: 0 8px 20px #0004;
+  transform: translateX(-50%);
+  backdrop-filter: blur(10px);
+}
+.theme-preview__dock span {
+  width: 16px;
+  height: 16px;
+  border-radius: 5px;
+  background: color-mix(in srgb, var(--rumahl-ui-color-text-primary) 38%, transparent);
+}
+.theme-preview__dock span:first-child {
+  background: var(--rumahl-ui-color-accent);
+}
+
+/* Native colour input for the dock/widget glass tint. */
+.shell .settings-content .glass-color-input {
+  width: 52px;
+  height: 44px;
+  padding: 3px;
+  border-radius: 12px;
+  cursor: pointer;
+}
+.shell .settings-content .glass-color-input:disabled { opacity: 0.45; cursor: default; }
+
+/* Settings sidebar destinations use the same press feedback as buttons. */
+.shell .settings-sidebar .nav-item {
+  transition: background 150ms ease, color 150ms ease, scale 140ms ease, box-shadow 140ms ease;
+}
+.shell .settings-sidebar .nav-item:active {
+  scale: 0.98;
+  box-shadow: inset 0 2px 5px color-mix(in srgb, #000 14%, transparent);
+}
+
+/* Administration ---------------------------------------------------------- */
+.admin-list {
+  display: grid;
+  gap: 0;
+  padding: 0 18px;
+}
+.admin-list > p,
+.admin-list > [role="alert"] {
+  padding: 16px 0;
+}
+.admin-session-row,
+.admin-audit-row {
+  display: grid;
+  gap: 12px;
+  padding: 16px 0;
+  border-bottom: 1px solid var(--material-line, var(--surface-edge));
+}
+.admin-session-row:last-child,
+.admin-audit-row:last-child {
+  border-bottom: 0;
+}
+.admin-session__identity,
+.admin-audit-row > div {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+.admin-session__identity strong,
+.admin-audit-row strong {
+  font-size: 13px;
+}
+.admin-session__identity small,
+.admin-audit-row small {
+  overflow: hidden;
+  color: var(--rumahl-ui-color-text-muted);
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.admin-status {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: fit-content;
+  padding: 3px 8px;
+  border-radius: 999px;
+  background: var(--control-fill, #0000000a);
+  color: var(--rumahl-ui-color-text-muted);
+  font-size: 12px;
+  font-weight: 650;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+.admin-status--active,
+.admin-status--success {
+  background: color-mix(in srgb, var(--rumahl-ui-color-success, #2f9e68) 16%, transparent);
+  color: var(--rumahl-ui-color-success, #23754e);
+}
+.admin-status--locked,
+.admin-status--denied {
+  background: color-mix(in srgb, #d99a2b 18%, transparent);
+  color: #8a5b05;
+}
+.admin-status--disabled,
+.admin-status--failure,
+.admin-status--revoked {
+  background: color-mix(in srgb, #d45050 15%, transparent);
+  color: #a12727;
+}
+.admin-session-row {
+  grid-template-columns: minmax(0, 1fr) minmax(180px, 260px) auto auto;
+  align-items: center;
+}
+.admin-session__times {
+  display: grid;
+  gap: 3px;
+  color: var(--rumahl-ui-color-text-muted);
+  font-size: 12px;
+}
+.admin-audit__actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 10px;
+}
+.admin-audit-row {
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+}
+.admin-audit-row time {
+  color: var(--rumahl-ui-color-text-muted);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+/* Users: a compact device account list with focused detail views. */
+.user-settings__bar {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 14px;
+}
+.user-settings__bar .section-title {
+  margin: 0 0 5px;
+}
+.user-settings__lead {
+  margin: 0;
+  max-width: 520px;
+  color: var(--rumahl-ui-color-text-muted);
+  font-size: 12px;
+  line-height: 1.55;
+}
+.user-list {
+  overflow: hidden;
+  border: 1px solid var(--material-line, var(--surface-edge));
+  border-radius: var(--group-radius, 15px);
+  background: color-mix(in srgb, var(--material-solid, #f5f5f7) 58%, transparent);
+  box-shadow: 0 1px 0 color-mix(in srgb, #fff 26%, transparent) inset;
+}
+.user-list > p,
+.user-list > [role="alert"] {
+  margin: 0;
+  padding: 16px 18px;
+}
+.user-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+  padding: 12px 16px;
+  border-top: 1px solid var(--material-line, var(--surface-edge));
+  color: inherit;
+  text-decoration: none;
+  transition: background 150ms ease;
+}
+.user-row:first-child {
+  border-top: 0;
+}
+.user-row:hover,
+.user-row:focus-visible {
+  background: color-mix(in srgb, var(--rumahl-ui-color-accent) 8%, transparent);
+}
+.user-row__identity {
+  display: grid;
+  flex: 1;
+  gap: 2px;
+  min-width: 0;
+}
+.user-row__identity strong {
+  overflow: hidden;
+  font-size: 13.5px;
+  font-weight: 650;
+  letter-spacing: -0.01em;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.user-row__identity small {
+  overflow: hidden;
+  color: var(--rumahl-ui-color-text-muted);
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.user-row__chevron {
+  flex: none;
+  color: var(--rumahl-ui-color-text-muted);
+  font-size: 17px;
+}
+.user-avatar {
+  display: grid;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  flex: none;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--rumahl-ui-color-accent) 16%, transparent);
+  color: var(--rumahl-ui-color-accent);
+  font-size: 15px;
+  font-weight: 720;
+}
+.user-avatar--manager {
+  background: color-mix(in srgb, #5b8cff 18%, transparent);
+  color: #3f66b2;
+}
+.user-avatar--administrator,
+.user-avatar--owner {
+  background: var(--rumahl-ui-color-accent);
+  color: var(--rumahl-ui-color-on-accent);
+}
+.user-detail__hero {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 2px 2px 18px;
+}
+.user-detail__avatar {
+  display: grid;
+  place-items: center;
+  width: 54px;
+  height: 54px;
+  flex: none;
+  border-radius: 999px;
+  font-size: 21px;
+  font-weight: 720;
+}
+.user-detail__hero > div {
+  display: grid;
+  flex: 1;
+  gap: 3px;
+  min-width: 0;
+}
+.user-detail__hero h3 {
+  margin: 0;
+  font-size: 20px;
+  font-weight: 680;
+  letter-spacing: -0.03em;
+}
+.user-detail__hero p {
+  margin: 0;
+  color: var(--rumahl-ui-color-text-muted);
+  font-size: 12px;
+}
+.user-detail__profile {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: center;
+  width: min(540px, 100%);
+}
+.user-detail__control {
+  display: grid;
+  gap: 6px;
+  width: min(280px, 100%);
+}
+.user-detail__control small {
+  color: var(--rumahl-ui-color-text-muted);
+  font-size: 12px;
+  line-height: 1.45;
+}
+.user-detail__static {
+  padding: 9px 12px;
+  border: 1px solid var(--material-line, var(--surface-edge));
+  border-radius: 9px;
+  background: var(--control-fill, #0000000a);
+  font-size: 13px;
+  font-weight: 600;
+}
+.shell .rumahl-modal.user-modal {
+  background: var(--material-solid, var(--control-base, #f5f5f7));
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+.user-modal-form {
+  display: grid;
+  gap: 12px;
+}
+.user-modal-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  padding-top: 12px;
+  border-top: 1px solid var(--material-line, var(--surface-edge));
+}
+.user-modal-toggle > span {
+  display: grid;
+  gap: 3px;
+}
+.user-modal-toggle strong {
+  font-size: 12.5px;
+  font-weight: 620;
+}
+.user-modal-toggle small {
+  color: var(--rumahl-ui-color-text-muted);
+  font-size: 12px;
+  line-height: 1.45;
+}
+.user-modal-username {
+  color: var(--rumahl-ui-color-text-muted);
+  font-size: 12px;
+}
+.user-modal-username summary {
+  cursor: pointer;
+}
+.user-modal-username .rumahl-input {
+  margin-top: 8px;
+}
+.user-modal-username small,
+.user-modal-hint {
+  color: var(--rumahl-ui-color-text-muted);
+  font-size: 12px;
+  line-height: 1.45;
+}
+.user-modal-hint {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+@container settings (max-width: 720px) {
+  .user-settings__bar {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .user-detail .setting {
+    grid-template-columns: 1fr;
+  }
+  .user-detail__control {
+    width: 100%;
+  }
+  .user-detail__profile {
+    grid-template-columns: 1fr;
+    width: 100%;
+  }
+  .admin-session-row {
+    grid-template-columns: 1fr;
+  }
+  .user-detail__hero {
+    align-items: flex-start;
+  }
+}
+
+
+/* Theme gallery: miniature desktop per theme, actions underneath. */
+.theme-manager { display: grid; gap: 18px; }
+.theme-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
+  gap: 14px;
+}
+.theme-card {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: calc(var(--rumahl-ui-shape-radius-window, 12px) + 4px);
+  background: var(--rumahl-ui-color-panel-background);
+}
+.theme-card[data-active="true"] { border-color: var(--rumahl-ui-color-accent); box-shadow: 0 0 0 1px var(--rumahl-ui-color-accent) inset; }
+.theme-card__preview {
+  position: relative;
+  height: 132px;
+  background: var(--preview-wall, var(--rumahl-ui-color-canvas-background));
+  border-bottom: 1px solid var(--line);
+}
+.theme-card__window {
+  position: absolute;
+  left: 18px;
+  top: 20px;
+  width: 62%;
+  height: 58%;
+  display: flex;
+  gap: 4px;
+  align-items: flex-start;
+  padding: 7px;
+  border-radius: min(var(--preview-radius, 12px), 18px);
+  background: var(--preview-strong, var(--rumahl-ui-color-surface-strong));
+  box-shadow: 0 10px 24px rgb(0 0 0 / .25);
+}
+.theme-card__window i { width: 7px; height: 7px; border-radius: 50%; background: var(--preview-accent, #888); }
+.theme-card__dock {
+  position: absolute;
+  left: 50%;
+  bottom: 12px;
+  transform: translateX(-50%);
+  display: flex;
+  gap: 5px;
+  padding: 5px 7px;
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--preview-strong, #000) 82%, transparent);
+  box-shadow: 0 6px 16px rgb(0 0 0 / .18);
+}
+.theme-card__dock i { width: 13px; height: 13px; border-radius: 4px; background: var(--preview-accent); opacity: .9; }
+.theme-card__meta { display: flex; flex-direction: column; gap: 10px; padding: 12px 14px 14px; }
+.theme-card__identity { display: grid; gap: 2px; min-width: 0; }
+.theme-card__identity strong { font-size: 14px; }
+.theme-card__identity small { color: var(--rumahl-ui-color-text-muted); font-size: 12px; }
+.theme-card__actions { display: flex; flex-wrap: wrap; gap: 6px; }
+
+
+.theme-card__image { display: block; width: 100%; height: 132px; object-fit: cover; border-bottom: 1px solid var(--line); }
+.theme-card__settings { border-top: 1px solid var(--line); padding: 8px 14px 12px; }
+.theme-card__settings > summary { cursor: pointer; font-size: 12px; color: var(--rumahl-ui-color-text-muted); }
+.theme-card__settings-help { margin: 6px 0 10px; font-size: 12px; color: var(--rumahl-ui-color-text-muted); }
+.theme-card__params { display: grid; gap: 10px; }
+.theme-card__params .theme-parameter { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 4px 10px; align-items: center; font-size: 12px; }
+.theme-card__params .theme-parameter > span { min-width: 0; }
+.theme-card__params .theme-parameter .range { grid-column: 1 / -1; }
+.theme-card__params .theme-parameter output { font-variant-numeric: tabular-nums; color: var(--rumahl-ui-color-text-muted); }

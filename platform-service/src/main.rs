@@ -10,7 +10,7 @@ use rumahl_core::{AccountStateRepository, UnixTimestamp};
 use rumahl_persistence_sqlite::SqliteAccountStateRepository;
 use rumahl_platform_service::*;
 use rumahl_platform_web::{GatewayConfig, GatewayState, InMemoryShellEvents, router, serve_router};
-use rumahl_ui_contracts::ShellEvent;
+use rumahl_ui_contracts::{ShellEvent, SystemState};
 use std::{
     collections::HashMap,
     env,
@@ -47,6 +47,30 @@ fn private_directory(path: &std::path::Path) -> Result<(), ServiceError> {
     }
     Ok(())
 }
+
+/// Builds the field-encryption key provider from the TPM environment, if set.
+/// A deployment without TPM stores file content as plaintext.
+fn optional_key_provider() -> Option<Arc<dyn rumahl_persistence_sqlite::FieldKeyProvider>> {
+    let executable = env::var("RUMAHL_TPM2_EXECUTABLE").ok()?;
+    let key_id = rumahl_persistence_sqlite::SecretEncryptionKeyId::parse(
+        env::var("RUMAHL_SECRET_KEY_ID").ok()?,
+    )
+    .ok()?;
+    let object = PathBuf::from(env::var("RUMAHL_SECRET_KEY_OBJECT").ok()?);
+    let authorization = match env::var("RUMAHL_SECRET_KEY_POLICY_SESSION") {
+        Ok(value) if !value.is_empty() => {
+            rumahl_platform_buildroot::Tpm2Authorization::PolicySession(PathBuf::from(value))
+        }
+        _ => rumahl_platform_buildroot::Tpm2Authorization::Passwordless,
+    };
+    let sealed =
+        rumahl_platform_buildroot::Tpm2SealedKey::new(key_id.clone(), object, authorization)
+            .ok()?;
+    rumahl_platform_buildroot::Tpm2UnsealKeyProvider::new(executable, key_id, [sealed])
+        .ok()
+        .map(|provider| Arc::new(provider) as Arc<dyn rumahl_persistence_sqlite::FieldKeyProvider>)
+}
+
 async fn run() -> Result<(), ServiceError> {
     let args: Vec<String> = env::args().skip(1).collect();
     let state_dir = PathBuf::from(required("RUMAHL_STATE_DIR")?);
@@ -54,7 +78,20 @@ async fn run() -> Result<(), ServiceError> {
         return Err(std::io::Error::other("state directory must be absolute").into());
     }
     private_directory(&state_dir)?;
+    // A stale stop-intent from a previous run must never label a fresh start.
+    let _ = std::fs::remove_file(state_dir.join("lifecycle"));
     let accounts = state_dir.join("accounts.sqlite");
+    // Refuse a database written by a newer binary before any provider opens it.
+    for database in [
+        accounts.clone(),
+        state_dir.join("platform.sqlite"),
+        state_dir.join("preferences.sqlite"),
+        state_dir.join("files.sqlite"),
+    ] {
+        rumahl_persistence_sqlite::verify_schema(&database).map_err(|error| {
+            std::io::Error::other(format!("database schema check failed: {error}"))
+        })?;
+    }
     if args.first().map(String::as_str) == Some("provision-account") {
         if args.len() != 4 || args[3] != "--password-stdin" || std::io::stdin().is_terminal() {
             return Err(std::io::Error::other("usage: provision-account USER DISPLAY_NAME --password-stdin (pipe from a hidden prompt)").into());
@@ -95,6 +132,14 @@ async fn run() -> Result<(), ServiceError> {
         install::install_package(&state_dir, std::path::Path::new(&args[1]))?;
         return Ok(());
     }
+    if args.first().map(String::as_str) == Some("backup") {
+        if args.len() != 2 {
+            return Err(std::io::Error::other("usage: backup DESTINATION_DIR").into());
+        }
+        backup_state(&state_dir, std::path::Path::new(&args[1]))?;
+        println!("State backup written.");
+        return Ok(());
+    }
     if args.as_slice() != ["serve"] {
         return Err(std::io::Error::other("usage: rumahl-platform-service serve").into());
     }
@@ -115,15 +160,30 @@ async fn run() -> Result<(), ServiceError> {
     let app_suffix = env::var("RUMAHL_APP_HOST_SUFFIX")
         .unwrap_or_else(|_| format!("apps.{}", config.public_origin.host_str().unwrap()));
     let app_root = state_dir.join("app-assets");
+    let apps_provider = apps::PersistentApps::open(&accounts, &platform, app_root)?;
+    let apps_provider = match apps_data_root() {
+        Some(data_root) => apps_provider.with_data_root(data_root)?,
+        None => apps_provider,
+    };
+    // Runtime status/start/stop through the supervisor when it is configured;
+    // otherwise the runtime API stays fail-closed (503). The same channel
+    // registry receives live app channels for background event delivery.
+    let runtime_channels = Arc::new(rumahl_core::RuntimeChannelRegistry::new());
+    let apps_provider = match install::runtime_adapters_from_env(&runtime_channels) {
+        Some(adapters) => apps_provider.with_runtime_adapters(adapters),
+        None => apps_provider,
+    };
     let apps = Arc::new(
         rumahl_platform_web::AppAccess::new(
-            Arc::new(apps::PersistentApps::open(&accounts, &platform, app_root)?),
+            Arc::new(apps_provider),
             &config.public_origin,
             &app_suffix,
         )
         .map_err(|_| std::io::Error::other("invalid app host configuration"))?,
     );
     let events = Arc::new(InMemoryShellEvents::new(128));
+    // Kept for the shutdown signal: the OS tells every client when it stops.
+    let lifecycle_events = events.clone();
     let snapshot_store = Arc::new(rumahl_persistence_sqlite::SqliteShellPreferences::open(
         state_dir.join("preferences.sqlite"),
     )?);
@@ -131,18 +191,58 @@ async fn run() -> Result<(), ServiceError> {
         .with_preferences(snapshot_store.clone())
         .with_workspace(snapshot_store.clone());
     let account_feed = SqliteAccountStateRepository::open(&accounts)?;
+    let audit: Arc<dyn rumahl_core::AuditLog> = Arc::new(
+        rumahl_persistence_sqlite::SqliteAuditLog::open(state_dir.join("audit.sqlite"))?,
+    );
+    let administration = Arc::new(rumahl_platform_service::LocalAdministration::open(
+        &accounts,
+        Some(audit.clone()),
+    )?);
+    record_os_event(
+        audit.as_ref(),
+        rumahl_core::AuditAction::SystemStarted,
+        rumahl_core::AuditOutcome::Success,
+        Some("platform"),
+    );
+    tokio::spawn(ingest_os_events(
+        audit.clone(),
+        state_dir.join("os-events.jsonl"),
+    ));
+    tokio::spawn(monitor_sensors(audit.clone()));
     let state = GatewayState {
         config,
         backend: shell_backend(&accounts, &platform, build_id, &locale)?,
-        browser_sessions: Some(Arc::new(LocalBrowserSessions::open(&accounts)?)),
+        browser_sessions: Some(Arc::new(
+            LocalBrowserSessions::open(&accounts)?.with_audit(audit.clone()),
+        )),
+        admin: Some(administration),
         login_slots: Arc::new(tokio::sync::Semaphore::new(2)),
         events: events.clone(),
         widgets: Arc::new(NoWidgets),
         streams: None,
         apps: Some(apps.clone()),
-        files: Some(Arc::new(
-            rumahl_persistence_sqlite::SqlitePersonalFiles::open(state_dir.join("files.sqlite"))?,
-        )),
+        files: Some(
+            match if env::var("RUMAHL_FILE_ENCRYPTION").as_deref() == Ok("off") {
+                None
+            } else {
+                optional_key_provider()
+            } {
+                Some(provider) => Arc::new(
+                    rumahl_persistence_sqlite::SqlitePersonalFiles::open_encrypted(
+                        state_dir.join("files.sqlite"),
+                        provider,
+                    )?,
+                ),
+                None => {
+                    eprintln!(
+                        "rumahl platform: file content encryption disabled (no TPM key configured)"
+                    );
+                    Arc::new(rumahl_persistence_sqlite::SqlitePersonalFiles::open(
+                        state_dir.join("files.sqlite"),
+                    )?)
+                }
+            },
+        ),
         workspace: Some(Arc::new(
             rumahl_persistence_sqlite::SqliteShellPreferences::open(
                 state_dir.join("preferences.sqlite"),
@@ -153,7 +253,23 @@ async fn run() -> Result<(), ServiceError> {
                 state_dir.join("preferences.sqlite"),
             )?,
         )),
+        os_mode: Some(Arc::new(AuditedOsModeRepository::new(
+            Arc::new(rumahl_persistence_sqlite::SqliteOsModeRepository::open(
+                state_dir.join("preferences.sqlite"),
+            )?),
+            audit.clone(),
+        ))),
+        host_files: Some(Arc::new(
+            rumahl_platform_service::host_files::LocalHostFiles::from_environment(),
+        )),
+        weather_warnings: Some(Arc::new(
+            rumahl_persistence_sqlite::SqliteWeatherWarnings::open(
+                state_dir.join("platform.sqlite"),
+            )?,
+        )),
         oidc: None,
+        audit: Some(audit.clone()),
+        state_dir: Some(state_dir.clone()),
     };
     // Serve every built-in theme stylesheet so the account theme renders on the
     // first paint without a flash of the default theme.
@@ -273,7 +389,125 @@ async fn run() -> Result<(), ServiceError> {
         _ = terminate.recv() => {},
         _ = tokio::signal::ctrl_c() => {},
     }
+    // Tell every connected client that the whole system is stopping (restart or
+    // power-off). Only the server knows this; clients never infer it from time.
+    lifecycle_events.publish_all(ShellEvent::system_lifecycle(lifecycle_intent(&state_dir)));
+    // Give the WebSocket fan-out a moment to flush before the process exits.
+    tokio::time::sleep(Duration::from_millis(800)).await;
+    record_os_event(
+        audit.as_ref(),
+        rumahl_core::AuditAction::SystemStopped,
+        rumahl_core::AuditOutcome::Success,
+        Some("platform"),
+    );
     Ok(())
+}
+
+/// Records an operating-system level event (boot, services, supervisor,
+/// packages). These are always attributed to "rumahl OS" for the user.
+fn record_os_event(
+    audit: &dyn rumahl_core::AuditLog,
+    action: rumahl_core::AuditAction,
+    outcome: rumahl_core::AuditOutcome,
+    target: Option<&str>,
+) {
+    let at = rumahl_core::UnixTimestamp::now()
+        .unwrap_or_else(|_| rumahl_core::UnixTimestamp::from_seconds(0));
+    let base = || rumahl_core::NewAuditEvent::new(at, rumahl_core::AuditActor::Os, action, outcome);
+    let event = match target {
+        Some(target) => base()
+            .with_target(target.to_owned())
+            .unwrap_or_else(|_| base()),
+        None => base(),
+    };
+    let _ = audit.record(event);
+}
+
+/// Reads the stop intent the host broker writes before stopping the platform
+/// (`<state>/lifecycle`, either `restarting` or `shutting-down`). A missing or
+/// stale file means a restart, which is the common case for a service stop.
+fn lifecycle_intent(state_dir: &std::path::Path) -> SystemState {
+    let path = state_dir.join("lifecycle");
+    let fresh = std::fs::metadata(&path)
+        .and_then(|metadata| metadata.modified())
+        .ok()
+        .and_then(|modified| modified.elapsed().ok())
+        .is_some_and(|age| age.as_secs() < 300);
+    if fresh
+        && let Ok(text) = std::fs::read_to_string(&path)
+        && text.trim() == "shutting-down"
+    {
+        return SystemState::ShuttingDown;
+    }
+    SystemState::Restarting
+}
+
+/// Ingests the OS/Buildroot event spool (`os-events.jsonl`): every line the OS
+/// layer reports becomes a central audit event, attributed to "rumahl OS".
+async fn ingest_os_events(audit: Arc<dyn rumahl_core::AuditLog>, spool: PathBuf) {
+    let mut processed = 0usize;
+    let mut interval = tokio::time::interval(Duration::from_secs(2));
+    loop {
+        interval.tick().await;
+        let Ok(text) = std::fs::read_to_string(&spool) else {
+            continue;
+        };
+        let lines: Vec<&str> = text.lines().collect();
+        if lines.len() <= processed {
+            continue;
+        }
+        for line in &lines[processed..] {
+            let Ok(value) = serde_json::from_str::<serde_json::Value>(line) else {
+                continue;
+            };
+            let action = value
+                .get("action")
+                .and_then(|v| v.as_str())
+                .and_then(|s| rumahl_core::AuditAction::parse(s).ok())
+                .unwrap_or(rumahl_core::AuditAction::Activity);
+            let outcome = value
+                .get("outcome")
+                .and_then(|v| v.as_str())
+                .and_then(|s| rumahl_core::AuditOutcome::parse(s).ok())
+                .unwrap_or(rumahl_core::AuditOutcome::Success);
+            let target = value.get("target").and_then(|v| v.as_str());
+            record_os_event(audit.as_ref(), action, outcome, target);
+        }
+        processed = lines.len();
+    }
+}
+
+/// Watches host sensors and records OS events when the level changes, so the
+/// activity log and the recovery hub see resource pressure as it happens.
+async fn monitor_sensors(audit: Arc<dyn rumahl_core::AuditLog>) {
+    let mut last = "information";
+    let mut interval = tokio::time::interval(Duration::from_secs(15));
+    loop {
+        interval.tick().await;
+        let level = rumahl_platform_web::read_sensors().level;
+        if level == last {
+            continue;
+        }
+        let (action, outcome, target) = match level {
+            "error" => (
+                rumahl_core::AuditAction::SelfHeal,
+                rumahl_core::AuditOutcome::Failure,
+                "sensor critical",
+            ),
+            "warning" => (
+                rumahl_core::AuditAction::Maintenance,
+                rumahl_core::AuditOutcome::Success,
+                "sensor warning",
+            ),
+            _ => (
+                rumahl_core::AuditAction::ServiceRecovered,
+                rumahl_core::AuditOutcome::Success,
+                "sensor recovered",
+            ),
+        };
+        record_os_event(audit.as_ref(), action, outcome, Some(target));
+        last = level;
+    }
 }
 
 /// Immutable, content-addressed stylesheet response for a built-in theme.

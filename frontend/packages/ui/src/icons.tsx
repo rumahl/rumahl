@@ -1,0 +1,246 @@
+import { createElement, type ReactNode, type SVGProps } from "react";
+import { useThemeIcon } from "./icon-pack-react";
+import type { IconName, ThemeIconShape } from "./icon-pack";
+
+type IconProps = SVGProps<SVGSVGElement>;
+
+function renderShapes(shapes: readonly ThemeIconShape[]): ReactNode {
+  return shapes.map((shape, index) =>
+    createElement(
+      shape.tag,
+      { key: index, ...shape.attrs },
+      shape.children ? renderShapes(shape.children) : undefined
+    )
+  );
+}
+
+/**
+ * Shared icon frame. A theme icon pack replaces the artwork while the shell
+ * keeps the geometry, the accessible name and the currentColor contract.
+ */
+function IconBase({ name, filled = false, children, ...props }: IconProps & { name: IconName; filled?: boolean }) {
+  const pack = useThemeIcon(name);
+  const isFilled = pack ? pack.filled : filled;
+  return (
+    <svg
+      aria-hidden="true"
+      fill={isFilled ? "currentColor" : "none"}
+      stroke={isFilled ? "none" : "currentColor"}
+      strokeWidth={isFilled ? undefined : 1.7}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      height="20"
+      viewBox={pack?.viewBox ?? "0 0 24 24"}
+      width="20"
+      {...props}
+    >
+      {pack ? renderShapes(pack.shapes) : children}
+    </svg>
+  );
+}
+
+export function HomeIcon(props: IconProps) {
+  return (
+    <IconBase {...props} name="home">
+      <path d="M3.5 10.5 12 3l8.5 7.5v9a1.5 1.5 0 0 1-1.5 1.5H5a1.5 1.5 0 0 1-1.5-1.5z" />
+      <path d="M9 21v-7h6v7" />
+    </IconBase>
+  );
+}
+
+export function PhoneIcon(props: IconProps) {
+  return <IconBase {...props} name="phone"><rect x="7" y="3" width="10" height="18" rx="2.5" /><path d="M11 18h2" strokeLinecap="round" /></IconBase>;
+}
+
+export function StoreIcon(props: IconProps) {
+  return <IconBase {...props} name="store"><path d="M5 8h14l-1 12H6L5 8Z" /><path d="M9 9V6a3 3 0 0 1 6 0v3" strokeLinecap="round" /></IconBase>;
+}
+
+export function GridIcon(props: IconProps) {
+  return (
+    <IconBase {...props} name="grid">
+      <rect height="7" rx="2" width="7" x="3" y="3" />
+      <rect height="7" rx="2" width="7" x="14" y="3" />
+      <rect height="7" rx="2" width="7" x="3" y="14" />
+      <rect height="7" rx="2" width="7" x="14" y="14" />
+    </IconBase>
+  );
+}
+
+export function PulseIcon(props: IconProps) {
+  return (
+    <IconBase {...props} name="pulse">
+      <path d="M3 12h4l2.2-6 4.3 12 2.2-6H21" />
+    </IconBase>
+  );
+}
+
+export function SettingsIcon(props: IconProps) {
+  return (
+    <IconBase {...props} name="settings">
+      <circle cx="12" cy="12" r="3" />
+      <path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1-2.8 2.8-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.6v.2h-4V21a1.7 1.7 0 0 0-1-1.6 1.7 1.7 0 0 0-1.9.3l-.1.1L4.2 17l.1-.1a1.7 1.7 0 0 0 .3-1.9A1.7 1.7 0 0 0 3 14H2.8v-4H3a1.7 1.7 0 0 0 1.6-1 1.7 1.7 0 0 0-.3-1.9L4.2 7 7 4.2l.1.1A1.7 1.7 0 0 0 9 4.6 1.7 1.7 0 0 0 10 3v-.2h4V3a1.7 1.7 0 0 0 1 1.6 1.7 1.7 0 0 0 1.9-.3l.1-.1L19.8 7l-.1.1a1.7 1.7 0 0 0-.3 1.9 1.7 1.7 0 0 0 1.6 1h.2v4H21a1.7 1.7 0 0 0-1.6 1Z" />
+    </IconBase>
+  );
+}
+
+export function SearchIcon(props: IconProps) {
+  return (
+    <IconBase {...props} name="search">
+      <circle cx="11" cy="11" r="6.5" />
+      <path d="m16 16 4.5 4.5" />
+    </IconBase>
+  );
+}
+
+export function SlidersIcon(props: IconProps) {
+  return (
+    <IconBase {...props} name="sliders">
+      <path d="M4 7h16M4 12h16M4 17h16" />
+      <circle cx="9" cy="7" r="2.2" />
+      <circle cx="15" cy="12" r="2.2" />
+      <circle cx="8" cy="17" r="2.2" />
+    </IconBase>
+  );
+}
+
+export function MoonIcon(props: IconProps) {
+  return (
+    <IconBase {...props} name="moon">
+      <path d="M19 14.5A7.5 7.5 0 0 1 9.5 5a7.5 7.5 0 1 0 9.5 9.5Z" />
+    </IconBase>
+  );
+}
+
+export function SparkIcon(props: IconProps) {
+  return (
+    <IconBase {...props} name="spark">
+      <path d="M12 3v4M12 17v4M5 12H1M23 12h-4M6.3 6.3 3.5 3.5M20.5 20.5l-2.8-2.8M17.7 6.3l2.8-2.8M3.5 20.5l2.8-2.8" />
+      <circle cx="12" cy="12" r="3.2" />
+    </IconBase>
+  );
+}
+
+export function BoltIcon(props: IconProps) {
+  return (
+    <IconBase {...props} name="bolt">
+      <path d="M13 2 4.5 13.5H11l-1 8.5 8.5-11.5H12z" />
+    </IconBase>
+  );
+}
+
+export function ArrowIcon(props: IconProps) {
+  return (
+    <IconBase {...props} name="arrow">
+      <path d="M5 12h14M14 7l5 5-5 5" />
+    </IconBase>
+  );
+}
+
+export function ArrowLeftIcon(props: IconProps) {
+  return (
+    <IconBase {...props} name="arrow-left">
+      <path d="M19 12H5M10 7l-5 5 5 5" strokeLinecap="round" strokeLinejoin="round" />
+    </IconBase>
+  );
+}
+
+export function ShieldIcon(props: IconProps) {
+  return (
+    <IconBase {...props} name="shield">
+      <path d="M12 3 5 6v5c0 4.6 2.8 8.2 7 10 4.2-1.8 7-5.4 7-10V6z" />
+      <path d="m9 12 2 2 4-4" />
+    </IconBase>
+  );
+}
+
+export function UserIcon(props: IconProps) {
+  return (
+    <IconBase {...props} name="user">
+      <circle cx="12" cy="8" r="3.5" />
+      <path d="M5 20a7 7 0 0 1 14 0" />
+    </IconBase>
+  );
+}
+
+export function DesktopIcon(props: IconProps) {
+  return <IconBase {...props} name="desktop"><rect x="3" y="4" width="18" height="13" rx="2" /><path d="M12 17v4M8 21h8" /></IconBase>;
+}
+
+export function InfoIcon(props: IconProps) {
+  return <IconBase {...props} name="info"><circle cx="12" cy="12" r="9" /><path d="M12 11v5M12 7.6v.2" strokeLinecap="round" /></IconBase>;
+}
+
+export function WarningTriangleIcon(props: IconProps) {
+  return (
+    <IconBase stroke="currentColor" strokeWidth={1.6} strokeLinecap="round" strokeLinejoin="round" {...props} name="warning">
+      <path d="M10.4 4.3 2.7 17.8A2 2 0 0 0 4.4 20.8h15.2a2 2 0 0 0 1.7-3L13.6 4.3a2 2 0 0 0-3.2 0Z" />
+      <path d="M12 9.6v4.4" />
+      <path d="M12 17.3h.01" />
+    </IconBase>
+  );
+}
+
+export function DocumentIcon(props: IconProps) {
+  return <IconBase {...props} name="document"><path d="M6 3h7l5 5v13H6z" /><path d="M13 3v5h5M9 13h6M9 17h6" strokeLinecap="round" /></IconBase>;
+}
+
+export function ExternalLinkIcon(props: IconProps) {
+  return <IconBase {...props} name="external-link"><path d="M14 4h6v6" /><path d="M20 4 11 13" /><path d="M18 14v4a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4" strokeLinecap="round" strokeLinejoin="round" /></IconBase>;
+}
+
+export function TerminalIcon(props: IconProps) {
+  return <IconBase {...props} name="terminal"><rect x="3" y="4" width="18" height="16" rx="3" /><path d="m7 9 3 3-3 3M13 15h4" strokeLinecap="round" strokeLinejoin="round" /></IconBase>;
+}
+
+/** First-party window controls (rumahl, not the platform's). */
+export function WindowMinimizeIcon(props: IconProps) {
+  return <IconBase stroke="currentColor" strokeWidth={2} strokeLinecap="round" {...props} name="window-minimize"><path d="M6 12h12" /></IconBase>;
+}
+
+export function WindowMaximizeIcon(props: IconProps) {
+  return <IconBase stroke="currentColor" strokeWidth={2} strokeLinejoin="round" {...props} name="window-maximize"><rect x="6" y="6" width="12" height="12" rx="3" /></IconBase>;
+}
+
+export function WindowRestoreIcon(props: IconProps) {
+  return (
+    <IconBase stroke="currentColor" strokeWidth={2} strokeLinejoin="round" {...props} name="window-restore">
+      <rect x="9" y="9" width="9" height="9" rx="2.5" />
+      <path d="M6 15V8.5A2.5 2.5 0 0 1 8.5 6H15" strokeLinecap="round" />
+    </IconBase>
+  );
+}
+
+export function WindowCloseIcon(props: IconProps) {
+  return <IconBase stroke="currentColor" strokeWidth={2} strokeLinecap="round" {...props} name="window-close"><path d="M7 7l10 10M17 7 7 17" /></IconBase>;
+}
+
+export function EditIcon(props: IconProps) {
+  return <IconBase {...props} name="edit"><path d="M4 20h4L19 9l-4-4L4 16z" /><path d="m14 5 4 4" /></IconBase>;
+}
+
+export function PlayIcon(props: IconProps) {
+  return <IconBase filled {...props} name="play"><path d="M8 5.14v13.72a1 1 0 0 0 1.54.84l10.15-6.86a1 1 0 0 0 0-1.68L9.54 4.3A1 1 0 0 0 8 5.14Z" /></IconBase>;
+}
+export function StopIcon(props: IconProps) {
+  return <IconBase filled {...props} name="stop"><rect x="6" y="6" width="12" height="12" rx="2.2" /></IconBase>;
+}
+export function RefreshIcon(props: IconProps) {
+  return <IconBase {...props} name="refresh"><path d="M20 11a8 8 0 1 0-2.3 5.7" /><path d="M20 4v7h-7" strokeLinecap="round" strokeLinejoin="round" /></IconBase>;
+}
+
+export function CheckIcon(props: IconProps) {
+  return <IconBase strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" {...props} name="check"><path d="m5 12 4 4L19 6" /></IconBase>;
+}
+
+export function WindowStackIcon(props: IconProps) {
+  return <IconBase {...props} name="window-stack"><rect x="4" y="8" width="12" height="12" rx="2" /><path d="M8 8V4h12v12h-4" /></IconBase>;
+}
+
+export function WindowFullscreenIcon(props: IconProps) {
+  return <IconBase stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" {...props} name="window-fullscreen"><path d="M8 3H4v4M16 3h4v4M20 16v4h-4M4 16v4h4" /></IconBase>;
+}
+
+export function WindowExitFullscreenIcon(props: IconProps) {
+  return <IconBase stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" {...props} name="window-exit-fullscreen"><path d="M4 8h4V4M20 8h-4V4M16 20v-4h4M4 16h4v4" /></IconBase>;
+}

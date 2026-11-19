@@ -20,15 +20,134 @@ pub struct CatalogApp {
     pub title: String,
     pub version: String,
     pub launchable: bool,
+    /// Permission ids the installed app's manifest declares, exposed so the
+    /// shell can gate the app <-> OS bridge per method.
+    pub capabilities: Vec<String>,
+    /// Runtime kind: `"web"`, `"native"` or `"container"`.
+    pub runtime: String,
+    /// Runtime lifecycle: `"always-on"` (service) or `"on-demand"`.
+    pub lifecycle: String,
+    /// External services this app ships a connector bundle for.
+    pub connectors: Vec<String>,
+}
+/// One rendered setting declared by an app manifest, typed for the shell.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AppSettingInfo {
+    pub key: String,
+    pub title: String,
+    pub description: Option<String>,
+    /// `text`, `number`, `boolean` or `select`.
+    pub kind: String,
+    pub required: bool,
+    pub options: Vec<AppSettingOptionInfo>,
+}
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AppSettingOptionInfo {
+    pub value: String,
+    pub label: String,
+}
+/// The manifest-declared settings for one installed app.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AppSettingsInfo {
+    pub app: CatalogApp,
+    pub manifest: Vec<AppSettingInfo>,
+}
+/// One entry of an app's private data directory.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AppDataEntry {
+    pub name: String,
+    pub directory: bool,
+    pub size: u64,
+}
+/// A read-only view of an app's private data directory.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum AppData {
+    Directory(Vec<AppDataEntry>),
+    File {
+        bytes: Vec<u8>,
+        content_type: &'static str,
+    },
 }
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AppAccessError {
     Denied,
     Unavailable,
 }
+/// The runtime activation state of an installed app.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RuntimeState {
+    Running,
+    Stopped,
+}
+impl RuntimeState {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Running => "running",
+            Self::Stopped => "stopped",
+        }
+    }
+}
+/// A runtime control action requested for an installed app.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RuntimeAction {
+    Status,
+    Start,
+    Stop,
+}
+/// One file of a signed directory package, already base64-decoded.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PackageUploadFile {
+    pub path: String,
+    pub bytes: Vec<u8>,
+}
+/// The public result of importing a package.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ImportedApp {
+    pub id: String,
+    pub installation_id: InstallationId,
+    pub title: String,
+    pub version: String,
+}
 pub struct AppAsset {
     pub bytes: Vec<u8>,
     pub content_type: &'static str,
+}
+/// A resource reference supplied with a capability invocation.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CapabilityResource {
+    pub namespace: String,
+    pub kind: String,
+    pub key: String,
+}
+/// The public result of a capability invocation.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CapabilityOutcome {
+    Invoked,
+    Denied,
+}
+impl CapabilityOutcome {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Invoked => "invoked",
+            Self::Denied => "denied",
+        }
+    }
+}
+/// A web provider that must be reached through the shell hosting its iframe
+/// (it has no live backend channel).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct BrowserDelivery {
+    pub app_id: String,
+    pub installation_id: String,
+}
+/// The outcome of a capability invocation plus the provider's result payload
+/// (raw JSON text) when the provider returned one, or a browser delivery
+/// instruction when the provider is a running web app.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CapabilityResult {
+    pub outcome: CapabilityOutcome,
+    pub result: Option<String>,
+    pub browser: Option<BrowserDelivery>,
 }
 /// Every method must re-read installation, grants and live account/session state.
 pub trait AppProvider: Send + Sync + 'static {
@@ -38,17 +157,93 @@ pub trait AppProvider: Send + Sync + 'static {
         identity: ShellIdentity,
         installation: InstallationId,
     ) -> Result<String, AppAccessError>;
+    /// Resolves a Tier B surface declaration to its signed web entrypoint.
+    /// Fails closed when the app has no such surface or it is data-only.
+    fn surface_entrypoint(
+        &self,
+        _identity: ShellIdentity,
+        _installation: InstallationId,
+        _surface: &str,
+    ) -> Result<String, AppAccessError> {
+        Err(AppAccessError::Denied)
+    }
     fn asset(
         &self,
         identity: ShellIdentity,
         installation: InstallationId,
         path: &str,
     ) -> Result<AppAsset, AppAccessError>;
+    /// Manifest-declared settings for an installed app, in declaration order.
+    fn settings(
+        &self,
+        identity: ShellIdentity,
+        installation: InstallationId,
+    ) -> Result<Vec<AppSettingInfo>, AppAccessError>;
+    /// Read-only listing or contents of an app's private data directory.
+    fn data(
+        &self,
+        identity: ShellIdentity,
+        installation: InstallationId,
+        path: &str,
+    ) -> Result<AppData, AppAccessError>;
+    /// Runtime activation state. Fails closed when no runtime control is wired.
+    fn runtime_status(
+        &self,
+        _identity: ShellIdentity,
+        _installation: InstallationId,
+    ) -> Result<RuntimeState, AppAccessError> {
+        Err(AppAccessError::Unavailable)
+    }
+    /// Starts an app runtime (used for on-demand apps and manual control).
+    fn start_runtime(
+        &self,
+        _identity: ShellIdentity,
+        _installation: InstallationId,
+    ) -> Result<RuntimeState, AppAccessError> {
+        Err(AppAccessError::Unavailable)
+    }
+    /// Stops an app runtime while retaining its prepared namespace.
+    fn stop_runtime(
+        &self,
+        _identity: ShellIdentity,
+        _installation: InstallationId,
+    ) -> Result<RuntimeState, AppAccessError> {
+        Err(AppAccessError::Unavailable)
+    }
+    /// Removes an installation and releases its runtime, grants, secrets and data.
+    fn uninstall_app(
+        &self,
+        _identity: ShellIdentity,
+        _installation: InstallationId,
+    ) -> Result<(), AppAccessError> {
+        Err(AppAccessError::Unavailable)
+    }
+    /// Verifies and installs a signed package uploaded from the shell. Fails
+    /// closed when no importer is wired.
+    fn import_package(
+        &self,
+        _identity: ShellIdentity,
+        _files: Vec<PackageUploadFile>,
+    ) -> Result<ImportedApp, AppAccessError> {
+        Err(AppAccessError::Unavailable)
+    }
+    /// Authorizes and delivers a capability invocation to the providing app.
+    /// Fails closed when no dispatcher is wired.
+    fn invoke_capability(
+        &self,
+        _identity: ShellIdentity,
+        _capability: String,
+        _resource: Option<CapabilityResource>,
+    ) -> Result<CapabilityResult, AppAccessError> {
+        Err(AppAccessError::Unavailable)
+    }
 }
 #[derive(Clone)]
 struct Lease {
     identity: ShellIdentity,
     installation: InstallationId,
+    /// `Some` for a Tier B surface lease; `None` for a normal window lease.
+    surface: Option<String>,
     expires: Instant,
 }
 pub struct AppAccess {
@@ -60,6 +255,12 @@ pub struct AppAccess {
 }
 pub struct AppLaunch {
     pub app: CatalogApp,
+    pub lease: String,
+    pub frame_url: String,
+}
+pub struct SurfaceLaunch {
+    pub app: CatalogApp,
+    pub surface: String,
     pub lease: String,
     pub frame_url: String,
 }
@@ -119,6 +320,85 @@ impl AppAccess {
         }
         Ok(apps)
     }
+    pub fn settings(
+        &self,
+        identity: ShellIdentity,
+        id: &str,
+        installation: &str,
+    ) -> Result<AppSettingsInfo, AppAccessError> {
+        AppId::parse(id).map_err(|_| AppAccessError::Denied)?;
+        let app = self
+            .catalog(identity)?
+            .into_iter()
+            .find(|app| app.id == id && app.installation_id.to_string() == installation)
+            .ok_or(AppAccessError::Denied)?;
+        let manifest = self.provider.settings(identity, app.installation_id)?;
+        Ok(AppSettingsInfo { app, manifest })
+    }
+    pub fn data(
+        &self,
+        identity: ShellIdentity,
+        id: &str,
+        installation: &str,
+        path: &str,
+    ) -> Result<AppData, AppAccessError> {
+        AppId::parse(id).map_err(|_| AppAccessError::Denied)?;
+        let app = self
+            .catalog(identity)?
+            .into_iter()
+            .find(|app| app.id == id && app.installation_id.to_string() == installation)
+            .ok_or(AppAccessError::Denied)?;
+        self.provider.data(identity, app.installation_id, path)
+    }
+    pub fn uninstall(
+        &self,
+        identity: ShellIdentity,
+        id: &str,
+        installation: &str,
+    ) -> Result<(), AppAccessError> {
+        AppId::parse(id).map_err(|_| AppAccessError::Denied)?;
+        let app = self
+            .catalog(identity)?
+            .into_iter()
+            .find(|app| app.id == id && app.installation_id.to_string() == installation)
+            .ok_or(AppAccessError::Denied)?;
+        self.provider.uninstall_app(identity, app.installation_id)
+    }
+    pub fn runtime(
+        &self,
+        identity: ShellIdentity,
+        id: &str,
+        installation: &str,
+        action: RuntimeAction,
+    ) -> Result<RuntimeState, AppAccessError> {
+        AppId::parse(id).map_err(|_| AppAccessError::Denied)?;
+        let app = self
+            .catalog(identity)?
+            .into_iter()
+            .find(|app| app.id == id && app.installation_id.to_string() == installation)
+            .ok_or(AppAccessError::Denied)?;
+        match action {
+            RuntimeAction::Status => self.provider.runtime_status(identity, app.installation_id),
+            RuntimeAction::Start => self.provider.start_runtime(identity, app.installation_id),
+            RuntimeAction::Stop => self.provider.stop_runtime(identity, app.installation_id),
+        }
+    }
+    pub fn import_package(
+        &self,
+        identity: ShellIdentity,
+        files: Vec<PackageUploadFile>,
+    ) -> Result<ImportedApp, AppAccessError> {
+        self.provider.import_package(identity, files)
+    }
+    pub fn invoke_capability(
+        &self,
+        identity: ShellIdentity,
+        capability: String,
+        resource: Option<CapabilityResource>,
+    ) -> Result<CapabilityResult, AppAccessError> {
+        self.provider
+            .invoke_capability(identity, capability, resource)
+    }
     pub fn launch(
         &self,
         identity: ShellIdentity,
@@ -146,7 +426,9 @@ impl AppAccess {
             leases
                 .get(previous)
                 .filter(|lease| {
-                    lease.identity == identity && lease.installation == app.installation_id
+                    lease.identity == identity
+                        && lease.installation == app.installation_id
+                        && lease.surface.is_none()
                 })
                 .ok_or(AppAccessError::Denied)?;
             previous.to_owned()
@@ -169,6 +451,7 @@ impl AppAccess {
             Lease {
                 identity,
                 installation: app.installation_id,
+                surface: None,
                 expires: now + Duration::from_secs(90),
             },
         );
@@ -182,6 +465,74 @@ impl AppAccess {
             frame_url,
         })
     }
+    pub fn surface(
+        &self,
+        identity: ShellIdentity,
+        installation: &str,
+        surface_id: &str,
+        previous: Option<&str>,
+    ) -> Result<SurfaceLaunch, AppAccessError> {
+        rumahl_core::ContributionId::parse(surface_id).map_err(|_| AppAccessError::Denied)?;
+        let app = self
+            .catalog(identity)?
+            .into_iter()
+            .find(|app| app.installation_id.to_string() == installation && app.launchable)
+            .ok_or(AppAccessError::Denied)?;
+        let entry = self
+            .provider
+            .surface_entrypoint(identity, app.installation_id, surface_id)?;
+        PackagePath::parse(&entry).map_err(|_| AppAccessError::Unavailable)?;
+        let mut leases = self
+            .leases
+            .lock()
+            .map_err(|_| AppAccessError::Unavailable)?;
+        let now = Instant::now();
+        leases.retain(|_, lease| lease.expires > now);
+        let token = if let Some(previous) = previous {
+            leases
+                .get(previous)
+                .filter(|lease| {
+                    lease.identity == identity
+                        && lease.installation == app.installation_id
+                        && lease.surface.as_deref() == Some(surface_id)
+                })
+                .ok_or(AppAccessError::Denied)?;
+            previous.to_owned()
+        } else {
+            if leases.len() >= 1024
+                || leases
+                    .values()
+                    .filter(|lease| lease.identity == identity)
+                    .count()
+                    >= 32
+            {
+                return Err(AppAccessError::Unavailable);
+            }
+            let mut random = [0_u8; 32];
+            rand::rng().fill_bytes(&mut random);
+            random.iter().map(|byte| format!("{byte:02x}")).collect()
+        };
+        leases.insert(
+            token.clone(),
+            Lease {
+                identity,
+                installation: app.installation_id,
+                surface: Some(surface_id.to_owned()),
+                expires: now + Duration::from_secs(90),
+            },
+        );
+        let frame_url = format!(
+            "https://{}/launch/{token}/{entry}",
+            self.authority(app.installation_id)
+        );
+        Ok(SurfaceLaunch {
+            app,
+            surface: surface_id.to_owned(),
+            lease: token,
+            frame_url,
+        })
+    }
+
     pub fn resource(&self, host: &str, path: &str) -> Result<AppAsset, AppAccessError> {
         let rest = path
             .strip_prefix("/launch/")
@@ -270,9 +621,43 @@ mod tests {
                     title: "Test".into(),
                     version: "1.0.0".into(),
                     launchable: true,
+                    capabilities: vec!["com.rumahl.os.window".into()],
+                    runtime: "web".into(),
+                    lifecycle: "on-demand".into(),
+                    connectors: vec![],
                 }]
             } else {
                 vec![]
+            })
+        }
+        fn runtime_status(
+            &self,
+            _: ShellIdentity,
+            _: InstallationId,
+        ) -> Result<RuntimeState, AppAccessError> {
+            Ok(RuntimeState::Running)
+        }
+        fn uninstall_app(
+            &self,
+            identity: ShellIdentity,
+            installation: InstallationId,
+        ) -> Result<(), AppAccessError> {
+            if identity == self.owner && installation == self.installation {
+                Ok(())
+            } else {
+                Err(AppAccessError::Denied)
+            }
+        }
+        fn import_package(
+            &self,
+            _: ShellIdentity,
+            _: Vec<PackageUploadFile>,
+        ) -> Result<ImportedApp, AppAccessError> {
+            Ok(ImportedApp {
+                id: "com.rumahl.test".into(),
+                installation_id: self.installation,
+                title: "Test".into(),
+                version: "1.0.0".into(),
             })
         }
         fn entrypoint(
@@ -281,6 +666,21 @@ mod tests {
             _: InstallationId,
         ) -> Result<String, AppAccessError> {
             Ok("web/index.html".into())
+        }
+        fn surface_entrypoint(
+            &self,
+            identity: ShellIdentity,
+            installation: InstallationId,
+            surface: &str,
+        ) -> Result<String, AppAccessError> {
+            if identity == self.owner
+                && installation == self.installation
+                && surface == "com.rumahl.test.desktop"
+            {
+                Ok("web/surface.html".into())
+            } else {
+                Err(AppAccessError::Denied)
+            }
         }
         fn asset(
             &self,
@@ -296,7 +696,226 @@ mod tests {
                 content_type: "text/html; charset=utf-8",
             })
         }
+        fn settings(
+            &self,
+            identity: ShellIdentity,
+            installation: InstallationId,
+        ) -> Result<Vec<AppSettingInfo>, AppAccessError> {
+            if identity != self.owner || installation != self.installation {
+                return Err(AppAccessError::Denied);
+            }
+            Ok(vec![AppSettingInfo {
+                key: "server.url".into(),
+                title: "Server URL".into(),
+                description: Some("Backend endpoint".into()),
+                kind: "text".into(),
+                required: true,
+                options: Vec::new(),
+            }])
+        }
+        fn data(
+            &self,
+            identity: ShellIdentity,
+            installation: InstallationId,
+            _: &str,
+        ) -> Result<AppData, AppAccessError> {
+            if identity != self.owner || installation != self.installation {
+                return Err(AppAccessError::Denied);
+            }
+            Ok(AppData::Directory(vec![AppDataEntry {
+                name: "notes.db".into(),
+                directory: false,
+                size: 12,
+            }]))
+        }
+        fn invoke_capability(
+            &self,
+            identity: ShellIdentity,
+            capability: String,
+            _: Option<CapabilityResource>,
+        ) -> Result<CapabilityResult, AppAccessError> {
+            if identity != self.owner {
+                return Err(AppAccessError::Denied);
+            }
+            Ok(match capability.as_str() {
+                "com.rumahl.test.run" => CapabilityResult {
+                    outcome: CapabilityOutcome::Invoked,
+                    result: Some("{\"ran\":true}".into()),
+                    browser: None,
+                },
+                "com.rumahl.test.browser" => CapabilityResult {
+                    outcome: CapabilityOutcome::Invoked,
+                    result: None,
+                    browser: Some(BrowserDelivery {
+                        app_id: "com.rumahl.test".into(),
+                        installation_id: self.installation.to_string(),
+                    }),
+                },
+                _ => CapabilityResult {
+                    outcome: CapabilityOutcome::Denied,
+                    result: None,
+                    browser: None,
+                },
+            })
+        }
     }
+    #[test]
+    fn import_delegates_to_the_provider() {
+        let owner = ShellIdentity {
+            user_id: UserId::new(),
+            session_id: SessionId::new(),
+        };
+        let installation = InstallationId::new();
+        let access = AppAccess::new(
+            Arc::new(Provider {
+                owner,
+                installation,
+            }),
+            &Url::parse("https://localhost:8443").unwrap(),
+            "apps.localhost",
+        )
+        .unwrap();
+        let imported = access
+            .import_package(
+                owner,
+                vec![PackageUploadFile {
+                    path: "package.json".into(),
+                    bytes: b"{}".to_vec(),
+                }],
+            )
+            .unwrap();
+        assert_eq!(imported.installation_id, installation);
+        assert_eq!(imported.id, "com.rumahl.test");
+    }
+
+    #[test]
+    fn invoke_capability_delegates_to_the_provider() {
+        let owner = ShellIdentity {
+            user_id: UserId::new(),
+            session_id: SessionId::new(),
+        };
+        let installation = InstallationId::new();
+        let access = AppAccess::new(
+            Arc::new(Provider {
+                owner,
+                installation,
+            }),
+            &Url::parse("https://localhost:8443").unwrap(),
+            "apps.localhost",
+        )
+        .unwrap();
+        assert_eq!(
+            access
+                .invoke_capability(owner, "com.rumahl.test.run".into(), None)
+                .unwrap(),
+            CapabilityResult {
+                outcome: CapabilityOutcome::Invoked,
+                result: Some("{\"ran\":true}".into()),
+                browser: None
+            }
+        );
+        assert_eq!(
+            access
+                .invoke_capability(owner, "com.rumahl.unknown".into(), None)
+                .unwrap(),
+            CapabilityResult {
+                outcome: CapabilityOutcome::Denied,
+                result: None,
+                browser: None
+            }
+        );
+        assert_eq!(
+            access
+                .invoke_capability(owner, "com.rumahl.test.browser".into(), None)
+                .unwrap()
+                .browser,
+            Some(BrowserDelivery {
+                app_id: "com.rumahl.test".into(),
+                installation_id: installation.to_string()
+            })
+        );
+    }
+
+    #[test]
+    fn runtime_control_reports_state_and_denies_other_installations() {
+        let owner = ShellIdentity {
+            user_id: UserId::new(),
+            session_id: SessionId::new(),
+        };
+        let installation = InstallationId::new();
+        let access = AppAccess::new(
+            Arc::new(Provider {
+                owner,
+                installation,
+            }),
+            &Url::parse("https://localhost:8443").unwrap(),
+            "apps.localhost",
+        )
+        .unwrap();
+        assert_eq!(
+            access
+                .runtime(
+                    owner,
+                    "com.rumahl.test",
+                    &installation.to_string(),
+                    RuntimeAction::Status
+                )
+                .unwrap(),
+            RuntimeState::Running
+        );
+        assert_eq!(
+            access
+                .runtime(
+                    owner,
+                    "com.rumahl.test",
+                    &InstallationId::new().to_string(),
+                    RuntimeAction::Status
+                )
+                .unwrap_err(),
+            AppAccessError::Denied
+        );
+    }
+
+    #[test]
+    fn uninstall_requires_identity_and_matching_installation() {
+        let owner = ShellIdentity {
+            user_id: UserId::new(),
+            session_id: SessionId::new(),
+        };
+        let installation = InstallationId::new();
+        let access = AppAccess::new(
+            Arc::new(Provider {
+                owner,
+                installation,
+            }),
+            &Url::parse("https://localhost:8443").unwrap(),
+            "apps.localhost",
+        )
+        .unwrap();
+        access
+            .uninstall(owner, "com.rumahl.test", &installation.to_string())
+            .unwrap();
+        assert_eq!(
+            access
+                .uninstall(owner, "com.rumahl.test", &InstallationId::new().to_string())
+                .unwrap_err(),
+            AppAccessError::Denied
+        );
+        assert_eq!(
+            access
+                .uninstall(
+                    ShellIdentity {
+                        session_id: SessionId::new(),
+                        ..owner
+                    },
+                    "com.rumahl.test",
+                    &installation.to_string(),
+                )
+                .unwrap_err(),
+            AppAccessError::Denied
+        );
+    }
+
     #[test]
     fn leases_bind_host_installation_session_and_expire() {
         let owner = ShellIdentity {
@@ -397,6 +1016,160 @@ mod tests {
                     "com.rumahl.test",
                     &installation.to_string(),
                     Some(&launch.lease)
+                )
+                .is_err()
+        );
+    }
+
+    #[test]
+    fn settings_are_scoped_to_the_installed_app() {
+        let owner = ShellIdentity {
+            user_id: UserId::new(),
+            session_id: SessionId::new(),
+        };
+        let installation = InstallationId::new();
+        let access = AppAccess::new(
+            Arc::new(Provider {
+                owner,
+                installation,
+            }),
+            &Url::parse("https://localhost:8443").unwrap(),
+            "apps.localhost",
+        )
+        .unwrap();
+
+        let settings = access
+            .settings(owner, "com.rumahl.test", &installation.to_string())
+            .unwrap();
+        assert_eq!(settings.manifest.len(), 1);
+        assert_eq!(settings.manifest[0].key, "server.url");
+        assert_eq!(settings.manifest[0].kind, "text");
+        assert!(settings.manifest[0].required);
+
+        // Unknown installation or unauthenticated identity is denied.
+        assert!(
+            access
+                .settings(owner, "com.rumahl.test", &InstallationId::new().to_string())
+                .is_err()
+        );
+        assert!(
+            access
+                .settings(
+                    ShellIdentity {
+                        session_id: SessionId::new(),
+                        ..owner
+                    },
+                    "com.rumahl.test",
+                    &installation.to_string()
+                )
+                .is_err()
+        );
+    }
+    #[test]
+    fn surface_leases_are_bound_to_the_surface_and_app() {
+        let owner = ShellIdentity {
+            user_id: UserId::new(),
+            session_id: SessionId::new(),
+        };
+        let installation = InstallationId::new();
+        let access = AppAccess::new(
+            Arc::new(Provider {
+                owner,
+                installation,
+            }),
+            &Url::parse("https://localhost:8443").unwrap(),
+            "apps.localhost",
+        )
+        .unwrap();
+
+        let launch = access
+            .launch(owner, "com.rumahl.test", &installation.to_string(), None)
+            .unwrap();
+        let surface = access
+            .surface(
+                owner,
+                &installation.to_string(),
+                "com.rumahl.test.desktop",
+                None,
+            )
+            .unwrap();
+        assert_eq!(surface.surface, "com.rumahl.test.desktop");
+        assert_eq!(surface.lease.len(), 64);
+        assert!(
+            surface
+                .frame_url
+                .ends_with(&format!("/launch/{}/web/surface.html", surface.lease)[..])
+        );
+
+        let renewed = access
+            .surface(
+                owner,
+                &installation.to_string(),
+                "com.rumahl.test.desktop",
+                Some(&surface.lease),
+            )
+            .unwrap();
+        assert_eq!(renewed.lease, surface.lease);
+
+        assert!(
+            access
+                .surface(
+                    owner,
+                    &installation.to_string(),
+                    "com.rumahl.test.desktop",
+                    Some(&launch.lease),
+                )
+                .is_err()
+        );
+        assert!(
+            access
+                .surface(
+                    owner,
+                    &installation.to_string(),
+                    "com.rumahl.test.missing",
+                    None
+                )
+                .is_err()
+        );
+    }
+
+    #[test]
+    fn surface_token_resolves_only_on_its_app_origin() {
+        let owner = ShellIdentity {
+            user_id: UserId::new(),
+            session_id: SessionId::new(),
+        };
+        let installation = InstallationId::new();
+        let access = AppAccess::new(
+            Arc::new(Provider {
+                owner,
+                installation,
+            }),
+            &Url::parse("https://localhost:8443").unwrap(),
+            "apps.localhost",
+        )
+        .unwrap();
+        let surface = access
+            .surface(
+                owner,
+                &installation.to_string(),
+                "com.rumahl.test.desktop",
+                None,
+            )
+            .unwrap();
+        let authority = format!("{installation}.apps.localhost:8443");
+        let asset = access
+            .resource(
+                &authority,
+                &format!("/launch/{}/web/surface.html", surface.lease),
+            )
+            .unwrap();
+        assert_eq!(asset.content_type, "text/html; charset=utf-8");
+        assert!(
+            access
+                .resource(
+                    "other.apps.localhost:8443",
+                    &format!("/launch/{}/web/surface.html", surface.lease)
                 )
                 .is_err()
         );

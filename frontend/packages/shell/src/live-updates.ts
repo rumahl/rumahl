@@ -19,6 +19,11 @@ export interface ShellLiveSource {
   request: ShellRequest;
   openEvents: OpenEvents;
   allowDevelopmentLoopback?: boolean | undefined;
+  /**
+   * Demo-only: app frames are served by this dedicated origin instead of a
+   * per-installation host. Production never sets this.
+   */
+  demo?: { frameOrigin: string } | undefined;
 }
 
 export function browserEventSocket(url: string): EventSocket {
@@ -29,7 +34,9 @@ export function watchShellUpdates(
   initialRevision: string,
   source: ShellLiveSource,
   onSnapshot: (snapshot: ShellSnapshotV1) => void,
-  onSessionExpired: () => void
+  onSessionExpired: () => void,
+  onSystemState: (state: "restarting" | "shutting-down") => void = () => {},
+  onWarningsChanged: () => void = () => {}
 ): () => void {
   let stopped = false;
   let socket: EventSocket | null = null;
@@ -119,6 +126,10 @@ export function watchShellUpdates(
           const value = parseShellEvent(event.data);
           if (value.kind === "session_revoked") {
             expire();
+          } else if (value.kind === "system_lifecycle") {
+            onSystemState(value.state);
+          } else if (value.kind === "warnings_changed") {
+            onWarningsChanged();
           } else if (value.revision !== currentRevision) {
             requestRefresh();
           }

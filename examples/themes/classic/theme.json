@@ -1,0 +1,170 @@
+{
+  "id": "com.rumahl.classic",
+  "name": "Classic",
+  "version": "1.0.0",
+  "author": "rumahl",
+  "description": "Opaque, square and taskbar-driven: the classic desktop fixture as a real theme package.",
+  "modes": [
+    "light",
+    "dark"
+  ],
+  "variants": {
+    "shellLayout": "taskbar",
+    "launcherLayout": "drawer",
+    "windowChrome": "compact"
+  },
+  "material": "solid",
+  "tokens": {
+    "color.accent": "#3465a4",
+    "color.accent.strong": "#5683BE",
+    "color.surface": "#ffffffd9",
+    "color.surface.strong": "#ffffff",
+    "color.outline": "rgba(0, 0, 0, 0.12)",
+    "color.on.wallpaper": "#ffffff",
+    "color.on.accent": "#ffffff",
+    "color.shadow": "rgba(0, 0, 0, 0.16)",
+    "color.wallpaper.tint": "#00000000",
+    "color.text.primary": "#1d1d1f",
+    "color.text.muted": "#6e6e73",
+    "color.canvas.background": "#c9c9ce",
+    "color.panel.background": "#f5f5f7",
+    "color.window.titlebar.background": "#f5f5f7",
+    "color.window.titlebar.foreground": "#1d1d1f",
+    "material.blur": "0px",
+    "material.saturation": "1",
+    "material.opacity": "1",
+    "material.morphism": "0",
+    "shape.radius.window": "4px",
+    "shape.radius.dock": "6px",
+    "shape.radius.icon": "6px",
+    "shape.icon.size": "40px",
+    "shape.icon.size.large": "56px",
+    "motion.duration.fast": "70ms",
+    "motion.duration": "90ms",
+    "motion.easing.spring": "ease-out",
+    "layout.dock.offset": "0px",
+    "icon.gradient": "linear-gradient(160deg, #5b8ac6, #3465a4)",
+    "texture.wallpaper": "none",
+    "typography.family": "Tahoma, Verdana, sans-serif",
+    "typography.display": "\"Space Grotesk Variable\", system-ui, sans-serif",
+    "typography.scale": "0.95",
+    "app.inputs": "glass"
+  },
+  "parameters": [
+    {
+      "kind": "color",
+      "id": "accent",
+      "token": "color.accent",
+      "seed": true,
+      "label": {
+        "en": "Accent colour",
+        "de": "Akzentfarbe"
+      }
+    },
+    {
+      "kind": "range",
+      "id": "icon",
+      "token": "shape.radius.icon",
+      "min": 0,
+      "max": 20,
+      "step": 1,
+      "label": {
+        "en": "Icon corners",
+        "de": "Icon-Ecken"
+      },
+      "unit": "px"
+    },
+    {
+      "kind": "range",
+      "id": "window",
+      "token": "shape.radius.window",
+      "min": 0,
+      "max": 24,
+      "step": 1,
+      "label": {
+        "en": "Window corners",
+        "de": "Fenster-Ecken"
+      },
+      "unit": "px"
+    }
+  ],
+  "slots": {
+    "dock": [
+      {
+        "tag": "div",
+        "class": "taskbar slot-taskbar",
+        "attrs": {
+          "role": "navigation",
+          "aria-label": "Main navigation"
+        },
+        "children": [
+          {
+            "tag": "button",
+            "class": "taskbar__start",
+            "action": "minimize-all",
+            "children": [
+              {
+                "component": "brand"
+              }
+            ]
+          },
+          {
+            "tag": "div",
+            "class": "taskbar__apps",
+            "children": [
+              {
+                "repeat": "apps",
+                "as": "app",
+                "children": [
+                  {
+                    "tag": "button",
+                    "class": "taskbar__button",
+                    "attrs": {
+                      "data-open": "{{running}}",
+                      "data-focused": "{{focused}}"
+                    },
+                    "action": "open",
+                    "arg": "{{path}}",
+                    "children": [
+                      {
+                        "text": "{{title}}"
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "tag": "div",
+            "class": "taskbar__windows",
+            "children": [
+              {
+                "repeat": "windows",
+                "as": "win",
+                "children": [
+                  {
+                    "tag": "button",
+                    "class": "taskbar__button taskbar__window",
+                    "action": "focus-window",
+                    "arg": "{{id}}",
+                    "children": [
+                      {
+                        "text": "{{title}}"
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "component": "clock",
+            "class": "taskbar__clock"
+          }
+        ]
+      }
+    ]
+  },
+  "css": "styles.css"
+}

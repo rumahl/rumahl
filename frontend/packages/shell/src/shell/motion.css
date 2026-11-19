@@ -1,0 +1,84 @@
+/*
+ * Motion policy — one switch for every animation in the shell.
+ *
+ * The shell animates a lot on purpose: windows scale in, the launcher and
+ * settings surfaces slide, the dock and toasts move, view transitions morph
+ * between settings sections. When motion is turned off, all of it must stop:
+ * the appearance setting (`animations: false`), the performance mode and the
+ * system preference all end up as `data-animations="off"` on `.shell` and as
+ * `body.animations-off` for portals rendered outside the shell root.
+ *
+ * The only motion that survives is activity feedback with no static
+ * equivalent: the spinner arc and the indeterminate progress channel. Without
+ * them a waiting interface looks frozen, which is worse than motion.
+ */
+
+.shell[data-animations="off"],
+.shell[data-animations="off"]::before,
+.shell[data-animations="off"]::after,
+.shell[data-animations="off"] *,
+.shell[data-animations="off"] *::before,
+.shell[data-animations="off"] *::after,
+body.animations-off,
+body.animations-off::before,
+body.animations-off::after,
+body.animations-off *,
+body.animations-off *::before,
+body.animations-off *::after {
+  animation: none !important;
+  transition: none !important;
+  scroll-behavior: auto !important;
+}
+
+/* First paint before hydration, and every client that never runs the setting. */
+@media (prefers-reduced-motion: reduce) {
+  .shell,
+  .shell::before,
+  .shell::after,
+  .shell *,
+  .shell *::before,
+  .shell *::after {
+    animation: none !important;
+    transition: none !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* Essential motion: a spinner that stops spinning no longer says "working". */
+.shell[data-animations="off"] .rumahl-spinner .rumahl-spinner__arc,
+body.animations-off .rumahl-spinner .rumahl-spinner__arc {
+  animation: rumahl-spinner-turn 1.4s linear infinite !important;
+}
+
+.shell[data-animations="off"] .installed-app-loading .installed-app-loading__spinner,
+body.animations-off .installed-app-loading .installed-app-loading__spinner {
+  animation: installed-app-spin 900ms linear infinite !important;
+}
+
+.shell[data-animations="off"] .rumahl-progress__track[data-indeterminate="true"] .rumahl-progress__fill,
+body.animations-off .rumahl-progress__track[data-indeterminate="true"] .rumahl-progress__fill {
+  animation: rumahl-loading-channel 1.7s ease-in-out infinite alternate !important;
+}
+
+/* The adaptive-contrast cross-fade is a readability aid, not activity feedback:
+   with motion off the readable colour is applied immediately instead. */
+.shell[data-animations="off"] [data-adaptive-text],
+body.animations-off [data-adaptive-text],
+.shell[data-animations="off"] [data-adaptive-text] :is(strong, p, small, span, h1, h2),
+body.animations-off [data-adaptive-text] :is(strong, p, small, span, h1, h2) {
+  transition: none !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .rumahl-spinner .rumahl-spinner__arc {
+    animation: rumahl-spinner-turn 1.4s linear infinite !important;
+  }
+
+  .installed-app-loading .installed-app-loading__spinner {
+    animation: installed-app-spin 900ms linear infinite !important;
+  }
+
+  .rumahl-progress__track[data-indeterminate="true"] .rumahl-progress__fill {
+    animation: rumahl-loading-channel 1.7s ease-in-out infinite alternate !important;
+  }
+}

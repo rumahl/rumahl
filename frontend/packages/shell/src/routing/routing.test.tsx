@@ -31,12 +31,17 @@ describe("shell routes and presentation", () => {
     fireEvent.click(screen.getByRole("button", { name: label }));
     fireEvent.click(screen.getByRole("option", { name: option }));
   }
+  // The shell mode is a pair of icon toggles in the top bar.
+  function setMode(name: "Desktop" | "Launcher") {
+    const group = document.querySelector(".topbar__mode") as HTMLElement;
+    fireEvent.click(within(group).getByRole("button", { name }));
+  }
 
   test("resolves a registered app's nested parameters and query without shell changes", () => {
     localStorage.setItem("rumahl.demo.shell-mode", "launcher");
     render(<App snapshot={demoSnapshot} initialLocation="/app/test/documents/42?view=grid" />);
     expect(screen.getByRole("heading", { name: "Document 42: grid" })).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: /Close Apps/ })).toBeNull();
+    expect(screen.getByRole("button", { name: /Close Apps/ })).toBeInTheDocument();
     expect(document.querySelector(".shell")).toHaveAttribute("data-shell-mode", "launcher");
   });
 
@@ -50,27 +55,27 @@ describe("shell routes and presentation", () => {
   });
 
   test("renders a deep linked app in the desktop's protected window immediately", () => {
-    render(<App snapshot={demoSnapshot} initialLocation="/app/app-manager" />);
-    expect(screen.getByRole("region", { name: "App manager" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Close App manager" })).toBeInTheDocument();
+    render(<App snapshot={demoSnapshot} initialLocation="/app/files" />);
+    expect(screen.getByRole("region", { name: "Files" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Close Files" })).toBeInTheDocument();
   });
 
   test("changes presentation without losing the selected route", async () => {
     render(<App snapshot={demoSnapshot} initialLocation="/app/test/documents/42?view=grid" />);
-    choose("Shell mode", "Launcher");
+    setMode("Launcher");
     expect(await screen.findByRole("heading", { name: "Document 42: grid" })).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: /Close Apps/ })).toBeNull();
-    choose("Shell mode", "Desktop");
+    expect(screen.getByRole("button", { name: /Close Apps/ })).toBeInTheDocument();
+    setMode("Desktop");
     expect(await screen.findByRole("region", { name: "Apps" })).toBeInTheDocument();
   });
 
   test("keeps the settings scope when a mode change remounts its presentation", async () => {
-    render(<App snapshot={demoSnapshot} initialLocation="/settings/display" />);
+    render(<App snapshot={demoSnapshot} initialLocation="/settings/display/appearance" />);
     choose("Save for", "This browser profile");
-    fireEvent.click(screen.getByRole("button", { name: "Launcher" }));
+    setMode("Launcher");
     expect(await screen.findByRole("button", { name: "Save for" })).toHaveTextContent("This browser profile");
     expect(document.querySelector(".shell")).toHaveAttribute("data-shell-mode", "launcher");
-    fireEvent.click(screen.getByRole("button", { name: "Desktop" }));
+    setMode("Desktop");
     expect(document.querySelector(".shell")).toHaveAttribute("data-shell-mode", "desktop");
     expect(screen.getByRole("button", { name: "Save for" })).toHaveTextContent("This browser profile");
   });
@@ -82,26 +87,49 @@ describe("shell routes and presentation", () => {
     fireEvent.click(screen.getByRole("button", { name: "Minimize Apps" }));
     fireEvent.click(within(screen.getByRole("navigation", { name: "Main navigation" })).getByRole("button", { name: "Apps" }));
     expect(screen.getByRole("textbox", { name: "Draft note" })).toBe(input);
-    choose("Shell mode", "Launcher");
+    setMode("Launcher");
     expect(screen.getByRole("textbox", { name: "Draft note" })).toBe(input);
     expect(input).toHaveValue("keep my draft");
-    choose("Shell mode", "Desktop");
+    setMode("Desktop");
     expect(screen.getByRole("textbox", { name: "Draft note" })).toBe(input);
   });
 
   test("retains independent windows and routes when closing one", async () => {
-    render(<App snapshot={demoSnapshot} initialLocation="/app/app-manager" />);
+    render(<App snapshot={demoSnapshot} initialLocation="/app/files" />);
     fireEvent.click(within(screen.getByRole("navigation", { name: "Main navigation" })).getByRole("link", { name: "Settings" }));
     const settings = await screen.findByRole("region", { name: "Settings" });
-    expect(screen.getByRole("region", { name: "App manager" })).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "Files" })).toBeInTheDocument();
     fireEvent.click(within(settings).getByRole("button", { name: "Close Settings" }));
     expect(screen.queryByRole("region", { name: "Settings" })).toBeNull();
-    expect(screen.getByRole("region", { name: "App manager" })).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "Files" })).toBeInTheDocument();
+  });
+
+  test("scopes view transitions to navigation inside settings", async () => {
+    const original = document.startViewTransition;
+    const calls = vi.fn((callback: () => void) => {
+      callback();
+      return { finished: Promise.resolve(), skipTransition: vi.fn() } as unknown as ViewTransition;
+    });
+    Object.defineProperty(document, "startViewTransition", { configurable: true, value: calls });
+    try {
+      render(<App snapshot={demoSnapshot} initialLocation="/app/files" />);
+      fireEvent.click(within(screen.getByRole("navigation", { name: "Main navigation" })).getByRole("link", { name: "Settings" }));
+      const settings = await screen.findByRole("region", { name: "Settings" });
+      expect(calls).not.toHaveBeenCalled();
+      fireEvent.click(within(settings).getByRole("link", { name: "Personalization" }));
+      expect(await screen.findByRole("heading", { name: "Personalization" })).toBeInTheDocument();
+      expect(calls).toHaveBeenCalledTimes(1);
+    } finally {
+      if (original) Object.defineProperty(document, "startViewTransition", { configurable: true, value: original });
+      else delete (document as unknown as { startViewTransition?: unknown }).startViewTransition;
+    }
   });
 
   test("does not invent an app or source URL from an unknown ID", () => {
     render(<App snapshot={demoSnapshot} initialLocation="/app/not-installed/sub/page?mode=launcher" />);
-    expect(screen.getByRole("heading", { name: "App unavailable", level: 1 })).toBeInTheDocument();
+    const card = document.querySelector<HTMLElement>(".route-failure");
+    expect(card).not.toBeNull();
+    expect(within(card!).getByRole("heading", { name: "App unavailable" })).toBeInTheDocument();
     expect(document.querySelector("iframe")).toBeNull();
   });
 

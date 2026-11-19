@@ -1,0 +1,59 @@
+/* Desktop widgets are freely placed: the layer covers the desktop (pointer
+   events pass through) and each widget is absolutely positioned and draggable.
+   Without a stored position they default to a top-right column. */
+.desktop-widgets {
+  position: absolute;
+  inset: 0;
+  display: block;
+  width: auto;
+  pointer-events: none;
+}
+.desktop-widgets .desktop-widget {
+  position: absolute;
+  width: min(230px, 42vw);
+  pointer-events: auto;
+}
+.desktop-widget.is-dragging {
+  z-index: 4;
+  cursor: grabbing;
+}
+
+
+.desktop-widget__action {
+  display: inline-flex;
+  align-items: center;
+  min-height: 28px;
+  margin-top: 8px;
+  padding: 0;
+  color: inherit;
+  background: none;
+  border: 0;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 650;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+}
+
+.desktop-widget__action:hover {
+  opacity: 0.8;
+}
+
+.desktop-widget--extension .contribution-card__frame {
+  height: 150px;
+  margin-top: 8px;
+}
+
+.desktop-widget--extension[data-size="large"] {
+  width: calc(min(230px, 42vw) * 2 + 12px);
+}
+.desktop-widget--extension[data-size="small"] .contribution-card__frame {
+  height: 100px;
+}
+.desktop-widget--extension[data-size="medium"] .contribution-card__frame {
+  height: 150px;
+}
+.desktop-widget--extension[data-size="large"] .contribution-card__frame {
+  height: 150px;
+}

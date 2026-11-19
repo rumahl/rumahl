@@ -1,0 +1,17 @@
+[Unit]
+Description=Create the rumahl app container network
+Documentation=file:/usr/share/doc/rumahl/platform-buildroot.md
+Wants=docker.service
+After=docker.service
+Before=rumahl-runtime-supervisor.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+# The network lives under /var/lib/docker and survives reboots, so only create
+# it when it is absent. Paths are fixed; the unit takes no client input.
+ExecStart=/bin/sh -c '/usr/bin/docker network inspect rumahl-apps >/dev/null 2>&1 || /usr/bin/docker network create rumahl-apps'
+TimeoutStartSec=60s
+
+[Install]
+WantedBy=multi-user.target

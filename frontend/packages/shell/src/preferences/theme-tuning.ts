@@ -1,12 +1,46 @@
+import type { Theme } from "@rumahl/ui/themes";
+import { applyLook } from "./appearance-presets";
 import { useCallback } from "react";
 import { photoTone } from "../wallpapers";
 import { withAlpha } from "@rumahl/ui/color";
 import { paletteTokens, surfaceContrast } from "@rumahl/ui/palette";
 import type { TokenId, Tokens } from "@rumahl/ui/tokens";
-import { emptyAppearance, useWorkspace, type AppearanceMode, type AppearanceSettings } from "./Workspace";
+import {
+  emptyAppearance,
+  useWorkspace,
+  type AppearanceMode,
+  type AppearanceSettings,
+} from "./Workspace";
+import { withThemeTransition } from "./theme-transition";
+import { resetAppearanceGroup, resetColorOverrides, resetThemeParameters, type AppearanceResetGroup } from "./appearance-reset";
 
 export type AppearanceTuning = AppearanceSettings;
 export { parseAppearance } from "./Workspace";
+
+/** Explicit activation must also work when the selected theme defaults to solid. */
+export function enableGlass(tuning: AppearanceSettings): AppearanceSettings {
+  return {
+    ...tuning,
+    glassEnabled: true,
+    glassReduced: false,
+    tokens: {
+      ...tuning.tokens,
+      "material.opacity":
+        Number(tuning.tokens["material.opacity"]) < 1
+          ? tuning.tokens["material.opacity"]!
+          : "0.72",
+      "material.morphism":
+        Number(tuning.tokens["material.morphism"]) > 0
+          ? tuning.tokens["material.morphism"]!
+          : "1",
+      "material.blur":
+        tuning.tokens["material.blur"] &&
+        Number.parseFloat(tuning.tokens["material.blur"]) > 0
+          ? tuning.tokens["material.blur"]
+          : "12px",
+    },
+  };
+}
 
 /**
  * Appearance customization, stored in the device-scoped workspace so it is
@@ -15,50 +49,226 @@ export { parseAppearance } from "./Workspace";
 export function useThemeTuning() {
   const workspace = useWorkspace();
   const tuning = workspace.effective.appearance;
-  const persist = useCallback((next: AppearanceSettings) => {
-    void workspace.save("device", { ...workspace.effective, appearance: next });
-  }, [workspace]);
-  const setSeed = useCallback((seed: string) => persist({ ...tuning, seed, autoColor: false }), [tuning, persist]);
-  const setMode = useCallback((mode: AppearanceMode | null) => persist({ ...tuning, mode }), [tuning, persist]);
-  const setToken = useCallback((token: TokenId, value: string) => persist({ ...tuning, tokens: { ...tuning.tokens, [token]: value } }), [tuning, persist]);
-  const clearToken = useCallback((token: TokenId) => {
-    const tokens = { ...tuning.tokens };
-    delete tokens[token];
-    persist({ ...tuning, tokens });
-  }, [tuning, persist]);
+  const persist = useCallback(
+    (next: AppearanceSettings) => {
+      void workspace.save("device", {
+        ...workspace.effective,
+        appearance: next,
+      });
+    },
+    [workspace],
+  );
+  const setSeed = useCallback(
+    (seed: string) => persist({ ...tuning, seed, autoColor: false }),
+    [tuning, persist],
+  );
+  const setMode = useCallback(
+    (mode: AppearanceMode | null) => {
+      withThemeTransition(() => persist({ ...tuning, mode }));
+    },
+    [tuning, persist],
+  );
+  const setToken = useCallback(
+    (token: string, value: string) =>
+      persist({ ...tuning, tokens: { ...tuning.tokens, [token]: value } }),
+    [tuning, persist],
+  );
+  const clearToken = useCallback(
+    (token: string) => {
+      const tokens = { ...tuning.tokens };
+      delete tokens[token];
+      persist({ ...tuning, tokens });
+    },
+    [tuning, persist],
+  );
   /** Clears the automatic-by-default surface/text overrides and the mode choice. */
   const autoColors = useCallback(() => {
     const tokens = { ...tuning.tokens };
-    for (const key of ["color.surface.strong", "color.text.primary", "color.text.muted"] as TokenId[]) delete tokens[key];
+    for (const key of [
+      "color.surface.strong",
+      "color.text.primary",
+      "color.text.muted",
+    ] as TokenId[])
+      delete tokens[key];
     persist({ ...tuning, mode: null, tokens });
   }, [tuning, persist]);
-  const setTransparency = useCallback((enabled: boolean) => {
-    const tokens = { ...tuning.tokens };
-    for (const key of ["material.opacity", "material.blur", "material.saturation", "material.morphism"]) delete tokens[key];
-    if (!enabled) Object.assign(tokens, { "material.opacity": "1", "material.blur": "0px", "material.saturation": "1", "material.morphism": "0" });
-    persist({ ...tuning, tokens });
-  }, [tuning, persist]);
-  const setAutoColor = useCallback((autoColor: boolean) => persist({ ...tuning, autoColor }), [tuning, persist]);
-  const setWallpaperTint = useCallback((wallpaperTint: boolean) => persist({ ...tuning, wallpaperTint }), [tuning, persist]);
-  const setWallpaperMotion = useCallback((wallpaperMotion: boolean) => persist({ ...tuning, wallpaperMotion }), [tuning, persist]);
-  const setGlassEngine = useCallback((glassEngine: "css" | "canvas") => persist({ ...tuning, glassEngine }), [tuning, persist]);
-  const setGlassEnabled = useCallback((glassEnabled: boolean) => persist({ ...tuning, glassEnabled }), [tuning, persist]);
-  const setGlassBackend = useCallback((glassBackend: "auto" | "svg" | "webgl" | "css") => persist({ ...tuning, glassBackend }), [tuning, persist]);
-  const setGlassQuality = useCallback((glassQuality: "auto" | "high" | "balanced" | "low") => persist({ ...tuning, glassQuality }), [tuning, persist]);
-  const setGlassReduced = useCallback((glassReduced: boolean) => persist({ ...tuning, glassReduced }), [tuning, persist]);
-  const setAnimations = useCallback((animations: boolean) => persist({ ...tuning, animations }), [tuning, persist]);
-  const setPerformanceMode = useCallback((performanceMode: boolean) => persist({ ...tuning, performanceMode }), [tuning, persist]);
-  const setMaterialPreset = useCallback((preset: "clear" | "soft" | "bold" | "solid") => {
-    const values = {
-      clear: ["0.72", "12px", "1.3", "1"],
-      soft: ["0.9", "16px", "1.1", "0.65"],
-      bold: ["0.62", "22px", "1.45", "1"],
-      solid: ["1", "0px", "1", "0"]
-    }[preset];
-    persist({ ...tuning, tokens: { ...tuning.tokens, "material.opacity": values[0]!, "material.blur": values[1]!, "material.saturation": values[2]!, "material.morphism": values[3]! } });
-  }, [tuning, persist]);
+  const setTransparency = useCallback(
+    (enabled: boolean) => {
+      const tokens = { ...tuning.tokens };
+      for (const key of [
+        "material.opacity",
+        "material.blur",
+        "material.saturation",
+        "material.morphism",
+      ])
+        delete tokens[key];
+      Object.assign(
+        tokens,
+        enabled
+          ? {
+              "material.opacity": "0.72",
+              "material.blur": "12px",
+              "material.saturation": "1.3",
+              "material.morphism": "1",
+            }
+          : {
+              "material.opacity": "1",
+              "material.blur": "0px",
+              "material.saturation": "1",
+              "material.morphism": "0",
+            },
+      );
+      persist({
+        ...tuning,
+        // Transparency and the performance switches are mutually exclusive:
+        // enabling transparency is an explicit request to leave performance
+        // mode, not a no-op while the shell forces a solid material.
+        ...(enabled ? { performanceMode: false, ultraPerformance: false } : {}),
+        tokens,
+      });
+    },
+    [tuning, persist],
+  );
+  const setAutoColor = useCallback(
+    (autoColor: boolean) => persist({ ...tuning, autoColor }),
+    [tuning, persist],
+  );
+  const setWallpaperTint = useCallback(
+    (wallpaperTint: boolean) => persist({ ...tuning, wallpaperTint }),
+    [tuning, persist],
+  );
+  const setWallpaperMotion = useCallback(
+    (wallpaperMotion: boolean) => persist({ ...tuning, wallpaperMotion }),
+    [tuning, persist],
+  );
+  const setGlassEngine = useCallback(
+    (glassEngine: "css" | "canvas") => persist({ ...tuning, glassEngine }),
+    [tuning, persist],
+  );
+  const setGlassEnabled = useCallback(
+    (glassEnabled: boolean) =>
+      persist(glassEnabled ? enableGlass(tuning) : { ...tuning, glassEnabled }),
+    [tuning, persist],
+  );
+  const setGlassColor = useCallback(
+    (glassColor: boolean) => persist({ ...tuning, glassColor }),
+    [tuning, persist],
+  );
+  const setGlassTint = useCallback(
+    (glassTint: string | null) =>
+      persist({ ...tuning, glassTint, ...(glassTint !== null ? { glassColor: true } : {}) }),
+    [tuning, persist],
+  );
+  const setGlassBackend = useCallback(
+    // Choosing a technique is an explicit request for glass. Keep it enabled
+    // and recover from a previous automatic reduction instead of letting the
+    // startup/performance guards silently turn the chosen renderer off.
+    (glassBackend: "auto" | "svg" | "webgl" | "css") =>
+      persist({ ...enableGlass(tuning), glassBackend }),
+    [tuning, persist],
+  );
+  const setGlassQuality = useCallback(
+    (glassQuality: "auto" | "high" | "balanced" | "low") =>
+      persist({ ...tuning, glassQuality }),
+    [tuning, persist],
+  );
+  const setGlassReduced = useCallback(
+    (glassReduced: boolean) => persist({ ...tuning, glassReduced }),
+    [tuning, persist],
+  );
+  const setAdaptiveType = useCallback(
+    (adaptiveType: boolean) => persist({ ...tuning, adaptiveType }),
+    [tuning, persist],
+  );
+  const setFontScale = useCallback(
+    (scale: number) =>
+      persist({
+        ...tuning,
+        adaptiveType: false,
+        tokens: { ...tuning.tokens, "typography.scale": String(scale) },
+      }),
+    [tuning, persist],
+  );
+  const setAnimations = useCallback(
+    (animations: boolean) => persist({ ...tuning, animations }),
+    [tuning, persist],
+  );
+  const setPerformanceMode = useCallback(
+    (performanceMode: boolean) => persist({ ...tuning, performanceMode }),
+    [tuning, persist],
+  );
+  const setUltraPerformance = useCallback(
+    (ultraPerformance: boolean) => persist({ ...tuning, ultraPerformance }),
+    [tuning, persist],
+  );
+  const setMaterialPreset = useCallback(
+    (preset: "clear" | "soft" | "bold" | "solid") => {
+      const values = {
+        clear: ["0.72", "12px", "1.3", "1"],
+        soft: ["0.9", "16px", "1.1", "0.65"],
+        bold: ["0.62", "22px", "1.45", "1"],
+        solid: ["1", "0px", "1", "0"],
+      }[preset];
+      persist({
+        ...tuning,
+        tokens: {
+          ...tuning.tokens,
+          "material.opacity": values[0]!,
+          "material.blur": values[1]!,
+          "material.saturation": values[2]!,
+          "material.morphism": values[3]!,
+        },
+      });
+    },
+    [tuning, persist],
+  );
+  const setMobileNavSvgGlass = useCallback(
+    (mobileNavSvgGlass: boolean) =>
+      persist({ ...tuning, mobileNavSvgGlass }),
+    [tuning, persist],
+  );
   const reset = useCallback(() => persist(emptyAppearance), [persist]);
-  return { tuning, setSeed, setMode, setToken, clearToken, autoColors, setTransparency, setAutoColor, setWallpaperTint, setWallpaperMotion, setGlassEngine, setGlassEnabled, setGlassBackend, setGlassQuality, setGlassReduced, setAnimations, setPerformanceMode, setMaterialPreset, reset };
+  const resetGroup = useCallback((group: AppearanceResetGroup) => persist(resetAppearanceGroup(tuning, group)), [persist, tuning]);
+  const resetParameters = useCallback((parameters: Parameters<typeof resetThemeParameters>[1]) => persist(resetThemeParameters(tuning, parameters)), [persist, tuning]);
+  const resetOverrides = useCallback((tokens: readonly string[]) => persist(resetColorOverrides(tuning, tokens)), [persist, tuning]);
+  const applyPreset = useCallback(
+    (preset: AppearanceSettings) => persist(applyLook(tuning, preset)),
+    [persist, tuning],
+  );
+  return {
+    tuning,
+    saving: workspace.busy,
+    ready: workspace.ready,
+    error: workspace.error,
+    resetGroup,
+    resetParameters,
+    resetOverrides,
+    applyPreset,
+    setSeed,
+    setMode,
+    setToken,
+    clearToken,
+    autoColors,
+    setTransparency,
+    setAutoColor,
+    setWallpaperTint,
+    setWallpaperMotion,
+    setGlassEngine,
+    setGlassEnabled,
+    setGlassColor,
+    setGlassTint,
+    setGlassBackend,
+    setGlassQuality,
+    setGlassReduced,
+    setMobileNavSvgGlass,
+    setAdaptiveType,
+    setFontScale,
+    setAnimations,
+    setPerformanceMode,
+    setUltraPerformance,
+    setMaterialPreset,
+    reset,
+  };
 }
 
 /**
@@ -67,11 +277,24 @@ export function useThemeTuning() {
  * surface blends towards the canvas as opacity drops, text contrast adapts
  * automatically when the transparency changes.
  */
-export function applyTuning(tokens: Tokens, tuning: AppearanceSettings, systemMode: AppearanceMode = "light"): Tokens {
-  const wallpaper = tuning.tokens["texture.wallpaper"] ?? tokens["texture.wallpaper"];
-  const seed = tuning.autoColor ? wallpaperSeed(wallpaper, tokens["color.canvas.background"]) : tuning.seed;
+export function applyTuning(
+  tokens: Tokens,
+  tuning: AppearanceSettings,
+  systemMode: AppearanceMode = "light",
+  systemPrefersDark = systemMode === "dark",
+  palette = true,
+): Tokens {
+  const wallpaper =
+    tuning.tokens["texture.wallpaper"] ?? tokens["texture.wallpaper"];
+  const seed = tuning.autoColor
+    ? wallpaperSeed(wallpaper, tokens["color.canvas.background"])
+    : tuning.seed;
   const mode = tuning.mode ?? systemMode;
-  const customized = seed !== null || tuning.mode !== null;
+  // "Auto" means follow the OS. Without an explicit mode and without a custom
+  // seed the palette was previously left untouched, so system dark mode never
+  // reached glass themes. Treat system-dark as a customization.
+  const followsSystemDark = tuning.mode === null && systemPrefersDark;
+  const customized = palette && (seed !== null || tuning.mode !== null || followsSystemDark);
   const base = customized
     ? { ...tokens, ...paletteTokens(seed ?? tokens["color.accent"], { mode }) }
     : tokens;
@@ -80,16 +303,32 @@ export function applyTuning(tokens: Tokens, tuning: AppearanceSettings, systemMo
   // colour needs an on-the-fly contrast fix-up.
   const explicitSurface = tuning.tokens["color.surface.strong"] !== undefined;
   const contrast = explicitSurface
-    ? surfaceContrast(merged["color.surface.strong"], merged["color.canvas.background"], Number.parseFloat(merged["material.opacity"]) || 0.7)
+    ? surfaceContrast(
+        merged["color.surface.strong"],
+        merged["color.canvas.background"],
+        Number.parseFloat(merged["material.opacity"]) || 0.7,
+      )
     : null;
   // Wallpaper tinting: surfaces pick up the desktop picture's dominant colour.
   // Independently switchable (default on).
-  const tint = tuning.wallpaperTint === false ? "#00000000" : withAlpha(wallpaperSeed(wallpaper, merged["color.canvas.background"]), 0.1);
+  const tint =
+    tuning.wallpaperTint === false
+      ? "#00000000"
+      : withAlpha(
+          wallpaperSeed(wallpaper, merged["color.canvas.background"]),
+          0.1,
+        );
   return {
     ...merged,
     "color.wallpaper.tint": tint,
-    "color.text.primary": tuning.tokens["color.text.primary"] ?? contrast?.textPrimary ?? merged["color.text.primary"],
-    "color.text.muted": tuning.tokens["color.text.muted"] ?? contrast?.textMuted ?? merged["color.text.muted"]
+    "color.text.primary":
+      tuning.tokens["color.text.primary"] ??
+      contrast?.textPrimary ??
+      merged["color.text.primary"],
+    "color.text.muted":
+      tuning.tokens["color.text.muted"] ??
+      contrast?.textMuted ??
+      merged["color.text.muted"],
   };
 }
 
@@ -100,5 +339,79 @@ export function wallpaperSeed(wallpaper: string, canvas: string): string {
   if (tone) return tone;
   const colors = wallpaper.match(/#[0-9a-fA-F]{6}\b/g);
   if (!colors?.length) return canvas;
-  return "#" + [1, 3, 5].map(offset => Math.round(colors.reduce((sum, color) => sum + Number.parseInt(color.slice(offset, offset + 2), 16), 0) / colors.length).toString(16).padStart(2, "0")).join("");
+  return (
+    "#" +
+    [1, 3, 5]
+      .map((offset) =>
+        Math.round(
+          colors.reduce(
+            (sum, color) =>
+              sum + Number.parseInt(color.slice(offset, offset + 2), 16),
+            0,
+          ) / colors.length,
+        )
+          .toString(16)
+          .padStart(2, "0"),
+      )
+      .join("")
+  );
+}
+
+/** Resolves the light/dark scheme a theme can actually render. */
+export function resolveThemeScheme(
+  theme: Theme,
+  mode: AppearanceMode | null,
+  systemMode: AppearanceMode,
+): AppearanceMode {
+  const supportsLight = theme.modes.includes("light");
+  const supportsDark = theme.modes.includes("dark");
+  if (!supportsDark) return "light";
+  if (!supportsLight) return "dark";
+  return mode ?? systemMode;
+}
+
+/** Apply appearance while preserving a theme's explicit material contract. */
+export function applyThemeTuning(
+  theme: Theme,
+  tuning: AppearanceSettings,
+  systemMode: AppearanceMode = "light",
+): Tokens {
+  // A locked theme is a fixed art direction. Device colour, font and material
+  // tuning never leak into it; only its own effect switches are honoured.
+  if (theme.locked) {
+    const tokens: Record<string, string> = { ...theme.tokens };
+    for (const [id, value] of Object.entries(tuning.tokens)) {
+      if (id.startsWith("effect.") && id in tokens) tokens[id] = value;
+    }
+    return tokens as Tokens;
+  }
+  // Themes that do not declare dark support keep their own palette in auto mode.
+  // A theme that only declares dark stays dark even when the system is light.
+  const effectiveSystemMode: AppearanceMode = theme.modes.includes("light")
+    ? (theme.modes.includes("dark") ? systemMode : "light")
+    : theme.modes.includes("dark")
+      ? "dark"
+      : "light";
+  // Only a theme that supports dark may hand the system-dark palette to the
+  // colour engine; a dark-only theme already carries its own authored palette.
+  const systemPrefersDark = systemMode === "dark" && theme.modes.includes("dark");
+  const palette = theme.paletteTuning !== false;
+  if (theme.material !== "solid")
+    return applyTuning(theme.tokens, tuning, effectiveSystemMode, systemPrefersDark, palette);
+  const tuned = applyTuning(
+    theme.tokens,
+    { ...tuning, mode: tuning.mode ?? effectiveSystemMode },
+    effectiveSystemMode,
+    systemPrefersDark,
+    palette,
+  );
+  return {
+    ...tuned,
+    "material.opacity": "1",
+    "material.morphism": "0",
+    "material.blur": "0px",
+    "material.saturation": "1",
+    "color.wallpaper.tint": "transparent",
+    "color.surface": tuned["color.surface.strong"],
+  };
 }

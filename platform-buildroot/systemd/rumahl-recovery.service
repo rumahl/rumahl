@@ -1,0 +1,26 @@
+[Unit]
+Description=rumahl Recovery Environment host maintenance broker
+After=local-fs.target docker.service rumahl-runtime-supervisor.service
+RequiresMountsFor=/var/lib/rumahl-recovery /var/lib/rumahl /home /apps
+ConditionPathExists=/etc/rumahl/recovery.json
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/python3 /usr/libexec/rumahl-recovery.py
+RuntimeDirectory=rumahl-recovery
+RuntimeDirectoryMode=0755
+StateDirectory=rumahl-recovery
+StateDirectoryMode=0700
+UMask=0077
+Restart=on-failure
+PrivateTmp=yes
+ProtectSystem=strict
+ReadWritePaths=/var/lib/rumahl-recovery /var/lib/rumahl /home /apps -/var/lib/docker -/var/lib/rumahl-runtime-images
+RestrictAddressFamilies=AF_UNIX
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+NoNewPrivileges=yes
+
+[Install]
+WantedBy=multi-user.target

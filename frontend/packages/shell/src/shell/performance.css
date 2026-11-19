@@ -1,0 +1,27 @@
+/*
+ * Ultra performance mode: for devices with very little power. Everything
+ * optional is switched off — the entire wallpaper layer, every blur/filter,
+ * shadow, blend mode, animation and transition — leaving only solid surfaces
+ * and instant updates, for the highest possible frame rate.
+ */
+.shell[data-perf="ultra"] *,
+.shell[data-perf="ultra"] *::before,
+.shell[data-perf="ultra"] *::after {
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  filter: none !important;
+  animation: none !important;
+  transition: none !important;
+  box-shadow: none !important;
+  text-shadow: none !important;
+  mix-blend-mode: normal !important;
+  will-change: auto !important;
+}
+/* Drop the whole wallpaper layer: no image decode, no scrim, no vignette. */
+.shell[data-perf="ultra"] .wallpaper {
+  display: none !important;
+}
+/* A flat canvas colour instead of the decorative gradient. */
+.scene.shell[data-perf="ultra"] {
+  background: var(--rumahl-ui-color-canvas-background, #0b0f1a) !important;
+}

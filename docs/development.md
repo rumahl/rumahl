@@ -15,8 +15,7 @@ No Docker, nginx, root access or global watch utility is needed.
 
 ```sh
 pnpm --dir frontend install --frozen-lockfile
-pnpm --dir frontend dev
-```
+eee```
 
 Open `https://localhost:8443`. On first start the server creates an isolated
 `developer` account with a random password. Read it from
@@ -30,8 +29,10 @@ sockets. A state-directory lock prevents two servers sharing the same database.
 
 ### HTTPS trust
 
-The server creates a 30-day localhost test certificate under `.rumahl-dev/tls`.
-Trust its public `localhost.pem` in a dedicated development browser profile.
+The server creates a 365-day localhost test certificate under `.rumahl-dev/tls`.
+It renews the generated certificate automatically when it expires or enters its
+last seven days; the renewal keeps the existing private key, but the changed
+public certificate still has to be trusted in the development browser profile.
 Alternatively supply your existing locally trusted localhost certificate:
 
 ```sh
@@ -42,7 +43,11 @@ The certificate must cover `localhost`. Certificate creation uses OpenSSL only
 when no certificate/key pair is supplied. To rotate the generated certificate,
 stop the developer server, remove only `.rumahl-dev/tls`, and start again.
 Do not disable TLS verification or change the Secure/HttpOnly cookie posture.
-A trusted certificate is also necessary for reliable WSS hot reload.
+A trusted certificate is also necessary for reliable WSS hot reload and Service
+Worker registration. Merely continuing past the browser certificate warning may
+load the login page while Chromium rejects the worker script with SecurityError.
+Use a locally trusted certificate via `--cert` and `--key` for offline development.
+Settings → This device shows registration errors, worker version and cache status.
 
 ### Daily workflow
 
@@ -127,9 +132,12 @@ referrer policy so native login/logout forms retain their Origin header. Module 
 limited to the frontend workspace; private state and TLS files are denied.
 There is no unauthenticated development API that performs privileged actions.
 
-The existing fixture-only demo remains available with
-`pnpm --dir frontend dev:demo`. It is not a substitute for the authenticated
-full-stack developer server.
+The fixture-only demo remains available with
+`pnpm --dir frontend dev:demo`. It includes sample apps, files and widgets and
+persists state in the browser. It is not a substitute for the authenticated
+full-stack developer server. Static builds for the public demo are produced
+with `pnpm --dir frontend/packages/shell build:demo` and
+`build:demo-widget`; see `frontend/packages/shell/src/demo/README.md`.
 
 ## Checks
 
@@ -165,7 +173,7 @@ Buildroot acceptance described in their READMEs before shipping an image.
 
 ## Shell routes and modes
 
-Use `/app/app-manager` for a direct first-party app route and
+Use `/app/files` for a direct first-party app route and
 `/settings/display` for presentation preferences. The top bar changes the mode
 for this browser profile; Settings can save it for the whole account or this
 device. The URL stays unchanged. Browser reload and Back/Forward preserve the route; login
@@ -180,10 +188,21 @@ required; the shell does not import an app's React code. See
 [app hosting](architecture/app-hosting.md) for the contract and current limits.
 
 The developer certificate now covers both `localhost` and `*.apps.localhost`.
-On the first start with an older generated certificate, the runner regenerates
-it. Trust the displayed certificate again; custom `--cert` certificates must
+On the first start with an older or expired generated certificate, the runner
+regenerates it. Trust the displayed certificate again; custom `--cert` certificates must
 cover both names. The browser must resolve installation subdomains beneath
 `apps.localhost` to loopback. Shell and apps use the same developer HTTPS port.
+
+Install a real, signed app into the running developer state with:
+
+```sh
+pnpm --dir frontend dev:app
+```
+
+It builds and signs the built-in development app, installs it into
+`.rumahl-dev/data` and grants launch access to the existing accounts, so it
+appears in the launcher and Settings → Apps. This runs the same signed-package path as production,
+unlike the integration fixture below (which is not an installer).
 
 The integration fixture is only for disposable developer state; it refuses to
 seed a platform that already has installations. It is not an installer:
@@ -192,7 +211,7 @@ seed a platform that already has installations. It is not an installer:
 cargo build -p rumahl-platform-service --bins --example app_host_fixture
 # While the developer server is running (adjust the state directory as needed):
 target/debug/examples/app_host_fixture seed "$HOME/.local/state/rumahl-dev/data" developer
-# Open /apps; "Isolated test app" is granted only to the developer account.
+# Open the launcher; "Isolated test app" is granted only to the developer account.
 target/debug/examples/app_host_fixture revoke "$HOME/.local/state/rumahl-dev/data"
 ```
 
@@ -221,3 +240,126 @@ physical device remain separate. This is local OS synchronization, not cloud
 synchronization between separate rumahl servers. See
 [shell preferences](architecture/shell-preferences.md) for the versioned API and
 extension rules. `shell.mode` is the first supported preference.
+
+### RRE — rumahl Recovery Environment (`/recovery`)
+
+The recovery surface is served directly by the Rust gateway. It needs neither the
+React desktop nor the SSR renderer. The HTML and controller live in
+`platform-web/src/recovery.html` and `platform-web/src/recovery.js` and are embedded
+at Rust build time, so a backend rebuild is required after changes.
+
+Opening the environment runs read-only checks for components, app services,
+resources, storage, network, logs, recent app crashes and boot errors. Checks that
+cannot run are reported as incomplete. A JSON report exports readings, findings and
+the last repair result; it contains no session tokens and no activity log.
+
+Repair only starts authorized, stopped `always-on` apps. Running services and normal
+`on-demand` apps are not restarted. Results are shown per service and changes are
+recorded in the audit log. Under **Apps & services** individual apps can be started,
+stopped and restarted, and apps that keep crashing can be quarantined; a quarantined
+app is never restarted automatically. Platform and renderer processes have no
+separate restart action. Device restarts and power-off go through the host broker
+described below. SMART starts a host test and is not a completed integrity check.
+The storage page offers a read-only filesystem check (`fsck`) of unmounted devices;
+mounted filesystems are reported as needing a maintenance reboot. The system page
+shows build and version information and, through the host broker, can roll back to
+the newest compatible snapshot, erase the device (factory reset / reinstall) or
+power it off.
+
+Safe mode blocks launch, start and recovery-restart requests as well as automatic
+app repair through the gateway. Already running processes are not stopped
+automatically. The setting does not replace host boot isolation.
+
+Manual verification after a build: open `/recovery` signed in and signed out, run
+diagnostics with the runtime supervisor unavailable, stop/start an authorized app,
+enable safe mode and attempt another start. Also check with a failed SSR and a
+narrow browser window. Rust regression checks:
+`cargo fmt --all -- --check`,
+`cargo clippy --workspace --all-targets --locked -- -D warnings`,
+`cargo test --workspace --locked`.
+
+RRE is a standalone mini desktop: a plain background, a system bar and a dock at the
+bottom. System status, diagnostics, apps & services, storage & disks, network, logs,
+app crashes, boot & errors, system & update, boot options, activity and backups open
+in separate windows. Several tools can stay visible at once. Windows can be moved by
+their title bar (also with the arrow keys when the title bar is focused), maximised,
+minimised and closed. The dock brings minimised windows back; dots mark open tools.
+On narrow screens the active window fills the workspace.
+
+Diagnostics run read-only in the background without opening a window. Window controls
+and the dock stay usable during API requests. Closing or minimising a tool window
+neither stops apps nor cancels an already submitted repair. "Refresh" reloads the
+tool data. The surface needs no shell assets; individual desktop themes are not
+applied.
+
+### RRE: host restart, power-off and full state backup
+
+"Activity" is its own app with live events, an outcome filter and paging. "System
+status" shows check states, "Diagnostics" shows findings and repairs, "Apps &
+services" controls runtimes. "Boot options" offers a normal and a safe **device
+restart** plus a **power off**, "Backups" creates and restores local state backups
+and can schedule automatic backups. Windows still open only from the dock.
+
+Host actions require the new `rumahl-recovery.service`. The Rust gateway talks only
+to its Unix socket. The broker checks the platform service's peer UID and the signed
+in user ID against the root-owned file `/etc/rumahl/recovery.json`. The shipped
+`operators` list is **empty**: at provisioning time add explicitly authorised
+accounts as UUIDs. The file must be owned by root and must not be writable by others.
+A session or an extended UI mode alone grants no maintenance rights. Adding it to the
+image requires a new image build, not only a rebuild of the Rust gateway. The normal
+frontend dev server has no host broker, so RRE shows those functions as unavailable.
+
+The broker accepts only `status`, `reboot`, `poweroff`, `backup`, `restore`, `fsck`,
+`reset`, `reinstall`, `rollback` and `schedule`. Paths and shell commands cannot be
+passed from the browser. The interface first confirms the **acceptance** of an
+operation. While services are stopped the connection is interrupted; reopen RRE
+afterwards and check the stored operation status. An HTTP 200 check is not treated as
+a successful boot.
+
+A restart or power-off is signalled by the server, never guessed by the client. The
+broker writes a lifecycle intent before stopping writers; on a clean stop the
+platform service broadcasts a `system_lifecycle` WebSocket event to every connected
+client, which then shows "restarting" or "shut down". Without that signal the
+offline screen only distinguishes "this device is offline" from "rumahl OS is
+unreachable" (via a service worker connectivity probe) and polls patiently. A plain
+`systemctl stop/restart` defaults to "restarting"; a crash sends no signal and is
+reported as unreachable.
+
+A full state backup covers `/var/lib/rumahl`, `/home`, `/apps`, `/var/lib/docker`
+and `/var/lib/rumahl-runtime-images`. All five directories must be present. Before
+the backup the rumahl services and all containers of this appliance host are stopped.
+The backup preserves owners, ACLs, extended attributes and Docker whiteouts.
+Additional mounts inside the volumes are rejected instead of silently producing
+incomplete backups. GNU tar with ACL/xattr support and Python with SQLite are added
+to the image (see
+[Buildroot tar configuration](https://github.com/buildroot/buildroot/blob/master/package/tar/tar.mk)).
+
+Backups are stored root-private in `/var/lib/rumahl-recovery/backups`. They are
+local restore points, not protection against loss of the disk. The OS image, TLS
+provisioning and host configuration are not replaced. Restoration is bound to the
+same device, platform build, platform configuration and, where present, the same TPM
+key object. Moving a device or importing foreign archives is not offered.
+
+Restore first checks the manifest, scope, SHA-256 and archive paths. After writers
+are stopped an additional backup of the current state is created. All volumes are
+extracted onto their target filesystem before replacement; state databases are
+checked for integrity. Session tokens and OIDC login transactions are discarded.
+After a successful restore the device reboots into safe mode, where Docker and the
+app supervisor stay stopped by systemd conditions until a normal device restart is
+requested.
+
+**Interrupted restore:** `/var/lib/rumahl-recovery/restore-pending.json` locks all
+affected services even after a power failure. The gateway also stays stopped; this
+needs local maintenance access. The previous state is noted as `safetyBackupId` in
+`/var/lib/rumahl-recovery/job.json`. After review, with the broker stopped, root can
+re-apply a verified restore point with
+`python3 /usr/libexec/rumahl-recovery.py --restore-offline BACKUP_ID`. The command
+leaves services stopped; reboot afterwards. Do not simply delete the lock marker. A
+restore needs room for the current state, the extra backup and the extracted data;
+lack of space leads to rejection or the locked maintenance state.
+
+Offline tests that leave the host untouched:
+`python3 -m unittest discover -s platform-buildroot/recovery -p 'test_*.py' -v`.
+Device restart, mount behaviour and the systemd flow must additionally be verified in
+a disposable QEMU instance before activating the broker on a device with important
+data.

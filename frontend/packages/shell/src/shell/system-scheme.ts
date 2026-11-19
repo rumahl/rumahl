@@ -1,18 +1,31 @@
-import { useEffect, useState } from "react";
+import { useSyncExternalStore } from "react";
+
+function colorSchemeQuery(): MediaQueryList | null {
+  return typeof window !== "undefined" && typeof window.matchMedia === "function"
+    ? window.matchMedia("(prefers-color-scheme: dark)")
+    : null;
+}
+
+function subscribe(onChange: () => void): () => void {
+  const query = colorSchemeQuery();
+  if (!query) return () => {};
+  query.addEventListener("change", onChange);
+  return () => query.removeEventListener("change", onChange);
+}
+
+function getSnapshot(): "light" | "dark" {
+  return colorSchemeQuery()?.matches ? "dark" : "light";
+}
+
+/** Server and hydration must start from the same deterministic value. */
+function getServerSnapshot(): "light" | "dark" {
+  return "light";
+}
 
 /**
- * Resolves the OS light/dark preference. Starts at "light" so the server render
- * and the first client render match, then follows `prefers-color-scheme`.
+ * Resolves the OS light/dark preference. Client-only rendering reads the media
+ * query immediately; SSR hydration starts light and updates after mount.
  */
 export function useSystemMode(): "light" | "dark" {
-  const [mode, setMode] = useState<"light" | "dark">("light");
-  useEffect(() => {
-    if (typeof window === "undefined" || typeof window.matchMedia !== "function") return;
-    const query = window.matchMedia("(prefers-color-scheme: dark)");
-    const update = () => setMode(query.matches ? "dark" : "light");
-    update();
-    query.addEventListener("change", update);
-    return () => query.removeEventListener("change", update);
-  }, []);
-  return mode;
+  return useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot);
 }

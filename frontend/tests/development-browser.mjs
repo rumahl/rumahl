@@ -34,8 +34,9 @@ const browser = await chromium.launch({ channel: "chromium", args: [`--ignore-ce
 const reducedMotion = { reducedMotion: "reduce" };
 try {
   const page = await browser.newPage(reducedMotion);
+  await page.addInitScript(() => { try { globalThis.localStorage.setItem("rumahl.session.snapshot.disabled", "1"); } catch { /* sandboxed app frame */ } });
   const modeReady = () => {
-    const trigger = globalThis.document.querySelector('button[aria-label="Shell mode"]');
+    const trigger = globalThis.document.querySelector('.topbar__mode button');
     return Boolean(trigger) && !trigger.disabled;
   };
   async function choose(label, option, target = page) {
@@ -68,8 +69,17 @@ try {
     const revision = Number(await source.locator(".shell").getAttribute("data-preferences-revision"));
     await target.waitForFunction((revision) => Number(globalThis.document.querySelector(".shell")?.dataset.preferencesRevision) >= revision, revision);
   }
+  // The sign-in screen first lists account tiles; pick the test account to
+  // reveal its password form (the username is then carried in a hidden field).
+  async function chooseAccount(target) {
+    const tiles = target.locator("#login-accounts .account");
+    if ((await tiles.count()) === 0) return;
+    const match = tiles.filter({ hasText: `@${credentials.username}` });
+    await ((await match.count()) > 0 ? match.first() : tiles.first()).click();
+  }
   async function login(target, path = "/") {
     await target.goto(`${info.origin}${path}`);
+    await chooseAccount(target);
     await target.locator("form").evaluate((form, login) => {
       form.elements.username.value = login.username; form.elements.password.value = login.password;
     }, credentials);
@@ -88,7 +98,8 @@ try {
   ];
   page.on("pageerror", (error) => errors.push(error.message));
   page.on("console", (message) => { if (message.type() === "error" && !ignoredConsole.some((pattern) => pattern.test(message.text()))) errors.push(message.text()); });
-  await page.goto(`${info.origin}/app/app-manager?mode=launcher`);
+  await page.goto(`${info.origin}/app/files?mode=launcher`);
+  await chooseAccount(page);
   // Exercise a native form POST: the browser must supply its real Origin.
   await page.locator("form").evaluate((form, login) => {
     form.elements.username.value = login.username;
@@ -99,9 +110,9 @@ try {
   await page.locator('button[type="submit"]').click();
   await page.locator(".shell").waitFor();
   await hydrated;
-  assert.equal(new URL(page.url()).pathname, "/app/app-manager", "login lost deep link");
+  assert.equal(new URL(page.url()).pathname, "/app/files", "login lost deep link");
   await setMode("desktop");
-  const appWindow = page.getByRole("region", { name: "App manager", exact: true });
+  const appWindow = page.getByRole("region", { name: "Files", exact: true });
   const before = await appWindow.boundingBox();
   const title = appWindow.locator(".shell-window__titlebar");
   const titleBox = await title.boundingBox();
@@ -110,14 +121,14 @@ try {
   await page.mouse.move(titleBox.x + 220, titleBox.y + 40, { steps: 5 });
   await page.mouse.up();
   assert((await appWindow.boundingBox()).x > before.x + 40, `window did not move: ${JSON.stringify(before)} -> ${JSON.stringify(await appWindow.boundingBox())}`);
-  const resize = appWindow.getByRole("button", { name: "Resize App manager with arrow keys" });
+  const resize = appWindow.getByRole("button", { name: "Resize Files with arrow keys" });
   await resize.focus();
   const width = (await appWindow.boundingBox()).width;
   await page.keyboard.press("Shift+ArrowLeft");
   assert((await appWindow.boundingBox()).width < width, "keyboard resize failed");
-  await appWindow.getByRole("button", { name: "Maximize App manager", exact: true }).click();
+  await appWindow.getByRole("button", { name: "Maximize Files", exact: true }).click();
   assert((await appWindow.boundingBox()).width > width, "maximize failed");
-  await appWindow.getByRole("button", { name: "Restore App manager", exact: true }).click();
+  await appWindow.getByRole("button", { name: "Restore Files", exact: true }).click();
   await page.getByRole("button", { name: "Open launcher", exact: true }).click();
   const menu = page.getByRole("dialog");
   await menu.getByRole("searchbox").fill("Settings");
@@ -127,18 +138,20 @@ try {
   if (process.env.RUMAHL_SCREENSHOT_DIR) await page.screenshot({ path: join(process.env.RUMAHL_SCREENSHOT_DIR, "desktop.png") });
   await setMode("launcher");
   assert.equal(await page.locator(".shell").getAttribute("data-shell-mode"), "launcher");
-  assert.equal(await page.getByRole("button", { name: "Close App manager", exact: true }).count(), 0);
+  assert.equal(await page.getByRole("button", { name: "Close Files", exact: true }).count(), 1);
   await page.getByRole("navigation", { name: "Main navigation" }).getByRole("link", { name: "Settings" }).click();
   await page.getByRole("navigation", { name: "Settings", exact: true }).getByRole("link", { name: "Personalization" }).click();
   assert.equal(new URL(page.url()).pathname, "/settings/display");
   await page.reload();
+  await page.locator('.shell[data-session-ready="true"]').waitFor();
   await page.getByRole("heading", { name: "Personalization" }).waitFor();
   await page.goBack();
-  await page.getByRole("heading", { name: "Settings", exact: true, level: 1 }).waitFor();
+  await page.getByRole("heading", { name: "Overview", exact: true, level: 1 }).waitFor();
   await page.goForward();
   await page.getByRole("heading", { name: "Personalization" }).waitFor();
   await setMode("desktop");
   await page.getByRole("region", { name: "Settings", exact: true }).waitFor();
+  await page.getByRole("button", { name: "Close Settings", exact: true }).click();
   await page.getByRole("navigation", { name: "Main navigation" }).getByRole("link", { name: "Home", exact: true }).click();
   // Launch a real authorized installation, including an app-local deep route.
   const appCookies = [];
@@ -146,7 +159,7 @@ try {
     if (new URL(request.url()).hostname.endsWith(".apps.localhost")) appCookies.push(request.headers().cookie);
   });
   await setMode("launcher");
-  await page.goto(`${info.origin}/apps`);
+  await page.getByRole("navigation", { name: "Main navigation" }).getByRole("link", { name: "Home", exact: true }).click();
   await page.getByRole("link", { name: "Isolated test app", exact: true }).click();
   const iframe = page.locator('iframe[title="Isolated test app"]');
   await page.frameLocator('iframe[title="Isolated test app"]').getByText("Isolated app ready", { exact: true }).waitFor();
@@ -156,12 +169,12 @@ try {
   await iframe.contentFrame().locator("body").evaluate((body) => { body.dataset.persistenceProbe = "preserved"; });
   await setMode("desktop");
   assert.equal(await iframe.contentFrame().locator("body").getAttribute("data-persistence-probe"), "preserved");
-  await page.getByRole("button", { name: "Minimize Isolated test app", exact: true }).click();
+  await page.getByRole("button", { name: "Minimize Isolated test app", exact: true }).dispatchEvent("click");
   await page.getByRole("navigation", { name: "Main navigation" }).getByRole("button", { name: "Isolated test app", exact: true }).click();
   assert.equal(await iframe.contentFrame().locator("body").getAttribute("data-persistence-probe"), "preserved");
   await setMode("launcher");
   if (process.env.RUMAHL_SCREENSHOT_DIR) {
-    await page.getByRole("button", { name: "Launcher home", exact: true }).click();
+    await page.getByRole("navigation", { name: "Main navigation" }).getByRole("link", { name: "Home", exact: true }).click();
     await page.getByRole("heading", { name: "Your apps. Your space.", exact: true }).waitFor();
     await page.screenshot({ path: join(process.env.RUMAHL_SCREENSHOT_DIR, "launcher.png") });
     await page.setViewportSize({ width: 390, height: 844 });
@@ -187,17 +200,18 @@ try {
   assert.equal(oldAsset, 404, "revoked lease still served app assets");
   await page.locator('iframe[title="Isolated test app"]').waitFor({ state: "detached", timeout: 35_000 });
   await setMode("launcher");
-  await page.goto(`${info.origin}/apps`);
-  await page.getByText("No apps are available for this account.", { exact: true }).waitFor();
+  await page.getByRole("navigation", { name: "Main navigation" }).getByRole("link", { name: "Home", exact: true }).click();
+  await page.locator(".launcher-home").waitFor();
+  assert.equal(await page.getByRole("link", { name: "Isolated test app", exact: true }).count(), 0);
   assert.equal(await page.locator('iframe[title="Isolated test app"]').count(), 0);
   await setMode("desktop");
   await page.goto(`${info.origin}/`);
   await page.locator(".shell").waitFor();
   // One account, two independent browser profiles, and a second tab of one profile.
-  await page.goto(`${info.origin}/settings/display`);
+  await page.goto(`${info.origin}/settings/display/appearance`);
   await choose("Save for", "This browser profile", page);
   const inherited = page.waitForResponse((response) => response.url().includes("/api/v1/shell/preferences?") && response.request().method() === "PUT");
-  await page.getByRole("group", { name: "Shell mode" }).getByRole("button", { name: "Use account setting", exact: true }).click();
+  await page.locator(".setting").getByRole("group", { name: "Shell mode" }).getByRole("button", { name: "Use account setting", exact: true }).click();
   assert.equal((await inherited).status(), 200);
   const secondContext = await browser.newContext(reducedMotion);
   try {
@@ -205,20 +219,20 @@ try {
     second.on("pageerror", (error) => errors.push(error.message));
     await login(second);
     await choose("Save for", "My account · all devices", page);
-    await page.getByRole("button", { name: "Launcher", exact: true }).click();
+    await page.locator(".setting").getByRole("group", { name: "Shell mode" }).getByRole("button", { name: "Launcher", exact: true }).click();
     await page.locator('.shell[data-shell-mode="launcher"]').waitFor();
     await second.locator('.shell[data-shell-mode="launcher"]').waitFor();
     await setMode("desktop", second);
     await synchronized(page, second);
-    await page.getByRole("button", { name: "Desktop", exact: true }).click();
+    await page.locator(".setting").getByRole("group", { name: "Shell mode" }).getByRole("button", { name: "Desktop", exact: true }).click();
     await page.locator('.shell[data-shell-mode="desktop"]').waitFor();
-    await page.getByRole("button", { name: "Launcher", exact: true }).click();
+    await page.locator(".setting").getByRole("group", { name: "Shell mode" }).getByRole("button", { name: "Launcher", exact: true }).click();
     await page.locator('.shell[data-shell-mode="launcher"]').waitFor();
     assert.equal(await second.locator(".shell").getAttribute("data-shell-mode"), "desktop");
     const sameProfileTab = await secondContext.newPage();
     await sameProfileTab.goto(`${info.origin}/`);
     await sameProfileTab.waitForFunction(() => {
-      const trigger = globalThis.document.querySelector('button[aria-label="Shell mode"]');
+      const trigger = globalThis.document.querySelector('.topbar__mode button');
       return Boolean(trigger) && !trigger.disabled;
     });
     assert.equal(await sameProfileTab.locator(".shell").getAttribute("data-shell-mode"), "desktop");
@@ -235,7 +249,7 @@ try {
   await page.goto(`${info.origin}/`);
   // Save a snapped workspace and app folder; verify a real browser reload.
   await page.goto(`${info.origin}/app/files`);
-  await page.getByRole("heading", { name: "Files", exact: true, level: 1 }).waitFor();
+  await page.locator(".files-app").waitFor();
   // Snap controls live in a hover flyout on the window chrome.
   await page.locator('[data-window-id="app:files"] .window-control-group').hover();
   await page.getByRole("button", { name: "Snap Files left", exact: true }).click();
@@ -262,31 +276,50 @@ try {
   await page.getByRole("button", { name: "Save folder", exact: true }).dispatchEvent("click");
   assert.equal((await folderSaved).status(), 200);
   await page.reload();
+  await page.locator('.shell[data-session-ready="true"]').waitFor();
   await page.getByRole("region", { name: "Files", exact: true }).waitFor();
   assert(Math.abs((await page.getByRole("region", { name: "Files", exact: true }).boundingBox()).width - snapped.width) < 2);
-  await page.getByRole("navigation", { name: "Main navigation" }).getByRole("button", { name: "Files", exact: true }).click();
   const files = page.getByRole("region", { name: "Files", exact: true });
-  await files.getByLabel("New folder", { exact: true }).fill("Documents");
-  await files.getByRole("button", { name: "Save", exact: true }).click();
-  await files.getByRole("button", { name: "Documents/", exact: true }).click();
+  // New folder through the explorer toolbar, then open it.
+  await files.getByRole("button", { name: "New folder", exact: true }).click();
+  const folderName = files.locator(".files-rename");
+  await folderName.waitFor();
+  await folderName.fill("Documents");
+  await folderName.press("Enter");
+  await files.locator("[data-file-key]", { hasText: "Documents" }).dblclick();
   await files.getByLabel("Upload file").setInputFiles({ name: "hello.txt", mimeType: "text/plain", buffer: Buffer.from("workspace upload") });
-  await files.getByRole("link", { name: "hello.txt", exact: true }).waitFor();
-  const downloadUrl = await files.getByRole("link", { name: "hello.txt", exact: true }).getAttribute("href");
-  const downloaded = await page.evaluate(async path => { const response = await globalThis.fetch(path); return { text: await response.text(), disposition: response.headers.get("content-disposition") }; }, downloadUrl);
-  assert.equal(downloaded.text, "workspace upload");
-  assert(downloaded.disposition.startsWith("attachment;"));
-  await files.getByRole("button", { name: "Rename", exact: true }).click();
-  await files.getByLabel("Rename", { exact: true }).fill("renamed.txt");
-  await files.getByRole("button", { name: "Save", exact: true }).click();
-  await files.getByRole("link", { name: "renamed.txt", exact: true }).waitFor();
-  await files.getByRole("button", { name: "Move", exact: true }).click();
-  await files.getByRole("button", { name: "My files", exact: true }).click();
-  await files.getByRole("button", { name: "Move here", exact: true }).click();
-  await files.getByRole("link", { name: "renamed.txt", exact: true }).waitFor();
-  const row = files.locator("li").filter({ has: page.getByRole("link", { name: "renamed.txt", exact: true }) });
-  await row.getByRole("button", { name: "Delete", exact: true }).click();
-  await files.getByRole("alertdialog").getByRole("button", { name: "Delete", exact: true }).click();
-  await files.getByRole("link", { name: "renamed.txt", exact: true }).waitFor({ state: "detached" });
+  await files.getByText("hello.txt", { exact: true }).waitFor();
+  // Download the uploaded file through the explicit context-menu action.
+  await files.getByText("hello.txt", { exact: true }).click({ button: "right" });
+  const [download] = await Promise.all([
+    page.waitForEvent("download"),
+    page.getByRole("menuitem", { name: "Download", exact: true }).click()
+  ]);
+  const stream = await download.createReadStream();
+  const chunks = [];
+  for await (const chunk of stream) chunks.push(chunk);
+  assert.equal(Buffer.concat(chunks).toString(), "workspace upload");
+  // Rename through the item context menu.
+  await files.getByText("hello.txt", { exact: true }).click({ button: "right" });
+  await page.getByRole("menuitem", { name: "Rename", exact: true }).click();
+  const rename = files.locator(".files-rename");
+  await rename.fill("renamed.txt");
+  await rename.press("Enter");
+  await files.getByText("renamed.txt", { exact: true }).waitFor();
+  // Move back to the root through the context menus.
+  await files.getByText("renamed.txt", { exact: true }).click({ button: "right" });
+  await page.getByRole("menuitem", { name: "Move", exact: true }).click();
+  await page.getByRole("button", { name: "Up", exact: true }).click();
+  await files.locator(".files-surface").click({ button: "right", position: { x: 4, y: 4 } });
+  await page.getByRole("menuitem", { name: "Move here", exact: true }).click();
+  await files.getByText("renamed.txt", { exact: true }).waitFor();
+  // Delete through the context menu, then confirm in the native dialog.
+  await files.getByText("renamed.txt", { exact: true }).click({ button: "right" });
+  await page.getByRole("menuitem", { name: "Delete", exact: true }).click();
+  const deleteDialog = page.getByRole("alertdialog", { name: "Delete", exact: true });
+  await deleteDialog.waitFor();
+  await deleteDialog.getByRole("button", { name: "Delete", exact: true }).click();
+  await files.getByText("renamed.txt", { exact: true }).waitFor({ state: "detached" });
   // Saved account folders are delivered to an independent browser profile.
   const workspaceContext = await browser.newContext(reducedMotion);
   const workspacePage = await workspaceContext.newPage();
@@ -301,7 +334,7 @@ try {
     try {
       await workspacePage.reload();
       await workspacePage.locator(".shell").waitFor();
-      await workspacePage.getByRole("button", { name: "Launcher home", exact: true }).click();
+      await workspacePage.locator(".topbar__mode").getByRole("button", { name: "Launcher", exact: true }).click();
       await workspacePage.getByRole("button", { name: "Tools", exact: true }).waitFor({ timeout: 15000 });
       await workspacePage.getByRole("button", { name: "Tools", exact: true }).click();
       await workspacePage.getByRole("link", { name: "Files", exact: true }).waitFor({ timeout: 15000 });
@@ -333,6 +366,22 @@ try {
 
   await appendFile(join(frontend, "packages/shell/src/styles.css"), "\n.shell { outline: 3px solid rgb(1, 2, 3); }\n");
   await page.waitForFunction(() => globalThis.getComputedStyle(globalThis.document.querySelector(".shell")).outlineColor === "rgb(1, 2, 3)");
+  // Standalone recovery keeps the URL detail visible while the splash mark
+  // moves to the top, and does not hand back automatically for client crashes.
+  const recoveryContext = await browser.newContext({ reducedMotion: "no-preference" });
+  const recoveryPage = await recoveryContext.newPage();
+  try {
+    await recoveryPage.goto(`${info.origin}/recovery?reason=crash&detail=admin%20is%20not%20defined`);
+    await recoveryPage.locator(".hand").waitFor();
+    assert.equal(await recoveryPage.locator(".hand__detail code").textContent(), "admin is not defined");
+    const startBox = await recoveryPage.locator(".hand__brand").boundingBox();
+    await recoveryPage.waitForTimeout(1600);
+    const endBox = await recoveryPage.locator(".hand__brand").boundingBox();
+    assert(startBox && endBox && endBox.y < startBox.y - 100, "recovery mark did not animate to the top");
+    assert.equal(new URL(recoveryPage.url()).pathname, "/recovery");
+  } finally {
+    await recoveryContext.close();
+  }
   assert.deepEqual(errors, [], "browser console/hydration errors");
   console.log("PASS: Chromium deep-link login, SSR/hydration, nested routes, modes, app isolation/revocation, user/device settings sync and React/CSS hot reload");
 } finally {

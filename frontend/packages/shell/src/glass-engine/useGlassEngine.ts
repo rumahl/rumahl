@@ -1,4 +1,4 @@
-import { useEffect, type RefObject } from "react";
+import { useEffect, useRef, type RefObject } from "react";
 import { GlassEngine } from "./engine.js";
 import { svgBackdropSupported } from "./svg-backdrop.js";
 
@@ -21,7 +21,7 @@ interface GlassHandle {
   destroy(): void;
 }
 interface GlassEngineInstance {
-  mount(element: Element, material?: GlassMaterial): GlassHandle;
+  mount(element: Element, material?: GlassMaterial, backend?: GlassBackend): GlassHandle;
   setBackend(backend: GlassBackend): void;
   setQuality(quality: GlassQuality): void;
   destroy(): void;
@@ -44,20 +44,37 @@ export function svgRefractionSupported(): boolean {
   return typeof window !== "undefined" && svgBackdropSupported();
 }
 
+let webglProbe: boolean | null = null;
+/** True when this browser can create a WebGL context (probed once). */
+export function webglSupported(): boolean {
+  if (webglProbe !== null) return webglProbe;
+  if (typeof document === "undefined") return false;
+  try {
+    const canvas = document.createElement("canvas");
+    const gl = (canvas.getContext("webgl") ?? canvas.getContext("experimental-webgl")) as WebGLRenderingContext | null;
+    webglProbe = !!gl;
+    gl?.getExtension("WEBGL_lose_context")?.loseContext();
+  } catch {
+    webglProbe = false;
+  }
+  return webglProbe;
+}
+
 function wallpaperSource(): HTMLImageElement | HTMLVideoElement | null {
   if (typeof document === "undefined") return null;
   return document.querySelector<HTMLVideoElement>(".wallpaper-video") ?? document.querySelector<HTMLImageElement>(".wallpaper-image");
 }
 
 let engine: GlassEngineInstance | null = null;
-const config: { backend: GlassBackend; quality: GlassQuality } = { backend: "auto", quality: "auto" };
+const config: { enabled: boolean; backend: GlassBackend; quality: GlassQuality } = { enabled: true, backend: "auto", quality: "auto" };
 
 /** Applies the chosen backend/quality (and master enable) to the shared engine. */
 export function configureGlass(next: { enabled?: boolean; backend?: GlassBackend; quality?: GlassQuality }): void {
+  if (next.enabled !== undefined) config.enabled = next.enabled;
   if (next.backend) config.backend = next.backend;
   if (next.quality) config.quality = next.quality;
   if (!engine) return;
-  engine.setBackend(next.enabled === false ? "css" : config.backend);
+  engine.setBackend(config.enabled ? config.backend : "css");
   engine.setQuality(config.quality);
 }
 
@@ -80,7 +97,7 @@ export function setGlassAdjust(next: Partial<GlassMaterial>): void {
 
 function getEngine(): GlassEngineInstance {
   if (!engine) {
-    engine = new Engine({ source: wallpaperSource, quality: config.quality, backend: config.backend });
+    engine = new Engine({ source: wallpaperSource, quality: config.quality, backend: config.enabled ? config.backend : "css" });
     const report = () => { if (typeof document !== "undefined") document.documentElement.dataset.glassRenderer = engine!.renderer; };
     engine.addEventListener("qualitychange", report);
     engine.addEventListener("metrics", (event) => {
@@ -94,17 +111,73 @@ function getEngine(): GlassEngineInstance {
   return engine;
 }
 
+export interface MountedGlassHost {
+  update(material: GlassMaterial): void;
+  destroy(): void;
+}
+
+/**
+ * Mounts the shared glass engine on an arbitrary host element (opt-in).
+ * Updating the material reuses the renderer/context instead of tearing it down;
+ * this matters for live colour changes on many widget surfaces.
+ */
+export function mountGlassHostHandle(element: HTMLElement, material: GlassMaterial, backend?: GlassBackend): MountedGlassHost {
+  const handle = getEngine().mount(element, { ...material, ...adjust }, backend);
+  handles.add(handle);
+  return {
+    update(next) { handle.update(next); },
+    destroy() {
+      handles.delete(handle);
+      handle.destroy();
+    }
+  };
+}
+
+/** Backwards-compatible mount that returns only the dispose function. */
+export function mountGlassHost(element: HTMLElement, material: GlassMaterial): () => void {
+  return mountGlassHostHandle(element, material).destroy;
+}
+
 /** Mounts the shared glass engine on a host element (adds `.rumahl-glass-host`). */
 export function useGlassHost(ref: RefObject<HTMLElement | null>, material: GlassMaterial): void {
   const key = JSON.stringify(material);
+  const mounted = useRef<MountedGlassHost | null>(null);
   useEffect(() => {
     const element = ref.current;
     // The engine needs browser media APIs; stay inert in non-browser environments.
     if (!element || typeof window === "undefined" || typeof window.matchMedia !== "function") return;
-    const handle = getEngine().mount(element, { ...material, ...adjust });
-    handles.add(handle);
-    return () => { handles.delete(handle); handle.destroy(); };
-    // The material is compared by its serialized value.
+    mounted.current = mountGlassHostHandle(element, material);
+    return () => {
+      mounted.current?.destroy();
+      mounted.current = null;
+    };
+    // The host identity is the lifetime boundary; material changes update in place.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [ref, key]);
+  }, [ref]);
+  useEffect(() => {
+    mounted.current?.update(material);
+  }, [key]);
+}
+
+/**
+ * Mounts the shared engine on a host chosen at runtime, optionally with a
+ * backend that only applies to this surface (e.g. the SVG mobile nav bar).
+ * The caller owns the host lifecycle and may toggle the effect at any time.
+ */
+export function useGlassElementHost(element: HTMLElement | null, material: GlassMaterial, enabled = true, backend?: GlassBackend): void {
+  const key = JSON.stringify(material);
+  const mounted = useRef<MountedGlassHost | null>(null);
+  useEffect(() => {
+    if (!enabled || !element || typeof window === "undefined" || typeof window.matchMedia !== "function") return;
+    mounted.current = mountGlassHostHandle(element, material, backend);
+    return () => {
+      mounted.current?.destroy();
+      mounted.current = null;
+    };
+    // Element identity and the per-host backend are the lifetime boundary.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [element, enabled, backend]);
+  useEffect(() => {
+    mounted.current?.update(material);
+  }, [key]);
 }

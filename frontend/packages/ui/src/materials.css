@@ -1,0 +1,282 @@
+/*
+ * Surface and material roles for the rumahl UI kit.
+ *
+ * Everything is derived from `--rumahl-ui-*` theme tokens (applied by
+ * ThemeProvider / `defineTheme`), never from a fixed palette, so custom themes
+ * keep full control: overriding a token restyles the surfaces too. Import this
+ * once, before `components/controls.css`, to render components with the OS
+ * material look outside the shell (Storybook, an extracted UI repo, apps).
+ */
+:root,
+.shell {
+  /* Morphism is a single strength (0 = off/solid … 1 = full glass) that scales
+     blur, saturation, translucency, sheen and rim consistently. */
+  --morphism: var(--rumahl-ui-material-morphism, 1);
+  --surface-base: var(--rumahl-ui-color-surface-strong);
+  --surface-opacity: calc(
+    var(--rumahl-ui-material-opacity, 0.7) +
+      (1 - var(--rumahl-ui-material-opacity, 0.7)) * (1 - var(--morphism))
+  );
+  --surface-fill: color-mix(
+    in srgb,
+    var(--surface-base) calc(var(--surface-opacity) * 100%),
+    transparent
+  );
+  /* Wallpaper tint layer (transparent when disabled). */
+  --surface-tint: linear-gradient(
+    var(--rumahl-ui-color-wallpaper-tint, transparent),
+    var(--rumahl-ui-color-wallpaper-tint, transparent)
+  );
+  --surface-edge: var(--rumahl-ui-color-outline);
+  --surface-hairline: color-mix(in srgb, var(--surface-edge) 90%, transparent);
+  --surface-light: color-mix(
+    in srgb,
+    var(--surface-base) 30%,
+    rgb(255 255 255 / calc(70% * var(--morphism)))
+  );
+  /* Glass reads as one specular top edge plus a soft diagonal sheen. */
+  --surface-sheen: linear-gradient(
+    180deg,
+    rgb(255 255 255 / calc(22% * var(--morphism))) 0%,
+    rgb(255 255 255 / calc(4% * var(--morphism))) 42%,
+    rgb(255 255 255 / 0%) 100%
+  );
+  --surface-rim:
+    inset 0 0.5px 0 rgb(255 255 255 / calc(34% * var(--morphism))),
+    inset 0 -0.5px 0 rgb(0 0 0 / calc(8% * var(--morphism)));
+  --surface-shadow: var(--rumahl-ui-color-shadow);
+  --surface-elevation:
+    0 0 0 0.5px var(--surface-hairline),
+    0 10px 30px -12px color-mix(in srgb, var(--surface-shadow) 90%, transparent),
+    0 2px 8px -2px color-mix(in srgb, var(--surface-shadow) 70%, transparent);
+  --surface-filter: blur(
+      calc(var(--rumahl-ui-material-blur, 60px) * var(--morphism))
+    )
+    saturate(
+      calc(
+        1 + (var(--rumahl-ui-material-saturation, 1.8) - 1) * var(--morphism)
+      )
+    );
+  /* Milky frosted veil for controls. */
+  --milk: color-mix(in srgb, #fff 12%, transparent);
+
+  /* Base material roles. A theme may override any of these; the default theme
+     and `classic.css` do so with higher specificity. */
+  --material-line: color-mix(
+    in srgb,
+    var(--rumahl-ui-color-text-primary) 12%,
+    transparent
+  );
+  --material-light: color-mix(in srgb, var(--surface-base) 65%, transparent);
+  --material-glass: color-mix(
+    in srgb,
+    var(--surface-base) calc(18% + var(--surface-opacity) * 18%),
+    transparent
+  );
+  --material-frosted: color-mix(
+    in srgb,
+    var(--surface-base) calc(64% + var(--surface-opacity) * 20%),
+    transparent
+  );
+  --material-soft: color-mix(
+    in srgb,
+    var(--rumahl-ui-color-panel-background) 45%,
+    transparent
+  );
+  --material-overlay: color-mix(in srgb, var(--surface-base) 90%, transparent);
+  --material-solid: var(--rumahl-ui-color-panel-background);
+  /* Sidebar/navigation surface: rumahl OS `--side` (same family as the window). */
+  --material-sidebar: var(--rumahl-ui-color-side, rgb(12 15 29 / 55%));
+  --material-shadow:
+    0 24px 64px -22px var(--surface-shadow), 0 3px 10px #00000018;
+  --material-rim: inset 0 1px var(--material-light), inset 0 -1px #0000000c;
+}
+
+/* Light glass stays clear and see-through instead of milky white. */
+.shell[data-scheme="light"] {
+  --surface-opacity: calc(
+    (
+        var(--rumahl-ui-material-opacity, 0.7) +
+          (1 - var(--rumahl-ui-material-opacity, 0.7)) * (1 - var(--morphism))
+      ) *
+      0.4
+  );
+  --milk: color-mix(in srgb, #fff 34%, transparent);
+}
+
+.shell[data-scheme="dark"] {
+  --material-light: color-mix(in srgb, var(--surface-base) 75%, #ffffff20);
+}
+
+/* Solid keeps the capsule material opaque, without backdrop processing. */
+.shell[data-material="solid"] {
+  --surface-sheen: linear-gradient(transparent, transparent);
+  --surface-rim: inset 0 1px 0 var(--surface-edge);
+  --surface-fill: var(--surface-base);
+  --surface-filter: none;
+  --surface-light: var(--surface-edge);
+}
+
+@media (prefers-reduced-transparency: reduce) {
+  :root,
+  .shell {
+    --surface-sheen: linear-gradient(transparent, transparent);
+    --surface-rim: inset 0 1px 0 var(--surface-edge);
+    --surface-fill: var(--surface-base);
+    --surface-filter: none;
+  }
+}
+
+@supports not (
+  (backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))
+) {
+  :root,
+  .shell {
+    --surface-fill: var(--surface-base);
+  }
+}
+
+:root,
+.shell {
+  /* The OS window system. `reference.css` is unlayered and therefore wins over
+     the layered `new-design.css`, so surfaces use the theme's strong surface
+     (palette-derived), not the fixed navy: the window at 82%, the sidebar /
+     `--side` at 55%. Themes may override these to recolour the window system. */
+  --rumahl-ui-color-window-background: color-mix(
+    in srgb,
+    var(--rumahl-ui-color-surface-strong, #f5f5f7) 82%,
+    transparent
+  );
+  --rumahl-ui-color-window-background-solid: var(
+    --rumahl-ui-color-surface-strong,
+    #f5f5f7
+  );
+  --rumahl-ui-color-side: color-mix(
+    in srgb,
+    var(--rumahl-ui-color-surface-strong, #f5f5f7) 55%,
+    transparent
+  );
+  /* Group/row surfaces (the reference chrome `--row` / `--divider`). */
+  --rumahl-ui-color-row: rgba(255, 255, 255, 0.047);
+  --rumahl-ui-color-divider: rgba(255, 255, 255, 0.1);
+}
+
+.shell[data-scheme="light"] {
+  --rumahl-ui-color-row: rgba(255, 255, 255, 0.41);
+  --rumahl-ui-color-divider: rgba(50, 80, 110, 0.13);
+}
+
+/*
+ * App window background, full bleed. The window material the shell paints
+ * behind app content: the native window glass with a 45px backdrop blur, so the
+ * desktop picture reads through. Use it as the full-area layer between the
+ * wallpaper and the components. Solid (or reduced transparency) keeps it opaque.
+ */
+.rumahl-app-surface {
+  position: relative;
+  background: var(--rumahl-ui-color-window-background);
+  backdrop-filter: blur(45px) saturate(1.65);
+  -webkit-backdrop-filter: blur(45px) saturate(1.65);
+}
+
+/* Specular sheen across the glass, like the window frame. */
+.rumahl-app-surface::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: linear-gradient(
+    125deg,
+    rgba(255, 255, 255, 0.09),
+    transparent 32%,
+    rgba(255, 255, 255, 0.025) 78%,
+    transparent
+  );
+}
+
+[data-material="solid"] .rumahl-app-surface,
+[data-material="solid"].rumahl-app-surface {
+  background: var(--rumahl-ui-color-window-background-solid);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+
+@media (prefers-reduced-transparency: reduce) {
+  .rumahl-app-surface {
+    background: var(--rumahl-ui-color-window-background-solid);
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+  }
+}
+
+/*
+ * App window surface: the same material as a framed window (rounded, hairline
+ * rim, drop shadow and a specular sheen), for a single floating window. Mirrors
+ * `.window` in the reference chrome.
+ */
+.rumahl-window-surface {
+  position: relative;
+  border-radius: var(--window-radius);
+  background: var(--window-background);
+  border: var(--window-border);
+  box-shadow: var(--window-shadow);
+  backdrop-filter: var(--window-backdrop);
+  -webkit-backdrop-filter: var(--window-backdrop);
+}
+
+/* Specular sheen across the glass. */
+.rumahl-window-surface::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  z-index: 1;
+  background: var(--window-sheen);
+}
+
+[data-material="solid"] .rumahl-window-surface,
+[data-material="solid"].rumahl-window-surface {
+  background: var(--window-background-solid);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+
+@media (prefers-reduced-transparency: reduce) {
+  .rumahl-window-surface {
+    background: var(--window-background-solid);
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+  }
+}
+
+/*
+ * Opt-in glass. The base/clean theme ships none; a theme enables the material
+ * exactly where it wants by adding `.rumahl-glass` to an element (and setting
+ * the `--surface-*` recipe it prefers). The element takes the current theme's
+ * glass — no global switch needed. Solid / reduced transparency fall back to an
+ * opaque surface.
+ */
+.rumahl-glass {
+  background: var(--surface-tint), var(--surface-sheen), var(--surface-fill);
+  border: 0.5px solid var(--surface-hairline);
+  box-shadow: var(--surface-rim), var(--surface-elevation);
+  backdrop-filter: var(--surface-filter);
+  -webkit-backdrop-filter: var(--surface-filter);
+  color: var(--rumahl-ui-color-text-primary);
+}
+
+[data-material="solid"] .rumahl-glass,
+[data-material="solid"].rumahl-glass {
+  background: var(--surface-base);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+
+@media (prefers-reduced-transparency: reduce) {
+  .rumahl-glass {
+    background: var(--surface-base);
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+  }
+}

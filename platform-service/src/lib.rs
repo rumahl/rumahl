@@ -4,13 +4,16 @@ use rumahl_account_auth::{
     PasswordBlocklist, SessionToken, StoredSessionCredentialResolver,
 };
 use rumahl_core::{
-    AccountStateRepository, BrowserProfileId, PlatformSnapshotRepository,
-    ShellPreferencesRepository, UnixTimestamp, UserId, WorkspaceRepository,
+    AccountStateRepository, AuditAction, AuditActor, AuditLog, AuditOutcome, BrowserProfileId,
+    InstalledAppSnapshot, NewAuditEvent, OsMode, OsModeRepository, OsModeSettings,
+    OsModeStoreError, PlatformSnapshotRepository, PreferenceScope, ShellPreferencesRepository,
+    UnixTimestamp, UserId, UserRole, WorkspaceRepository,
 };
 use rumahl_persistence_sqlite::{
-    BrowserSessionError, SqliteAccountStateRepository, SqliteBrowserSessionRepository,
-    SqliteLocalAccountAdministrationRepository, SqlitePasswordCredentialRepository,
-    SqliteSessionCredentialRepository, SqliteShellPreferences, SqliteSnapshotRepository,
+    BrowserSessionError, SqliteAccountRoles, SqliteAccountStateRepository,
+    SqliteBrowserSessionRepository, SqliteLocalAccountAdministrationRepository,
+    SqlitePasswordCredentialRepository, SqliteSessionCredentialRepository, SqliteShellPreferences,
+    SqliteSnapshotRepository,
 };
 use rumahl_platform_api::{LocalSessionAuthenticator, ShellSnapshotProvider, ShellSnapshotSubject};
 use rumahl_platform_web::{
@@ -18,14 +21,19 @@ use rumahl_platform_web::{
     WidgetFrameResolver,
 };
 use rumahl_ui_contracts::{
-    ResolvedTheme, ShellApp, ShellMode, ShellSnapshot, ShellSystemStatus, ShellTheme, ShellUser,
-    SystemProtectionStatus, theme_by_id,
+    ExtensionContribution, ExtensionSize, ResolvedTheme, ShellApp, ShellMode, ShellSnapshot,
+    ShellSystemStatus, ShellTheme, ShellUser, ShellUserRole, SurfaceIcon, SurfaceKind,
+    SurfacePlacement, SurfaceSlot, SurfaceTone, SystemProtectionStatus, theme_by_id,
 };
 use sha2::{Digest, Sha256};
+use std::os::unix::fs::PermissionsExt;
 use std::{collections::HashSet, path::Path, sync::Arc};
 use zeroize::Zeroizing;
 
 pub type ServiceError = Box<dyn std::error::Error + Send + Sync>;
+
+mod administration;
+pub use administration::LocalAdministration;
 
 /// A locally supplied blocklist is required when provisioning accounts. Login
 /// uses existing verifiers and does not depend on a cloud password service.
@@ -60,11 +68,63 @@ pub fn provision(
     Ok(())
 }
 
+/// State-volume databases, in backup order.
+pub const STATE_DATABASES: [&str; 5] = [
+    "accounts.sqlite",
+    "platform.sqlite",
+    "preferences.sqlite",
+    "files.sqlite",
+    "audit.sqlite",
+];
+
+/// Writes a consistent snapshot of every state database into `destination`.
+///
+/// The destination is forced owner-only (`0700`) because backups contain
+/// accounts and personal files. Every source is schema-checked first, so a
+/// database written by a newer binary is refused instead of copied. Snapshots
+/// use the SQLite online backup API, never a live file copy.
+pub fn backup_state(state_dir: &Path, destination: &Path) -> Result<(), ServiceError> {
+    std::fs::create_dir_all(destination)?;
+    let metadata = std::fs::symlink_metadata(destination)?;
+    if !metadata.is_dir() || metadata.file_type().is_symlink() {
+        return Err(std::io::Error::other("backup destination must be a directory").into());
+    }
+    std::fs::set_permissions(destination, std::fs::Permissions::from_mode(0o700))?;
+    for name in STATE_DATABASES {
+        let source = state_dir.join(name);
+        if !source.exists() {
+            continue;
+        }
+        rumahl_persistence_sqlite::verify_schema(&source).map_err(|error| {
+            std::io::Error::other(format!("database schema check failed: {error}"))
+        })?;
+        rumahl_persistence_sqlite::backup_database(&source, &destination.join(name))?;
+    }
+    Ok(())
+}
+
+/// Resolves the apps data volume root.
+///
+/// `RUMAHL_APPS_ROOT` overrides it (development and tests); otherwise the
+/// product path `/apps` is used when it exists. `None` disables app-data
+/// browsing rather than silently writing somewhere else.
+pub fn apps_data_root() -> Option<std::path::PathBuf> {
+    match std::env::var_os("RUMAHL_APPS_ROOT") {
+        Some(value) => Some(std::path::PathBuf::from(value)),
+        None => {
+            let default = std::path::PathBuf::from("/apps");
+            default.is_dir().then_some(default)
+        }
+    }
+}
+
 pub struct LocalBrowserSessions {
     accounts: SqliteAccountStateRepository,
     passwords:
         PasswordAuthenticationService<SqlitePasswordCredentialRepository, LocalPasswordBlocklist>,
     sessions: SqliteBrowserSessionRepository,
+    /// Optional append-only audit trail; never receives secrets.
+    audit: Option<Arc<dyn AuditLog>>,
 }
 impl LocalBrowserSessions {
     pub fn open(path: &Path) -> Result<Self, ServiceError> {
@@ -75,10 +135,56 @@ impl LocalBrowserSessions {
                 LocalPasswordBlocklist::default(),
             )?,
             sessions: SqliteBrowserSessionRepository::open(path)?,
+            audit: None,
         })
+    }
+
+    /// Records authentication events to the audit trail.
+    pub fn with_audit(mut self, audit: Arc<dyn AuditLog>) -> Self {
+        self.audit = Some(audit);
+        self
+    }
+
+    fn record(
+        &self,
+        actor: AuditActor,
+        action: AuditAction,
+        outcome: AuditOutcome,
+        target: Option<&str>,
+    ) {
+        let Some(audit) = &self.audit else {
+            return;
+        };
+        let Ok(at) = UnixTimestamp::now() else {
+            return;
+        };
+        let mut event = NewAuditEvent::new(at, actor, action, outcome);
+        if let Some(target) = target
+            && let Ok(with_target) = event.clone().with_target(target)
+        {
+            event = with_target;
+        }
+        let _ = audit.record(event);
     }
 }
 impl BrowserSessions for LocalBrowserSessions {
+    fn login_accounts(&self) -> Result<Vec<rumahl_platform_web::LoginAccount>, ShellBackendError> {
+        let state = self
+            .accounts
+            .load()
+            .map_err(|_| ShellBackendError::Unavailable)?;
+        Ok(state
+            .accounts()
+            .accounts()
+            .iter()
+            .filter(|account| account.can_authenticate())
+            .map(|account| rumahl_platform_web::LoginAccount {
+                username: account.username().as_str().to_owned(),
+                display_name: account.display_name().to_owned(),
+            })
+            .collect())
+    }
+
     fn login(
         &self,
         username: &str,
@@ -90,13 +196,30 @@ impl BrowserSessions for LocalBrowserSessions {
             .accounts
             .load()
             .map_err(|_| ShellBackendError::Unavailable)?;
-        let proof = self
-            .passwords
-            .authenticate(&state, username, std::mem::take(&mut *password), now)
-            .map_err(|error| match error {
-                PasswordAuthenticationError::InvalidCredentials => ShellBackendError::Unauthorized,
-                _ => ShellBackendError::Unavailable,
-            })?;
+        let proof =
+            match self
+                .passwords
+                .authenticate(&state, username, std::mem::take(&mut *password), now)
+            {
+                Ok(proof) => proof,
+                Err(error) => {
+                    if matches!(error, PasswordAuthenticationError::InvalidCredentials) {
+                        self.record(
+                            AuditActor::System,
+                            AuditAction::SignInFailed,
+                            AuditOutcome::Denied,
+                            None,
+                        );
+                    }
+                    return Err(match error {
+                        PasswordAuthenticationError::InvalidCredentials => {
+                            ShellBackendError::Unauthorized
+                        }
+                        _ => ShellBackendError::Unavailable,
+                    });
+                }
+            };
+        let user_id = *proof.user_id();
         let expires = UnixTimestamp::from_seconds(
             now.as_seconds()
                 .checked_add(SESSION_SECONDS)
@@ -104,11 +227,61 @@ impl BrowserSessions for LocalBrowserSessions {
         );
         self.sessions
             .create(proof, expires)
-            .map(|token| token.encode())
+            .map(|token| {
+                self.record(
+                    AuditActor::User(user_id),
+                    AuditAction::SignIn,
+                    AuditOutcome::Success,
+                    None,
+                );
+                token.encode()
+            })
             .map_err(|error| match error {
                 BrowserSessionError::InvalidProof => ShellBackendError::Unauthorized,
                 BrowserSessionError::Storage => ShellBackendError::Unavailable,
             })
+    }
+    fn reauthenticate(&self, user_id: UserId, password: String) -> Result<(), ShellBackendError> {
+        let mut password = Zeroizing::new(password);
+        let now = UnixTimestamp::now().map_err(|_| ShellBackendError::Unavailable)?;
+        let state = self
+            .accounts
+            .load()
+            .map_err(|_| ShellBackendError::Unavailable)?;
+        let username = state
+            .accounts()
+            .accounts()
+            .iter()
+            .find(|account| *account.user_id() == user_id)
+            .map(|account| account.username().as_str().to_owned())
+            .ok_or(ShellBackendError::Unauthorized)?;
+        match self
+            .passwords
+            .authenticate(&state, &username, std::mem::take(&mut *password), now)
+        {
+            Ok(_) => {
+                self.record(
+                    AuditActor::User(user_id),
+                    AuditAction::Reauthenticate,
+                    AuditOutcome::Success,
+                    None,
+                );
+                Ok(())
+            }
+            Err(error) => {
+                if matches!(error, PasswordAuthenticationError::InvalidCredentials) {
+                    self.record(
+                        AuditActor::User(user_id),
+                        AuditAction::ReauthenticateFailed,
+                        AuditOutcome::Denied,
+                        None,
+                    );
+                    Err(ShellBackendError::Unauthorized)
+                } else {
+                    Err(ShellBackendError::Unavailable)
+                }
+            }
+        }
     }
     fn logout(&self, credential: &str) -> Result<(), ShellBackendError> {
         let Ok(token) = SessionToken::parse(credential) else {
@@ -119,12 +292,182 @@ impl BrowserSessions for LocalBrowserSessions {
                 &token,
                 UnixTimestamp::now().map_err(|_| ShellBackendError::Unavailable)?,
             )
-            .map_err(|_| ShellBackendError::Unavailable)
+            .map_err(|_| ShellBackendError::Unavailable)?;
+        self.record(
+            AuditActor::System,
+            AuditAction::SignOut,
+            AuditOutcome::Success,
+            None,
+        );
+        Ok(())
+    }
+}
+
+/// Wraps a mode repository so every accepted change is written to the audit
+/// trail. A failed change is recorded as a `failure` without rolling back.
+pub struct AuditedOsModeRepository {
+    inner: Arc<dyn OsModeRepository>,
+    audit: Arc<dyn AuditLog>,
+}
+
+impl AuditedOsModeRepository {
+    pub fn new(inner: Arc<dyn OsModeRepository>, audit: Arc<dyn AuditLog>) -> Self {
+        Self { inner, audit }
+    }
+
+    fn record(&self, user: UserId, mode: Option<OsMode>, outcome: AuditOutcome) {
+        let Ok(at) = UnixTimestamp::now() else {
+            return;
+        };
+        let mut event = NewAuditEvent::new(
+            at,
+            AuditActor::User(user),
+            AuditAction::OsModeChanged,
+            outcome,
+        );
+        if let Some(target) = mode.map(|mode| mode.as_str())
+            && let Ok(with_target) = event.clone().with_target(target)
+        {
+            event = with_target;
+        }
+        let _ = self.audit.record(event);
+    }
+}
+
+impl OsModeRepository for AuditedOsModeRepository {
+    fn load(
+        &self,
+        user: UserId,
+        device: BrowserProfileId,
+    ) -> Result<OsModeSettings, OsModeStoreError> {
+        self.inner.load(user, device)
+    }
+
+    fn save(
+        &self,
+        user: UserId,
+        device: BrowserProfileId,
+        revision: u64,
+        scope: PreferenceScope,
+        mode: Option<OsMode>,
+    ) -> Result<OsModeSettings, OsModeStoreError> {
+        let result = self.inner.save(user, device, revision, scope, mode);
+        let effective = result
+            .as_ref()
+            .ok()
+            .map(OsModeSettings::effective_mode)
+            .or(mode);
+        let outcome = if result.is_ok() {
+            AuditOutcome::Success
+        } else {
+            AuditOutcome::Failure
+        };
+        self.record(user, effective, outcome);
+        result
+    }
+}
+
+fn surface_contributions(
+    visible: &[InstalledAppSnapshot],
+) -> Result<Vec<ExtensionContribution>, ServiceError> {
+    let mut contributions = Vec::new();
+    let mut ids = HashSet::new();
+    for app in visible {
+        for surface in app.manifest().surfaces() {
+            if contributions.len() >= 128 || !ids.insert(surface.id().as_str().to_owned()) {
+                continue;
+            }
+            contributions.push(
+                ExtensionContribution::surface(
+                    surface.id().as_str(),
+                    app.manifest().display_name(),
+                    app.identity().app_id().as_str(),
+                    surface_slot(surface.slot()),
+                    surface_kind(surface.kind()),
+                    surface_size(surface.size()),
+                    surface_placement(surface.placement()),
+                    surface_tone(surface.tone()),
+                    surface_icon(surface.icon()),
+                    surface
+                        .entrypoint()
+                        .map(|entrypoint| entrypoint.as_str().to_owned()),
+                )
+                .map_err(|_| std::io::Error::other("invalid app surface"))?,
+            );
+        }
+    }
+    Ok(contributions)
+}
+
+fn surface_slot(value: rumahl_core::SurfaceSlot) -> SurfaceSlot {
+    match value {
+        rumahl_core::SurfaceSlot::Desktop => SurfaceSlot::Desktop,
+        rumahl_core::SurfaceSlot::Launcher => SurfaceSlot::Launcher,
+        rumahl_core::SurfaceSlot::Both => SurfaceSlot::Both,
+    }
+}
+
+fn surface_kind(value: rumahl_core::SurfaceKind) -> SurfaceKind {
+    match value {
+        rumahl_core::SurfaceKind::Companion => SurfaceKind::Companion,
+        rumahl_core::SurfaceKind::Badge => SurfaceKind::Badge,
+        rumahl_core::SurfaceKind::Panel => SurfaceKind::Panel,
+    }
+}
+
+fn surface_size(value: rumahl_core::SurfaceSize) -> ExtensionSize {
+    match value {
+        rumahl_core::SurfaceSize::Small => ExtensionSize::Small,
+        rumahl_core::SurfaceSize::Medium => ExtensionSize::Medium,
+        rumahl_core::SurfaceSize::Large => ExtensionSize::Large,
+    }
+}
+
+fn surface_placement(value: rumahl_core::SurfacePlacement) -> SurfacePlacement {
+    match value {
+        rumahl_core::SurfacePlacement::TopLeft => SurfacePlacement::TopLeft,
+        rumahl_core::SurfacePlacement::TopRight => SurfacePlacement::TopRight,
+        rumahl_core::SurfacePlacement::BottomLeft => SurfacePlacement::BottomLeft,
+        rumahl_core::SurfacePlacement::BottomRight => SurfacePlacement::BottomRight,
+    }
+}
+
+fn surface_tone(value: rumahl_core::SurfaceTone) -> SurfaceTone {
+    match value {
+        rumahl_core::SurfaceTone::Accent => SurfaceTone::Accent,
+        rumahl_core::SurfaceTone::Neutral => SurfaceTone::Neutral,
+        rumahl_core::SurfaceTone::Warm => SurfaceTone::Warm,
+        rumahl_core::SurfaceTone::Cool => SurfaceTone::Cool,
+        rumahl_core::SurfaceTone::Rose => SurfaceTone::Rose,
+        rumahl_core::SurfaceTone::Mint => SurfaceTone::Mint,
+    }
+}
+
+fn surface_icon(value: rumahl_core::SurfaceIcon) -> SurfaceIcon {
+    match value {
+        rumahl_core::SurfaceIcon::Dot => SurfaceIcon::Dot,
+        rumahl_core::SurfaceIcon::Star => SurfaceIcon::Star,
+        rumahl_core::SurfaceIcon::Bolt => SurfaceIcon::Bolt,
+        rumahl_core::SurfaceIcon::Leaf => SurfaceIcon::Leaf,
+        rumahl_core::SurfaceIcon::Moon => SurfaceIcon::Moon,
+        rumahl_core::SurfaceIcon::Heart => SurfaceIcon::Heart,
+        rumahl_core::SurfaceIcon::Orbit => SurfaceIcon::Orbit,
+        rumahl_core::SurfaceIcon::Pulse => SurfaceIcon::Pulse,
+    }
+}
+
+pub(crate) fn shell_role(role: UserRole) -> ShellUserRole {
+    match role {
+        UserRole::PreAuthentication | UserRole::User => ShellUserRole::User,
+        UserRole::Manager => ShellUserRole::Manager,
+        UserRole::Administrator => ShellUserRole::Administrator,
+        UserRole::Owner => ShellUserRole::Owner,
     }
 }
 
 pub struct PersistentShellSnapshots {
     accounts: SqliteAccountStateRepository,
+    roles: SqliteAccountRoles,
     platform: SqliteSnapshotRepository,
     build_id: String,
     locale: String,
@@ -150,8 +493,11 @@ impl PersistentShellSnapshots {
             ShellSystemStatus::new(SystemProtectionStatus::Attention, 0, 1, None)?,
             vec![],
         )?;
+        let roles = SqliteAccountRoles::open(accounts)?;
+        roles.ensure_owner()?;
         Ok(Self {
             accounts: SqliteAccountStateRepository::open(accounts)?,
+            roles,
             platform: SqliteSnapshotRepository::open(platform)?,
             build_id: build_id.into(),
             locale: locale.into(),
@@ -224,6 +570,7 @@ impl PersistentShellSnapshots {
             .get(user_id)
             .filter(|a| a.can_authenticate())
             .ok_or_else(|| std::io::Error::other("account unavailable"))?;
+        let role = self.roles.role(*user_id)?;
         let platform = self.platform.load()?;
         let now_seconds = UnixTimestamp::now()?;
         let identity = state
@@ -260,6 +607,9 @@ impl PersistentShellSnapshots {
                 )
             })
             .collect::<Result<Vec<_>, _>>()?;
+        let contributions = surface_contributions(&visible)?;
+        let surface_revision = serde_json::to_vec(&contributions)
+            .map_err(|_| std::io::Error::other("invalid app surfaces"))?;
         let count = visible.len();
         let now = UnixTimestamp::now()?
             .as_seconds()
@@ -272,8 +622,10 @@ impl PersistentShellSnapshots {
             user_id.to_string(),
             user.display_name(),
             &self.locale,
+            role.as_str(),
             &self.build_id,
             &catalog_revision,
+            &surface_revision,
             theme.id(),
             mode.as_str(),
             workspace.as_deref().unwrap_or(""),
@@ -281,7 +633,7 @@ impl PersistentShellSnapshots {
         Ok(ShellSnapshot::new(
             &self.build_id,
             revision,
-            ShellUser::new(user.display_name(), &self.locale)?,
+            ShellUser::new(user.display_name(), &self.locale)?.with_role(shell_role(role)),
             ShellTheme::from_theme(theme_stylesheet(theme.id()).0, &theme)?,
             shell_apps,
             workspace,
@@ -292,7 +644,7 @@ impl PersistentShellSnapshots {
                 now,
                 None,
             )?,
-            vec![],
+            contributions,
         )?
         .with_mode(mode))
     }
@@ -344,7 +696,7 @@ pub fn theme_stylesheet(id: &str) -> (String, String) {
 /// All built-in stylesheets that must be served for the account theme to render
 /// correctly on the first paint (no flash of the default theme).
 pub fn theme_stylesheets() -> Vec<(String, String)> {
-    ["com.rumahl.default", "com.rumahl.classic"]
+    ["com.rumahl.default"]
         .into_iter()
         .map(theme_stylesheet)
         .collect()
@@ -369,4 +721,61 @@ fn sha256_hex(bytes: &[u8]) -> String {
 }
 
 pub mod apps;
+pub mod host_files;
 pub mod install;
+
+#[cfg(test)]
+mod surface_tests {
+    use super::*;
+    use rumahl_core::{AppId, InstalledApp, PackagePath, PublisherId};
+    use rumahl_core::{
+        AppManifest, AppManifestValidator, AppVersion, RuntimeDescriptor, RuntimeEntrypoint,
+        RuntimeEntrypointId, SurfaceDeclaration, SurfaceIcon, SurfaceKind, SurfacePlacement,
+        SurfaceSize, SurfaceSlot, SurfaceTone,
+    };
+
+    fn installed_app_with_surface() -> InstalledApp {
+        let mut runtime = RuntimeDescriptor::web();
+        runtime
+            .add_entrypoint(RuntimeEntrypoint::web_asset(
+                RuntimeEntrypointId::parse("main").unwrap(),
+                PackagePath::parse("index.html").unwrap(),
+            ))
+            .unwrap();
+        let mut manifest = AppManifest::new(
+            AppId::parse("com.example.clock").unwrap(),
+            PublisherId::parse("com.example").unwrap(),
+            AppVersion::new(1, 0, 0),
+            "Clock",
+            runtime,
+        )
+        .unwrap();
+        manifest
+            .add_surface(
+                SurfaceDeclaration::new(
+                    rumahl_core::ContributionId::parse("com.example.clock.desktop").unwrap(),
+                    SurfaceSlot::Both,
+                    SurfaceKind::Companion,
+                    SurfaceSize::Medium,
+                    SurfacePlacement::BottomRight,
+                    SurfaceTone::Accent,
+                    SurfaceIcon::Pulse,
+                )
+                .with_entrypoint(Some(RuntimeEntrypointId::parse("main").unwrap())),
+            )
+            .unwrap();
+        InstalledApp::create(manifest, &AppManifestValidator::new()).unwrap()
+    }
+
+    #[test]
+    fn projects_installed_app_surfaces_into_shell_contributions() {
+        let app = InstalledAppSnapshot::capture(&installed_app_with_surface());
+        let contributions = surface_contributions(&[app]).unwrap();
+        assert_eq!(contributions.len(), 1);
+        let contribution = &contributions[0];
+        assert_eq!(contribution.id(), "com.example.clock.desktop");
+        let json = serde_json::to_value(contribution).unwrap();
+        assert_eq!(json["app"], "com.example.clock");
+        assert_eq!(json["entrypoint"], "main");
+    }
+}

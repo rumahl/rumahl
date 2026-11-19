@@ -6,7 +6,10 @@ use crate::{
     PlatformState,
 };
 
-use super::{RuntimeAdapterError, RuntimeAdapterRegistry, RuntimeKind, RuntimeStatus};
+use super::{
+    RuntimeAdapterError, RuntimeAdapterRegistry, RuntimeCapabilityResult, RuntimeKind,
+    RuntimeStatus,
+};
 
 #[derive(Debug, Default, Clone, Copy)]
 pub struct RuntimeRouter;
@@ -29,7 +32,7 @@ impl RuntimeRouter {
         execution: &CapabilityExecution,
         state: &PlatformState,
         adapters: &RuntimeAdapterRegistry,
-    ) -> Result<(), RuntimeRoutingError> {
+    ) -> Result<RuntimeCapabilityResult, RuntimeRoutingError> {
         let app = self.resolve_app(execution.provider().identity(), state)?;
 
         let adapter = self.resolve_adapter(app, adapters)?;
@@ -276,14 +279,14 @@ mod tests {
             &self,
             _app: &InstalledApp,
             _execution: &CapabilityExecution,
-        ) -> Result<(), RuntimeAdapterError> {
+        ) -> Result<crate::RuntimeCapabilityResult, RuntimeAdapterError> {
             if let Some(error) = self.failure {
                 return Err(error);
             }
 
             self.executions.fetch_add(1, Ordering::Relaxed);
 
-            Ok(())
+            Ok(crate::RuntimeCapabilityResult::empty())
         }
 
         fn deliver_event(

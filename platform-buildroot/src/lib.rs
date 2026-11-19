@@ -7,6 +7,8 @@ mod docker_image_channel;
 mod docker_image_importer;
 mod docker_runtime_target;
 mod namespace_secret_target;
+mod os_events;
+mod os_layout;
 mod package_importer;
 mod runtime_provider;
 mod runtime_secret_server;
@@ -33,6 +35,11 @@ pub use docker_runtime_target::{
 pub use namespace_secret_target::{
     NamespaceRuntimeSecretTarget, NamespaceRuntimeSecretTargetConfig,
     NamespaceRuntimeSecretTargetConfigError, NamespaceRuntimeSecretTargetError,
+};
+pub use os_events::{append_os_event, os_event_spool_path, report_os_event};
+pub use os_layout::{
+    ADMIN_HOME, APPS_ROOT, FilesystemLayout, HOME_ROOT, LayoutError, STATE_ROOT, SYSTEM_ROOT,
+    USER_DIRECTORIES,
 };
 pub use package_importer::{
     InstalledPackage, PackageImportError, PackageImporter, PackageImporterConfig,

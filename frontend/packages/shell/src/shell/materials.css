@@ -1,31 +1,79 @@
 /* System surfaces derive their tint and contrast from the active palette. */
-:root, .shell {
+:root,
+.shell {
   /* Morphism is a single strength (0 = off/solid … 1 = full glass) that scales
      blur, saturation, translucency, sheen and rim consistently. */
   --morphism: var(--rumahl-ui-material-morphism, 1);
   --surface-base: var(--rumahl-ui-color-surface-strong);
-  --surface-opacity: calc(var(--rumahl-ui-material-opacity, 0.7) + (1 - var(--rumahl-ui-material-opacity, 0.7)) * (1 - var(--morphism)));
-  --surface-fill: color-mix(in srgb, var(--surface-base) calc(var(--surface-opacity) * 100%), transparent);
+  --surface-opacity: calc(
+    var(--rumahl-ui-material-opacity, 0.7) +
+      (1 - var(--rumahl-ui-material-opacity, 0.7)) * (1 - var(--morphism))
+  );
+  --surface-fill: color-mix(
+    in srgb,
+    var(--surface-base) calc(var(--surface-opacity) * 100%),
+    transparent
+  );
   /* Wallpaper tint layer (transparent when disabled). */
-  --surface-tint: linear-gradient(var(--rumahl-ui-color-wallpaper-tint, transparent), var(--rumahl-ui-color-wallpaper-tint, transparent));
+  --surface-tint: linear-gradient(
+    var(--rumahl-ui-color-wallpaper-tint, transparent),
+    var(--rumahl-ui-color-wallpaper-tint, transparent)
+  );
   --surface-edge: var(--rumahl-ui-color-outline);
   --surface-hairline: color-mix(in srgb, var(--surface-edge) 90%, transparent);
-  --surface-light: color-mix(in srgb, var(--surface-base) 30%, rgb(255 255 255 / calc(70% * var(--morphism))));
+  --surface-light: color-mix(
+    in srgb,
+    var(--surface-base) 30%,
+    rgb(255 255 255 / calc(70% * var(--morphism)))
+  );
   /* Glass reads as one specular top edge plus a soft diagonal sheen. */
-  --surface-sheen: linear-gradient(180deg, rgb(255 255 255 / calc(22% * var(--morphism))) 0%, rgb(255 255 255 / calc(4% * var(--morphism))) 42%, rgb(255 255 255 / 0%) 100%);
-  --surface-rim: inset 0 0.5px 0 rgb(255 255 255 / calc(34% * var(--morphism))), inset 0 -0.5px 0 rgb(0 0 0 / calc(8% * var(--morphism)));
+  --surface-sheen: linear-gradient(
+    180deg,
+    rgb(255 255 255 / calc(22% * var(--morphism))) 0%,
+    rgb(255 255 255 / calc(4% * var(--morphism))) 42%,
+    rgb(255 255 255 / 0%) 100%
+  );
+  --surface-rim:
+    inset 0 0.5px 0 rgb(255 255 255 / calc(34% * var(--morphism))),
+    inset 0 -0.5px 0 rgb(0 0 0 / calc(8% * var(--morphism)));
   --surface-shadow: var(--rumahl-ui-color-shadow);
-  --surface-elevation: 0 0 0 0.5px var(--surface-hairline), 0 10px 30px -12px color-mix(in srgb, var(--surface-shadow) 90%, transparent), 0 2px 8px -2px color-mix(in srgb, var(--surface-shadow) 70%, transparent);
-  --surface-filter: blur(calc(var(--rumahl-ui-material-blur, 60px) * var(--morphism))) saturate(calc(1 + (var(--rumahl-ui-material-saturation, 1.8) - 1) * var(--morphism)));
+  --surface-elevation:
+    0 0 0 0.5px var(--surface-hairline),
+    0 10px 30px -12px color-mix(in srgb, var(--surface-shadow) 90%, transparent),
+    0 2px 8px -2px color-mix(in srgb, var(--surface-shadow) 70%, transparent);
+  --surface-filter: blur(
+      calc(var(--rumahl-ui-material-blur, 60px) * var(--morphism))
+    )
+    saturate(
+      calc(
+        1 + (var(--rumahl-ui-material-saturation, 1.8) - 1) * var(--morphism)
+      )
+    );
   /* Milky frosted veil for controls. */
   --milk: color-mix(in srgb, #fff 12%, transparent);
 }
 /* Light glass stays clear and see-through instead of milky white. */
 .shell[data-scheme="light"] {
-  --surface-opacity: calc((var(--rumahl-ui-material-opacity, 0.7) + (1 - var(--rumahl-ui-material-opacity, 0.7)) * (1 - var(--morphism))) * 0.4);
+  --surface-opacity: calc(
+    (
+        var(--rumahl-ui-material-opacity, 0.7) +
+          (1 - var(--rumahl-ui-material-opacity, 0.7)) * (1 - var(--morphism))
+      ) *
+      0.4
+  );
   --milk: color-mix(in srgb, #fff 34%, transparent);
 }
-.desktop-menu, .shell :is(.os-dock, .menubar, .start-menu, .desktop-menu, .menubar__dropdown, .command-palette, .desktop-widget) {
+.desktop-menu,
+.shell
+  :is(
+    .os-dock,
+    .menubar,
+    .start-menu,
+    .desktop-menu,
+    .menubar__dropdown,
+    .command-palette,
+    .desktop-widget
+  ) {
   background: var(--surface-tint), var(--surface-sheen), var(--surface-fill);
   color: var(--rumahl-ui-color-text-primary);
   border: 0.5px solid var(--surface-hairline);
@@ -33,162 +81,649 @@
   -webkit-backdrop-filter: var(--surface-filter);
   box-shadow: var(--surface-rim), var(--surface-elevation);
 }
-.shell .menubar { height: 28px; border-width: 0 0 0.5px; box-shadow: var(--surface-rim); }
-.shell .menubar__dropdown { border-radius: 16px; padding: 7px; }
-.shell .menubar__item { font-size: 12px; }
-.shell .menubar__user { background: var(--rumahl-ui-color-accent); color: var(--rumahl-ui-color-on-accent, white); }
-.shell .os-dock { bottom: var(--rumahl-ui-layout-dock-offset, 10px); padding: 9px 11px; border-radius: var(--rumahl-ui-shape-radius-dock, 24px); gap: 8px; }
-.shell .os-dock .dock-item { border-radius: var(--rumahl-ui-shape-radius-icon, 15px); background: transparent; box-shadow: none; }
-.shell .os-dock .dock-item:hover { background: color-mix(in srgb, var(--surface-base) calc(var(--surface-opacity) * 60%), transparent); }
+.shell .menubar {
+  height: 28px;
+  border-width: 0 0 0.5px;
+  box-shadow: var(--surface-rim);
+}
+.shell .menubar__dropdown {
+  border-radius: 16px;
+  padding: 7px;
+}
+.shell .menubar__item {
+  font-size: 12px;
+}
+.shell .menubar__user {
+  background: var(--rumahl-ui-color-accent);
+  color: var(--rumahl-ui-color-on-accent, white);
+}
+.shell .os-dock {
+  bottom: var(--rumahl-ui-layout-dock-offset, 10px);
+  padding: 9px 11px;
+  border-radius: var(--rumahl-ui-shape-radius-dock, 24px);
+  gap: 8px;
+}
+.shell .os-dock .dock-item {
+  border-radius: var(--rumahl-ui-shape-radius-icon, 15px);
+  background: transparent;
+  box-shadow: none;
+}
+.shell .os-dock .dock-item:hover {
+  background: color-mix(
+    in srgb,
+    var(--surface-base) calc(var(--surface-opacity) * 60%),
+    transparent
+  );
+}
 /* Windows: hairline frame, rounded corners, rumahl controls. */
 .shell .shell-window {
   overflow: hidden;
   border: 0.5px solid var(--surface-hairline);
   border-radius: var(--rumahl-ui-shape-radius-window, 12px);
   background: transparent;
-  box-shadow: 0 0 0 0.5px color-mix(in srgb, var(--surface-shadow) 40%, transparent), 0 18px 50px -18px color-mix(in srgb, var(--surface-shadow) 90%, transparent), 0 3px 10px -4px color-mix(in srgb, var(--surface-shadow) 60%, transparent);
+  box-shadow:
+    0 0 0 0.5px color-mix(in srgb, var(--surface-shadow) 40%, transparent),
+    0 18px 50px -18px color-mix(in srgb, var(--surface-shadow) 90%, transparent),
+    0 3px 10px -4px color-mix(in srgb, var(--surface-shadow) 60%, transparent);
 }
-.shell .shell-window.is-focused { box-shadow: 0 0 0 0.5px color-mix(in srgb, var(--surface-shadow) 45%, transparent), 0 26px 70px -20px color-mix(in srgb, var(--surface-shadow) 100%, transparent), 0 4px 12px -4px color-mix(in srgb, var(--surface-shadow) 65%, transparent); }
-.shell .shell-window__titlebar { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 46px; padding-inline: 16px 10px; background: var(--surface-tint), var(--surface-sheen), var(--surface-fill); backdrop-filter: var(--surface-filter); -webkit-backdrop-filter: var(--surface-filter); border-bottom: 0.5px solid var(--surface-hairline); color: var(--rumahl-ui-color-text-primary); }
-.shell .shell-window__titlebar > :first-child { flex: 1; min-width: 0; }
-.shell .shell-window__titlebar h2 { font-size: 13px; font-weight: 600; letter-spacing: -.01em; margin: 0; }
+.shell .shell-window.is-focused {
+  box-shadow:
+    0 0 0 0.5px color-mix(in srgb, var(--surface-shadow) 45%, transparent),
+    0 26px 70px -20px
+      color-mix(in srgb, var(--surface-shadow) 100%, transparent),
+    0 4px 12px -4px color-mix(in srgb, var(--surface-shadow) 65%, transparent);
+}
+.shell .shell-window__titlebar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 46px;
+  padding-inline: 16px 10px;
+  background: var(--surface-tint), var(--surface-sheen), var(--surface-fill);
+  backdrop-filter: var(--surface-filter);
+  -webkit-backdrop-filter: var(--surface-filter);
+  border-bottom: 0.5px solid var(--surface-hairline);
+  color: var(--rumahl-ui-color-text-primary);
+}
+.shell .shell-window__titlebar > :first-child {
+  flex: 1;
+  min-width: 0;
+}
+.shell .shell-window__titlebar h2 {
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  margin: 0;
+}
 /* Nearly opaque content with a soft frost so the window feels solid, not hollow. */
 .shell .shell-window__content {
-  background: var(--surface-tint), color-mix(in srgb, var(--rumahl-ui-color-panel-background) 96%, transparent);
-  backdrop-filter: blur(calc(18px * var(--morphism))) saturate(calc(1 + (var(--rumahl-ui-material-saturation, 1.8) - 1) * var(--morphism) * .5));
+  background:
+    var(--surface-tint),
+    color-mix(in srgb, var(--rumahl-ui-color-panel-background) 96%, transparent);
+  backdrop-filter: blur(calc(18px * var(--morphism)))
+    saturate(
+      calc(
+        1 + (var(--rumahl-ui-material-saturation, 1.8) - 1) * var(--morphism) *
+          0.5
+      )
+    );
   -webkit-backdrop-filter: blur(calc(18px * var(--morphism)));
-  padding: 22px; border-radius: 0 0 calc(var(--rumahl-ui-shape-radius-window, 12px) - 1px) calc(var(--rumahl-ui-shape-radius-window, 12px) - 1px);
+  padding: 22px;
+  border-radius: 0 0 calc(var(--rumahl-ui-shape-radius-window, 12px) - 1px)
+    calc(var(--rumahl-ui-shape-radius-window, 12px) - 1px);
 }
 /* rumahl window controls: accent-tinted icon buttons. */
-.shell .shell-window__controls { display: flex; align-items: center; gap: 6px; }
-.shell .shell-window__controls button { display: grid; place-items: center; width: 28px; height: 28px; min-width: 28px; padding: 0; border: 0; border-radius: 8px; background: color-mix(in srgb, var(--rumahl-ui-color-accent) 12%, transparent); color: var(--rumahl-ui-color-accent); transition: background var(--rumahl-ui-motion-duration-fast, 120ms) ease, color var(--rumahl-ui-motion-duration-fast, 120ms) ease; }
-.shell .shell-window__controls button:hover { background: color-mix(in srgb, var(--rumahl-ui-color-accent) 24%, transparent); }
-.shell .shell-window__controls button:last-child:hover { background: color-mix(in srgb, #dc3545 18%, transparent); color: #dc3545; }
-.shell .shell-window__controls button svg { width: 15px; height: 15px; }
-.shell .shell-window__controls .window-control--snap { display: none; }
-.shell .start-menu { border-radius: 18px; }
-.shell .desktop-menu, .shell .command-palette { border-radius: 16px; }
-.shell .start-menu::backdrop { background: #00000018; backdrop-filter: blur(6px); }
-.shell .desktop-search { background: var(--surface-tint), var(--surface-fill); color: var(--rumahl-ui-color-text-primary); border: 0.5px solid var(--surface-hairline); backdrop-filter: var(--surface-filter); -webkit-backdrop-filter: var(--surface-filter); box-shadow: var(--surface-rim); }
-.shell .desktop-widgets { gap: 12px; }
-.shell .desktop-widget { border-radius: 20px; padding: 18px; }
-.shell .desktop-widget :is(p, strong, small) { color: inherit; }
-.shell .launcher-views, .shell .launcher-home .app-search input {
+.shell .shell-window__controls {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.shell .shell-window__controls button {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  min-width: 28px;
+  padding: 0;
+  border: 0;
+  border-radius: 8px;
+  background: color-mix(
+    in srgb,
+    var(--rumahl-ui-color-accent) 12%,
+    transparent
+  );
+  color: var(--rumahl-ui-color-accent);
+  transition:
+    background var(--rumahl-ui-motion-duration-fast, 120ms) ease,
+    color var(--rumahl-ui-motion-duration-fast, 120ms) ease;
+}
+.shell .shell-window__controls button:hover {
+  background: color-mix(
+    in srgb,
+    var(--rumahl-ui-color-accent) 24%,
+    transparent
+  );
+}
+.shell .shell-window__controls button:last-child:hover {
+  background: color-mix(in srgb, #dc3545 18%, transparent);
+  color: #dc3545;
+}
+.shell .shell-window__controls button svg {
+  width: 15px;
+  height: 15px;
+}
+.shell .shell-window__controls .window-control--snap {
+  display: none;
+}
+.shell .start-menu {
+  border-radius: 18px;
+}
+.shell .desktop-menu,
+.shell .command-palette {
+  border-radius: 16px;
+}
+.shell .start-menu::backdrop {
+  background: #00000018;
+  backdrop-filter: blur(6px);
+}
+.shell .desktop-search {
   background: var(--surface-tint), var(--surface-fill);
   color: var(--rumahl-ui-color-text-primary);
   border: 0.5px solid var(--surface-hairline);
   backdrop-filter: var(--surface-filter);
   -webkit-backdrop-filter: var(--surface-filter);
-  box-shadow: var(--surface-rim), 0 8px 24px -12px color-mix(in srgb, var(--surface-shadow) 80%, transparent);
+  box-shadow: var(--surface-rim);
 }
-.shell .launcher-views button { color: var(--rumahl-ui-color-text-primary); font-weight: 500; }
-.shell .launcher-views button[aria-pressed="true"] { background: var(--surface-base); color: var(--rumahl-ui-color-text-primary); box-shadow: 0 2px 6px #0002; }
-.shell .launcher-home .app-search input::placeholder { color: var(--rumahl-ui-color-text-muted); }
-.shell .launcher-home .app-tile__icon { box-shadow: inset 0 1px 1px #fff7, 0 6px 16px #0003; }
-.shell .settings-tabs { gap: 5px; padding: 5px; margin-bottom: 24px; border-radius: 12px; background: var(--rumahl-ui-color-canvas-background); }
-.shell .settings-tabs a { padding: 8px 12px; text-decoration: none; border-radius: 8px; color: var(--rumahl-ui-color-text-primary); font-size: 13px; }
-.shell .settings-tabs a:hover { background: var(--surface-base); }
-.appearance-switch { display: flex; align-items: center; justify-content: space-between; gap: 24px; padding: 10px 0; }
-.appearance-switch span { display: grid; gap: 6px; }
-.appearance-switch small { color: var(--rumahl-ui-color-text-muted); max-width: 48ch; line-height: 1.5; }
-.appearance-switch input { width: 38px; height: 22px; flex-shrink: 0; accent-color: var(--rumahl-ui-color-accent); cursor: pointer; }
-.shell[data-material="solid"] { --surface-sheen: linear-gradient(transparent, transparent); --surface-rim: inset 0 1px 0 var(--surface-edge); --surface-fill: var(--surface-base); --surface-filter: none; --surface-light: var(--surface-edge); }
-.shell[data-material="solid"] :is(.launcher-views, .launcher-home .app-search input, .desktop-search, .folder-preview, .desktop-widget, .shell-window__content, .os-dock .dock-item) { background: var(--surface-base); backdrop-filter: none; -webkit-backdrop-filter: none; }
-.shell[data-material="solid"] .start-menu::backdrop { backdrop-filter: none; }
+.shell .desktop-widgets {
+  gap: 12px;
+}
+.shell .desktop-widget {
+  border-radius: 20px;
+  padding: 18px;
+}
+.shell .desktop-widget :is(p, strong, small) {
+  color: inherit;
+}
+.shell .launcher-views,
+.shell .launcher-home .app-search input {
+  background: var(--surface-tint), var(--surface-fill);
+  color: var(--rumahl-ui-color-text-primary);
+  border: 0.5px solid var(--surface-hairline);
+  backdrop-filter: var(--surface-filter);
+  -webkit-backdrop-filter: var(--surface-filter);
+  box-shadow:
+    var(--surface-rim),
+    0 8px 24px -12px color-mix(in srgb, var(--surface-shadow) 80%, transparent);
+}
+.shell .launcher-views button {
+  color: var(--rumahl-ui-color-text-primary);
+  font-weight: 500;
+}
+.shell .launcher-views button[aria-pressed="true"] {
+  background: var(--surface-base);
+  color: var(--rumahl-ui-color-text-primary);
+  box-shadow: 0 2px 6px #0002;
+}
+.shell .launcher-home .app-search input::placeholder {
+  color: var(--rumahl-ui-color-text-muted);
+}
+.shell .launcher-home .app-tile__icon {
+  box-shadow:
+    inset 0 1px 1px #fff7,
+    0 6px 16px #0003;
+}
+.shell .settings-tabs {
+  gap: 5px;
+  padding: 5px;
+  margin-bottom: 24px;
+  border-radius: 12px;
+  background: var(--rumahl-ui-color-canvas-background);
+}
+.shell .settings-tabs a {
+  padding: 8px 12px;
+  text-decoration: none;
+  border-radius: 8px;
+  color: var(--rumahl-ui-color-text-primary);
+  font-size: 13px;
+}
+.shell .settings-tabs a:hover {
+  background: var(--surface-base);
+}
+.appearance-switch {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+  padding: 10px 0;
+}
+.appearance-switch span {
+  display: grid;
+  gap: 6px;
+}
+.appearance-switch small {
+  color: var(--rumahl-ui-color-text-muted);
+  max-width: 48ch;
+  line-height: 1.5;
+}
+.appearance-switch input {
+  width: 38px;
+  height: 22px;
+  flex-shrink: 0;
+  accent-color: var(--rumahl-ui-color-accent);
+  cursor: pointer;
+}
+.shell[data-material="solid"] {
+  --surface-sheen: linear-gradient(transparent, transparent);
+  --surface-rim: inset 0 1px 0 var(--surface-edge);
+  --surface-fill: var(--surface-base);
+  --surface-filter: none;
+  --surface-light: var(--surface-edge);
+}
+.shell[data-material="solid"]
+  :is(
+    .launcher-views,
+    .launcher-home .app-search input,
+    .desktop-search,
+    .folder-preview,
+    .desktop-widget,
+    .shell-window__content,
+    .os-dock .dock-item
+  ) {
+  background: var(--surface-base);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+.shell[data-material="solid"] .start-menu::backdrop {
+  backdrop-filter: none;
+}
 @media (prefers-reduced-transparency: reduce) {
-  :root, .shell { --surface-sheen: linear-gradient(transparent, transparent); --surface-rim: inset 0 1px 0 var(--surface-edge); --surface-fill: var(--surface-base); --surface-filter: none; }
-  .shell :is(.launcher-views, .launcher-home .app-search input, .desktop-search, .folder-preview, .desktop-widget, .shell-window__content, .os-dock .dock-item) { background: var(--surface-base); backdrop-filter: none; -webkit-backdrop-filter: none; }
-  .shell .start-menu::backdrop { backdrop-filter: none; }
+  :root,
+  .shell {
+    --surface-sheen: linear-gradient(transparent, transparent);
+    --surface-rim: inset 0 1px 0 var(--surface-edge);
+    --surface-fill: var(--surface-base);
+    --surface-filter: none;
+  }
+  .shell
+    :is(
+      .launcher-views,
+      .launcher-home .app-search input,
+      .desktop-search,
+      .folder-preview,
+      .desktop-widget,
+      .shell-window__content,
+      .os-dock .dock-item
+    ) {
+    background: var(--surface-base);
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+  }
+  .shell .start-menu::backdrop {
+    backdrop-filter: none;
+  }
 }
-@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
-  :root, .shell { --surface-fill: var(--surface-base); }
+@supports not (
+  (backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))
+) {
+  :root,
+  .shell {
+    --surface-fill: var(--surface-base);
+  }
 }
 @media (max-width: 640px) {
-  .shell .os-dock { padding: 8px; gap: 4px; bottom: 10px; border-radius: 22px; }
-  .shell .shell-window__content { padding: 16px; }
+  .shell .os-dock {
+    padding: 8px;
+    gap: 4px;
+    bottom: 10px;
+    border-radius: 22px;
+  }
+  .shell .shell-window__content {
+    padding: 16px;
+  }
 }
-.shell .shell-window__content h1 { font-size: 24px; line-height: 1.2; letter-spacing: -.025em; margin-bottom: 16px; }
-.shell .shell-window__content .section-placeholder { width: 100%; padding: 18px 0; }
-.shell .shell-window__content fieldset { border: 1px solid var(--surface-edge); border-radius: 14px; padding: 16px; margin: 16px 0; background: color-mix(in srgb, var(--surface-base) 92%, var(--rumahl-ui-color-canvas-background)); }
-.shell .shell-window__content legend { padding: 0 6px; font-size: 12px; font-weight: 600; color: var(--rumahl-ui-color-text-muted); }
-.appearance-switch input { appearance: none; position: relative; border: 1px solid var(--surface-edge); border-radius: 999px; background: color-mix(in srgb, var(--rumahl-ui-color-text-primary) 22%, var(--surface-base)); }
-.appearance-switch input::before { content: ""; position: absolute; width: 16px; height: 16px; inset: 2px auto auto 2px; border-radius: 50%; background: white; box-shadow: 0 1px 3px #0003; }
-.appearance-switch input:checked { background: var(--rumahl-ui-color-accent); }
-.appearance-switch input:checked::before { left: 18px; }
-.appearance-switch input:focus-visible { outline: 2px solid var(--rumahl-ui-color-accent); outline-offset: 3px; }
-.appearance-switch input:disabled { opacity: .5; cursor: default; }
+.shell .shell-window__content h1 {
+  font-size: 24px;
+  line-height: 1.2;
+  letter-spacing: -0.025em;
+  margin-bottom: 16px;
+}
+.shell .shell-window__content .section-placeholder {
+  width: 100%;
+  padding: 18px 0;
+}
+.shell .shell-window__content fieldset {
+  border: 1px solid var(--surface-edge);
+  border-radius: 14px;
+  padding: 16px;
+  margin: 16px 0;
+  background: color-mix(
+    in srgb,
+    var(--surface-base) 92%,
+    var(--rumahl-ui-color-canvas-background)
+  );
+}
+.shell .shell-window__content legend {
+  padding: 0 6px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--rumahl-ui-color-text-muted);
+}
+.appearance-switch input {
+  appearance: none;
+  position: relative;
+  border: 1px solid var(--surface-edge);
+  border-radius: 999px;
+  background: color-mix(
+    in srgb,
+    var(--rumahl-ui-color-text-primary) 22%,
+    var(--surface-base)
+  );
+}
+.appearance-switch input::before {
+  content: "";
+  position: absolute;
+  width: 16px;
+  height: 16px;
+  inset: 2px auto auto 2px;
+  border-radius: 50%;
+  background: white;
+  box-shadow: 0 1px 3px #0003;
+}
+.appearance-switch input:checked {
+  background: var(--rumahl-ui-color-accent);
+}
+.appearance-switch input:checked::before {
+  left: 18px;
+}
+.appearance-switch input:focus-visible {
+  outline: 2px solid var(--rumahl-ui-color-accent);
+  outline-offset: 3px;
+}
+.appearance-switch input:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
 @media (forced-colors: active) {
-  .appearance-switch input { appearance: auto; }
-  .appearance-switch input::before { display: none; }
+  .appearance-switch input {
+    appearance: auto;
+  }
+  .appearance-switch input::before {
+    display: none;
+  }
 }
 
-.shell[data-material="solid"] :is(.command-backdrop, .window-dock) { backdrop-filter: none; -webkit-backdrop-filter: none; }
-@media (prefers-reduced-transparency: reduce) { .command-backdrop, .window-dock { backdrop-filter: none; } }
-.shell .desktop-widget > span { color: var(--rumahl-ui-color-text-muted); }
-.display-settings :is(button:not(.theme-swatch), select) { border: 1px solid var(--surface-edge); border-radius: 9px; padding: 7px 12px; background: var(--rumahl-ui-color-canvas-background); color: var(--rumahl-ui-color-text-primary); font: inherit; font-size: 13px; min-height: 32px; }
-.display-settings button:not(.theme-swatch) { margin: 3px; }
-.display-settings button[aria-pressed="true"] { background: var(--rumahl-ui-color-accent); color: var(--rumahl-ui-color-on-accent); border-color: transparent; }
-.display-settings button:disabled { opacity: .5; }
-.display-settings input[type="range"] { accent-color: var(--rumahl-ui-color-accent); }
+.shell[data-material="solid"] :is(.command-backdrop, .window-dock) {
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+@media (prefers-reduced-transparency: reduce) {
+  .command-backdrop,
+  .window-dock {
+    backdrop-filter: none;
+  }
+}
+.shell .desktop-widget > span {
+  color: var(--rumahl-ui-color-text-muted);
+}
+.display-settings :is(button:not(.theme-swatch), select) {
+  border: 1px solid var(--surface-edge);
+  border-radius: 9px;
+  padding: 7px 12px;
+  background: var(--rumahl-ui-color-canvas-background);
+  color: var(--rumahl-ui-color-text-primary);
+  font: inherit;
+  font-size: 13px;
+  min-height: 32px;
+}
+.display-settings button:not(.theme-swatch) {
+  margin: 3px;
+}
+.display-settings button[aria-pressed="true"] {
+  background: var(--rumahl-ui-color-accent);
+  color: var(--rumahl-ui-color-on-accent);
+  border-color: transparent;
+}
+.display-settings button:disabled {
+  opacity: 0.5;
+}
+.display-settings input[type="range"] {
+  accent-color: var(--rumahl-ui-color-accent);
+}
 
 /* Richer settings controls: material preview cards, custom-variant disclosure, segmented toggles. */
-.display-settings .material-presets { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; margin: 8px 0 18px; }
-.display-settings .material-presets .material-card {
-  display: grid; gap: 9px; margin: 0; padding: 10px; border: 1px solid var(--surface-edge);
-  border-radius: 14px; background: color-mix(in srgb, var(--surface-base) 55%, transparent);
-  color: var(--rumahl-ui-color-text-primary); text-align: left;
+.display-settings .material-presets {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+  margin: 8px 0 18px;
 }
-.display-settings .material-presets .material-card { cursor: pointer; transition: border-color .15s ease, box-shadow .15s ease, transform .15s ease; }
-.display-settings .material-presets .material-card:hover { border-color: color-mix(in srgb, var(--rumahl-ui-color-accent) 42%, var(--surface-edge)); transform: translateY(-1px); }
-.display-settings .material-presets .material-card[aria-pressed="true"] { border-color: var(--rumahl-ui-color-accent); box-shadow: 0 0 0 1px var(--rumahl-ui-color-accent) inset, 0 6px 16px color-mix(in srgb, var(--rumahl-ui-color-accent) 22%, transparent); }
-.display-settings .material-card__preview { height: 46px; border-radius: 11px; border: 1px solid var(--surface-hairline); }
-.display-settings .material-card--clear .material-card__preview { background: linear-gradient(135deg, color-mix(in srgb, var(--rumahl-ui-color-accent) 30%, transparent), transparent 62%), color-mix(in srgb, var(--surface-base) 38%, transparent); }
-.display-settings .material-card--soft .material-card__preview { background: linear-gradient(135deg, color-mix(in srgb, var(--rumahl-ui-color-accent) 18%, transparent), transparent 62%), color-mix(in srgb, var(--surface-base) 74%, transparent); }
-.display-settings .material-card--bold .material-card__preview { background: linear-gradient(135deg, color-mix(in srgb, var(--rumahl-ui-color-accent) 40%, transparent), transparent 58%), color-mix(in srgb, var(--surface-base) 60%, transparent); box-shadow: inset 0 1px 0 color-mix(in srgb, #fff 30%, transparent); }
-.display-settings .material-card--solid .material-card__preview { background: var(--surface-base); }
-.display-settings .material-card__label { font-size: 12px; font-weight: 600; }
-.display-settings .theme-choice-params { display: grid; gap: 2px; }
-.display-settings .theme-custom-variant { margin: 16px 0 8px; padding: 2px 14px; border: 1px solid var(--surface-edge); border-radius: 14px; background: color-mix(in srgb, var(--surface-base) 40%, transparent); }
-.display-settings .theme-custom-variant > summary { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 11px 0; font-size: 13px; font-weight: 600; cursor: pointer; list-style: none; }
-.display-settings .theme-custom-variant > summary::-webkit-details-marker { display: none; }
-.display-settings .theme-custom-variant > summary::after { content: "›"; font-size: 16px; transform: rotate(90deg); transition: transform 140ms ease; }
-.display-settings .theme-custom-variant[open] > summary::after { transform: rotate(-90deg); }
-.display-settings .theme-custom-variant__help { margin: 0 0 8px; color: var(--rumahl-ui-color-text-muted); font-size: 12px; line-height: 1.5; }
-.display-settings .theme-range-params { padding-bottom: 12px; }
-.display-settings .theme-reset { margin-top: 14px; }
-.display-settings .segmented { display: inline-flex; gap: 4px; padding: 4px; margin: 0; border-radius: 12px; background: color-mix(in srgb, var(--surface-base) 55%, transparent); }
-.display-settings .segmented button { margin: 0; border: 0; border-radius: 9px; padding: 7px 16px; background: transparent; color: var(--rumahl-ui-color-text-primary); font-size: 13px; }
-.display-settings .segmented button[aria-pressed="true"] { background: var(--rumahl-ui-color-accent); color: var(--rumahl-ui-color-on-accent); }
-.display-settings .theme-swatch { width: 28px; height: 28px; }
+.display-settings .material-presets .material-card {
+  display: grid;
+  gap: 9px;
+  margin: 0;
+  padding: 10px;
+  border: 1px solid var(--surface-edge);
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--surface-base) 55%, transparent);
+  color: var(--rumahl-ui-color-text-primary);
+  text-align: left;
+}
+.display-settings .material-presets .material-card {
+  cursor: pointer;
+  transition:
+    border-color 0.15s ease,
+    box-shadow 0.15s ease,
+    transform 0.15s ease;
+}
+.display-settings .material-presets .material-card:hover {
+  border-color: color-mix(
+    in srgb,
+    var(--rumahl-ui-color-accent) 42%,
+    var(--surface-edge)
+  );
+  transform: translateY(-1px);
+}
+.display-settings .material-presets .material-card[aria-pressed="true"] {
+  border-color: var(--rumahl-ui-color-accent);
+  box-shadow:
+    0 0 0 1px var(--rumahl-ui-color-accent) inset,
+    0 6px 16px
+      color-mix(in srgb, var(--rumahl-ui-color-accent) 22%, transparent);
+}
+.display-settings .material-card__preview {
+  height: 46px;
+  border-radius: 11px;
+  border: 1px solid var(--surface-hairline);
+}
+.display-settings .material-card--clear .material-card__preview {
+  background:
+    linear-gradient(
+      135deg,
+      color-mix(in srgb, var(--rumahl-ui-color-accent) 30%, transparent),
+      transparent 62%
+    ),
+    color-mix(in srgb, var(--surface-base) 38%, transparent);
+}
+.display-settings .material-card--soft .material-card__preview {
+  background:
+    linear-gradient(
+      135deg,
+      color-mix(in srgb, var(--rumahl-ui-color-accent) 18%, transparent),
+      transparent 62%
+    ),
+    color-mix(in srgb, var(--surface-base) 74%, transparent);
+}
+.display-settings .material-card--bold .material-card__preview {
+  background:
+    linear-gradient(
+      135deg,
+      color-mix(in srgb, var(--rumahl-ui-color-accent) 40%, transparent),
+      transparent 58%
+    ),
+    color-mix(in srgb, var(--surface-base) 60%, transparent);
+  box-shadow: inset 0 1px 0 color-mix(in srgb, #fff 30%, transparent);
+}
+.display-settings .material-card--solid .material-card__preview {
+  background: var(--surface-base);
+}
+.display-settings .material-card__label {
+  font-size: 12px;
+  font-weight: 600;
+}
+.display-settings .theme-choice-params {
+  display: grid;
+  gap: 2px;
+}
+.display-settings .theme-custom-variant {
+  margin: 16px 0 8px;
+  padding: 2px 14px;
+  border: 1px solid var(--surface-edge);
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--surface-base) 40%, transparent);
+}
+.display-settings .theme-custom-variant > summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 11px 0;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  list-style: none;
+}
+.display-settings .theme-custom-variant > summary::-webkit-details-marker {
+  display: none;
+}
+.display-settings .theme-custom-variant > summary::after {
+  content: "›";
+  font-size: 16px;
+  transform: rotate(90deg);
+  transition: transform 140ms ease;
+}
+.display-settings .theme-custom-variant[open] > summary::after {
+  transform: rotate(-90deg);
+}
+.display-settings .theme-custom-variant__help {
+  margin: 0 0 8px;
+  color: var(--rumahl-ui-color-text-muted);
+  font-size: 12px;
+  line-height: 1.5;
+}
+.display-settings .theme-range-params {
+  padding-bottom: 12px;
+}
+.display-settings .theme-reset {
+  margin-top: 14px;
+}
+.display-settings .segmented {
+  display: inline-flex;
+  gap: 4px;
+  padding: 4px;
+  margin: 0;
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--surface-base) 55%, transparent);
+}
+.display-settings .segmented button {
+  margin: 0;
+  border: 0;
+  border-radius: 9px;
+  padding: 7px 16px;
+  background: transparent;
+  color: var(--rumahl-ui-color-text-primary);
+  font-size: 13px;
+}
+.display-settings .segmented button[aria-pressed="true"] {
+  background: var(--rumahl-ui-color-accent);
+  color: var(--rumahl-ui-color-on-accent);
+}
+.display-settings .theme-swatch {
+  width: 28px;
+  height: 28px;
+}
 
 /* Canvas glass engine: one shared blurred wallpaper, sliced per surface, so only
    the dock, windows and the top bar are frosted — never the whole background.
    Canvas and the dropdown material (tint + sheen + fill + hairline + rim) sit on
    a layer inside the surface, so the content stays above and the coloured glass
    with its shine border matches the dropdown. */
-.shell-glass-surface { display: none; }
-.shell[data-glass="canvas"][data-material="translucent"] :is(.menubar, .os-dock, .shell-window) { isolation: isolate; }
-.shell[data-glass="canvas"][data-material="translucent"] :is(.menubar, .os-dock, .shell-window, .shell-window__titlebar, .shell-window__content) {
-  background: transparent; backdrop-filter: none; -webkit-backdrop-filter: none;
+.shell-glass-surface {
+  display: none;
 }
-.shell[data-glass="canvas"][data-material="translucent"] :is(.menubar, .os-dock, .shell-window) { border: 0.5px solid var(--surface-hairline); }
+.shell[data-glass="canvas"][data-material="translucent"]
+  :is(.menubar, .os-dock, .shell-window) {
+  isolation: isolate;
+}
+.shell[data-glass="canvas"][data-material="translucent"]
+  :is(
+    .menubar,
+    .os-dock,
+    .shell-window,
+    .shell-window__titlebar,
+    .shell-window__content
+  ) {
+  background: transparent;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+.shell[data-glass="canvas"][data-material="translucent"]
+  :is(.menubar, .os-dock, .shell-window) {
+  border: 0.5px solid var(--surface-hairline);
+}
 .shell[data-glass="canvas"][data-material="translucent"] .shell-glass-surface {
-  display: block; position: absolute; inset: 0; width: 100%; height: 100%;
-  border-radius: inherit; pointer-events: none;
+  display: block;
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  border-radius: inherit;
+  pointer-events: none;
 }
-.shell[data-glass="canvas"][data-material="translucent"] .shell-glass-surface__canvas { display: block; width: 100%; height: 100%; border-radius: inherit; }
-.shell[data-glass="canvas"][data-material="translucent"] .shell-glass-surface__material {
-  position: absolute; inset: 0; border-radius: inherit;
-  background: var(--surface-tint), var(--surface-sheen), color-mix(in srgb, var(--surface-base) calc(var(--surface-opacity) * 100%), transparent);
+.shell[data-glass="canvas"][data-material="translucent"]
+  .shell-glass-surface__canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+  border-radius: inherit;
+}
+.shell[data-glass="canvas"][data-material="translucent"]
+  .shell-glass-surface__material {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background:
+    var(--surface-tint), var(--surface-sheen),
+    color-mix(
+      in srgb,
+      var(--surface-base) calc(var(--surface-opacity) * 100%),
+      transparent
+    );
   box-shadow: var(--surface-rim);
 }
 /* Windows keep the material on a negative layer so the resize grip stays put;
    the dock and top bar raise their content above the glass instead. */
-.shell[data-glass="canvas"][data-material="translucent"] .shell-window .shell-glass-surface { z-index: -1; }
-.shell[data-glass="canvas"][data-material="translucent"] :is(.menubar, .os-dock) .shell-glass-surface { z-index: 0; }
-.shell[data-glass="canvas"][data-material="translucent"] :is(.menubar, .os-dock) > :not(.shell-glass-surface) { position: relative; z-index: 1; }
+.shell[data-glass="canvas"][data-material="translucent"]
+  .shell-window
+  .shell-glass-surface {
+  z-index: -1;
+}
+.shell[data-glass="canvas"][data-material="translucent"]
+  :is(.menubar, .os-dock)
+  .shell-glass-surface {
+  z-index: 0;
+}
+.shell[data-glass="canvas"][data-material="translucent"]
+  :is(.menubar, .os-dock)
+  > :not(.shell-glass-surface) {
+  position: relative;
+  z-index: 1;
+}
 @media (prefers-reduced-transparency: reduce) {
-  .shell[data-glass="canvas"][data-material="translucent"] .shell-glass-surface { display: none; }
+  .shell[data-glass="canvas"][data-material="translucent"]
+    .shell-glass-surface {
+    display: none;
+  }
 }
 
 /* Interactive controls: thick, transparent glass — backdrop blur plus a bright
@@ -198,14 +733,29 @@
 .shell .window-dock button,
 .shell .stream-list button,
 .shell :is(.segmented, .settings-tabs) {
-  background: linear-gradient(180deg, rgb(255 255 255 / calc(16% * var(--morphism))), rgb(255 255 255 / calc(4% * var(--morphism))) 46%, rgb(0 0 0 / calc(5% * var(--morphism)))), var(--milk);
+  background:
+    linear-gradient(
+      180deg,
+      rgb(255 255 255 / calc(16% * var(--morphism))),
+      rgb(255 255 255 / calc(4% * var(--morphism))) 46%,
+      rgb(0 0 0 / calc(5% * var(--morphism)))
+    ),
+    var(--milk);
   border: 0.5px solid var(--surface-hairline);
   backdrop-filter: var(--surface-filter);
   -webkit-backdrop-filter: var(--surface-filter);
-  box-shadow: inset 0 1px 0 rgb(255 255 255 / calc(46% * var(--morphism))), inset 0 -1px 0 rgb(0 0 0 / calc(10% * var(--morphism))), 0 1px 2px rgb(0 0 0 / 8%);
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / calc(46% * var(--morphism))),
+    inset 0 -1px 0 rgb(0 0 0 / calc(10% * var(--morphism))),
+    0 1px 2px rgb(0 0 0 / 8%);
 }
-.shell .launcher-views button { background: transparent; }
-.shell :is(.segmented, .settings-tabs) button:not([aria-pressed="true"]) { background: transparent; box-shadow: none; }
+.shell .launcher-views button {
+  background: transparent;
+}
+.shell :is(.segmented, .settings-tabs) button:not([aria-pressed="true"]) {
+  background: transparent;
+  box-shadow: none;
+}
 .shell .display-settings button[aria-pressed="true"],
 .shell :is(.segmented, .settings-tabs) button[aria-pressed="true"] {
   background: var(--rumahl-ui-color-accent);
@@ -214,24 +764,54 @@
   backdrop-filter: none;
   -webkit-backdrop-filter: none;
 }
-.shell .shell-window__controls button { backdrop-filter: var(--surface-filter); -webkit-backdrop-filter: var(--surface-filter); box-shadow: inset 0 1px 0 rgb(255 255 255 / calc(46% * var(--morphism))), inset 0 -1px 0 rgb(0 0 0 / calc(10% * var(--morphism))); }
+.shell .shell-window__controls button {
+  backdrop-filter: var(--surface-filter);
+  -webkit-backdrop-filter: var(--surface-filter);
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / calc(46% * var(--morphism))),
+    inset 0 -1px 0 rgb(0 0 0 / calc(10% * var(--morphism)));
+}
 .shell .appearance-switch input {
-  background: linear-gradient(180deg, rgb(255 255 255 / calc(16% * var(--morphism))), rgb(0 0 0 / calc(5% * var(--morphism)))), var(--milk);
+  background:
+    linear-gradient(
+      180deg,
+      rgb(255 255 255 / calc(16% * var(--morphism))),
+      rgb(0 0 0 / calc(5% * var(--morphism)))
+    ),
+    var(--milk);
   border: 0.5px solid var(--surface-hairline);
   backdrop-filter: var(--surface-filter);
   -webkit-backdrop-filter: var(--surface-filter);
-  box-shadow: inset 0 1px 0 rgb(255 255 255 / calc(46% * var(--morphism))), inset 0 -1px 0 rgb(0 0 0 / calc(10% * var(--morphism)));
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / calc(46% * var(--morphism))),
+    inset 0 -1px 0 rgb(0 0 0 / calc(10% * var(--morphism)));
 }
-.shell .appearance-switch input:checked { background: var(--rumahl-ui-color-accent); border-color: transparent; }
+.shell .appearance-switch input:checked {
+  background: var(--rumahl-ui-color-accent);
+  border-color: transparent;
+}
 
 /* Refraction lens for the dock (canvas displacement map + SVG feDisplacementMap
    per colour channel). The layer sits behind the dock content; the dock body is
    transparent so only the lens and its hairline show. */
 .shell .os-dock {
-  background: transparent; backdrop-filter: none; -webkit-backdrop-filter: none;
+  background: transparent;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
   border: 0.5px solid var(--surface-hairline);
   box-shadow: var(--surface-rim), var(--surface-elevation);
   isolation: isolate;
 }
-.glass-lens { position: absolute; inset: 0; z-index: -2; border-radius: inherit; pointer-events: none; }
-.glass-lens-filter { position: absolute; width: 0; height: 0; overflow: hidden; }
+.glass-lens {
+  position: absolute;
+  inset: 0;
+  z-index: -2;
+  border-radius: inherit;
+  pointer-events: none;
+}
+.glass-lens-filter {
+  position: absolute;
+  width: 0;
+  height: 0;
+  overflow: hidden;
+}

@@ -383,18 +383,6 @@ impl ResolvedTheme {
         }
     }
 
-    /// The deliberately different fixture theme (opaque, square, taskbar + drawer).
-    pub fn classic() -> Self {
-        Self {
-            id: "com.rumahl.classic".to_owned(),
-            name: "Classic".to_owned(),
-            tokens: classic_tokens(),
-            window_chrome: WindowChromeVariant::Compact,
-            shell_layout: ShellLayoutVariant::Taskbar,
-            launcher_layout: LauncherLayoutVariant::Drawer,
-        }
-    }
-
     pub fn resolve(manifest: &ThemeManifest) -> Self {
         let mut tokens = stock_tokens();
         tokens.extend(manifest.tokens.clone());
@@ -518,8 +506,8 @@ fn stock_tokens() -> BTreeMap<ThemeToken, ThemeTokenValue> {
         (MaterialSaturation, css("1.8")),
         (MaterialOpacity, css("0.7")),
         (MaterialMorphism, css("1")),
-        (ShapeRadiusDock, ThemeTokenValue::Pixels(24)),
-        (ShapeRadiusIcon, ThemeTokenValue::Pixels(15)),
+        (ShapeRadiusDock, ThemeTokenValue::Pixels(28)),
+        (ShapeRadiusIcon, ThemeTokenValue::Pixels(18)),
         (ShapeIconSize, ThemeTokenValue::Pixels(52)),
         (ShapeIconSizeLarge, ThemeTokenValue::Pixels(68)),
         (MotionDuration, ThemeTokenValue::Millis(180)),
@@ -533,47 +521,12 @@ fn stock_tokens() -> BTreeMap<ThemeToken, ThemeTokenValue> {
         (TextureWallpaper, css("default")),
         (
             TypographyFamily,
-            css("system-ui, \"Segoe UI\", Roboto, \"Noto Sans\", sans-serif"),
+            css(
+                "\"Inter\", \"SF Pro Text\", system-ui, -apple-system, \"Segoe UI Variable Text\", \"Segoe UI\", Roboto, \"Helvetica Neue\", Arial, sans-serif",
+            ),
         ),
         (TypographyScale, css("1")),
     ])
-}
-
-fn classic_tokens() -> BTreeMap<ThemeToken, ThemeTokenValue> {
-    use ThemeToken::*;
-    let mut tokens = stock_tokens();
-    for (token, value) in [
-        (ColorAccent, "#3465a4"),
-        (ColorAccentStrong, "#5b8ac6"),
-        (ColorSurface, "#ececec"),
-        (ColorSurfaceStrong, "#f4f4f4"),
-        (ColorOutline, "#00000047"),
-        (ColorOnWallpaper, "#ffffff"),
-        (ColorOnAccent, "#ffffff"),
-        (ColorShadow, "#00000066"),
-        (MaterialBlur, "0px"),
-        (MaterialSaturation, "1"),
-        (MaterialOpacity, "1"),
-        (MaterialMorphism, "0"),
-        (ShapeRadiusDock, "6px"),
-        (ShapeRadiusIcon, "6px"),
-        (ShapeIconSize, "40px"),
-        (ShapeIconSizeLarge, "56px"),
-        (MotionDuration, "90ms"),
-        (MotionDurationFast, "70ms"),
-        (MotionEasingSpring, "ease-out"),
-        (LayoutDockOffset, "0px"),
-        (IconGradient, "linear-gradient(160deg, #5b8ac6, #3465a4)"),
-        (TextureWallpaper, "none"),
-        (TypographyFamily, "Tahoma, Verdana, sans-serif"),
-        (TypographyScale, "0.95"),
-    ] {
-        let parsed = token
-            .parse_value(value)
-            .expect("classic theme values are valid");
-        tokens.insert(token, parsed);
-    }
-    tokens
 }
 
 pub(crate) fn is_known_token_id(id: &str) -> bool {
@@ -588,7 +541,6 @@ pub(crate) fn valid_token_value(value: &str) -> bool {
 pub fn theme_by_id(id: &str) -> Option<ResolvedTheme> {
     match id {
         crate::DEFAULT_THEME_ID | "com.rumahl.stock" => Some(ResolvedTheme::stock()),
-        "com.rumahl.classic" => Some(ResolvedTheme::classic()),
         _ => None,
     }
 }

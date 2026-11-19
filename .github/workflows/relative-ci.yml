@@ -14,12 +14,12 @@ jobs:
   bundle-analysis:
     name: Bundle analysis
     if: github.event.workflow_run.conclusion == 'success'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 5
 
     steps:
       - name: Send bundle stats to RelativeCI
-        uses: relative-ci/agent-action@v3
+        uses: relative-ci/agent-action@711f3a8fa1b928e6afde280011110c9b0a224a60 # v3.2.4
         with:
           key: ${{ secrets.RELATIVE_CI_KEY }}
           token: ${{ secrets.GITHUB_TOKEN }}

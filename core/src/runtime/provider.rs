@@ -1,4 +1,5 @@
 use std::error::Error;
+use std::sync::Arc;
 
 use crate::{InstallationId, InstalledApp};
 
@@ -41,4 +42,36 @@ pub trait AppRuntimeProvider {
     /// Removes a stopped/prepared runtime. An absent runtime is an idempotent
     /// no-op; implementations must reject removal of an active runtime.
     fn remove_installation(&self, installation_id: &InstallationId) -> Result<bool, Self::Error>;
+}
+
+/// Lets one provider be shared by several adapters (for example one per
+/// `RuntimeKind`) without cloning the underlying supervisor client.
+impl<P: AppRuntimeProvider> AppRuntimeProvider for Arc<P> {
+    type Error = P::Error;
+
+    fn prepare_installation(&self, app: &InstalledApp) -> Result<(), Self::Error> {
+        (**self).prepare_installation(app)
+    }
+
+    fn activate_installation(&self, app: &InstalledApp) -> Result<(), Self::Error> {
+        (**self).activate_installation(app)
+    }
+
+    fn installation_state(
+        &self,
+        installation_id: &InstallationId,
+    ) -> Result<AppRuntimeInstallationState, Self::Error> {
+        (**self).installation_state(installation_id)
+    }
+
+    fn deactivate_installation(
+        &self,
+        installation_id: &InstallationId,
+    ) -> Result<bool, Self::Error> {
+        (**self).deactivate_installation(installation_id)
+    }
+
+    fn remove_installation(&self, installation_id: &InstallationId) -> Result<bool, Self::Error> {
+        (**self).remove_installation(installation_id)
+    }
 }

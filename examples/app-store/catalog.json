@@ -1,0 +1,173 @@
+{
+  "name": "rumahl Example Store",
+  "description": "Twenty small, real web apps for testing the rumahl App Store.",
+  "apps": [
+    {
+      "slug": "notes",
+      "title": "Notes",
+      "description": "A quiet place for quick notes that stay on this device.",
+      "category": "Productivity",
+      "rating": 4.8,
+      "downloads": 18400,
+      "featured": true
+    },
+    {
+      "slug": "tasks",
+      "title": "Tasks",
+      "description": "A small to-do list with local persistence.",
+      "category": "Productivity",
+      "rating": 4.6,
+      "downloads": 12300
+    },
+    {
+      "slug": "calculator",
+      "title": "Calculator",
+      "description": "A keyboard-friendly four-function calculator.",
+      "category": "Utilities",
+      "rating": 4.7,
+      "downloads": 26700,
+      "featured": true
+    },
+    {
+      "slug": "clock",
+      "title": "Clock",
+      "description": "A large local clock and calendar view.",
+      "category": "Utilities",
+      "rating": 4.4,
+      "downloads": 9100
+    },
+    {
+      "slug": "stopwatch",
+      "title": "Stopwatch",
+      "description": "Precise stopwatch with laps.",
+      "category": "Utilities",
+      "rating": 4.5,
+      "downloads": 7300
+    },
+    {
+      "slug": "timer",
+      "title": "Timer",
+      "description": "A countdown timer with a clear alarm.",
+      "category": "Utilities",
+      "rating": 4.7,
+      "downloads": 11200,
+      "featured": true
+    },
+    {
+      "slug": "converter",
+      "title": "Unit Converter",
+      "description": "Convert length, weight and temperature.",
+      "category": "Utilities",
+      "rating": 4.3,
+      "downloads": 6200
+    },
+    {
+      "slug": "password",
+      "title": "Password Generator",
+      "description": "Generate strong passwords without sending anything to a server.",
+      "category": "Security",
+      "rating": 4.8,
+      "downloads": 14500,
+      "featured": true
+    },
+    {
+      "slug": "palette",
+      "title": "Colour Palette",
+      "description": "Create five-colour palettes with one click.",
+      "category": "Design",
+      "rating": 4.6,
+      "downloads": 8800
+    },
+    {
+      "slug": "markdown",
+      "title": "Markdown Preview",
+      "description": "Write Markdown and see a safe local preview.",
+      "category": "Productivity",
+      "rating": 4.5,
+      "downloads": 10400
+    },
+    {
+      "slug": "flashcards",
+      "title": "Flashcards",
+      "description": "Study a deck of question-and-answer cards.",
+      "category": "Education",
+      "rating": 4.7,
+      "downloads": 15800,
+      "featured": true
+    },
+    {
+      "slug": "budget",
+      "title": "Budget",
+      "description": "Track small expenses and see the running total.",
+      "category": "Finance",
+      "rating": 4.6,
+      "downloads": 19700,
+      "featured": true
+    },
+    {
+      "slug": "habits",
+      "title": "Habits",
+      "description": "Build a daily habit streak on this device.",
+      "category": "Lifestyle",
+      "rating": 4.8,
+      "downloads": 22100
+    },
+    {
+      "slug": "recipes",
+      "title": "Recipes",
+      "description": "Keep a personal recipe collection.",
+      "category": "Lifestyle",
+      "rating": 4.5,
+      "downloads": 13200
+    },
+    {
+      "slug": "contacts",
+      "title": "Contacts",
+      "description": "A private contact book stored in the browser.",
+      "category": "Productivity",
+      "rating": 4.2,
+      "downloads": 4800
+    },
+    {
+      "slug": "bookmarks",
+      "title": "Bookmarks",
+      "description": "A quick launchpad for useful links.",
+      "category": "Productivity",
+      "rating": 4.4,
+      "downloads": 8600
+    },
+    {
+      "slug": "shopping",
+      "title": "Shopping List",
+      "description": "A checkable shopping list for the next trip.",
+      "category": "Lifestyle",
+      "rating": 4.6,
+      "downloads": 17100
+    },
+    {
+      "slug": "dice",
+      "title": "Dice Roller",
+      "description": "Roll dice for games and decide the result.",
+      "category": "Games",
+      "rating": 4.3,
+      "downloads": 5400
+    },
+    {
+      "slug": "metronome",
+      "title": "Metronome",
+      "description": "A simple audible practice metronome.",
+      "category": "Music",
+      "rating": 4.7,
+      "downloads": 9900,
+      "featured": true
+    },
+    {
+      "slug": "bmi",
+      "title": "BMI Calculator",
+      "description": "Calculate body mass index and a healthy weight range.",
+      "category": "Health",
+      "rating": 4.4,
+      "downloads": 12600
+    }
+  ]
+}

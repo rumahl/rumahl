@@ -6,7 +6,7 @@ use crate::{
     RuntimeKind,
 };
 
-use super::{AppManifest, ContributionDeclaration};
+use super::{AppManifest, ContributionDeclaration, RuntimeLifecycle};
 
 #[derive(Debug, Default, Clone, Copy)]
 pub struct AppManifestValidator;
@@ -18,6 +18,9 @@ pub enum AppManifestValidationError {
         required: RuntimeEntrypointKind,
     },
     NativeRuntimeUnsupported,
+    AlwaysOnRequiresContainerRuntime(RuntimeKind),
+    ConnectorEntrypointMissing(RuntimeEntrypointId),
+    ConnectorEntrypointIncompatible(RuntimeEntrypointId),
     StreamRequiresContainerRuntime(RuntimeKind),
     StreamEntrypointMissing(RuntimeEntrypointId),
     StreamEntrypointIncompatible(RuntimeEntrypointId),
@@ -35,6 +38,13 @@ pub enum AppManifestValidationError {
         entrypoint: RuntimeEntrypointId,
         kind: RuntimeEntrypointKind,
     },
+    SurfaceEntrypointMissing(ContributionId, RuntimeEntrypointId),
+    SurfaceEntrypointIncompatible {
+        contribution: ContributionId,
+        runtime: RuntimeKind,
+        entrypoint: RuntimeEntrypointId,
+        kind: RuntimeEntrypointKind,
+    },
 }
 
 impl AppManifestValidator {
@@ -44,13 +54,88 @@ impl AppManifestValidator {
 
     pub fn validate(&self, manifest: &AppManifest) -> Result<(), AppManifestValidationError> {
         self.validate_runtime(manifest)?;
+        self.validate_lifecycle(manifest)?;
+        self.validate_connectors(manifest)?;
         self.validate_stream_presentation(manifest)?;
         self.validate_oidc(manifest)?;
+        self.validate_surfaces(manifest)?;
 
         for contribution in manifest.contributions() {
             self.validate_contribution(manifest, contribution)?;
         }
 
+        Ok(())
+    }
+
+    fn validate_surfaces(&self, manifest: &AppManifest) -> Result<(), AppManifestValidationError> {
+        // Tier B surfaces run in an isolated frame on the app origin. The
+        // declaration names an entrypoint; it never carries a URL or path.
+        let runtime = manifest.runtime();
+        if runtime.kind() == RuntimeKind::Native {
+            return Err(AppManifestValidationError::NativeRuntimeUnsupported);
+        }
+        // A Tier B surface is a static web asset served by the shell's frame
+        // resolver. Container endpoints and native code are not frame targets.
+        let expected_kind = RuntimeEntrypointKind::WebAsset;
+
+        for surface in manifest.surfaces() {
+            let Some(id) = surface.entrypoint() else {
+                continue;
+            };
+            let entrypoint = runtime.entrypoint(id).ok_or_else(|| {
+                AppManifestValidationError::SurfaceEntrypointMissing(
+                    surface.id().clone(),
+                    id.clone(),
+                )
+            })?;
+            if entrypoint.kind() != expected_kind {
+                return Err(AppManifestValidationError::SurfaceEntrypointIncompatible {
+                    contribution: surface.id().clone(),
+                    runtime: runtime.kind(),
+                    entrypoint: entrypoint.id().clone(),
+                    kind: entrypoint.kind(),
+                });
+            }
+        }
+
+        Ok(())
+    }
+
+    fn validate_lifecycle(&self, manifest: &AppManifest) -> Result<(), AppManifestValidationError> {
+        // A continuously running service needs a backend runtime; a static web
+        // app (browser-backed) is always on demand.
+        if manifest.lifecycle() == RuntimeLifecycle::AlwaysOn
+            && manifest.runtime().kind() != RuntimeKind::Container
+        {
+            return Err(
+                AppManifestValidationError::AlwaysOnRequiresContainerRuntime(
+                    manifest.runtime().kind(),
+                ),
+            );
+        }
+        Ok(())
+    }
+
+    fn validate_connectors(
+        &self,
+        manifest: &AppManifest,
+    ) -> Result<(), AppManifestValidationError> {
+        // A connector bundle is a container artifact of the same app.
+        for connector in manifest.connectors() {
+            let entrypoint = manifest
+                .runtime()
+                .entrypoint(connector.entrypoint())
+                .ok_or_else(|| {
+                    AppManifestValidationError::ConnectorEntrypointMissing(
+                        connector.entrypoint().clone(),
+                    )
+                })?;
+            if entrypoint.kind() != RuntimeEntrypointKind::ContainerArtifact {
+                return Err(AppManifestValidationError::ConnectorEntrypointIncompatible(
+                    connector.entrypoint().clone(),
+                ));
+            }
+        }
         Ok(())
     }
 
@@ -194,6 +279,20 @@ impl fmt::Display for AppManifestValidationError {
                 )
             }
 
+            Self::AlwaysOnRequiresContainerRuntime(runtime) => write!(
+                f,
+                "an always-on lifecycle requires a container runtime, found '{runtime:?}'"
+            ),
+
+            Self::ConnectorEntrypointMissing(entrypoint) => write!(
+                f,
+                "connector references missing runtime entrypoint '{entrypoint}'"
+            ),
+            Self::ConnectorEntrypointIncompatible(entrypoint) => write!(
+                f,
+                "connector entrypoint '{entrypoint}' is not a container artifact"
+            ),
+
             Self::StreamRequiresContainerRuntime(runtime) => write!(
                 f,
                 "stream presentation requires a container runtime, found '{runtime:?}'"
@@ -235,6 +334,19 @@ impl fmt::Display for AppManifestValidationError {
                 f,
                 "OIDC callback entrypoint '{entrypoint}' of kind '{kind:?}' is incompatible with runtime '{runtime:?}'"
             ),
+            Self::SurfaceEntrypointMissing(contribution, entrypoint) => write!(
+                f,
+                "surface '{contribution}' references missing runtime entrypoint '{entrypoint}'"
+            ),
+            Self::SurfaceEntrypointIncompatible {
+                contribution,
+                runtime,
+                entrypoint,
+                kind,
+            } => write!(
+                f,
+                "surface '{contribution}' entrypoint '{entrypoint}' of kind '{kind:?}' is incompatible with runtime '{runtime:?}'"
+            ),
         }
     }
 }
@@ -247,10 +359,25 @@ mod tests {
 
     use crate::{
         AppId, AppVersion, CapabilityId, CommandAction, CommandContributionDeclaration,
-        ContributionId, OidcCallbackPath, OidcClientDeclaration, OidcScope, PackagePath,
-        PublisherId, RuntimeDescriptor, RuntimeEndpointId, RuntimeEntrypoint, RuntimeEntrypointId,
-        SearchContributionDeclaration, StreamPresentation,
+        ConnectorDeclaration, ConnectorTarget, ContributionId, OidcCallbackPath,
+        OidcClientDeclaration, OidcScope, PackagePath, PublisherId, RuntimeDescriptor,
+        RuntimeEndpointId, RuntimeEntrypoint, RuntimeEntrypointId, SearchContributionDeclaration,
+        StreamPresentation, SurfaceDeclaration, SurfaceIcon, SurfaceKind, SurfacePlacement,
+        SurfaceSize, SurfaceSlot, SurfaceTone,
     };
+
+    fn surface(entrypoint: Option<&str>) -> SurfaceDeclaration {
+        SurfaceDeclaration::new(
+            ContributionId::parse("com.rumahl.notes.desktop").unwrap(),
+            SurfaceSlot::Desktop,
+            SurfaceKind::Companion,
+            SurfaceSize::Medium,
+            SurfacePlacement::BottomRight,
+            SurfaceTone::Accent,
+            SurfaceIcon::Pulse,
+        )
+        .with_entrypoint(entrypoint.map(|value| RuntimeEntrypointId::parse(value).unwrap()))
+    }
 
     fn manifest() -> AppManifest {
         let mut runtime = RuntimeDescriptor::web();
@@ -279,6 +406,48 @@ mod tests {
         let validator = AppManifestValidator::new();
 
         assert!(validator.validate(&manifest).is_ok());
+    }
+
+    #[test]
+    fn always_on_lifecycle_requires_a_container_runtime() {
+        let mut manifest = manifest();
+        manifest.set_lifecycle(RuntimeLifecycle::AlwaysOn);
+
+        assert_eq!(
+            AppManifestValidator::new().validate(&manifest),
+            Err(AppManifestValidationError::AlwaysOnRequiresContainerRuntime(RuntimeKind::Web))
+        );
+    }
+
+    #[test]
+    fn connector_requires_a_container_artifact_entrypoint() {
+        let mut incompatible = manifest();
+        incompatible
+            .add_connector(ConnectorDeclaration::new(
+                ConnectorTarget::parse("nextcloud").unwrap(),
+                RuntimeEntrypointId::parse("main").unwrap(),
+            ))
+            .unwrap();
+        assert_eq!(
+            AppManifestValidator::new().validate(&incompatible),
+            Err(AppManifestValidationError::ConnectorEntrypointIncompatible(
+                RuntimeEntrypointId::parse("main").unwrap()
+            ))
+        );
+
+        let mut missing = manifest();
+        missing
+            .add_connector(ConnectorDeclaration::new(
+                ConnectorTarget::parse("plex").unwrap(),
+                RuntimeEntrypointId::parse("bundle").unwrap(),
+            ))
+            .unwrap();
+        assert_eq!(
+            AppManifestValidator::new().validate(&missing),
+            Err(AppManifestValidationError::ConnectorEntrypointMissing(
+                RuntimeEntrypointId::parse("bundle").unwrap()
+            ))
+        );
     }
 
     #[test]
@@ -588,6 +757,51 @@ mod tests {
             .unwrap();
 
         assert!(AppManifestValidator::new().validate(&manifest).is_ok());
+    }
+
+    #[test]
+    fn accepts_web_surface_entrypoints() {
+        let mut manifest = manifest();
+        manifest.add_surface(surface(Some("main"))).unwrap();
+
+        assert!(AppManifestValidator::new().validate(&manifest).is_ok());
+    }
+
+    #[test]
+    fn rejects_surface_for_missing_entrypoint() {
+        let mut manifest = manifest();
+        manifest.add_surface(surface(Some("overlay"))).unwrap();
+
+        assert!(matches!(
+            AppManifestValidator::new().validate(&manifest),
+            Err(AppManifestValidationError::SurfaceEntrypointMissing(_, entrypoint))
+                if entrypoint.as_str() == "overlay"
+        ));
+    }
+
+    #[test]
+    fn rejects_surface_entrypoint_that_is_not_a_web_asset() {
+        let mut runtime = RuntimeDescriptor::container();
+        runtime
+            .add_entrypoint(RuntimeEntrypoint::container_artifact(
+                RuntimeEntrypointId::parse("service").unwrap(),
+                PackagePath::parse("runtime/server.oci").unwrap(),
+            ))
+            .unwrap();
+        let mut container = AppManifest::new(
+            AppId::parse("com.rumahl.notes").unwrap(),
+            PublisherId::parse("com.rumahl").unwrap(),
+            AppVersion::new(1, 0, 0),
+            "Notes",
+            runtime,
+        )
+        .unwrap();
+        container.add_surface(surface(Some("service"))).unwrap();
+
+        assert!(matches!(
+            AppManifestValidator::new().validate(&container),
+            Err(AppManifestValidationError::SurfaceEntrypointIncompatible { .. })
+        ));
     }
 
     #[test]

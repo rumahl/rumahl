@@ -1,8 +1,20 @@
 import { describe, expect, it } from "vitest";
-import { parseCatalog, parseLaunch } from "./client";
+import type { ShellRequest } from "../snapshot-client";
+import { controlAppRuntime, fetchAppRuntime, invokeCapability, launchApp, parseAppData, parseAppSettings, parseCapabilityInvocation, parseCatalog, parseImport, parseLaunch, parseSurfaceFrame, requestSurfaceFrame, SafeModeError, uninstallApp } from "./client";
 const app = { id: "com.rumahl.notes", installationId: "01990000-0000-7000-8000-000000000001", title: "Notes", version: "1.0.0", launchable: true };
 const lease = "a".repeat(64);
 const launch = { launchVersion: 1, id: app.id, installationId: app.installationId, lease, frameUrl: `https://${app.installationId}.apps.localhost:8443/launch/${lease}/web/index.html`, renewAfterSeconds: 30 };
+const surfaceFrame = { frameVersion: 1, surfaceId: "com.rumahl.notes.desktop", appId: app.id, installationId: app.installationId, lease, frameUrl: `https://${app.installationId}.apps.localhost:8443/launch/${lease}/web/surface.html`, renewAfterSeconds: 30 };
+const settings = {
+  settingsVersion: 1,
+  id: app.id,
+  installationId: app.installationId,
+  manifest: [
+    { key: "server.url", title: "Server URL", description: "Backend endpoint", type: "text", required: true, options: [] },
+    { key: "mode", title: "Mode", description: null, type: "select", required: false, options: [{ value: "fast", label: "Fast" }] },
+  ],
+  extended: null,
+};
 describe("installed app contracts", () => {
   it("projects only public metadata and rejects duplicate identities or incompatible schemas", () => {
     expect(parseCatalog({ catalogVersion: 1, apps: [{ ...app, internalPath: "/secret" }] })).toEqual([app]);
@@ -19,5 +31,145 @@ describe("installed app contracts", () => {
     for (const frameUrl of [launch.frameUrl.replace("https:", "http:"), launch.frameUrl.replace(`${app.installationId}.apps.localhost`, "localhost"), launch.frameUrl.replace(app.installationId, "01990000-0000-7000-8000-000000000002"), `${launch.frameUrl}?token=secret`, `${launch.frameUrl}#injected`, launch.frameUrl.replace(`/launch/${lease}/`, "/other/"), launch.frameUrl.replace("https://", "https://user:password@")]) expect(() => parseLaunch({ ...launch, frameUrl }, app, "https://localhost:8443")).toThrow();
     expect(() => parseLaunch({ ...launch, installationId: "other" }, app, "https://localhost:8443")).toThrow();
     expect(() => parseLaunch({ ...launch, renewAfterSeconds: 99999 }, app, "https://localhost:8443")).toThrow();
+  });
+  it("accepts declared capabilities and lifecycle, and rejects malformed ones", () => {
+    const withMeta = { ...app, capabilities: ["com.rumahl.os.window", "com.rumahl.os.info"], runtime: "container", lifecycle: "always-on", connectors: ["nextcloud"] };
+    expect(parseCatalog({ catalogVersion: 1, apps: [withMeta] })[0]).toMatchObject({ capabilities: ["com.rumahl.os.window", "com.rumahl.os.info"], runtime: "container", lifecycle: "always-on", connectors: ["nextcloud"] });
+    expect(parseCatalog({ catalogVersion: 1, apps: [{ ...app }] })[0]?.capabilities).toBeUndefined();
+    const cases = [
+      { ...app, capabilities: "window" },
+      { ...app, capabilities: [""] },
+      { ...app, capabilities: ["x".repeat(300)] },
+      { ...app, runtime: "docker" },
+      { ...app, lifecycle: "sometimes" },
+      { ...app, connectors: [1] },
+      { ...app, connectors: ["x".repeat(65)] },
+    ];
+    for (const value of cases) expect(() => parseCatalog({ catalogVersion: 1, apps: [value] })).toThrow();
+  });
+  it("renders only typed manifest settings and rejects malformed declarations", () => {
+    const parsed = parseAppSettings(settings);
+    expect(parsed.manifest).toHaveLength(2);
+    expect(parsed.manifest[0]).toMatchObject({ key: "server.url", type: "text", required: true, options: [] });
+    expect(parsed.manifest[1]).toMatchObject({ type: "select", options: [{ value: "fast", label: "Fast" }] });
+    expect(parsed.extended).toBeNull();
+
+    const cases = [
+      { ...settings, settingsVersion: 2 },
+      { ...settings, extended: [{ key: "x", value: "y" }] },
+      { ...settings, manifest: [{ ...settings.manifest[0], type: "date" }] },
+      { ...settings, manifest: [{ ...settings.manifest[0], key: "Bad Key" }] },
+      { ...settings, manifest: [{ ...settings.manifest[0], required: "yes" }] },
+      { ...settings, manifest: [settings.manifest[0], settings.manifest[0]] },
+      { ...settings, manifest: [{ ...settings.manifest[0], type: "select", options: [] }] },
+      { ...settings, manifest: [{ ...settings.manifest[0], options: [{ value: "a", label: "A" }] }] },
+    ];
+    for (const value of cases) expect(() => parseAppSettings(value)).toThrow();
+  });
+  it("reads and controls on-demand runtime state", async () => {
+    const calls: { url: string; method: string; body: unknown }[] = [];
+    const request = (async (url: string, init?: RequestInit) => {
+      calls.push({ url, method: init?.method ?? "GET", body: init?.body ? JSON.parse(String(init.body)) : null });
+      return new Response(JSON.stringify({ runtimeVersion: 1, id: app.id, installationId: app.installationId, state: "running" }), { status: 200, headers: { "content-type": "application/json" } });
+    }) as unknown as ShellRequest;
+    const signal = new AbortController().signal;
+    expect((await fetchAppRuntime(request, app, signal)).state).toBe("running");
+    expect((await controlAppRuntime(request, app, "start", signal)).state).toBe("running");
+    await controlAppRuntime(request, app, "stop", signal);
+    expect(calls.map((call) => call.url)).toEqual([
+      `/api/v1/shell/apps/${app.id}/runtime?installationId=${app.installationId}`,
+      `/api/v1/shell/apps/${app.id}/runtime`,
+      `/api/v1/shell/apps/${app.id}/runtime`,
+    ]);
+    expect(calls[1]?.body).toMatchObject({ installationId: app.installationId, action: "start" });
+    expect(calls[2]?.body).toMatchObject({ installationId: app.installationId, action: "stop" });
+  });
+  it("uninstalls through the app installation route", async () => {
+    const calls: { url: string; method: string; body: unknown }[] = [];
+    const request = (async (url: string, init?: RequestInit) => {
+      calls.push({ url, method: init?.method ?? "GET", body: init?.body ? JSON.parse(String(init.body)) : null });
+      return new Response(null, { status: 204 });
+    }) as unknown as ShellRequest;
+    await uninstallApp(request, app, new AbortController().signal);
+    expect(calls).toEqual([{
+      url: `/api/v1/shell/apps/${app.id}`,
+      method: "DELETE",
+      body: { installationId: app.installationId },
+    }]);
+  });
+  it("posts a capability invocation and parses the outcome", async () => {
+    const calls: { url: string; body: unknown }[] = [];
+    const request = (async (url: string, init?: RequestInit) => {
+      calls.push({ url, body: init?.body ? JSON.parse(String(init.body)) : null });
+      return new Response(JSON.stringify({ capabilityVersion: 1, outcome: "invoked", result: { answer: 42 } }), { status: 200, headers: { "content-type": "application/json" } });
+    }) as unknown as ShellRequest;
+    const signal = new AbortController().signal;
+    const result = await invokeCapability(request, "rumahl.files.preview", { namespace: "rumahl.files", kind: "file", key: "a" }, signal);
+    expect(result).toEqual({ capability: "rumahl.files.preview", outcome: "invoked", result: { answer: 42 } });
+    expect(calls[0]?.url).toBe("/api/v1/shell/capabilities/invoke");
+    expect(calls[0]?.body).toMatchObject({ capability: "rumahl.files.preview", resource: { namespace: "rumahl.files", kind: "file", key: "a" } });
+    expect(() => parseCapabilityInvocation({ capabilityVersion: 1, outcome: "maybe" }, "x")).toThrow();
+    expect(parseCapabilityInvocation({ capabilityVersion: 1, outcome: "invoked", browser: { appId: app.id, installationId: app.installationId } }, "cap"))
+      .toEqual({ capability: "cap", outcome: "invoked", browser: { appId: app.id, installationId: app.installationId } });
+    expect(() => parseCapabilityInvocation({ capabilityVersion: 1, outcome: "invoked", browser: { appId: "../escape", installationId: app.installationId } }, "cap")).toThrow();
+    expect(() => parseCapabilityInvocation({ capabilityVersion: 1, outcome: "invoked", browser: { appId: app.id } }, "cap")).toThrow();
+  });
+  it("binds a surface frame to the app origin, surface and lease", () => {
+    expect(parseSurfaceFrame(surfaceFrame, app, surfaceFrame.surfaceId, "https://localhost:8443").frameUrl).toBe(surfaceFrame.frameUrl);
+    const cases = [
+      { ...surfaceFrame, frameVersion: 2 },
+      { ...surfaceFrame, surfaceId: "com.rumahl.notes.other" },
+      { ...surfaceFrame, appId: "com.rumahl.other" },
+      { ...surfaceFrame, lease: "short" },
+      { ...surfaceFrame, frameUrl: surfaceFrame.frameUrl.replace("https:", "http:") },
+      { ...surfaceFrame, frameUrl: surfaceFrame.frameUrl.replace(`${app.installationId}.apps.localhost`, "localhost") },
+      { ...surfaceFrame, frameUrl: `${surfaceFrame.frameUrl}?token=secret` },
+      { ...surfaceFrame, renewAfterSeconds: 60 },
+    ];
+    for (const value of cases) expect(() => parseSurfaceFrame(value, app, surfaceFrame.surfaceId, "https://localhost:8443")).toThrow();
+  });
+  it("requests a per-surface frame without a bridge or same-origin access", async () => {
+    const calls: { url: string; body: unknown }[] = [];
+    const request = (async (url: string, init?: RequestInit) => {
+      calls.push({ url, body: init?.body ? JSON.parse(String(init.body)) : null });
+      return new Response(JSON.stringify(surfaceFrame), { status: 200, headers: { "content-type": "application/json" } });
+    }) as unknown as ShellRequest;
+    const parsed = await requestSurfaceFrame(request, app, surfaceFrame.surfaceId, "https://localhost:8443", new AbortController().signal);
+    expect(parsed.lease).toBe(lease);
+    expect(calls).toEqual([{
+      url: `/api/v1/shell/surfaces/${encodeURIComponent(surfaceFrame.surfaceId)}/frame`,
+      body: { installationId: app.installationId },
+    }]);
+    const safe = (async () => new Response(JSON.stringify({ surfaceError: "safe-mode" }), { status: 423 })) as unknown as ShellRequest;
+    await expect(requestSurfaceFrame(safe, app, surfaceFrame.surfaceId, "https://localhost:8443", new AbortController().signal)).rejects.toBeInstanceOf(SafeModeError);
+  });
+  it("identifies safe-mode launch blocks", async () => {
+    const request = (async () => new Response(JSON.stringify({ launchError: "safe-mode" }), {
+      status: 423, headers: { "content-type": "application/json" }
+    })) as unknown as ShellRequest;
+    await expect(launchApp(request, app, "https://localhost:8443", new AbortController().signal))
+      .rejects.toBeInstanceOf(SafeModeError);
+  });
+  it("parses a successful import and rejects malformed responses", () => {
+    const imported = { importVersion: 1, id: app.id, installationId: app.installationId, title: "Notes", version: "1.0.0" };
+    expect(parseImport(imported)).toMatchObject({ id: app.id, installationId: app.installationId });
+    for (const value of [{ ...imported, importVersion: 2 }, { ...imported, id: "not an id" }, { ...imported, installationId: "legacy" }, { ...imported, title: "" }, { ...imported, version: "x".repeat(200) }]) expect(() => parseImport(value)).toThrow();
+  });
+  it("validates app data listings and file previews", () => {    const directory = { dataVersion: 1, kind: "directory", path: "docs", entries: [{ name: "readme.md", directory: false, size: 8 }, { name: "sub", directory: true, size: 0 }] };
+    expect(parseAppData(directory)).toEqual({ kind: "directory", path: "docs", entries: directory.entries });
+    const file = { dataVersion: 1, kind: "file", path: "readme.md", size: 8, contentType: "text/plain; charset=utf-8", text: "# readme" };
+    expect(parseAppData(file)).toEqual({ kind: "file", path: "readme.md", size: 8, contentType: "text/plain; charset=utf-8", text: "# readme" });
+    expect(parseAppData({ ...file, text: null }).kind).toBe("file");
+
+    const cases = [
+      { ...directory, dataVersion: 2 },
+      { ...directory, kind: "socket" },
+      { ...directory, path: "../etc" },
+      { ...directory, entries: [{ name: "../escape", directory: false, size: 1 }] },
+      { ...directory, entries: [{ name: "x", directory: false, size: -1 }] },
+      { ...file, size: 99 * 1024 * 1024 },
+      { ...file, text: 42 },
+    ];
+    for (const value of cases) expect(() => parseAppData(value)).toThrow();
   });
 });

@@ -90,6 +90,7 @@ fn main() -> ExitCode {
 
 fn run(arguments: impl IntoIterator<Item = OsString>) -> Result<(), SupervisorError> {
     let args = parse_args(arguments).map_err(SupervisorError::Arguments)?;
+    rumahl_platform_buildroot::report_os_event("service-started", "success", Some("supervisor"));
     let platform_uid = user_uid(&args.platform_user)?;
     let image_root = args.image_root;
     let resolver = StagedDockerImageResolver::new(

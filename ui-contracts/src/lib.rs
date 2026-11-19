@@ -4,9 +4,10 @@ mod theme;
 mod typescript;
 
 pub use snapshot::{
-    ExtensionContribution, ExtensionSlot, LauncherLayoutVariant, ShellApp, ShellLayoutVariant,
-    ShellMode, ShellSnapshot, ShellSnapshotError, ShellSystemStatus, ShellTheme, ShellUser,
-    SystemProtectionStatus, WindowChromeVariant,
+    ExtensionContribution, ExtensionSize, ExtensionSlot, LauncherLayoutVariant, ShellApp,
+    ShellLayoutVariant, ShellMode, ShellSnapshot, ShellSnapshotError, ShellSystemStatus,
+    ShellTheme, ShellUser, ShellUserRole, SurfaceIcon, SurfaceKind, SurfacePlacement, SurfaceSlot,
+    SurfaceTone, SystemProtectionStatus, WindowChromeVariant,
 };
 pub use theme::{
     ResolvedTheme, ThemeManifest, ThemeManifestError, ThemeToken, ThemeTokenValue, theme_by_id,
@@ -19,4 +20,6 @@ pub const MANIFEST_VERSION: u16 = 1;
 pub const UI_CONTRACT_VERSION: u16 = 1;
 pub const EXTENSION_API_VERSION: u16 = 1;
 pub const SNAPSHOT_VERSION: u16 = 1;
-pub use event::{MAX_SHELL_EVENT_BYTES, SHELL_EVENT_VERSION, ShellEvent, ShellEventError};
+pub use event::{
+    MAX_SHELL_EVENT_BYTES, SHELL_EVENT_VERSION, ShellEvent, ShellEventError, SystemState,
+};

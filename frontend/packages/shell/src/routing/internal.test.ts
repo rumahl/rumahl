@@ -23,7 +23,7 @@ describe("internal destinations and dock identity", () => {
   });
   test("matches pinned route boundaries without swallowing app or hidden windows", () => {
     expect(windowBelongsToLink({ ...design, location: "/settings/display?tab=colors" }, "/settings")).toBe(true);
-    expect(windowBelongsToLink({ ...design, location: "/app/files" }, "/apps")).toBe(false);
+    expect(windowBelongsToLink({ ...design, location: "/app/files" }, "/settings/apps")).toBe(false);
     expect(windowBelongsToLink({ ...design, location: "/settings-other" }, "/settings")).toBe(false);
     expect(windowBelongsToLink(design, "/settings")).toBe(false);
   });

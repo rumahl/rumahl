@@ -12,6 +12,12 @@ class Boundary extends Component<BoundaryProps, { failed: boolean }> {
     // Retry a failed view after navigation without remounting healthy layouts.
     if (previous.location !== this.props.location && this.state.failed) this.setState({ failed: false });
   }
+  // A render failure is a critical error: hand over to the standalone recovery
+  // system, which restarts the shell and returns here once it is healthy again.
+  override componentDidCatch(error: unknown) {
+    const detail = error instanceof Error ? error.message : String(error ?? "");
+    window.location.assign(`/recovery?reason=crash&detail=${encodeURIComponent(detail.slice(0, 200))}`);
+  }
   private retry = () => this.setState({ failed: false });
   override render() {
     return this.state.failed ? this.props.fallback(this.retry) : this.props.children;
@@ -29,7 +35,7 @@ export function RouteBoundary({ children, location }: PropsWithChildren<{ locati
       <div role="alert"><h2>{t("route.errorTitle")}</h2><p>{t("route.error")}</p></div>
       <div className="route-failure__actions">
         <Button onClick={retry}>{t("route.retry")}</Button>
-        <ShellLink to="/apps" className={buttonClass("ghost")}>{t("route.backToApps")}</ShellLink>
+        <ShellLink to="/" className={buttonClass("ghost")}>{t("nav.home")}</ShellLink>
       </div>
       <small>{t("route.errorHint")}</small>
     </div>

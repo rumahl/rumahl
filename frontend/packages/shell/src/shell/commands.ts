@@ -1,6 +1,8 @@
 import { useI18n } from "../i18n";
+import { useTheme } from "@rumahl/ui";
 import { useThemeTuning } from "../preferences/theme-tuning";
 import { useShell } from "./ShellContext";
+import { featureReady, useFeatures } from "../features/ShellFeatures";
 
 export interface ShellCommand {
   id: string;
@@ -9,12 +11,13 @@ export interface ShellCommand {
   hint: string;
   keywords: string;
   run: () => void;
+  disabled?: boolean;
 }
 
 interface CommandContext {
   open: (path: string) => void;
   dispatch: (action: { type: "minimize-all" }) => void;
-  setShellMode: (mode: "desktop" | "launcher") => void;
+  setShellMode: (mode: "desktop" | "launcher" | "mobile") => void;
   setThemeMode: (mode: "light" | "dark") => void;
   setPerformanceMode: (value: boolean) => void;
   setAnimations: (value: boolean) => void;
@@ -43,11 +46,13 @@ export function runShellCommand(input: string, context: CommandContext): boolean
     case "mode": case "shell":
       if (argument === "desktop") { context.setShellMode("desktop"); return true; }
       if (argument === "launcher") { context.setShellMode("launcher"); return true; }
+      if (argument === "mobile") { context.setShellMode("mobile"); return true; }
       return false;
     case "dark": case "dunkel": context.setThemeMode("dark"); return true;
     case "light": case "hell": context.setThemeMode("light"); return true;
     case "desktop": context.setShellMode("desktop"); return true;
     case "launcher": context.setShellMode("launcher"); return true;
+    case "mobile": context.setShellMode("mobile"); return true;
     case "minimize": case "min": context.dispatch({ type: "minimize-all" }); return true;
     case "performance": context.setPerformanceMode(true); return true;
     case "reset": context.reset(); return true;
@@ -61,17 +66,19 @@ export function runShellCommand(input: string, context: CommandContext): boolean
 export function useShellCommands(): ShellCommand[] {
   const { t } = useI18n();
   const { open, dispatch, setMode } = useShell();
+  const features = useFeatures();
   const tuning = useThemeTuning();
+  const { theme } = useTheme();
   const performance = tuning.tuning.performanceMode === true;
   const animations = tuning.tuning.animations !== false;
+  const supportsDark = theme.modes.includes("dark");
+  const supportsLight = theme.modes.includes("light");
   return [
     { id: "open.settings", title: t("command.run.openSettings"), hint: "/settings", keywords: "settings einstellungen preferences personalization", run: () => open("/settings") },
-    { id: "open.apps", title: t("command.run.openApps"), hint: "/apps", keywords: "apps applications anwendungen programs", run: () => open("/apps") },
-    { id: "open.activity", title: t("command.run.openActivity"), hint: "/activity", keywords: "activity aktivitaet log", run: () => open("/activity") },
+    { id: "open.activity", title: t("command.run.openActivity"), hint: "/activity", keywords: "activity aktivitaet log", disabled: !featureReady(features.activity), run: () => open("/activity") },
     { id: "open.home", title: t("command.run.openHome"), hint: "/", keywords: "home start startseite desktop", run: () => open("/") },
-    { id: "open.appManager", title: t("command.run.openAppManager"), hint: "/app/app-manager", keywords: "app manager verwalten install", run: () => open("/app/app-manager") },
-    { id: "theme.dark", title: t("command.run.darkMode"), hint: "dark", keywords: "dark dunkel night nacht", run: () => tuning.setMode("dark") },
-    { id: "theme.light", title: t("command.run.lightMode"), hint: "light", keywords: "light hell day tag", run: () => tuning.setMode("light") },
+    { id: "theme.dark", title: t("command.run.darkMode"), hint: "dark", keywords: "dark dunkel night nacht", disabled: !supportsDark, run: () => tuning.setMode("dark") },
+    { id: "theme.light", title: t("command.run.lightMode"), hint: "light", keywords: "light hell day tag", disabled: !supportsLight, run: () => tuning.setMode("light") },
     { id: "shell.desktop", title: t("command.run.desktopMode"), hint: "desktop", keywords: "desktop", run: () => setMode("desktop") },
     { id: "shell.launcher", title: t("command.run.launcherMode"), hint: "launcher", keywords: "launcher", run: () => setMode("launcher") },
     { id: "window.minimizeAll", title: t("command.run.minimizeAll"), hint: "minimize-all", keywords: "minimize minimizeall fenster minimieren", run: () => dispatch({ type: "minimize-all" }) },

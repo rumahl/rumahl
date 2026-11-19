@@ -3,7 +3,7 @@ use std::fmt;
 
 use crate::{CapabilityExecution, EventDelivery, InstalledApp, OperationContext};
 
-use super::{RuntimeKind, RuntimeStatus};
+use super::{RuntimeCapabilityResult, RuntimeKind, RuntimeStatus};
 
 pub trait RuntimeAdapter: Send + Sync {
     fn kind(&self) -> RuntimeKind;
@@ -30,7 +30,7 @@ pub trait RuntimeAdapter: Send + Sync {
         &self,
         app: &InstalledApp,
         execution: &CapabilityExecution,
-    ) -> Result<(), RuntimeAdapterError>;
+    ) -> Result<RuntimeCapabilityResult, RuntimeAdapterError>;
 
     fn deliver_event(
         &self,

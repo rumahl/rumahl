@@ -1,0 +1,73 @@
+/*
+ * Glass surface contract for @rumahl/ui. `GlassSurface` renders the host +
+ * frame + surface.
+ *
+ * NOTE: True (refraction) glass only works in rumahl OS — the shell's glass
+ * engine samples the wallpaper (SVG/WebGL). Outside the OS (apps, Storybook,
+ * the extracted UI) this CSS is the fallback and renders the same look without
+ * refraction. On the desktop the shell upgrades these hosts automatically.
+ */
+.rumahl-glass-host {
+  position: relative;
+  isolation: isolate;
+}
+.rumahl-glass-frame {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  overflow: hidden;
+  pointer-events: none;
+  z-index: -1;
+}
+.rumahl-glass-surface {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  border-radius: inherit;
+  pointer-events: none;
+  overflow: hidden;
+  background: rgba(25, 32, 54, 0.12);
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.44),
+    inset 0 -1px 0 rgba(255, 255, 255, 0.08),
+    0 14px 35px rgba(0, 0, 0, 0.16);
+}
+.rumahl-glass-webgl {
+  position: absolute !important;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+  max-width: 100%;
+  max-height: 100%;
+  contain: strict;
+  display: block;
+  transition: opacity 0.18s;
+}
+.rumahl-glass-host::after {
+  content: "";
+  position: absolute;
+  inset: 1px;
+  border-radius: inherit;
+  pointer-events: none;
+  z-index: -1;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.16), transparent 42%),
+    radial-gradient(ellipse at 20% 0, rgba(255, 255, 255, 0.19), transparent 43%);
+}
+/* Solid material keeps the surface opaque, matching the desktop. */
+.shell[data-material="solid"] .rumahl-glass-surface {
+  background: var(--rumahl-ui-color-surface-strong, var(--rumahl-ui-color-panel-background, #26292c));
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+@media (prefers-contrast: more), (prefers-reduced-transparency: reduce) {
+  .rumahl-glass-surface {
+    background: rgba(23, 31, 48, 0.92) !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+  }
+}

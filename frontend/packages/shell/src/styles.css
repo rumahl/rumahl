@@ -1,799 +1,1312 @@
-@layer foundation, presentation;
+@layer foundation, presentation, reference;
+@import "@rumahl/ui/materials.css";
+@import "@rumahl/ui/recipes.css";
 @import "./glass-engine/glass.css" layer(presentation);
 @import "./shell/layouts.css" layer(presentation);
 @import "./shell/native-presentation.css" layer(presentation);
 @import "./shell/materials.css" layer(presentation);
-@import "./shell/default-theme.css" layer(presentation);
+@import "@rumahl/ui/default-theme.css" layer(presentation);
 @import "./shell/new-design.css" layer(presentation);
-@import "./shell/reference/reference.css";
+@import "./shell/reference/reference.css" layer(reference);
 @import "./pages/settings.css" layer(presentation);
 @import "./components/controls.css";
 @import "./components/scrollbars.css";
 @import "./shell/command-palette.css";
 @import "./shell/dock-indicators.css";
+@import "./shell/glass-surfaces.css";
+@import "./shell/launcher/launcher.css";
+@import "./shell/folders.css";
+@import "./shell/performance.css";
+@import "./shell/desktop/desktop-widgets.css";
+@import "./shell/desktop/free-grid.css";
+@import "./shell/topbar.css";
+@import "@rumahl/ui/base.css";
+@import "@rumahl/ui/primitives.css";
+@import "./shell/base-ground.css";
+@import "./shell/mobile.css";
+@import "./shell/update-notice.css";
+@import "./shell/immersive.css";
+@import "@rumahl/ui/nav.css";
+@import "@rumahl/ui/interactive.css";
+@import "@rumahl/ui/group.css";
+@import "./shell/font-scale.css";
+@import "./apps/store.css";
+@import "./shell/mobile-system.css";
+@import "./shell/weather-warnings.css";
+@import "./shell/kinetics.css";
+/* Keep last: the motion switch has to win over every component animation. */
+@import "./shell/motion.css";
 
 @layer foundation {
-:root {
-  color: #18201c;
-  background: #e8ece7;
-  font-family:
-    Inter, system-ui, "Segoe UI", Roboto, "Noto Sans", sans-serif;
-  font-synthesis: none;
-  text-rendering: optimizeLegibility;
-  --rumahl-color-canvas-background: #e8ece7;
-  --rumahl-color-panel-background: #f8faf7;
-  --rumahl-color-text-primary: #18201c;
-  --rumahl-color-text-muted: #657068;
-  --rumahl-color-accent-primary: #28694c;
-  --rumahl-color-window-titlebar-background: #f2f5f1;
-  --rumahl-color-window-titlebar-foreground: #18201c;
-  --rumahl-radius-window: 18px;
-  --rumahl-space-shell-gap: 18px;
-  --line: rgba(31, 50, 39, 0.11);
-  --shadow: 0 24px 70px rgba(30, 45, 37, 0.14);
-}
+  :root {
+    color: #18201c;
+    background: #e8ece7;
+    font-family: var(--rumahl-ui-typography-family, Inter, system-ui, "Segoe UI", Roboto, "Noto Sans", sans-serif);
+    font-synthesis: none;
+    text-rendering: optimizeLegibility;
+    --rumahl-color-canvas-background: #e8ece7;
+    --rumahl-color-panel-background: #f8faf7;
+    --rumahl-color-text-primary: #18201c;
+    --rumahl-color-text-muted: #657068;
+    --rumahl-color-accent-primary: #28694c;
+    --rumahl-color-window-titlebar-background: #f2f5f1;
+    --rumahl-color-window-titlebar-foreground: #18201c;
+    --rumahl-radius-window: 18px;
+    --rumahl-space-shell-gap: 18px;
+    --line: rgba(31, 50, 39, 0.11);
+    --shadow: 0 24px 70px rgba(30, 45, 37, 0.14);
+  }
+
+  * {
+    box-sizing: border-box;
+  }
+
+  html,
+  body,
+  #root {
+    min-height: 100%;
+    margin: 0;
+  }
+
+  body {
+    min-width: 320px;
+    min-height: 100vh;
+    overflow: hidden;
+  }
+
+  button,
+  input {
+    color: inherit;
+    font: inherit;
+  }
+
+  button {
+    cursor: pointer;
+  }
+
+  button:focus-visible,
+  input:focus-visible {
+    outline: 3px solid
+      color-mix(in srgb, var(--rumahl-color-accent-primary) 34%, transparent);
+    outline-offset: 2px;
+  }
 
-* {
-  box-sizing: border-box;
-}
-
-html,
-body,
-#root {
-  min-height: 100%;
-  margin: 0;
-}
-
-body {
-  min-width: 320px;
-  min-height: 100vh;
-  overflow: hidden;
-}
-
-button,
-input {
-  color: inherit;
-  font: inherit;
-}
-
-button {
-  cursor: pointer;
-}
-
-button:focus-visible,
-input:focus-visible {
-  outline: 3px solid color-mix(in srgb, var(--rumahl-color-accent-primary) 34%, transparent);
-  outline-offset: 2px;
-}
-
-.shell {
-  display: grid;
-  grid-template-columns: 238px minmax(0, 1fr);
-  width: 100vw;
-  height: 100vh;
-  background:
-    radial-gradient(circle at 92% 8%, rgba(255, 255, 255, 0.72), transparent 28%),
-    var(--rumahl-ui-color-canvas-background, var(--rumahl-color-canvas-background));
-}
-
-.navigation {
-  position: relative;
-  z-index: 20;
-  display: flex;
-  flex-direction: column;
-  padding: 28px 18px 22px;
-  border-right: 1px solid var(--line);
-  background: rgba(246, 249, 245, 0.72);
-  backdrop-filter: blur(24px);
-}
-
-.navigation__brand {
-  display: flex;
-  align-items: center;
-  gap: 11px;
-  padding: 0 10px 32px;
-  font-size: 18px;
-  font-weight: 720;
-  letter-spacing: -0.03em;
-}
-
-.navigation__mark {
-  display: grid;
-  place-items: center;
-  width: 34px;
-  height: 34px;
-  border-radius: 11px 11px 11px 4px;
-  color: #fff;
-  background: var(--rumahl-color-accent-primary);
-}
-
-.navigation__mark svg {
-  width: auto;
-  height: 20px;
-}
-
-.navigation__items {
-  display: grid;
-  gap: 7px;
-}
-
-.navigation__items a {
-  display: flex;
-  align-items: center;
-  gap: 13px;
-  width: 100%;
-  padding: 12px 13px;
-  border: 0;
-  border-radius: 12px;
-  color: var(--rumahl-ui-color-text-muted, var(--rumahl-color-text-muted));
-  background: transparent;
-  font-size: 14px;
-  font-weight: 620;
-  text-align: left;
-  transition: 160ms ease;
-}
-
-.navigation__items a:hover {
-  color: var(--rumahl-ui-color-text-primary, var(--rumahl-color-text-primary));
-  background: rgba(255, 255, 255, 0.72);
-}
-
-.navigation__items a.is-active {
-  color: #fff;
-  background: var(--rumahl-color-accent-primary);
-  box-shadow: 0 9px 24px rgba(40, 105, 76, 0.2);
-}
-
-.navigation__items svg,
-.status-card svg,
-.contribution-card svg,
-.command-palette svg {
-  stroke: currentColor;
-  stroke-linecap: round;
-  stroke-linejoin: round;
-  stroke-width: 1.7;
-}
-
-.navigation__footer {
-  display: flex;
-  align-items: center;
-  gap: 9px;
-  margin-top: auto;
-  padding: 13px;
-  color: var(--rumahl-ui-color-text-muted, var(--rumahl-color-text-muted));
-  font-size: 12px;
-}
-
-.navigation__status {
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  background: #36a56e;
-  box-shadow: 0 0 0 4px rgba(54, 165, 110, 0.13);
-}
-
-.shell__workspace {
-  position: relative;
-  min-width: 0;
-  overflow: auto;
-}
-
-kbd {
-  padding: 3px 6px;
-  border: 1px solid var(--line);
-  border-radius: 6px;
-  background: rgba(255, 255, 255, 0.7);
-  font: 600 11px/1.2 inherit;
-}
-
-.dashboard,
-.section-placeholder {
-  width: min(1120px, calc(100% - 48px));
-  margin: 0 auto;
-  padding: 62px 0 80px;
-}
-
-.dashboard__hero {
-  max-width: 720px;
-}
-
-.eyebrow {
-  margin: 0 0 12px;
-  color: var(--rumahl-color-accent-primary);
-  font-size: 12px;
-  font-weight: 760;
-  letter-spacing: 0.13em;
-  text-transform: uppercase;
-}
-
-h1,
-h2,
-h3,
-p {
-  margin-top: 0;
-}
-
-.dashboard h1,
-.section-placeholder h1 {
-  margin-bottom: 17px;
-  font-family: Georgia, "Times New Roman", serif;
-  font-size: clamp(48px, 7vw, 82px);
-  font-weight: 500;
-  letter-spacing: -0.055em;
-  line-height: 0.96;
-}
-
-.dashboard__intro,
-.section-placeholder > p:last-child {
-  max-width: 620px;
-  color: var(--rumahl-ui-color-text-muted, var(--rumahl-color-text-muted));
-  font-size: 17px;
-  line-height: 1.68;
-}
-
-.status-grid {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: var(--rumahl-space-shell-gap);
-  margin: 48px 0 58px;
-}
-
-.status-card {
-  position: relative;
-  display: flex;
-  align-items: center;
-  gap: 14px;
-  min-height: 112px;
-  padding: 20px;
-  border: 1px solid rgba(31, 50, 39, 0.08);
-  border-radius: 18px;
-  background: rgba(248, 250, 247, 0.8);
-  box-shadow: 0 10px 32px rgba(31, 49, 40, 0.05);
-}
-
-.status-card--accent {
-  color: #fff;
-  border-color: transparent;
-  background: var(--rumahl-color-accent-primary);
-}
-
-.status-card__icon {
-  display: grid;
-  flex: 0 0 auto;
-  place-items: center;
-  width: 44px;
-  height: 44px;
-  border-radius: 14px;
-  color: var(--rumahl-color-accent-primary);
-  background: rgba(40, 105, 76, 0.1);
-}
-
-.status-card--accent .status-card__icon {
-  color: #fff;
-  background: rgba(255, 255, 255, 0.15);
-}
-
-.status-card p {
-  margin-bottom: 5px;
-  color: var(--rumahl-ui-color-text-muted, var(--rumahl-color-text-muted));
-  font-size: 12px;
-}
-
-.status-card--accent p {
-  color: rgba(255, 255, 255, 0.72);
-}
-
-.status-card strong {
-  font-size: 15px;
-}
-
-.status-card__badge {
-  margin-left: auto;
-  padding: 5px 8px;
-  border-radius: 999px;
-  background: rgba(255, 255, 255, 0.15);
-  font-size: 10px;
-  font-weight: 700;
-  text-transform: uppercase;
-}
-
-.status-card > button {
-  display: grid;
-  place-items: center;
-  width: 34px;
-  height: 34px;
-  margin-left: auto;
-  border: 0;
-  border-radius: 50%;
-  color: var(--rumahl-ui-color-text-muted, var(--rumahl-color-text-muted));
-  background: rgba(31, 50, 39, 0.06);
-}
-
-.section-heading {
-  display: flex;
-  align-items: end;
-  justify-content: space-between;
-  margin-bottom: 20px;
-}
-
-.section-heading h2 {
-  margin-bottom: 0;
-  font: 500 31px/1.1 Georgia, serif;
-  letter-spacing: -0.035em;
-}
-
-.section-heading > span {
-  color: var(--rumahl-ui-color-text-muted, var(--rumahl-color-text-muted));
-  font-size: 12px;
-}
-
-.contribution-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: var(--rumahl-space-shell-gap);
-}
-
-.contribution-card {
-  display: flex;
-  align-items: center;
-  gap: 14px;
-  min-height: 82px;
-  padding: 16px 18px;
-  border: 1px solid var(--line);
-  border-radius: 16px;
-  background: rgba(255, 255, 255, 0.55);
-  text-align: left;
-}
-
-button.contribution-card:hover {
-  background: rgba(255, 255, 255, 0.9);
-  transform: translateY(-1px);
-}
-
-.contribution-card__monogram {
-  display: grid;
-  place-items: center;
-  width: 42px;
-  height: 42px;
-  border-radius: 13px;
-  color: #fff;
-  background: #b66f49;
-  font-size: 19px;
-  font-weight: 700;
-}
-
-.contribution-card > span:nth-child(2) {
-  display: grid;
-  flex: 1;
-  gap: 4px;
-}
-
-.contribution-card small {
-  color: var(--rumahl-ui-color-text-muted, var(--rumahl-color-text-muted));
-  font-size: 11px;
-}
-
-.contribution-card--widget .contribution-card__monogram {
-  background: #59736c;
-}
-
-.contribution-card--widget {
-  flex-wrap: wrap;
-}
-
-.contribution-card__frame {
-  width: 100%;
-  height: 180px;
-  border: 0;
-  border-radius: 12px;
-  background: var(--rumahl-ui-color-panel-background, var(--rumahl-color-panel-background));
-}
-
-.section-placeholder {
-  padding-top: 110px;
-}
-
-.window-layer {
-  position: fixed;
-  z-index: 40;
-  inset: 0 0 0 238px;
-  pointer-events: none;
-}
-
-.shell-window {
-  position: absolute;
-  top: 18%;
-  left: 50%;
-  width: min(680px, calc(100% - 64px));
-  overflow: hidden;
-  border: 1px solid rgba(28, 47, 36, 0.13);
-  border-radius: var(--rumahl-radius-window);
-  background: var(--rumahl-ui-color-panel-background, var(--rumahl-color-panel-background));
-  box-shadow: var(--shadow);
-  opacity: 0.95;
-  pointer-events: auto;
-  transform: translateX(-50%) scale(0.99);
-}
-
-.shell-window.is-focused {
-  opacity: 1;
-  transform: translateX(-50%) scale(1);
-}
-
-.shell-window--stream {
-  top: 8%;
-  width: min(1100px, calc(100% - 48px));
-  min-width: min(480px, calc(100% - 48px));
-  height: min(76vh, 800px);
-  resize: both;
-}
-
-.shell-window--stream .shell-window__content {
-  height: calc(100% - 76px);
-  padding: 0;
-}
-
-.stream-frame {
-  display: block;
-  width: 100%;
-  height: 100%;
-  border: 0;
-  background: #101613;
-}
-
-.stream-status {
-  display: grid;
-  place-items: center;
-  height: 100%;
-  padding: 24px;
-  color: var(--rumahl-ui-color-text-muted, var(--rumahl-color-text-muted));
-  text-align: center;
-}
-
-.stream-list {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  margin-top: 12px;
-}
-
-.stream-list button {
-  padding: 9px 12px;
-  border: 1px solid var(--line);
-  border-radius: 10px;
-  background: var(--rumahl-ui-color-panel-background, var(--rumahl-color-panel-background));
-  color: var(--rumahl-ui-color-text-primary, var(--rumahl-color-text-primary));
-}
-
-.shell-window__titlebar {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  min-height: 76px;
-  padding: 16px 18px 15px 22px;
-  color: var(--rumahl-ui-color-window-titlebar-foreground, var(--rumahl-color-window-titlebar-foreground));
-  background: var(--rumahl-ui-color-window-titlebar-background, var(--rumahl-color-window-titlebar-background));
-  border-bottom: 1px solid var(--line);
-}
-
-.shell-window--compact .shell-window__titlebar {
-  min-height: 58px;
-  padding-block: 10px;
-}
-
-.shell-window__titlebar p {
-  margin-bottom: 3px;
-  color: var(--rumahl-ui-color-text-muted, var(--rumahl-color-text-muted));
-  font-size: 10px;
-  font-weight: 720;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
-}
-
-.shell-window__titlebar h2 {
-  margin-bottom: 0;
-  font-size: 15px;
-}
-
-.shell-window__controls {
-  display: flex;
-  gap: 8px;
-}
-
-.shell-window__controls button {
-  display: grid;
-  place-items: center;
-  width: 30px;
-  height: 30px;
-  border: 0;
-  border-radius: 9px;
-  background: rgba(24, 32, 28, 0.07);
-}
-
-.shell-window__controls button:last-child {
-  background: rgba(166, 63, 53, 0.12);
-}
-
-.shell-window__controls span {
-  display: block;
-  width: 10px;
-  height: 1.5px;
-  border-radius: 2px;
-  background: currentColor;
-}
-
-.shell-window__controls button:last-child span {
-  height: 10px;
-  background:
-    linear-gradient(45deg, transparent 44%, currentColor 45%, currentColor 55%, transparent 56%),
-    linear-gradient(-45deg, transparent 44%, currentColor 45%, currentColor 55%, transparent 56%);
-}
-
-.shell-window__content {
-  padding: 30px;
-}
-
-.app-manager {
-  display: flex;
-  align-items: end;
-  justify-content: space-between;
-  gap: 32px;
-}
-
-.app-manager h3 {
-  margin-bottom: 10px;
-  font: 500 28px/1.1 Georgia, serif;
-}
-
-.app-manager p:last-child {
-  max-width: 430px;
-  margin-bottom: 0;
-  color: var(--rumahl-ui-color-text-muted, var(--rumahl-color-text-muted));
-  line-height: 1.55;
-}
-
-.app-manager > button {
-  flex: 0 0 auto;
-  padding: 11px 14px;
-  border: 0;
-  border-radius: 10px;
-  color: #fff;
-  background: var(--rumahl-color-accent-primary);
-  font-size: 12px;
-  font-weight: 700;
-}
-
-.window-dock {
-  position: fixed;
-  z-index: 45;
-  bottom: 20px;
-  left: 50%;
-  padding: 7px;
-  border: 1px solid var(--line);
-  border-radius: 13px;
-  background: rgba(248, 250, 247, 0.86);
-  box-shadow: var(--shadow);
-  backdrop-filter: blur(18px);
-}
-
-.window-dock button {
-  padding: 8px 12px;
-  border: 0;
-  border-radius: 8px;
-  background: rgba(40, 105, 76, 0.1);
-  font-size: 12px;
-}
-
-.command-backdrop {
-  position: fixed;
-  z-index: 80;
-  display: grid;
-  place-items: start center;
-  inset: 0;
-  padding-top: 13vh;
-  background: rgba(21, 29, 25, 0.28);
-  backdrop-filter: blur(7px);
-}
-
-.command-palette {
-  width: min(600px, calc(100% - 32px));
-  overflow: hidden;
-  border: 1px solid rgba(255, 255, 255, 0.25);
-  border-radius: 18px;
-  background: var(--rumahl-ui-color-panel-background, #f9fbf8);
-  box-shadow: 0 32px 90px rgba(19, 30, 24, 0.3);
-}
-
-.command-palette__input {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 17px 18px;
-  border-bottom: 1px solid var(--line);
-}
-
-.command-palette__input input {
-  flex: 1;
-  border: 0;
-  outline: 0;
-  background: transparent;
-  font-size: 17px;
-}
-
-.command-palette__results {
-  max-height: min(60vh, 520px);
-  overflow-y: auto;
-  padding: 10px;
-}
-
-.command-palette__results > p {
-  padding: 4px 8px;
-  color: var(--rumahl-ui-color-text-muted, var(--rumahl-color-text-muted));
-  font-size: 10px;
-  font-weight: 750;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
-}
-
-.command-palette__results button {
-  display: flex;
-  justify-content: space-between;
-  width: 100%;
-  padding: 12px;
-  border: 0;
-  border-radius: 10px;
-  background: transparent;
-  text-align: left;
-}
-
-.command-palette__results button:hover {
-  background: rgba(40, 105, 76, 0.08);
-}
-
-.command-palette__results small {
-  color: var(--rumahl-ui-color-text-muted, var(--rumahl-color-text-muted));
-}
-
-@media (max-width: 860px) {
   .shell {
-    grid-template-columns: 76px minmax(0, 1fr);
+    display: grid;
+    grid-template-columns: 238px minmax(0, 1fr);
+    width: 100vw;
+    height: 100vh;
+    background:
+      radial-gradient(
+        circle at 92% 8%,
+        rgba(255, 255, 255, 0.72),
+        transparent 28%
+      ),
+      var(
+        --rumahl-ui-color-canvas-background,
+        var(--rumahl-color-canvas-background)
+      );
   }
 
   .navigation {
-    padding-inline: 10px;
+    position: relative;
+    z-index: 20;
+    display: flex;
+    flex-direction: column;
+    padding: 28px 18px 22px;
+    border-right: 1px solid var(--line);
+    background: rgba(246, 249, 245, 0.72);
+    backdrop-filter: blur(24px);
   }
 
   .navigation__brand {
-    justify-content: center;
-    padding-inline: 0;
+    display: flex;
+    align-items: center;
+    gap: 11px;
+    padding: 0 10px 32px;
+    font-size: 18px;
+    font-weight: 720;
+    letter-spacing: -0.03em;
   }
 
-  .navigation__brand > span:last-child,
-  .navigation__items span,
-  .navigation__footer span:last-child {
-    display: none;
+  .navigation__mark {
+    display: grid;
+    place-items: center;
+    width: 34px;
+    height: 34px;
+    border-radius: 11px 11px 11px 4px;
+    color: #fff;
+    background: var(--rumahl-color-accent-primary);
   }
 
-  .navigation__items a {
-    justify-content: center;
-  }
-
-  .navigation__footer {
-    justify-content: center;
-  }
-
-  .window-layer {
-    left: 76px;
-  }
-
-  .status-grid {
-    grid-template-columns: 1fr;
-  }
-}
-
-@media (max-width: 620px) {
-  body {
-    overflow: auto;
-  }
-
-  .shell {
-    display: block;
-    min-height: 100vh;
-  }
-
-  .navigation {
-    position: fixed;
-    z-index: 60;
-    inset: auto 12px 12px;
-    flex-direction: row;
-    padding: 7px;
-    border: 1px solid var(--line);
-    border-radius: 16px;
-    box-shadow: var(--shadow);
-  }
-
-  .navigation__brand,
-  .navigation__footer {
-    display: none;
+  .navigation__mark svg {
+    width: auto;
+    height: 20px;
   }
 
   .navigation__items {
     display: grid;
-    grid-template-columns: repeat(4, 1fr);
-    width: 100%;
+    gap: 7px;
   }
 
   .navigation__items a {
-    min-height: 44px;
+    display: flex;
+    align-items: center;
+    gap: 13px;
+    width: 100%;
+    padding: 12px 13px;
+    border: 0;
+    border-radius: 12px;
+    color: var(--rumahl-ui-color-text-muted, var(--rumahl-color-text-muted));
+    background: transparent;
+    font-size: 14px;
+    font-weight: 620;
+    text-align: left;
+    transition: 160ms ease;
+  }
+
+  .navigation__items a:hover {
+    color: var(
+      --rumahl-ui-color-text-primary,
+      var(--rumahl-color-text-primary)
+    );
+    background: rgba(255, 255, 255, 0.72);
+  }
+
+  .navigation__items a.is-active {
+    color: #fff;
+    background: var(--rumahl-color-accent-primary);
+    box-shadow: 0 9px 24px rgba(40, 105, 76, 0.2);
+  }
+
+  .navigation__items svg,
+  .status-card svg,
+  .contribution-card svg,
+  .command-palette svg {
+    stroke: currentColor;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+    stroke-width: 1.7;
+  }
+
+  .navigation__footer {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    margin-top: auto;
+    padding: 13px;
+    color: var(--rumahl-ui-color-text-muted, var(--rumahl-color-text-muted));
+    font-size: 12px;
+  }
+
+  .navigation__status {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: #36a56e;
+    box-shadow: 0 0 0 4px rgba(54, 165, 110, 0.13);
+  }
+
+  .shell__workspace {
+    position: relative;
+    min-width: 0;
+    overflow: auto;
+  }
+
+  kbd {
+    padding: 3px 6px;
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    background: rgba(255, 255, 255, 0.7);
+    font: 600 12px/1.2 inherit;
   }
 
   .dashboard,
   .section-placeholder {
-    width: calc(100% - 36px);
-    padding-top: 38px;
-    padding-bottom: 110px;
+    width: min(1120px, calc(100% - 48px));
+    margin: 0 auto;
+    padding: 62px 0 80px;
+  }
+
+  .dashboard__hero {
+    max-width: 720px;
+  }
+
+  .eyebrow {
+    margin: 0 0 12px;
+    color: var(--rumahl-color-accent-primary);
+    font-size: 12px;
+    font-weight: 760;
+    letter-spacing: 0.13em;
+    text-transform: uppercase;
+  }
+
+  h1,
+  h2,
+  h3,
+  p {
+    margin-top: 0;
   }
 
   .dashboard h1,
   .section-placeholder h1 {
-    font-size: 48px;
+    margin-bottom: 17px;
+    font-family: Georgia, "Times New Roman", serif;
+    font-size: clamp(48px, 7vw, 82px);
+    font-weight: 500;
+    letter-spacing: -0.055em;
+    line-height: 0.96;
+  }
+
+  .dashboard__intro,
+  .section-placeholder > p:last-child {
+    max-width: 620px;
+    color: var(--rumahl-ui-color-text-muted, var(--rumahl-color-text-muted));
+    font-size: 17px;
+    line-height: 1.68;
+  }
+
+  .status-grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: var(--rumahl-space-shell-gap);
+    margin: 48px 0 58px;
+  }
+
+  .status-card {
+    position: relative;
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    min-height: 112px;
+    padding: 20px;
+    border: 1px solid rgba(31, 50, 39, 0.08);
+    border-radius: 18px;
+    background: rgba(248, 250, 247, 0.8);
+    box-shadow: 0 10px 32px rgba(31, 49, 40, 0.05);
+  }
+
+  .status-card--accent {
+    color: #fff;
+    border-color: transparent;
+    background: var(--rumahl-color-accent-primary);
+  }
+
+  .status-card__icon {
+    display: grid;
+    flex: 0 0 auto;
+    place-items: center;
+    width: 44px;
+    height: 44px;
+    border-radius: 14px;
+    color: var(--rumahl-color-accent-primary);
+    background: rgba(40, 105, 76, 0.1);
+  }
+
+  .status-card--accent .status-card__icon {
+    color: #fff;
+    background: rgba(255, 255, 255, 0.15);
+  }
+
+  .status-card p {
+    margin-bottom: 5px;
+    color: var(--rumahl-ui-color-text-muted, var(--rumahl-color-text-muted));
+    font-size: 12px;
+  }
+
+  .status-card--accent p {
+    color: rgba(255, 255, 255, 0.72);
+  }
+
+  .status-card strong {
+    font-size: 15px;
+  }
+
+  .status-card__badge {
+    margin-left: auto;
+    padding: 5px 8px;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.15);
+    font-size: 12px;
+    font-weight: 700;
+    text-transform: uppercase;
+  }
+
+  .status-card > button {
+    display: grid;
+    place-items: center;
+    width: 34px;
+    height: 34px;
+    margin-left: auto;
+    border: 0;
+    border-radius: 50%;
+    color: var(--rumahl-ui-color-text-muted, var(--rumahl-color-text-muted));
+    background: rgba(31, 50, 39, 0.06);
+  }
+
+  .section-heading {
+    display: flex;
+    align-items: end;
+    justify-content: space-between;
+    margin-bottom: 20px;
+  }
+
+  .section-heading h2 {
+    margin-bottom: 0;
+    font:
+      500 31px/1.1 Georgia,
+      serif;
+    letter-spacing: -0.035em;
+  }
+
+  .section-heading > span {
+    color: var(--rumahl-ui-color-text-muted, var(--rumahl-color-text-muted));
+    font-size: 12px;
   }
 
   .contribution-grid {
-    grid-template-columns: 1fr;
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: var(--rumahl-space-shell-gap);
+  }
+
+  .contribution-card {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    min-height: 82px;
+    padding: 16px 18px;
+    border: 1px solid var(--line);
+    border-radius: 16px;
+    background: rgba(255, 255, 255, 0.55);
+    text-align: left;
+  }
+
+  button.contribution-card:hover {
+    background: rgba(255, 255, 255, 0.9);
+    transform: translateY(-1px);
+  }
+
+  .contribution-card__monogram {
+    display: grid;
+    place-items: center;
+    width: 42px;
+    height: 42px;
+    border-radius: 13px;
+    color: #fff;
+    background: #b66f49;
+    font-size: 19px;
+    font-weight: 700;
+  }
+
+  .contribution-card > span:nth-child(2) {
+    display: grid;
+    flex: 1;
+    gap: 4px;
+  }
+
+  .contribution-card small {
+    color: var(--rumahl-ui-color-text-muted, var(--rumahl-color-text-muted));
+    font-size: 12px;
+  }
+
+  .contribution-card--widget .contribution-card__monogram {
+    background: #59736c;
+  }
+
+  .contribution-card--widget {
+    flex-wrap: wrap;
+  }
+
+  .contribution-card__frame {
+    width: 100%;
+    height: 180px;
+    overflow: hidden;
+    border: 0;
+    border-radius: 12px;
+    background: transparent;
+  }
+
+  .section-placeholder {
+    padding-top: 110px;
   }
 
   .window-layer {
-    inset: 0;
+    position: fixed;
+    z-index: 40;
+    inset: 0 0 0 238px;
+    pointer-events: none;
   }
 
   .shell-window {
-    top: 10%;
-    width: calc(100% - 24px);
+    position: absolute;
+    top: 18%;
+    left: 50%;
+    width: min(680px, calc(100% - 64px));
+    overflow: hidden;
+    border: 1px solid rgba(28, 47, 36, 0.13);
+    border-radius: var(--rumahl-radius-window);
+    background: var(
+      --rumahl-ui-color-panel-background,
+      var(--rumahl-color-panel-background)
+    );
+    box-shadow: var(--shadow);
+    opacity: 0.95;
+    pointer-events: auto;
+    transform: translateX(-50%) scale(0.99);
   }
 
-  .app-manager {
-    align-items: stretch;
-    flex-direction: column;
+  .shell-window.is-focused {
+    opacity: 1;
+    transform: translateX(-50%) scale(1);
   }
-}
 
-@media (prefers-reduced-motion: no-preference) {
-  .shell-window,
-  .contribution-card,
+  .shell-window--stream {
+    top: 8%;
+    width: min(1100px, calc(100% - 48px));
+    min-width: min(480px, calc(100% - 48px));
+    height: min(76vh, 800px);
+    resize: both;
+  }
+
+  .shell-window--stream .shell-window__content {
+    height: calc(100% - 76px);
+    padding: 0;
+  }
+
+  .stream-frame {
+    display: block;
+    width: 100%;
+    height: 100%;
+    border: 0;
+    background: #101613;
+  }
+
+  .stream-status {
+    display: grid;
+    place-items: center;
+    height: 100%;
+    padding: 24px;
+    color: var(--rumahl-ui-color-text-muted, var(--rumahl-color-text-muted));
+    text-align: center;
+  }
+
+  .stream-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: 12px;
+  }
+
+  .stream-list button {
+    padding: 9px 12px;
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    background: var(
+      --rumahl-ui-color-panel-background,
+      var(--rumahl-color-panel-background)
+    );
+    color: var(
+      --rumahl-ui-color-text-primary,
+      var(--rumahl-color-text-primary)
+    );
+  }
+
+  .shell-window__titlebar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    min-height: 76px;
+    padding: 16px 18px 15px 22px;
+    color: var(
+      --rumahl-ui-color-window-titlebar-foreground,
+      var(--rumahl-color-window-titlebar-foreground)
+    );
+    background: var(
+      --rumahl-ui-color-window-titlebar-background,
+      var(--rumahl-color-window-titlebar-background)
+    );
+    border-bottom: 1px solid var(--line);
+  }
+
+  .shell-window--compact .shell-window__titlebar {
+    min-height: 58px;
+    padding-block: 10px;
+  }
+
+  .shell-window__titlebar p {
+    margin-bottom: 3px;
+    color: var(--rumahl-ui-color-text-muted, var(--rumahl-color-text-muted));
+    font-size: 12px;
+    font-weight: 720;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+  }
+
+  .shell-window__titlebar h2 {
+    margin-bottom: 0;
+    font-size: 15px;
+  }
+
+  .shell-window__controls {
+    display: flex;
+    gap: 8px;
+  }
+
+  .shell-window__controls button {
+    display: grid;
+    place-items: center;
+    width: 30px;
+    height: 30px;
+    border: 0;
+    border-radius: 9px;
+    background: rgba(24, 32, 28, 0.07);
+  }
+
+  .shell-window__controls button:last-child {
+    background: rgba(166, 63, 53, 0.12);
+  }
+
+  .shell-window__controls span {
+    display: block;
+    width: 10px;
+    height: 1.5px;
+    border-radius: 2px;
+    background: currentColor;
+  }
+
+  .shell-window__controls button:last-child span {
+    height: 10px;
+    background:
+      linear-gradient(
+        45deg,
+        transparent 44%,
+        currentColor 45%,
+        currentColor 55%,
+        transparent 56%
+      ),
+      linear-gradient(
+        -45deg,
+        transparent 44%,
+        currentColor 45%,
+        currentColor 55%,
+        transparent 56%
+      );
+  }
+
+  .shell-window__content {
+    padding: 30px;
+  }
+
+  .window-dock {
+    position: fixed;
+    z-index: 45;
+    bottom: 20px;
+    left: 50%;
+    padding: 7px;
+    border: 1px solid var(--line);
+    border-radius: 13px;
+    background: rgba(248, 250, 247, 0.86);
+    box-shadow: var(--shadow);
+    backdrop-filter: blur(18px);
+  }
+
+  .window-dock button {
+    padding: 8px 12px;
+    border: 0;
+    border-radius: 8px;
+    background: rgba(40, 105, 76, 0.1);
+    font-size: 12px;
+  }
+
+  .command-backdrop {
+    position: fixed;
+    z-index: 80;
+    display: grid;
+    place-items: start center;
+    inset: 0;
+    padding-top: 13vh;
+    background: rgba(21, 29, 25, 0.28);
+    backdrop-filter: blur(7px);
+  }
+
+  .command-palette {
+    width: min(600px, calc(100% - 32px));
+    overflow: hidden;
+    border: 1px solid rgba(255, 255, 255, 0.25);
+    border-radius: 18px;
+    background: var(--rumahl-ui-color-panel-background, #f9fbf8);
+    box-shadow: 0 32px 90px rgba(19, 30, 24, 0.3);
+  }
+
+  .command-palette__input {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 17px 18px;
+    border-bottom: 1px solid var(--line);
+  }
+
+  .command-palette__input input {
+    flex: 1;
+    border: 0;
+    outline: 0;
+    background: transparent;
+    font-size: 17px;
+  }
+
+  .command-palette__results {
+    max-height: min(60vh, 520px);
+    overflow-y: auto;
+    padding: 10px;
+  }
+
+  .command-palette__results > p {
+    padding: 4px 8px;
+    color: var(--rumahl-ui-color-text-muted, var(--rumahl-color-text-muted));
+    font-size: 12px;
+    font-weight: 750;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+  }
+
+  .command-palette__results button {
+    display: flex;
+    justify-content: space-between;
+    width: 100%;
+    padding: 12px;
+    border: 0;
+    border-radius: 10px;
+    background: transparent;
+    text-align: left;
+  }
+
+  .command-palette__results button:hover {
+    background: rgba(40, 105, 76, 0.08);
+  }
+
+  .command-palette__results small {
+    color: var(--rumahl-ui-color-text-muted, var(--rumahl-color-text-muted));
+  }
+
+  @media (max-width: 860px) {
+    .shell {
+      grid-template-columns: 76px minmax(0, 1fr);
+    }
+
+    .navigation {
+      padding-inline: 10px;
+    }
+
+    .navigation__brand {
+      justify-content: center;
+      padding-inline: 0;
+    }
+
+    .navigation__brand > span:last-child,
+    .navigation__items span,
+    .navigation__footer span:last-child {
+      display: none;
+    }
+
+    .navigation__items a {
+      justify-content: center;
+    }
+
+    .navigation__footer {
+      justify-content: center;
+    }
+
+    .window-layer {
+      left: 76px;
+    }
+
+    .status-grid {
+      grid-template-columns: 1fr;
+    }
+  }
+
+  @media (max-width: 620px) {
+    body {
+      overflow: auto;
+    }
+
+    .shell {
+      display: block;
+      min-height: 100vh;
+    }
+
+    .navigation {
+      position: fixed;
+      z-index: 60;
+      inset: auto 12px 12px;
+      flex-direction: row;
+      padding: 7px;
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      box-shadow: var(--shadow);
+    }
+
+    .navigation__brand,
+    .navigation__footer {
+      display: none;
+    }
+
+    .navigation__items {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      width: 100%;
+    }
+
+    .navigation__items a {
+      min-height: 44px;
+    }
+
+    .dashboard,
+    .section-placeholder {
+      width: calc(100% - 36px);
+      padding-top: 38px;
+      padding-bottom: 110px;
+    }
+
+    .dashboard h1,
+    .section-placeholder h1 {
+      font-size: 48px;
+    }
+
+    .contribution-grid {
+      grid-template-columns: 1fr;
+    }
+
+    .window-layer {
+      inset: 0;
+    }
+
+    .shell-window {
+      top: 10%;
+      width: calc(100% - 24px);
+    }
+
+  }
+
+  @media (prefers-reduced-motion: no-preference) {
+    .shell-window,
+    .contribution-card,
+    .navigation__items a {
+      transition: 160ms ease;
+    }
+  }
+  /* Bootstrap state is deliberately independent from demo data and shell snapshots. */
+  .startup-message {
+    align-items: center;
+    color: #4d5c52;
+    display: flex;
+    font:
+      500 0.95rem/1.5 Inter,
+      ui-sans-serif,
+      system-ui,
+      sans-serif;
+    justify-content: center;
+    min-height: 100vh;
+    margin: 0;
+  }
+
+  .startup-message--error {
+    color: #8a3d32;
+  }
+
+  /* Presentation modes share navigation and route content. */
+  .window-position {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+  }
+  .window-position:has(.is-focused) {
+    z-index: 2;
+  }
+  .launcher-workspace {
+    overflow: auto;
+    flex: 1;
+    min-height: 0;
+    padding-block: 24px;
+  }
+  .launcher-workspace .stream-frame {
+    height: 70vh;
+  }
+  .app-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 16px;
+  }
+  .app-grid a {
+    padding: 24px;
+    color: inherit;
+    background: var(
+      --rumahl-ui-color-panel-background,
+      var(--rumahl-color-panel-background)
+    );
+    border: 1px solid var(--line);
+    border-radius: var(--rumahl-radius-window);
+  }
+  .route-message {
+    padding: 24px;
+  }
+
   .navigation__items a {
-    transition: 160ms ease;
+    text-decoration: none;
+  }
+  a:focus-visible,
+  select:focus-visible {
+    outline: 3px solid var(--rumahl-color-accent-primary);
+    outline-offset: 2px;
+  }
+  .settings-tabs {
+    display: flex;
+    gap: 16px;
+  }
+
+  /* A hosted iframe app fills the window content with no padding; first-party
+   React apps and stream windows keep the window's content padding. */
+  .shell-window--flush,
+  .shell-window--flush.is-focused {
+    opacity: 1;
+    transform: none;
+  }
+  .shell-window--flush {
+    padding: 0 !important;
+  }
+  .shell-window--flush .shell-window__content {
+    position: relative;
+    padding: 0 !important;
+    overflow: hidden;
+    border-radius: inherit;
+  }
+  .shell-window--flush .installed-app-frame {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    border: 0;
+    background: white;
+  }
+
+  .app-grid small {
+    display: block;
+    color: var(--rumahl-ui-color-text-muted, var(--rumahl-color-text-muted));
   }
 }
-/* Bootstrap state is deliberately independent from demo data and shell snapshots. */
-.startup-message {
-  align-items: center;
-  color: #4d5c52;
+
+.app-tile-item {
+  position: relative;
   display: flex;
-  font: 500 0.95rem/1.5 Inter, ui-sans-serif, system-ui, sans-serif;
-  justify-content: center;
-  min-height: 100vh;
+}
+/* App launchers use the native <small>; keep its UA size above the OS floor. */
+.shell .app-tile small,
+.shell .app-tile-item small {
+  font-size: var(--type-label-size, 12px);
+}
+.app-tile-item > .app-tile {
+  flex: 1 1 auto;
+}
+.app-tile__settings {
+  position: absolute;
+  inset-block-start: 8px;
+  inset-inline-end: 8px;
+  display: inline-flex;
+  padding: 6px;
+  color: inherit;
+  background: var(
+    --rumahl-ui-color-panel-background,
+    var(--rumahl-color-panel-background)
+  );
+  border: 1px solid var(--line);
+  border-radius: 999px;
+}
+.app-tile__settings svg {
+  width: 16px;
+  height: 16px;
+}
+.app-settings {
+  padding: 24px;
+  max-width: 48rem;
+}
+.app-settings dl {
+  display: grid;
+  gap: 16px;
   margin: 0;
 }
-
-.startup-message--error {
-  color: #8a3d32;
+.app-setting {
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: var(--rumahl-radius-window);
+}
+.app-setting dt {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  font-weight: 600;
+}
+.app-setting dd {
+  margin: 4px 0 0;
+}
+.app-setting__required {
+  padding: 0 8px;
+  font-size: 0.75rem;
+  color: var(--rumahl-ui-color-text-muted, var(--rumahl-color-text-muted));
+  border: 1px solid var(--line);
+  border-radius: 999px;
+}
+.app-setting__type {
+  color: var(--rumahl-ui-color-text-muted, var(--rumahl-color-text-muted));
+}
+.app-settings__path {
+  margin: 8px 0;
+  font-family: ui-monospace, monospace;
+}
+.app-data-list {
+  margin: 8px 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 4px;
+}
+.app-data-list button {
+  width: 100%;
+  padding: 8px 12px;
+  text-align: start;
+  color: inherit;
+  background: var(
+    --rumahl-ui-color-panel-background,
+    var(--rumahl-color-panel-background)
+  );
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  cursor: pointer;
+}
+.app-data-preview {
+  max-height: 24rem;
+  overflow: auto;
+  padding: 12px;
+  background: var(
+    --rumahl-ui-color-panel-background,
+    var(--rumahl-color-panel-background)
+  );
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  white-space: pre-wrap;
+  word-break: break-word;
 }
 
-/* Presentation modes share navigation and route content. */
-.window-position { position: absolute; inset: 0; pointer-events: none; }
-.window-position:has(.is-focused) { z-index: 2; }
-.launcher-workspace { overflow: auto; flex: 1; min-height: 0; padding-block: 24px; }
-.launcher-workspace .stream-frame { height: 70vh; }
-.app-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 16px; }
-.app-grid a { padding: 24px; color: inherit; background: var(--rumahl-ui-color-panel-background, var(--rumahl-color-panel-background)); border: 1px solid var(--line); border-radius: var(--rumahl-radius-window); }
-.route-message { padding: 24px; }
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
 
-.navigation__items a { text-decoration: none; }
-a:focus-visible, select:focus-visible { outline: 3px solid var(--rumahl-color-accent-primary); outline-offset: 2px; }
-.settings-tabs { display: flex; gap: 16px; }
+/* Symbolic loading: a spinner carries the state, the label stays for AT. */
+.loading-status {
+  display: inline-flex;
+  align-items: center;
+  min-height: var(--control-h, 28px);
+  color: var(--rumahl-ui-color-text-muted, var(--rumahl-color-text-muted));
+}
+.loading-status .rumahl-spinner { --spinner-size: 26px; }
+.loading-status--inline { min-height: 0; vertical-align: middle; }
+.loading-status--inline .rumahl-spinner { --spinner-size: 16px; }
+.installed-app-loading {
+  display: grid;
+  place-content: center;
+  justify-items: center;
+  gap: 12px;
+  width: 100%;
+  height: 100%;
+  color: var(--rumahl-ui-color-text-muted, var(--rumahl-color-text-muted));
+  background: var(--rumahl-ui-color-panel-background, var(--rumahl-color-panel-background));
+  font-size: 12px;
+}
+.installed-app-loading__spinner {
+  width: 26px;
+  height: 26px;
+  border: 2px solid color-mix(in srgb, currentColor 22%, transparent);
+  border-top-color: var(--rumahl-ui-color-accent, var(--rumahl-color-accent-primary));
+  border-radius: 50%;
+  animation: installed-app-spin 900ms linear infinite;
+}
+@keyframes installed-app-spin { to { transform: rotate(1turn); } }
 
-.installed-app-frame { display: block; width: 100%; height: 65vh; border: 0; background: white; }
-.app-grid small { display: block; color: var(--rumahl-ui-color-text-muted, var(--rumahl-color-text-muted)); }
+/* Shell chrome disables text selection; form fields and code stay selectable. */
+.shell {
+  -webkit-user-select: none;
+  user-select: none;
+}
+.shell :is(input, textarea, [contenteditable="true"], pre, code) {
+  -webkit-user-select: text;
+  user-select: text;
+}
 
+::view-transition-group(root) { animation-duration: 240ms; }
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation-duration: 320ms;
+  animation-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+}
+html[data-settings-transition] { view-transition-name: none; }
+html[data-settings-transition] .settings-content { view-transition-name: settings-content; }
+::view-transition-group(settings-content) { animation-duration: 260ms; }
+::view-transition-old(settings-content),
+::view-transition-new(settings-content) {
+  animation-duration: 300ms;
+  animation-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+  mix-blend-mode: normal;
+}
+::view-transition-old(settings-content) { animation-name: rumahl-view-out; }
+::view-transition-new(settings-content) { animation-name: rumahl-view-in; }
+@keyframes rumahl-view-out { to { opacity: 0; transform: translateY(-4px); } }
+@keyframes rumahl-view-in { from { opacity: 0; transform: translateY(4px); } }
+@media (prefers-reduced-motion: reduce) {
+  ::view-transition-group(*) { animation-duration: 0s; }
+  ::view-transition-old(*),
+  ::view-transition-new(*) { animation: none; }
+}
+
+/* High contrast / forced colours: chrome becomes an opaque, border-led surface.
+   We keep the theme's semantic roles instead of a fixed navy so Ground themes
+   do not inherit Iris colours in an accessibility mode. */
+@media (prefers-contrast: more), (forced-colors: active) {
+  .shell
+    :is(
+      .topbar__island,
+      .menubar,
+      .shell-window,
+      .desktop-menu,
+      .menubar__dropdown,
+      .topbar__dropdown,
+      .command-palette
+    ) {
+    background: var(--rumahl-ui-color-panel-background) !important;
+    border-color: var(--rumahl-ui-color-text-primary) !important;
+    box-shadow: none !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+  }
+
+  /* Adaptive wallpaper text yields to an opaque, semantic treatment when the
+     user asks for more contrast. */
+  .shell .desktop-icon__label[data-adaptive-text] {
+    color: var(--rumahl-ui-color-text-primary) !important;
+    background: var(--rumahl-ui-color-panel-background) !important;
+    padding: 1px 4px;
+    text-shadow: none !important;
+  }
+  .shell .desktop-widget {
+    background: var(--rumahl-ui-color-panel-background) !important;
+    border: 1px solid var(--rumahl-ui-color-text-primary) !important;
+    box-shadow: none !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+  }
+  .shell .desktop-widget :is(.rumahl-glass-frame, .rumahl-glass-surface) {
+    display: none !important;
+  }
+  .shell .desktop-widget[data-adaptive-text] {
+    color: var(--rumahl-ui-color-text-primary) !important;
+    text-shadow: none !important;
+  }
+  .shell .desktop-widget[data-adaptive-text] :is(p, strong, small, span) {
+    color: inherit !important;
+  }
+  .shell .desktop-widget[data-adaptive-text][class] .desktop-widget__eyebrow {
+    color: var(--rumahl-ui-color-text-primary) !important;
+  }
+}
+
+/* Popovers, menus and dialogs use the same material as the OS windows: the
+   translucent window surface, its sheen, border, radius, shadow and blur. */
+.shell
+  :is(
+    .menubar__dropdown,
+    .desktop-menu,
+    .files-menu,
+    .rumahl-menu,
+    .rumahl-select__menu,
+    .rumahl-color-picker__popover,
+    .rumahl-calendar-popover,
+    .rumahl-modal
+  ),
+:is(
+  .menubar__dropdown,
+  .desktop-menu,
+  .files-menu,
+  .rumahl-menu,
+  .rumahl-select__menu,
+  .rumahl-color-picker__popover,
+  .rumahl-calendar-popover,
+  .rumahl-modal
+) {
+  background:
+    var(--window-sheen, linear-gradient(transparent, transparent)),
+    var(--window-background, var(--rumahl-ui-color-window-background, var(--surface-fill)));
+  color: var(--rumahl-ui-color-text-primary);
+  border: var(--window-border, 1px solid var(--rumahl-ui-color-outline));
+  border-radius: var(--window-radius, 18px);
+  box-shadow: var(--window-shadow, 0 30px 85px var(--rumahl-ui-color-shadow));
+  backdrop-filter: var(--window-backdrop, blur(45px) saturate(1.65));
+  -webkit-backdrop-filter: var(--window-backdrop, blur(45px) saturate(1.65));
+}
+:root[data-material="solid"]
+  :is(
+    .menubar__dropdown,
+    .desktop-menu,
+    .files-menu,
+    .rumahl-menu,
+    .rumahl-select__menu,
+    .rumahl-color-picker__popover,
+    .rumahl-calendar-popover,
+    .rumahl-modal
+  ) {
+  background: var(--window-background-solid, var(--rumahl-ui-color-window-background-solid));
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+
+
+/* The desktop selection surface reaches the bottom edge. The icon grid keeps
+   its dock reserve in DesktopHome, so shortcuts still stay above the dock. */
+@media (min-width: 641px) {
+  .shell[data-shell-mode="desktop"] .workspace-surfaces {
+    margin-bottom: 0;
+  }
+}
+
+
+/* Adaptive contrast: text directly on the wallpaper/video follows the sampled
+   backdrop, with a smooth colour transition instead of abrupt switches. This
+   is a readability aid, so it keeps its cross-fade even when decorative
+   animations are disabled by the Iris profile. Reduced-motion still opts out. */
+[data-adaptive-text] {
+  transition: color var(--adaptive-color-duration, 1.4s) cubic-bezier(0.4, 0, 0.2, 1),
+    text-shadow var(--adaptive-color-duration, 1.4s) cubic-bezier(0.4, 0, 0.2, 1);
+}
+[data-adaptive-text] :is(strong, p, small, span, h1, h2) {
+  transition: color var(--adaptive-color-duration, 1.4s) cubic-bezier(0.4, 0, 0.2, 1),
+    text-shadow var(--adaptive-color-duration, 1.4s) cubic-bezier(0.4, 0, 0.2, 1);
+}
+@media (prefers-reduced-motion: no-preference) {
+  .shell [data-adaptive-text],
+  .shell [data-adaptive-text] :is(strong, p, small, span, h1, h2) {
+    transition:
+      color var(--adaptive-color-duration, 1.4s) cubic-bezier(0.4, 0, 0.2, 1),
+      text-shadow var(--adaptive-color-duration, 1.4s) cubic-bezier(0.4, 0, 0.2, 1) !important;
+  }
+}
+.desktop-icon__label[data-adaptive-text] {
+  color: var(--adaptive-ink, var(--rumahl-ui-color-on-wallpaper, #eef5f6));
+  text-shadow: var(--adaptive-shadow, none);
+}
+.shell .desktop-widget[data-adaptive-text] {
+  color: var(--adaptive-ink, currentColor);
+  text-shadow: var(--adaptive-shadow, none);
+  /* Readability outranks the decorative tone fade: a wallpaper change must
+     settle before the user needs to read the clock. */
+  transition-duration: var(--adaptive-color-duration, 0.28s) !important;
+}
+.shell .desktop-widget[data-adaptive-text] :is(p, strong, small, span) {
+  color: inherit;
+  transition-duration: var(--adaptive-color-duration, 0.28s) !important;
+}
+.shell .desktop-widget[data-adaptive-text] .desktop-widget__eyebrow {
+  color: var(--adaptive-muted, currentColor) !important;
+  transition-duration: var(--adaptive-color-duration, 0.28s) !important;
+}
+.desktop-wordmark[data-adaptive-text] {
+  color: var(--adaptive-ink, #eef5f6);
+  text-shadow: var(--adaptive-shadow, none);
+}
+.desktop-wordmark[data-adaptive-text] :is(span, small) {
+  color: inherit;
+}
+.launcher-heading[data-adaptive-text] {
+  color: var(--adaptive-ink, #ffffff);
+  text-shadow: var(--adaptive-shadow, 0 1px 1px rgba(0, 0, 0, 0.58));
+  background: none;
+}
+.launcher-heading[data-adaptive-text] :is(h1, strong) {
+  color: inherit;
+}
+.launcher-heading[data-adaptive-text] span {
+  color: var(--adaptive-muted, currentColor);
+}
+
+/* The dock's only colour source is the engine tint. A stale host background
+   or CSS fallback surface would otherwise mix a second, light panel into the
+   dock and make it diverge from the widget colour. */
+.shell .os-dock,
+.shell .os-dock.dock {
+  background: var(--dock-background, transparent) !important;
+}
+.shell .os-dock .rumahl-glass-surface,
+.shell .os-dock .rumahl-glass-surface.rumahl-glass-webgl {
+  background: rgba(25, 32, 54, 0.12);
+}
+
+/* Iris's curated preset families are full-width rows: copy first, controls
+   below. Material cards must never collapse into the narrow value column. */
+.settings-content .settings-section-help {
+  max-width: 720px;
+  margin: -2px 0 12px;
+  color: var(--rumahl-ui-color-text-muted, var(--rumahl-color-text-muted));
+  font-size: 12px;
+  line-height: 1.5;
+}
+.shell .settings-content .setting.iris-preset-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  align-items: stretch;
+  gap: 12px;
+}
+.shell .settings-content .setting.iris-preset-row .copy {
+  flex: none;
+  min-width: 0;
+}
+.shell .settings-content .setting.iris-preset-row .visual {
+  width: 100%;
+  min-width: 0;
+}
+.shell .settings-content .iris-preset-row .look-preset-picker,
+.shell .settings-content .iris-preset-row .look-preset-picker .segmented {
+  width: 100%;
+  max-width: none;
+}
+.shell .settings-content .iris-preset-row .material-presets {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+  gap: 10px;
+  width: 100%;
+  margin: 0;
+}
+.shell .settings-content .iris-preset-row .material-card {
+  width: auto;
+  min-width: 0;
+}
+
+/* Theme code layers: a theme may draw behind the windows and above them. */
+.theme-layer {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+.theme-layer--background {
+  z-index: 2;
+  overflow: hidden;
+}
+.theme-layer--overlay {
+  position: fixed;
+  z-index: 125;
+  overflow: hidden;
 }

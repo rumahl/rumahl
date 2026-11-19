@@ -1,0 +1,35 @@
+/* Presentational phone surface for mobile/hybrid layouts. */
+.rumahl-phone {
+  display: flex;
+  flex-direction: column;
+  box-sizing: border-box;
+  border-radius: var(--phone-radius);
+  border: var(--phone-border);
+  overflow: hidden;
+  background: var(--phone-background);
+  box-shadow: var(--phone-shadow);
+  color: var(--rumahl-ui-color-text-primary);
+}
+.rumahl-phone__status {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 22px;
+  font-size: 12px;
+  font-weight: 600;
+}
+.rumahl-phone__content {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+}
+.rumahl-phone__footer { border-top: 1px solid var(--surface-edge); }
+.rumahl-phone__home {
+  width: 120px;
+  height: 5px;
+  border-radius: 999px;
+  background: var(--rumahl-ui-color-text-muted);
+  opacity: 0.5;
+  margin: 6px auto 8px;
+  flex: none;
+}

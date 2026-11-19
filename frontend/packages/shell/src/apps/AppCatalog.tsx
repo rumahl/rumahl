@@ -7,6 +7,8 @@ export interface CatalogPreviewApp {
   id: string;
   title: string;
   launchable: boolean;
+  installationId?: string;
+  runtime?: "web" | "native" | "container";
 }
 
 interface CatalogState {
@@ -15,6 +17,7 @@ interface CatalogState {
   status: "loading" | "ready" | "unavailable";
 }
 
+export const CATALOG_REFRESH_EVENT = "rumahl:catalog-refresh";
 const Context = createContext<CatalogState>({ apps: [], preview: [], status: "loading" });
 
 export function AppCatalog({ children, live, revision, initial }: PropsWithChildren<{
@@ -23,6 +26,7 @@ export function AppCatalog({ children, live, revision, initial }: PropsWithChild
   initial?: readonly CatalogPreviewApp[] | undefined;
 }>) {
   const preview = useRef(initial ?? []);
+  const refreshRef = useRef<() => void>(() => {});
   const [state, setState] = useState<CatalogState>({ apps: [], preview: preview.current, status: "loading" });
   useEffect(() => {
     if (!live) { setState({ apps: [], preview: preview.current, status: "unavailable" }); return; }
@@ -31,16 +35,26 @@ export function AppCatalog({ children, live, revision, initial }: PropsWithChild
     async function refresh() {
       try {
         const apps = await fetchCatalog(live!.request, controller.signal);
-        if (!controller.signal.aborted) setState({ apps, preview: preview.current, status: "ready" });
+        if (!controller.signal.aborted) setState((previous) => previous.status === "ready" &&
+          previous.apps.length === apps.length &&
+          previous.apps.every((app, index) => app.id === apps[index]?.id && app.version === apps[index]?.version)
+          ? previous
+          : { apps, preview: preview.current, status: "ready" });
       } catch {
         if (!controller.signal.aborted) setState({ apps: [], preview: preview.current, status: "unavailable" });
       } finally {
         if (!controller.signal.aborted) timer = setTimeout(() => { void refresh(); }, 30_000);
       }
     }
+    refreshRef.current = () => { void refresh(); };
     void refresh();
-    return () => { controller.abort(); clearTimeout(timer); };
+    return () => { controller.abort(); clearTimeout(timer); refreshRef.current = () => {}; };
   }, [live, revision]);
+  useEffect(() => {
+    const refresh = () => refreshRef.current();
+    window.addEventListener(CATALOG_REFRESH_EVENT, refresh);
+    return () => window.removeEventListener(CATALOG_REFRESH_EVENT, refresh);
+  }, []);
   return <Context value={state}>{children}</Context>;
 }
 export function useAppCatalog() { return useContext(Context); }

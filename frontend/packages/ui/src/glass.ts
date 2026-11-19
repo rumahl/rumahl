@@ -1,4 +1,5 @@
 import type { Tokens } from "./tokens";
+import { hexToRgb } from "./color";
 
 /**
  * Shared glass interface. The engine, materials and CSS hooks are a shell-wide
@@ -39,8 +40,10 @@ export type GlassQuality = "auto" | "high" | "balanced" | "low";
 
 /** Named materials any theme or app may reuse. */
 export const GLASS_MATERIALS = {
-  dock: { radius: 29, bevel: 22, refraction: 56, chroma: 0.32, blur: 1.2, saturation: 1.05, brightness: 1, tint: "rgba(30,37,66,.05)" },
-  widget: { radius: 23, bevel: 20, refraction: 40, chroma: 0.28, blur: 1.2, saturation: 1.05, brightness: 1, tint: "rgba(30,37,66,.05)" },
+  // Same glass as the desktop widgets, so dock and widget look identical
+  // (only the corner radius follows the dock's shape).
+  dock: { radius: 29, bevel: 20, refraction: 40, chroma: 0.28, blur: 1.2, saturation: 1.05, brightness: 1, tint: "rgba(30,37,66,.05)" },
+  widget: { radius: 23, bevel: 20, refraction: 40, chroma: 0.28, blur: 1.2, saturation: 1.05, brightness: 1, tint: "color-mix(in srgb, var(--rumahl-ui-color-accent, #28694c) 22%, transparent)" },
   bar: { radius: 14, bevel: 16, refraction: 14, chroma: 0.08, blur: 2.1, saturation: 1.05, brightness: 1, tint: "rgba(20,28,47,.10)" }
 } as const satisfies Record<string, GlassMaterial>;
 
@@ -56,4 +59,34 @@ export function glassMaterialFromTokens(tokens: Tokens, overrides: GlassMaterial
     radius: number(tokens["shape.radius.dock"], 24),
     ...overrides
   };
+}
+
+/**
+ * The tint used by the dock and widgets. `null` means "follow the accent".
+ *
+ * The tint is composited over a light or dark glass base so the surfaces stay
+ * recognisably light or dark even while their accent follows the theme. The
+ * base is deliberately translucent: refraction still supplies most of the
+ * material, but the surface no longer looks identical in both schemes.
+ */
+export function glassColorTint(
+  enabled: boolean | undefined,
+  color: string | null | undefined,
+  accent: string,
+  scheme: "light" | "dark" = "dark",
+): string {
+  const selected = color && /^#[0-9a-fA-F]{6}$/.test(color) ? color : (/^#[0-9a-fA-F]{6}$/.test(accent) ? accent : "#28694c");
+  const [r, g, b] = hexToRgb(selected);
+  const base = scheme === "light" ? [246, 249, 255] : [20, 26, 43];
+  const accentAlpha = enabled === false ? 0 : 0.2;
+  const baseAlpha = scheme === "light" ? 0.38 : 0.3;
+  const alpha = accentAlpha + baseAlpha * (1 - accentAlpha);
+  const mix = (channel: number, baseChannel: number) =>
+    Math.round((channel * accentAlpha + baseChannel * baseAlpha * (1 - accentAlpha)) / alpha);
+  return `rgba(${mix(r, base[0]!)}, ${mix(g, base[1]!)}, ${mix(b, base[2]!)}, ${alpha.toFixed(3)})`;
+}
+
+/** Adds or replaces only the material tint, preserving the engine settings. */
+export function glassMaterialWithTint(material: GlassMaterial, tint: string): GlassMaterial {
+  return { ...material, tint };
 }

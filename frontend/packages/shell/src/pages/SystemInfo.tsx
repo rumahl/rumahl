@@ -1,12 +1,32 @@
+import { useEffect, useState } from "react";
 import { useTheme } from "@rumahl/ui";
 import { useI18n } from "../i18n";
 import { useShell } from "../shell/ShellContext";
+import { fetchSensors, type Sensors } from "../apps/recovery-client";
+import { buildLabel, osName } from "../system-labels";
 
 export function SystemInfo() {
   const { t, locale } = useI18n();
-  const { snapshot, mode } = useShell();
+  const { snapshot, mode, live } = useShell();
+  const demo = Boolean(live?.demo);
   const { theme } = useTheme();
+  const [sensors, setSensors] = useState<Sensors | null>(null);
+  const [sensorsError, setSensorsError] = useState(false);
   const unavailable = t("settings.system.unavailable");
+  useEffect(() => {
+    if (!live?.request) return;
+    let canceled = false;
+    const load = () => {
+      fetchSensors(live.request).then((value) => {
+        if (!canceled) { setSensors(value); setSensorsError(false); }
+      }).catch(() => {
+        if (!canceled) { setSensors(null); setSensorsError(true); }
+      });
+    };
+    load();
+    const timer = window.setInterval(load, 15_000);
+    return () => { canceled = true; window.clearInterval(timer); };
+  }, [live?.request]);
   const format = (value: number | null | undefined) => {
     if (!value) return unavailable;
     const date = new Date(value);
@@ -18,8 +38,8 @@ export function SystemInfo() {
   return <>
     <h3 className="section-title">{t("settings.system.info")}</h3>
     <div className="settings-group">
-      <InfoRow label={t("settings.system.os")} value="rumahl OS" />
-      <InfoRow label={t("settings.system.build")} value={snapshot.shellBuildId} mono />
+      <InfoRow label={t("settings.system.os")} value={osName(demo)} />
+      <InfoRow label={t("settings.system.build")} value={buildLabel(snapshot.shellBuildId, demo)} mono />
       <InfoRow label={t("settings.system.revision")} value={snapshot.revision || unavailable} mono />
       <InfoRow label={t("settings.system.mode")} value={t(`mode.${mode}`)} />
       <InfoRow label={t("settings.system.theme")} value={theme.name} />
@@ -33,7 +53,23 @@ export function SystemInfo() {
       <InfoRow label={t("settings.system.observed")} value={format(snapshot.systemStatus.observedAtUnixMs)} />
       <InfoRow label={t("settings.system.lastActivity")} value={format(lastActivity)} />
     </div>
+
+    <h3 className="section-title">{t("settings.system.hardware")}</h3>
+    <div className="settings-group">
+      <InfoRow label={t("settings.system.hostname")} value={sensors?.host ?? unavailable} mono />
+      <InfoRow label={t("settings.system.cpuCores")} value={sensors ? String(sensors.cores) : unavailable} />
+      <InfoRow label={t("settings.system.uptime")} value={sensors?.uptime !== null && sensors?.uptime !== undefined ? formatUptime(Math.floor(sensors.uptime)) : unavailable} />
+      {sensors?.metrics.map((metric) => <InfoRow key={metric.id} label={metric.label} value={`${new Intl.NumberFormat(locale, { maximumFractionDigits: 1 }).format(metric.value)} ${metric.unit}`.trim()} />)}
+      {sensorsError ? <InfoRow label={t("settings.system.sensors")} value={unavailable} /> : null}
+    </div>
   </>;
+}
+
+function formatUptime(seconds: number): string {
+  const days = Math.floor(seconds / 86_400);
+  const hours = Math.floor((seconds % 86_400) / 3_600);
+  const minutes = Math.floor((seconds % 3_600) / 60);
+  return days > 0 ? `${days}d ${hours}h ${minutes}m` : hours > 0 ? `${hours}h ${minutes}m` : `${minutes}m`;
 }
 
 function InfoRow({ label, value, mono }: { label: string; value: string; mono?: boolean }) {

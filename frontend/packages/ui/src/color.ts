@@ -36,6 +36,22 @@ export interface ColorPalette {
   secondary: ColorTable;
 }
 
+/**
+ * Contrast targets per role (WCAG ratios). The engine guarantees at least
+ * `onAccent` for the accent ink (adjusting the accent slightly if a seed is a
+ * mid-tone where neither white nor ink would reach it).
+ */
+export interface ContrastTargets {
+  /** Ink on the accent fill (buttons, badges, switches). */
+  onAccent: number;
+  /** Body text on surfaces. */
+  onSurface: number;
+  /** Status/badge text where legibility is critical. */
+  onStatus: number;
+  /** Large/display text. */
+  large: number;
+}
+
 export interface PaletteOptions {
   /** Saturation multiplier control (0-85, default 50). */
   vibrancy?: number;
@@ -43,6 +59,8 @@ export interface PaletteOptions {
   hueShift?: number;
   /** Selects the light table or the dark table. */
   mode?: "light" | "dark";
+  /** Per-role contrast targets; omitted roles use `DEFAULT_CONTRAST_TARGETS`. */
+  contrast?: Partial<ContrastTargets>;
 }
 
 /** Seed colours for the five rumahl semantic roles. */
@@ -62,6 +80,13 @@ export const DARK_SHADES = [
 
 /** WCAG contrast thresholds. */
 export const WCAG = { AA: 4.5, AAA: 7, AA_LARGE: 3, AAA_LARGE: 4.5 } as const;
+
+export const DEFAULT_CONTRAST_TARGETS: ContrastTargets = {
+  onAccent: WCAG.AA,
+  onSurface: WCAG.AA,
+  onStatus: WCAG.AAA,
+  large: WCAG.AA_LARGE
+};
 
 export function hexToRgb(hex: string): [number, number, number] {
   const value = hex.replace(/^#/, "");
@@ -105,6 +130,41 @@ export function bestContrast(candidates: readonly string[], background: string):
     if (ratio > bestRatio) { best = candidate; bestRatio = ratio; }
   }
   return best;
+}
+
+/**
+ * Darkens/lightens a background (toward black or white, depending on the ink)
+ * until `ink` reaches `target` contrast. Returns the original if it already
+ * passes, or the extreme with the most contrast if the target is unreachable.
+ */
+export function ensureContrast(background: string, ink: string, target: number = WCAG.AA): string {
+  if (contrastRatio(ink, background).ratio >= target) return background;
+  const inkIsLight = relativeLuminance(hexToRgb(ink)) > 0.5;
+  const [hue, saturation, lightness] = hexToHsl(background);
+  for (let step = 1; step <= 100; step += 1) {
+    const next = inkIsLight ? lightness - step : lightness + step;
+    if (next < 0 || next > 100) break;
+    const candidate = hslToHex(hue, saturation, next);
+    if (contrastRatio(ink, candidate).ratio >= target) return candidate;
+  }
+  return inkIsLight ? "#000000" : "#ffffff";
+}
+
+export interface ReadablePair {
+  ink: string;
+  background: string;
+}
+
+/**
+ * A readable ink/background pair. Picks white or ink for `background`; if the
+ * pair misses `target`, the background is adjusted (auto intermediate tone)
+ * until it meets it. Pass a higher target (e.g. `WCAG.AAA`) for roles that must
+ * stay especially legible.
+ */
+export function readablePair(background: string, target: number = WCAG.AA): ReadablePair {
+  const ink = bestContrast(["#ffffff", "#101418"], background);
+  if (contrastRatio(ink, background).ratio >= target) return { ink, background };
+  return { ink, background: ensureContrast(background, ink, target) };
 }
 
 export function hexToHsl(hex: string): [number, number, number] {
@@ -310,23 +370,28 @@ export interface ThemeColorValues {
  * the official theme's colours are always derived from its seed colour.
  */
 export function themeColorValues(seed: string, options: PaletteOptions = {}): ThemeColorValues {
-  const palette = generateColorShades(seed, options);
-  const onAccent = bestContrast(["#ffffff", "#101418"], seed);
+  const targets = { ...DEFAULT_CONTRAST_TARGETS, ...options.contrast };
+  // Guarantee a readable ink on the accent; only nudge the accent if the seed
+  // is a mid-tone where neither white nor ink reaches the target contrast.
+  const pair = readablePair(seed, targets.onAccent);
+  const palette = generateColorShades(pair.background, options);
+  const onAccent = pair.ink;
+  const accentStrong = findShade(palette.primary.light, 60)?.hex ?? pair.background;
   if (options.mode === "dark") {
     // A soft, palette-derived dark (not pure black).
     const surfaceStrong = findShade(palette.primary.dark, 850)?.hex ?? "#0e1a16";
     return {
-      accent: seed,
-      accentStrong: findShade(palette.primary.light, 60)?.hex ?? seed,
+      accent: pair.background,
+      accentStrong,
       surfaceStrong,
       surface: withAlpha(surfaceStrong, 0.84),
       onAccent
     };
   }
-  const surfaceStrong = findShade(palette.primary.light, 200)?.hex ?? seed;
+  const surfaceStrong = findShade(palette.primary.light, 200)?.hex ?? pair.background;
   return {
-    accent: seed,
-    accentStrong: findShade(palette.primary.light, 60)?.hex ?? seed,
+    accent: pair.background,
+    accentStrong,
     surfaceStrong,
     surface: withAlpha(surfaceStrong, 0.84),
     onAccent
