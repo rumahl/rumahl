@@ -33,7 +33,7 @@
   background: linear-gradient(
     135deg,
     var(--rumahl-ui-color-accent),
-    color-mix(in srgb, var(--rumahl-ui-color-accent) 55%, #65caa8)
+    color-mix(in srgb, var(--rumahl-ui-color-accent) 55%, var(--accent-strong, #65caa8))
   );
   color: var(--rumahl-ui-color-on-accent);
   font-size: 14px;
@@ -47,7 +47,7 @@
 }
 .rumahl-sidenav__identity span {
   display: block;
-  font-size: 11px;
+  font-size: 12px;
   line-height: 1.4;
   overflow-wrap: anywhere;
   color: var(--rumahl-ui-color-text-muted);
@@ -56,7 +56,7 @@
 .rumahl-sidenav__section { display: grid; gap: 4px; }
 .rumahl-sidenav__heading {
   padding: 8px 10px 4px;
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 600;
   letter-spacing: 0.04em;
   text-transform: uppercase;
@@ -102,7 +102,7 @@
 .rumahl-sidenav__footer {
   margin-top: auto;
   padding: 8px 10px 0;
-  font-size: 11px;
+  font-size: 12px;
   line-height: 1.5;
   color: var(--rumahl-ui-color-text-muted);
 }
@@ -185,7 +185,7 @@
   to { opacity: 1; transform: none; }
 }
 @media (prefers-reduced-motion: no-preference) {
-  .rumahl-island { animation: rumahl-island-in 300ms cubic-bezier(.2, .8, .2, 1) both; }
+  .rumahl-island { animation: rumahl-island-in 300ms cubic-bezier(.2, .8, .2, 1) backwards; }
 }
 .rumahl-island__indicator {
   position: absolute;
@@ -222,11 +222,12 @@
   transition: color 180ms ease, background 180ms ease;
 }
 .rumahl-island__icon { display: inline-flex; flex: none; }
-.rumahl-island__icon svg { width: 18px; height: 18px; }
+.rumahl-island__icon svg,
+.rumahl-island__icon img { width: 18px; height: 18px; object-fit: contain; }
 .rumahl-island__item span {
   max-width: 100%;
   overflow: hidden;
-  font-size: clamp(8px, 2.4cqi, var(--island-item-font-size, 9px));
+  font-size: clamp(12px, 2.4cqi, var(--island-item-font-size, 12px));
   font-weight: 620;
   letter-spacing: -.01em;
   line-height: 1.1;
@@ -297,6 +298,11 @@
   .rumahl-app-nav-layout__rail { display: none; }
   .rumahl-app-nav-layout__content { padding-bottom: calc(var(--rumahl-app-nav-clearance) + env(safe-area-inset-bottom, 0px)); }
   .rumahl-app-nav-layout__island { display: flex; }
+}
+/* Inside the shell the bottom bar lives outside the window, so the app does
+   not need to reserve space for an in-content island. */
+.rumahl-app-nav-layout[data-mobile-nav-slotted="true"] .rumahl-app-nav-layout__content {
+  padding-bottom: 0;
 }
 .shell[data-animations="off"] .rumahl-island,
 .shell[data-animations="off"] .rumahl-island * {

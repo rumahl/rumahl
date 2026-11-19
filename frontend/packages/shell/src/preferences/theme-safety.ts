@@ -1,6 +1,8 @@
 import { contrastRatio } from "@rumahl/ui/color";
+import { composite } from "@rumahl/ui/palette";
 import { defineTheme, type ThemeInput } from "@rumahl/ui/sdk";
-import type { Tokens } from "@rumahl/ui/tokens";
+import { readIconPack } from "@rumahl/ui/icon-pack";
+import { TOKEN_IDS, type Tokens } from "@rumahl/ui/tokens";
 
 /**
  * Theme safety engine.
@@ -27,7 +29,8 @@ export interface SafetyReport {
 export class ThemeSafetyError extends Error {
   report: SafetyReport;
   constructor(report: SafetyReport) {
-    super(report.issues[0]?.message ?? "Theme failed the safety checks");
+    const firstError = report.issues.find((item) => item.level === "error");
+    super(firstError?.message ?? report.issues[0]?.message ?? "Theme failed the safety checks");
     this.name = "ThemeSafetyError";
     this.report = report;
   }
@@ -82,24 +85,39 @@ function issue(level: IssueLevel, code: string, message: string): ThemeIssue {
   return { level, code, message };
 }
 
+function contrastOf(ink: unknown, background: unknown): number | null {
+  if (!isHex(ink) || !isHex(background)) return null;
+  return contrastRatio(ink, background).ratio;
+}
+
+/** Composites an 8-digit hex surface over an opaque canvas for contrast checks. */
+function effectiveSurface(surface: unknown, canvas: unknown): string | null {
+  if (typeof surface !== "string" || typeof canvas !== "string") return null;
+  const alphaHex = /^#(?:[0-9a-f]{6})([0-9a-f]{2})$/i.exec(surface);
+  if (!alphaHex) return isHex(canvas) ? surface : null;
+  if (!isHex(canvas)) return null;
+  const alpha = Number.parseInt(alphaHex[1]!, 16) / 255;
+  return composite(canvas, surface.slice(0, 7), alpha);
+}
+
 function checkContrast(
   issues: ThemeIssue[],
   ink: unknown,
   background: unknown,
   min: number,
-  label: string
+  label: string,
+  level: IssueLevel = "error",
+  code = "contrast"
 ): void {
-  if (!isHex(ink) || !isHex(background)) return; // not verifiable (e.g. color-mix) — skip
-  const { ratio } = contrastRatio(ink, background);
-  if (ratio < min) {
-    issues.push(
-      issue(
-        "error",
-        "contrast",
-        `${label}: contrast ${ratio.toFixed(2)} is below ${min}:1.`
-      )
-    );
-  }
+  const ratio = contrastOf(ink, background);
+  if (ratio === null || ratio >= min) return;
+  issues.push(
+    issue(
+      level,
+      code,
+      `${label}: contrast ${ratio.toFixed(2)} is below ${min}:1.`
+    )
+  );
 }
 
 /** Validates untrusted theme data without throwing. */
@@ -127,20 +145,100 @@ export function validateTheme(raw: unknown): SafetyReport {
     }
   }
 
+  const suppliedTokens = (raw as ThemeInput).tokens;
+  if (suppliedTokens) {
+    const known = new Set<string>(TOKEN_IDS);
+    const custom = Object.keys(suppliedTokens).filter((id) => !known.has(id));
+    if (custom.length) {
+      issues.push(
+        issue(
+          "warning",
+          "custom-tokens",
+          `Theme defines ${custom.length} custom token${custom.length === 1 ? "" : "s"}: ${custom.slice(0, 6).join(", ")}${custom.length > 6 ? "…" : ""}. Components only consume them where documented.`
+        )
+      );
+    }
+  }
+
+  const iconReport = readIconPack((raw as { icons?: unknown }).icons);
+  for (const message of iconReport.errors) issues.push(issue("error", "unsafe-icons", message));
+  for (const message of iconReport.warnings) issues.push(issue("warning", "icons", message));
+
+  const schemaVersion = (raw as { schemaVersion?: unknown }).schemaVersion;
+  if (schemaVersion !== undefined && schemaVersion !== 1) {
+    issues.push(
+      issue(
+        "warning",
+        "schema-version",
+        `Theme schema version ${String(schemaVersion)} is not v1; it was validated with the v1 rules.`
+      )
+    );
+  }
+
+  const declaredBase = (raw as ThemeInput).base;
+  if (declaredBase === "rumahl" || declaredBase === "clean") {
+    issues.push(
+      issue(
+        "warning",
+        "legacy-base",
+        `Legacy base "${declaredBase}" is normalized to "${declaredBase === "clean" ? "ground" : "iris"}"; new packages should declare base explicitly.`
+      )
+    );
+  }
+
   const text = tokens["color.text.primary"];
   const muted = tokens["color.text.muted"];
+  const accent = tokens["color.accent"];
   for (const key of ["color.surface.strong", "color.panel.background", "color.canvas.background"] as const) {
     checkContrast(issues, text, tokens[key], 4.5, `Text on ${key}`);
-    if (muted) checkContrast(issues, muted, tokens[key], 3, `Muted text on ${key}`);
+    if (muted) {
+      const ratio = contrastOf(muted, tokens[key]);
+      if (ratio !== null && ratio < 3) {
+        issues.push(issue("error", "contrast-muted", `Muted text on ${key}: contrast ${ratio.toFixed(2)} is below 3:1.`));
+      } else if (ratio !== null && ratio < 4.5) {
+        issues.push(issue("warning", "contrast-muted", `Muted text on ${key}: contrast ${ratio.toFixed(2)} does not reach AA 4.5:1.`));
+      }
+    }
+    // Focus rings use the accent; 3:1 is the non-text UI floor.
+    if (accent) {
+      checkContrast(issues, accent, tokens[key], 3, `Accent/focus on ${key}`, "error", "contrast-ui");
+    }
   }
-  checkContrast(issues, tokens["color.on.accent"], tokens["color.accent"], 3, "Text on the accent");
+
+  // Alpha surfaces are common for glass. Check text against the surface as it
+  // actually renders over the canvas, not against the uncomposited value.
+  const compositedSurface = effectiveSurface(tokens["color.surface"], tokens["color.canvas.background"]);
+  if (compositedSurface) {
+    checkContrast(issues, text, compositedSurface, 4.5, "Text on the composited surface");
+    const mutedRatio = contrastOf(muted, compositedSurface);
+    if (mutedRatio !== null && mutedRatio < 3) {
+      issues.push(issue("error", "contrast-muted", `Muted text on the composited surface: contrast ${mutedRatio.toFixed(2)} is below 3:1.`));
+    } else if (mutedRatio !== null && mutedRatio < 4.5) {
+      issues.push(issue("warning", "contrast-muted", `Muted text on the composited surface: contrast ${mutedRatio.toFixed(2)} does not reach AA 4.5:1.`));
+    }
+  }
+
+  // A theme may keep a lower-contrast brand ink, but its accent button text
+  // still has to remain legible. 3:1 is the hard floor; 4.5:1 is AA advice.
+  const onAccent = contrastOf(tokens["color.on.accent"], accent);
+  if (onAccent !== null && onAccent < 3) {
+    issues.push(issue("error", "contrast-on-accent", `Text on the accent: contrast ${onAccent.toFixed(2)} is below 3:1.`));
+  } else if (onAccent !== null && onAccent < 4.5) {
+    issues.push(issue("warning", "contrast-on-accent", `Text on the accent: contrast ${onAccent.toFixed(2)} does not reach AA 4.5:1.`));
+  }
 
   const css = typeof (raw as ThemeInput).css === "string" ? (raw as ThemeInput).css : "";
   if (css) {
     for (const match of css.matchAll(/([^{}]+)\{([^}]*)\}/g)) {
       const [, selector, body] = match;
       if (!selector || !body) continue;
-      if (DISABLES.test(body) && CRITICAL_SELECTOR.test(selector)) {
+      // Pseudo-element layers (scrims, overlays, HUD labels) can never disable
+      // the chrome they are drawn on, so they may use pointer-events/opacity.
+      const disablesChrome = selector
+        .split(",")
+        .map((part) => part.trim())
+        .some((part) => CRITICAL_SELECTOR.test(part) && !/::(?:before|after)/i.test(part));
+      if (DISABLES.test(body) && disablesChrome) {
         issues.push(
           issue(
             "error",

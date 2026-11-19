@@ -1,4 +1,4 @@
-import type { AnchorHTMLAttributes, CSSProperties, ElementType, ReactNode } from "react";
+import { useId, type AnchorHTMLAttributes, type CSSProperties, type ElementType, type ReactNode } from "react";
 import { ExternalLinkIcon } from "../../icons";
 import { colorStyle, type ColorProps } from "../../tint";
 
@@ -33,18 +33,32 @@ export interface GroupRowProps {
   /** Control shown on the right (switch, select, button…). */
   children?: ReactNode;
   className?: string;
+  /** Associate the row's visible title with a native input/select id. */
+  controlId?: string;
+}
+
+/** Scope notes and secondary actions belong to the group they affect. */
+export function GroupFooter({ description, children }: { description?: ReactNode; children: ReactNode }) {
+  return <footer className="rumahl-group__footer">
+    {description ? <p>{description}</p> : null}
+    <div className="rumahl-group__footer-actions">{children}</div>
+  </footer>;
 }
 
 /** One labeled row inside a `GroupContainer`. */
-export function GroupRow({ title, description, value, children, className = "" }: GroupRowProps) {
+export function GroupRow({ title, description, value, children, className = "", controlId }: GroupRowProps) {
+  const id = useId();
   return (
     <div
       className={`rumahl-group__row ${className}`}
+      role="group"
+      aria-labelledby={`${id}-title`}
+      aria-describedby={description ? `${id}-description` : undefined}
       data-variant={value !== undefined && children === undefined ? "value" : undefined}
     >
       <div className="rumahl-group__copy">
-        <strong>{title}</strong>
-        {description ? <p>{description}</p> : null}
+        {controlId ? <label id={`${id}-title`} htmlFor={controlId}>{title}</label> : <strong id={`${id}-title`}>{title}</strong>}
+        {description ? <p id={`${id}-description`}>{description}</p> : null}
       </div>
       <div className="rumahl-group__visual">
         {value !== undefined ? <span>{value}</span> : children}

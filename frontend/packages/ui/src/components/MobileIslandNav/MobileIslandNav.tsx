@@ -13,6 +13,11 @@ export interface MobileIslandNavProps {
   /** Accessible name for the navigation landmark. */
   label: string;
   className?: string;
+  /**
+   * `island` keeps the draggable floating-capsule behaviour. `tabbar` renders
+   * a static iOS-style tab strip: no drag indicator and no pointer dragging.
+   */
+  variant?: "island" | "tabbar";
 }
 
 interface IndicatorMetrics {
@@ -36,7 +41,8 @@ const clamp = (value: number, min: number, max: number) => Math.min(max, Math.ma
  * the pointer moves horizontally, the pill becomes draggable and tracks it;
  * selection commits on release. Keyboard navigation uses the same model.
  */
-export function MobileIslandNav({ items, value, onChange, label, className = "" }: MobileIslandNavProps) {
+export function MobileIslandNav({ items, value, onChange, label, className = "", variant = "island" }: MobileIslandNavProps) {
+  const tabbar = variant === "tabbar";
   const navRef = useRef<HTMLElement>(null);
   const itemsRef = useRef(new Map<string, HTMLButtonElement>());
   const dragRef = useRef<DragState | null>(null);
@@ -165,13 +171,15 @@ export function MobileIslandNav({ items, value, onChange, label, className = "" 
   return <nav
     ref={navRef}
     aria-label={label}
-    className={`rumahl-island${dragging ? " is-dragging" : ""}${className ? ` ${className}` : ""}`}
+    className={`rumahl-island${tabbar ? " rumahl-island--tabbar" : ""}${dragging ? " is-dragging" : ""}${className ? ` ${className}` : ""}`}
     data-dragging={dragging ? "true" : undefined}
-    onPointerDown={startDrag}
-    onPointerMove={moveDrag}
-    onPointerUp={(event) => finishDrag(event, true)}
-    onPointerCancel={(event) => finishDrag(event, false)}
-    onLostPointerCapture={() => resetDrag()}
+    {...(tabbar ? {} : {
+      onPointerDown: startDrag,
+      onPointerMove: moveDrag,
+      onPointerUp: (event: ReactPointerEvent<HTMLElement>) => finishDrag(event, true),
+      onPointerCancel: (event: ReactPointerEvent<HTMLElement>) => finishDrag(event, false),
+      onLostPointerCapture: () => resetDrag()
+    })}
     onKeyDown={handleKeyDown}
     onClickCapture={(event) => {
       if (suppressClick.current && event.detail > 0) {
@@ -180,7 +188,7 @@ export function MobileIslandNav({ items, value, onChange, label, className = "" 
       }
     }}
   >
-    <span className="rumahl-island__indicator" aria-hidden="true" style={indicatorStyle} />
+    {tabbar ? null : <span className="rumahl-island__indicator" aria-hidden="true" style={indicatorStyle} />}
     {items.map((item) => <button
       key={item.id}
       ref={(element) => {

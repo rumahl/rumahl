@@ -146,11 +146,12 @@ try {
   await page.locator('.shell[data-session-ready="true"]').waitFor();
   await page.getByRole("heading", { name: "Personalization" }).waitFor();
   await page.goBack();
-  await page.getByRole("heading", { name: "Settings", exact: true, level: 1 }).waitFor();
+  await page.getByRole("heading", { name: "Overview", exact: true, level: 1 }).waitFor();
   await page.goForward();
   await page.getByRole("heading", { name: "Personalization" }).waitFor();
   await setMode("desktop");
   await page.getByRole("region", { name: "Settings", exact: true }).waitFor();
+  await page.getByRole("button", { name: "Close Settings", exact: true }).click();
   await page.getByRole("navigation", { name: "Main navigation" }).getByRole("link", { name: "Home", exact: true }).click();
   // Launch a real authorized installation, including an app-local deep route.
   const appCookies = [];
@@ -207,7 +208,7 @@ try {
   await page.goto(`${info.origin}/`);
   await page.locator(".shell").waitFor();
   // One account, two independent browser profiles, and a second tab of one profile.
-  await page.goto(`${info.origin}/settings/display`);
+  await page.goto(`${info.origin}/settings/display/appearance`);
   await choose("Save for", "This browser profile", page);
   const inherited = page.waitForResponse((response) => response.url().includes("/api/v1/shell/preferences?") && response.request().method() === "PUT");
   await page.locator(".setting").getByRole("group", { name: "Shell mode" }).getByRole("button", { name: "Use account setting", exact: true }).click();
@@ -281,8 +282,10 @@ try {
   const files = page.getByRole("region", { name: "Files", exact: true });
   // New folder through the explorer toolbar, then open it.
   await files.getByRole("button", { name: "New folder", exact: true }).click();
-  await files.locator(".files-draft input").fill("Documents");
-  await files.locator(".files-draft input").press("Enter");
+  const folderName = files.locator(".files-rename");
+  await folderName.waitFor();
+  await folderName.fill("Documents");
+  await folderName.press("Enter");
   await files.locator("[data-file-key]", { hasText: "Documents" }).dblclick();
   await files.getByLabel("Upload file").setInputFiles({ name: "hello.txt", mimeType: "text/plain", buffer: Buffer.from("workspace upload") });
   await files.getByText("hello.txt", { exact: true }).waitFor();
@@ -310,9 +313,12 @@ try {
   await files.locator(".files-surface").click({ button: "right", position: { x: 4, y: 4 } });
   await page.getByRole("menuitem", { name: "Move here", exact: true }).click();
   await files.getByText("renamed.txt", { exact: true }).waitFor();
-  // Delete through the context menu (the explorer deletes immediately).
+  // Delete through the context menu, then confirm in the native dialog.
   await files.getByText("renamed.txt", { exact: true }).click({ button: "right" });
   await page.getByRole("menuitem", { name: "Delete", exact: true }).click();
+  const deleteDialog = page.getByRole("alertdialog", { name: "Delete", exact: true });
+  await deleteDialog.waitFor();
+  await deleteDialog.getByRole("button", { name: "Delete", exact: true }).click();
   await files.getByText("renamed.txt", { exact: true }).waitFor({ state: "detached" });
   // Saved account folders are delivered to an independent browser profile.
   const workspaceContext = await browser.newContext(reducedMotion);
@@ -360,6 +366,22 @@ try {
 
   await appendFile(join(frontend, "packages/shell/src/styles.css"), "\n.shell { outline: 3px solid rgb(1, 2, 3); }\n");
   await page.waitForFunction(() => globalThis.getComputedStyle(globalThis.document.querySelector(".shell")).outlineColor === "rgb(1, 2, 3)");
+  // Standalone recovery keeps the URL detail visible while the splash mark
+  // moves to the top, and does not hand back automatically for client crashes.
+  const recoveryContext = await browser.newContext({ reducedMotion: "no-preference" });
+  const recoveryPage = await recoveryContext.newPage();
+  try {
+    await recoveryPage.goto(`${info.origin}/recovery?reason=crash&detail=admin%20is%20not%20defined`);
+    await recoveryPage.locator(".hand").waitFor();
+    assert.equal(await recoveryPage.locator(".hand__detail code").textContent(), "admin is not defined");
+    const startBox = await recoveryPage.locator(".hand__brand").boundingBox();
+    await recoveryPage.waitForTimeout(1600);
+    const endBox = await recoveryPage.locator(".hand__brand").boundingBox();
+    assert(startBox && endBox && endBox.y < startBox.y - 100, "recovery mark did not animate to the top");
+    assert.equal(new URL(recoveryPage.url()).pathname, "/recovery");
+  } finally {
+    await recoveryContext.close();
+  }
   assert.deepEqual(errors, [], "browser console/hydration errors");
   console.log("PASS: Chromium deep-link login, SSR/hydration, nested routes, modes, app isolation/revocation, user/device settings sync and React/CSS hot reload");
 } finally {

@@ -1,0 +1,35 @@
+{
+  "id": "com.example.pixel-retro",
+  "name": "Pixel Retro",
+  "modes": [
+    "dark"
+  ],
+  "material": "solid",
+  "tokens": {
+    "color.accent": "#39ff14",
+    "color.accent.strong": "#8bff74",
+    "color.on.accent": "#04130a",
+    "color.canvas.background": "#080814",
+    "color.panel.background": "#12122a",
+    "color.surface": "#16162f",
+    "color.surface.strong": "#1d1d3d",
+    "color.text.primary": "#eaeaf5",
+    "color.text.muted": "#8f8fb3",
+    "color.outline": "#3a3a6e",
+    "color.shadow": "rgba(0, 0, 0, 0.8)",
+    "color.window.titlebar.background": "#12122a",
+    "color.window.titlebar.foreground": "#eaeaf5",
+    "shape.radius.window": "0px",
+    "shape.radius.dock": "0px",
+    "shape.radius.icon": "0px",
+    "material.morphism": 0,
+    "material.blur": 0,
+    "material.opacity": 1,
+    "material.saturation": 1,
+    "motion.duration": "0ms",
+    "motion.duration.fast": "0ms",
+    "typography.family": "'Press Start 2P', 'Courier New', ui-monospace, monospace",
+    "typography.display": "'Press Start 2P', 'Courier New', ui-monospace, monospace"
+  },
+  "css": ":root { image-rendering: pixelated; }\n.shell :is(.rumahl-window-surface, .rumahl-app-surface, .rumahl-settings, .rumahl-group, .rumahl-sidenav, .rumahl-window, .rumahl-menu, .rumahl-popover, .rumahl-tray, [data-floating], .btn, input, select, textarea, button) { border-radius: 0 !important; }\n.shell :is(.rumahl-window-surface, .rumahl-app-surface, .rumahl-settings) { background: #12122a !important; backdrop-filter: none !important; -webkit-backdrop-filter: none !important; border: 2px solid #3a3a6e !important; box-shadow: 6px 6px 0 0 rgba(0,0,0,0.7) !important; }\n.shell :is(.rumahl-group, .btn, input, select, textarea) { border-width: 2px !important; box-shadow: 3px 3px 0 0 rgba(0,0,0,0.55) !important; }\n.shell .rumahl-group { background: #16162f !important; }\n.shell :focus-visible { outline: 3px solid #39ff14 !important; outline-offset: 2px !important; }\n.shell :is(h1, h2, h3, strong, button, .rumahl-sidenav__label) { letter-spacing: 0.02em; }"
+}

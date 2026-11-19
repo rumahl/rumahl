@@ -35,7 +35,7 @@
   letter-spacing: -0.03em;
   color: var(--rumahl-ui-color-text-primary);
 }
-.rumahl-settings__eyebrow { font-size: 11px; color: var(--rumahl-ui-color-text-muted); }
+.rumahl-settings__eyebrow { font-size: 12px; color: var(--rumahl-ui-color-text-muted); }
 .rumahl-settings__page-heading p {
   margin: 8px 0 0;
   font-size: 13px;
@@ -45,7 +45,7 @@
 .rumahl-settings__back { display: inline-flex; }
 .rumahl-settings__section-title {
   margin: 26px 0 13px 2px;
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 750;
   letter-spacing: 0.015em;
   color: var(--rumahl-ui-color-text-primary);
@@ -53,7 +53,7 @@
 .rumahl-settings__section:first-child .rumahl-settings__section-title { margin-top: 0; }
 .rumahl-settings__footnote {
   margin: 10px 0 0;
-  font-size: 11.5px;
+  font-size: 12px;
   color: var(--rumahl-ui-color-text-muted);
 }
 

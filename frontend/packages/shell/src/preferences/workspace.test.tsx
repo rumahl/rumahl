@@ -12,6 +12,12 @@ describe("workspace persistence",()=>{
   expect(()=>parseWorkspace({...w,windows:[{...w.windows[0],rect:{x:NaN,y:0,width:1,height:1}}]})).toThrow();
   expect(()=>parseWorkspace({...w,folders:[{id:"one",name:"One",apps:["files"]},{id:"two",name:"Two",apps:["files"]}]})).toThrow();
  });
+ it("defaults the dock clearance off and parses it explicitly",()=>{
+  const base={version:1,windows:[],folders:[]};
+  expect(parseWorkspace(base).fullscreenChrome.dockClearance).toBe(false);
+  expect(parseWorkspace({...base,fullscreenChrome:{hideTopbar:true,hideDock:false,dockClearance:true}}).fullscreenChrome)
+    .toEqual({hideTopbar:true,hideDock:false,dockClearance:true});
+ });
  it("restores a saved window while preserving an explicit deep link",async()=>{
   localStorage.setItem("rumahl.demo.workspace",JSON.stringify({version:1,windows:[{location:"/app/files",rect:{x:20,y:30,width:600,height:400},placement:"left",minimized:false}],folders:[]}));
   render(<App snapshot={demoSnapshot} initialLocation="/app/store"/>);

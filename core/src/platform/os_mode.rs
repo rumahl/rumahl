@@ -100,6 +100,12 @@ impl OsModePolicy {
     pub fn can_use_web_console(&self) -> bool {
         self.mode == OsMode::Developer
     }
+
+    /// Publishing an OS-wide test warning is a developer diagnostic. A test
+    /// warning is visible to every account, so guided/advanced must not create it.
+    pub fn can_publish_test_warnings(&self) -> bool {
+        self.mode == OsMode::Developer
+    }
 }
 
 /// Persisted per-user/per-device exposure mode. Kept separate from the
@@ -222,6 +228,7 @@ mod tests {
         assert!(!policy.can_open_terminal());
         assert!(!policy.can_use_ssh());
         assert!(!policy.can_use_web_console());
+        assert!(!policy.can_publish_test_warnings());
     }
 
     #[test]
@@ -233,6 +240,7 @@ mod tests {
         assert!(!policy.can_open_terminal());
         assert!(!policy.can_use_ssh());
         assert!(!policy.can_use_web_console());
+        assert!(!policy.can_publish_test_warnings());
     }
 
     #[test]
@@ -243,5 +251,6 @@ mod tests {
         assert!(policy.can_open_terminal());
         assert!(policy.can_use_ssh());
         assert!(policy.can_use_web_console());
+        assert!(policy.can_publish_test_warnings());
     }
 }

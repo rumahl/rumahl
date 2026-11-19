@@ -2,8 +2,9 @@ use std::fs;
 use std::path::PathBuf;
 
 use rumahl_ui_contracts::{
-    ResolvedTheme, ShellSnapshot, ShellSnapshotError, ThemeManifest, ThemeManifestError,
-    ThemeToken, ThemeTokenValue, WindowChromeVariant, typescript_contracts_v1,
+    ExtensionContribution, ExtensionSize, ResolvedTheme, ShellSnapshot, ShellSnapshotError,
+    SurfaceIcon, SurfaceKind, SurfacePlacement, SurfaceSlot, SurfaceTone, ThemeManifest,
+    ThemeManifestError, ThemeToken, ThemeTokenValue, WindowChromeVariant, typescript_contracts_v1,
 };
 
 fn crate_root() -> PathBuf {
@@ -183,6 +184,67 @@ fn rejects_unknown_snapshot_fields_and_contract_versions() {
     );
 }
 
+#[test]
+fn round_trips_a_declarative_app_surface() {
+    let surface = ExtensionContribution::surface(
+        "com.rumahl.clock.desktop",
+        "Clock",
+        "com.rumahl.clock",
+        SurfaceSlot::Both,
+        SurfaceKind::Companion,
+        ExtensionSize::Medium,
+        SurfacePlacement::BottomRight,
+        SurfaceTone::Accent,
+        SurfaceIcon::Pulse,
+        Some("overlay".to_owned()),
+    )
+    .unwrap();
+    let value = serde_json::to_value(&surface).unwrap();
+    assert_eq!(value["kind"], "surface");
+    assert_eq!(value["app"], "com.rumahl.clock");
+    assert_eq!(value["placement"], "bottom-right");
+    assert_eq!(value["entrypoint"], "overlay");
+
+    let mut snapshot: serde_json::Value =
+        serde_json::from_slice(&fixture("snapshots/authenticated.json")).unwrap();
+    snapshot["contributions"] = serde_json::json!([value]);
+    let parsed = ShellSnapshot::from_json(&serde_json::to_vec(&snapshot).unwrap()).unwrap();
+    assert_eq!(parsed.contributions(), &[surface]);
+}
+
+#[test]
+fn rejects_invalid_surface_identity() {
+    assert!(
+        ExtensionContribution::surface(
+            "not-namespaced",
+            "Clock",
+            "com.rumahl.clock",
+            SurfaceSlot::Desktop,
+            SurfaceKind::Badge,
+            ExtensionSize::Small,
+            SurfacePlacement::TopLeft,
+            SurfaceTone::Mint,
+            SurfaceIcon::Dot,
+            None,
+        )
+        .is_err()
+    );
+    assert!(
+        ExtensionContribution::surface(
+            "com.rumahl.clock.desktop",
+            "Clock",
+            "not-namespaced",
+            SurfaceSlot::Desktop,
+            SurfaceKind::Badge,
+            ExtensionSize::Small,
+            SurfacePlacement::TopLeft,
+            SurfaceTone::Mint,
+            SurfaceIcon::Dot,
+            None,
+        )
+        .is_err()
+    );
+}
 #[test]
 fn checked_in_typescript_contract_is_current() {
     let checked_in = fs::read_to_string(

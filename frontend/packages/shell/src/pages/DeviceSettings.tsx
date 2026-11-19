@@ -2,13 +2,10 @@ import { useEffect, useState, type ReactNode } from "react";
 import { SettingsHeading } from "../components/SettingsHeading";
 import { Button } from "../components/Button";
 import { useI18n } from "../i18n";
-import { useShell } from "../shell/ShellContext";
 import { registerServiceWorker, serviceWorkerError, workerDetails } from "../service-worker";
-import { versionLabel } from "../system-labels";
 
 export function DeviceSettings() {
   const { t } = useI18n();
-  const { live } = useShell();
   const [registration, setRegistration] = useState<ServiceWorkerRegistration>();
   const [details, setDetails] = useState<Awaited<ReturnType<typeof workerDetails>>>();
   const [error, setError] = useState(serviceWorkerError);
@@ -72,10 +69,9 @@ export function DeviceSettings() {
   const controlled = supported && Boolean(registration?.active) && navigator.serviceWorker.controller?.scriptURL === registration?.active?.scriptURL;
   const status = !secure ? "insecure" : !supported ? "unsupported" : registration?.installing ? "installing" : registration?.waiting ? "waiting" : controlled ? "active" : registration?.active ? "uncontrolled" : "missing";
   return <section className="display-settings">
-    <SettingsHeading title={t("device.title")} help={t("device.help")} back="/settings" />
+    <SettingsHeading title={t("device.title")} help={t("device.help")} back="/settings/system" />
     <h3 className="section-title">{t("device.browser")}</h3>
     <div className="settings-group">
-      {row(t("settings.system.version"), versionLabel(Boolean(live?.demo)))}
       {row(t("device.browser"), browser.agent)}
       {row(t("device.language"), browser.language)}
       {row(t("device.screen"), browser.screen)}

@@ -1,0 +1,1428 @@
+/*
+ * Mobile design contract.
+ *
+ * Every phone app uses the same rhythm:
+ *   - one 28px page title with a 14px help line,
+ *   - a 16px content gutter,
+ *   - the shell-owned bottom bar as the only bottom navigation,
+ *   - system chrome in the same dark glass material.
+ *
+ * This file is imported after the app styles so it can normalise the
+ * first-party surfaces without changing their desktop presentation.
+ */
+
+/*
+ * Mobile-only chrome values. These are internal layout constants, not a
+ * second theme contract: the phone keeps the theme's colours, materials,
+ * fonts, component shapes and radii. Only the bottom navigation and the
+ * Open windows surface deliberately get their own mobile design.
+ */
+.shell[data-mobile="true"] {
+  --mobile-gutter: 16px;
+  --mobile-navbar-height: 44px;
+  --mobile-nav-title-size: calc(17px * var(--rumahl-ui-typography-scale, 1));
+  --mobile-tabbar-height: 58px;
+  --mobile-touch-target: 44px;
+  --mobile-title-size: calc(34px * var(--rumahl-ui-typography-scale, 1));
+  --mobile-title-weight: 700;
+  --mobile-body-size: calc(16px * var(--rumahl-ui-typography-scale, 1));
+  --mobile-secondary-size: calc(15px * var(--rumahl-ui-typography-scale, 1));
+  --mobile-label-size: calc(13px * var(--rumahl-ui-typography-scale, 1));
+  --mobile-micro-label-size: calc(12px * var(--rumahl-ui-typography-scale, 1));
+  --mobile-tab-label-size: calc(12px * var(--rumahl-ui-typography-scale, 1));
+  --mobile-tab-icon-size: 27px;
+  --mobile-chrome-blur: 20px;
+  --mobile-chrome-saturation: 1.6;
+  --mobile-chrome-opacity: 84%;
+  --mobile-tabbar-opacity: 30%;
+  --mobile-tabbar-radius: 30px;
+  --mobile-tabbar-inset: 10px;
+  --mobile-tabbar-blur: 28px;
+  --mobile-tabbar-saturation: 1.8;
+  --mobile-dock-height: 92px;
+  --mobile-dock-item: 60px;
+  --mobile-dock-icon: 30px;
+  --mobile-dock-radius: 32px;
+  --mobile-dock-item-radius: 19px;
+  --mobile-dock-gap: 14px;
+  --mobile-bottom-space: calc(var(--mobile-tabbar-height) + var(--mobile-tabbar-inset) + 16px + env(safe-area-inset-bottom, 0px));
+}
+
+.shell[data-theme-base="ground"] {
+  --mobile-dock-radius: max(
+    var(--rumahl-ui-shape-radius-dock, 0px),
+    var(--ground-radius, 0px)
+  );
+  --mobile-dock-item-radius: max(
+    var(--rumahl-ui-shape-radius-icon, 0px),
+    var(--ground-radius, 0px)
+  );
+}
+
+/* --------------------------------------------------------------------------
+ * iOS app chrome
+ * ----------------------------------------------------------------------- */
+
+.mobile-nav-bar,
+.mobile-large-title {
+  display: none;
+}
+
+.shell[data-mobile="true"] .mobile-nav-bar {
+  position: sticky;
+  top: 0;
+  z-index: 40;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  align-items: center;
+  min-height: calc(var(--mobile-navbar-height) + env(safe-area-inset-top, 0px));
+  padding: env(safe-area-inset-top, 0px) 8px 0;
+  border-bottom: 0.5px solid color-mix(in srgb, var(--rumahl-ui-color-text-primary) 14%, transparent);
+  background: color-mix(in srgb, var(--rumahl-ui-color-panel-background, #f8faf7) var(--mobile-chrome-opacity), transparent);
+  color: var(--rumahl-ui-color-text-primary);
+  backdrop-filter: blur(var(--mobile-chrome-blur)) saturate(var(--mobile-chrome-saturation));
+  -webkit-backdrop-filter: blur(var(--mobile-chrome-blur)) saturate(var(--mobile-chrome-saturation));
+}
+
+.shell[data-mobile="true"] .mobile-nav-bar__leading,
+.shell[data-mobile="true"] .mobile-nav-bar__actions {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+}
+
+.shell[data-mobile="true"] .mobile-nav-bar__leading {
+  justify-self: start;
+}
+
+.shell[data-mobile="true"] .mobile-nav-bar__actions {
+  justify-self: end;
+}
+
+.shell[data-mobile="true"] .mobile-nav-bar__title {
+  margin: 0;
+  overflow: hidden;
+  color: inherit;
+  font: inherit;
+  font-size: var(--mobile-nav-title-size);
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  line-height: var(--mobile-navbar-height);
+  text-align: center;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.shell[data-mobile="true"] .mobile-nav-bar__leading :is(a, button),
+.shell[data-mobile="true"] .mobile-nav-bar__actions :is(a, button) {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: var(--mobile-touch-target);
+  min-height: var(--mobile-touch-target);
+  padding: 0;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--rumahl-ui-color-accent);
+  font: inherit;
+  font-size: var(--mobile-nav-title-size);
+  text-decoration: none;
+}
+
+.shell[data-mobile="true"] .mobile-nav-bar__leading :is(a, button):active,
+.shell[data-mobile="true"] .mobile-nav-bar__actions :is(a, button):active {
+  opacity: 0.55;
+}
+
+.shell[data-mobile="true"] .mobile-nav-bar__leading .settings-back {
+  display: inline-flex;
+  width: var(--mobile-touch-target);
+  height: var(--mobile-touch-target);
+  align-items: center;
+  justify-content: center;
+  margin-left: -8px;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+  color: var(--rumahl-ui-color-accent);
+}
+
+.shell[data-mobile="true"] .mobile-nav-bar__leading .settings-back svg {
+  width: var(--mobile-tab-icon-size);
+  height: var(--mobile-tab-icon-size);
+}
+
+.shell[data-mobile="true"] .mobile-large-title {
+  display: block;
+  padding: 8px 0 10px;
+}
+
+.shell[data-mobile="true"] .mobile-large-title__title {
+  margin: 0;
+  color: var(--rumahl-ui-color-text-primary);
+  font-size: var(--mobile-title-size);
+  font-weight: var(--mobile-title-weight);
+  letter-spacing: -0.025em;
+  line-height: 1.12;
+}
+
+.shell[data-mobile="true"] .mobile-large-title__subtitle {
+  max-width: 48ch;
+  margin: 5px 0 0;
+  color: var(--rumahl-ui-color-text-muted);
+  font-size: var(--mobile-secondary-size);
+  line-height: 1.42;
+}
+
+/* Settings, Pets and Activity own a padded scroller; the bar spans the full
+   window width. The Store bar sits outside its scroller and needs no bleed. */
+.shell[data-mobile="true"] :is(.settings-content, .pets-app, .activity-page) > .mobile-nav-bar,
+.shell[data-mobile="true"] :is(.settings-content, .pets-app, .activity-page) .mobile-nav-bar {
+  margin-inline: calc(var(--mobile-gutter) * -1);
+}
+
+/* The app fills the window to the bottom edge; the tab bar is a floating
+   Liquid Glass shelf above the content, like the iOS app dock. */
+.shell[data-mobile="true"][data-launcher="app"] .window-position:not([data-fullscreen="true"]) > .window-motion > .shell-window {
+  height: calc(100% - env(safe-area-inset-top)) !important;
+}
+
+.shell[data-mobile="true"][data-launcher="app"] .mobile-app-nav {
+  position: absolute;
+  right: var(--mobile-tabbar-inset);
+  bottom: max(var(--mobile-tabbar-inset), env(safe-area-inset-bottom, 0px));
+  left: var(--mobile-tabbar-inset);
+  z-index: 30;
+  display: flex;
+  align-items: stretch;
+  width: auto;
+  max-width: none;
+  height: var(--mobile-tabbar-height);
+  padding: 0;
+  gap: 0;
+  overflow: hidden;
+  border: 1px solid color-mix(in srgb, var(--rumahl-ui-color-text-primary) 16%, transparent);
+  border-radius: var(--mobile-tabbar-radius);
+  background: color-mix(in srgb, var(--rumahl-ui-color-panel-background, #f8faf7) var(--mobile-tabbar-opacity), transparent);
+  color: var(--rumahl-ui-color-text-muted);
+  box-shadow:
+    0 14px 34px color-mix(in srgb, var(--rumahl-ui-color-shadow, #000) 38%, transparent),
+    inset 0 1px 0 color-mix(in srgb, var(--rumahl-ui-color-on-wallpaper, #fff) 48%, transparent),
+    inset 0 -1px 0 color-mix(in srgb, var(--rumahl-ui-color-shadow, #000) 10%, transparent);
+  backdrop-filter: blur(var(--mobile-tabbar-blur)) saturate(var(--mobile-tabbar-saturation));
+  -webkit-backdrop-filter: blur(var(--mobile-tabbar-blur)) saturate(var(--mobile-tabbar-saturation));
+  transform: none;
+  pointer-events: auto;
+}
+
+.shell[data-mobile="true"] .mobile-app-nav__system {
+  display: flex;
+  flex: 0 0 var(--mobile-touch-target);
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0;
+  width: var(--mobile-touch-target);
+  min-width: var(--mobile-touch-target);
+  height: var(--mobile-tabbar-height);
+  min-height: var(--mobile-tabbar-height);
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--rumahl-ui-color-text-muted);
+  font: inherit;
+  font-size: var(--mobile-tab-label-size);
+  font-weight: 500;
+  line-height: 1.1;
+  white-space: nowrap;
+}
+
+.shell[data-mobile="true"] .mobile-app-nav__system svg {
+  width: var(--mobile-tab-icon-size);
+  height: var(--mobile-tab-icon-size);
+}
+
+.shell[data-mobile="true"] .mobile-app-nav__system:active {
+  opacity: 0.55;
+}
+
+.shell[data-mobile="true"] .mobile-app-nav--with-items .mobile-app-nav__system {
+  width: var(--mobile-touch-target);
+  min-width: var(--mobile-touch-target);
+  padding: 0;
+}
+
+.shell[data-mobile="true"] .mobile-app-nav--with-items .mobile-app-nav__system span {
+  display: none;
+}
+
+/* With no app tabs, the bar collapses to one round Open windows button at the
+   trailing edge instead of showing an empty full-width tab bar. */
+.shell[data-mobile="true"] .mobile-app-nav:not(.mobile-app-nav--with-items) {
+  justify-content: flex-end;
+  align-items: center;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  pointer-events: none;
+}
+
+.shell[data-mobile="true"] .mobile-app-nav:not(.mobile-app-nav--with-items) .mobile-app-nav__system {
+  flex: 0 0 52px;
+  align-self: center;
+  width: 52px;
+  min-width: 52px;
+  height: 52px;
+  min-height: 52px;
+  flex-direction: column;
+  gap: 0;
+  padding: 0;
+  border: 1px solid color-mix(in srgb, var(--rumahl-ui-color-text-primary) 16%, transparent);
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--rumahl-ui-color-panel-background, #f8faf7) 38%, transparent);
+  color: var(--rumahl-ui-color-text-primary);
+  box-shadow:
+    0 12px 28px color-mix(in srgb, var(--rumahl-ui-color-shadow, #000) 30%, transparent),
+    inset 0 1px 0 color-mix(in srgb, var(--rumahl-ui-color-on-wallpaper, #fff) 40%, transparent);
+  backdrop-filter: blur(var(--mobile-tabbar-blur)) saturate(var(--mobile-tabbar-saturation));
+  -webkit-backdrop-filter: blur(var(--mobile-tabbar-blur)) saturate(var(--mobile-tabbar-saturation));
+  pointer-events: auto;
+}
+
+.shell[data-mobile="true"] .mobile-app-nav:not(.mobile-app-nav--with-items) .mobile-app-nav__system span {
+  display: none;
+}
+
+.shell[data-mobile="true"] .mobile-app-nav:not(.mobile-app-nav--with-items) .mobile-app-nav__spacer {
+  display: none;
+}
+
+.shell[data-mobile="true"] .mobile-app-nav__island {
+  display: flex;
+  flex: 1 1 auto;
+  align-items: stretch;
+  width: auto !important;
+  max-width: none !important;
+  min-width: 0;
+  padding: 0 !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+
+.shell[data-mobile="true"] .mobile-app-nav__island .rumahl-island__item {
+  display: flex;
+  flex: 1 1 0;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  min-width: 0;
+  height: var(--mobile-tabbar-height);
+  min-height: var(--mobile-tabbar-height);
+  padding: 4px 2px 3px;
+  border-radius: 0;
+  background: transparent;
+  color: var(--rumahl-ui-color-text-muted);
+  font-size: var(--mobile-tab-label-size);
+  font-weight: 500;
+  line-height: 1.1;
+}
+
+.shell[data-mobile="true"] .mobile-app-nav__island .rumahl-island__item[aria-current="page"] {
+  background: transparent;
+  color: var(--rumahl-ui-color-accent);
+}
+
+.shell[data-mobile="true"] .mobile-app-nav__island .rumahl-island__item:active {
+  opacity: 0.55;
+}
+
+.shell[data-mobile="true"] .mobile-app-nav__island .rumahl-island__icon svg {
+  width: var(--mobile-tab-icon-size) !important;
+  height: var(--mobile-tab-icon-size) !important;
+}
+
+.shell[data-mobile="true"] .mobile-app-nav__island .rumahl-island__item > span:last-child {
+  max-width: 100%;
+  overflow: hidden;
+  font-size: var(--mobile-tab-label-size);
+  font-weight: 500;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.shell[data-mobile="true"] .mobile-app-nav__island .rumahl-island__indicator,
+.shell[data-mobile="true"] .mobile-app-nav__island .rumahl-island__handle {
+  display: none !important;
+}
+
+.shell[data-mobile="true"] .mobile-app-nav__spacer {
+  flex: 1;
+}
+
+.shell[data-mobile="true"] .mobile-app-nav :is(button, a):focus-visible,
+.shell[data-mobile="true"] .mobile-nav-bar :is(button, a):focus-visible {
+  outline: 2px solid var(--rumahl-ui-color-accent);
+  outline-offset: -2px;
+}
+
+/* Solid themes keep the same geometry but drop the glass from the phone chrome. */
+.shell[data-mobile="true"][data-material="solid"] .mobile-nav-bar,
+.shell[data-mobile="true"][data-material="solid"] .mobile-app-nav {
+  background: var(--rumahl-ui-color-panel-background, #f8faf7);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+
+.shell[data-mobile="true"][data-material="solid"] .mobile-app-nav:not(.mobile-app-nav--with-items) {
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.shell[data-mobile="true"][data-material="solid"] .mobile-app-nav:not(.mobile-app-nav--with-items) .mobile-app-nav__system {
+  background: var(--rumahl-ui-color-panel-background, #f8faf7);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+
+/* Real SVG refraction on the phone navbar. The engine owns the glass; the
+   host and its inner surface must stay transparent so the effect samples the
+   app content, exactly like the desktop widgets. The explicit Mobile setting
+   outranks the solid-material fallback above (hence data-material here). */
+.shell[data-mobile="true"][data-material] .mobile-app-nav[data-engine-glass="true"] {
+  --mobile-nav-glass-tint: color-mix(
+    in srgb,
+    color-mix(
+        in srgb,
+        var(--rumahl-ui-color-panel-background, #f8faf7) 88%,
+        var(--rumahl-ui-color-accent, #28694c)
+      )
+      58%,
+    transparent
+  );
+  background: transparent;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+
+.shell[data-mobile="true"][data-material] .mobile-app-nav:not(.mobile-app-nav--with-items)[data-engine-glass="true"] {
+  border: 0;
+  box-shadow: none;
+  background: transparent;
+}
+
+.shell[data-mobile="true"][data-material] .mobile-app-nav[data-engine-glass="true"] .mobile-app-nav__system {
+  background: transparent;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+
+/* Apps without their own tabs still get a full-width system tab bar. */
+.shell[data-mobile="true"][data-launcher="app"] .mobile-app-nav:not(.mobile-app-nav--with-items) {
+  width: auto;
+  max-width: none;
+}
+
+/* --------------------------------------------------------------------------
+ * Shared page rhythm
+ * ----------------------------------------------------------------------- */
+
+.shell[data-mobile="true"] .store-content,
+.shell[data-mobile="true"] .settings-content,
+.shell[data-mobile="true"] .pets-app {
+  padding-left: var(--mobile-gutter);
+  padding-right: var(--mobile-gutter);
+}
+
+.shell[data-mobile="true"] .store-content {
+  gap: 18px;
+  padding-top: max(14px, env(safe-area-inset-top, 0px));
+  padding-bottom: var(--mobile-bottom-space);
+}
+
+/* The Store is a scrolling flex column. Without this, rows such as the
+   category chips collapse to a few pixels as soon as the page is taller than
+   the window. */
+.shell[data-mobile="true"] .store-content > * {
+  flex-shrink: 0;
+}
+
+.shell[data-mobile="true"][data-launcher="app"] .settings-content {
+  padding: 0 var(--mobile-gutter) var(--mobile-bottom-space);
+}
+
+.shell[data-mobile="true"] .pets-app {
+  gap: 18px;
+  padding-top: 0;
+  padding-bottom: var(--mobile-bottom-space);
+}
+
+.shell[data-mobile="true"] .pets-kicker {
+  display: none;
+}
+
+.shell[data-mobile="true"] .pets-head h1 {
+  font-size: var(--mobile-title-size);
+  font-weight: var(--mobile-title-weight);
+  letter-spacing: -0.025em;
+  line-height: 1.12;
+}
+
+.shell[data-mobile="true"] .pets-lead {
+  font-size: var(--mobile-secondary-size);
+  line-height: 1.42;
+}
+
+/* Page titles: Store, Settings, Pets and the Files location all read at the
+   same 28px / 700 scale. */
+.shell[data-mobile="true"] .store-page-head h1,
+.shell[data-mobile="true"] .settings-content .settings-page-heading h1 {
+  margin-top: 2px;
+  font-size: var(--mobile-title-size);
+  font-weight: var(--mobile-title-weight);
+  line-height: 1.1;
+  letter-spacing: -0.03em;
+}
+
+.shell[data-mobile="true"] .store-page-head p:not(.store-kicker),
+.shell[data-mobile="true"] .settings-page-heading .pagedesc {
+  margin-top: 6px;
+  font-size: var(--mobile-body-size);
+  line-height: 1.5;
+}
+
+.shell[data-mobile="true"] .store-page-head {
+  gap: 4px;
+  align-items: flex-start;
+  flex-direction: column;
+}
+
+.shell[data-mobile="true"] .store-page-head__aside {
+  justify-items: start;
+  padding: 0;
+  text-align: left;
+}
+
+.shell[data-mobile="true"] .store-kicker,
+.shell[data-mobile="true"] .pets-kicker {
+  font-size: var(--mobile-micro-label-size);
+  letter-spacing: 0.09em;
+}
+
+/* --------------------------------------------------------------------------
+ * Store
+ * ----------------------------------------------------------------------- */
+
+/* The old portalled Store topbar is replaced by the iOS navigation bar. */
+.shell[data-mobile="true"] .shell-window__titlebar[data-custom]:has(.store-topbar) {
+  display: none !important;
+}
+
+.shell[data-mobile="true"] .store-app > .mobile-nav-bar {
+  flex: 0 0 auto;
+  margin: 0;
+}
+
+.shell[data-mobile="true"] .store-app > .store-nav-layout {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+.shell[data-mobile="true"] .store-page-head {
+  position: relative;
+  padding-top: 2px;
+  padding-right: 0;
+}
+
+.shell[data-mobile="true"] .store-page-head__aside {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+/* iOS app pages do not put an editorial eyebrow above a heading. Keep the
+   featured banner's source label because it is metadata inside the artwork. */
+.shell[data-mobile="true"] .store-app .store-kicker {
+  display: none;
+}
+
+.shell[data-mobile="true"] .store-app .store-banner__eyebrow .store-kicker {
+  display: flex;
+}
+
+.shell[data-mobile="true"] .store-detail-bar {
+  display: none;
+}
+
+.shell[data-mobile="true"] .store-page-head h1 {
+  font-size: var(--mobile-title-size);
+  font-weight: var(--mobile-title-weight);
+  letter-spacing: -0.025em;
+  line-height: 1.12;
+}
+
+.shell[data-mobile="true"] .store-page-head p:not(.store-kicker) {
+  font-size: var(--mobile-secondary-size);
+  line-height: 1.42;
+}
+
+.shell[data-mobile="true"] .mobile-nav-bar__back {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  max-width: 100%;
+  min-height: var(--mobile-touch-target);
+  padding: 0 8px 0 0;
+  border: 0;
+  background: transparent;
+  color: var(--rumahl-ui-color-accent);
+  font: inherit;
+  font-size: var(--mobile-nav-title-size);
+  letter-spacing: -0.01em;
+}
+
+.shell[data-mobile="true"] .mobile-nav-bar__back span {
+  max-width: 132px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.shell[data-mobile="true"] .mobile-nav-bar__back svg {
+  width: 24px;
+  height: 24px;
+  flex: none;
+}
+
+.shell[data-mobile="true"] .mobile-nav-bar__back:active {
+  opacity: 0.55;
+}
+
+.shell[data-mobile="true"] .store-home {
+  gap: 20px;
+}
+
+/* Detail links are inline by default; on a phone they need a real 44px row. */
+.shell[data-mobile="true"] .store-app :is(
+  .store-developer-link,
+  .store-package-link,
+  .store-detail-jumps a,
+  .store-detail-jumps button,
+  .store-preview-note > a,
+  .store-developer-panel-link,
+  .store-facts .store-fact a
+) {
+  display: inline-flex;
+  align-items: center;
+  min-height: var(--mobile-touch-target);
+  padding-block: 4px;
+}
+
+.shell[data-mobile="true"] .store-cover__copy h2,
+.shell[data-mobile="true"] .store-product-hero h1,
+.shell[data-mobile="true"] .store-banner__content h2 {
+  font-size: var(--mobile-title-size);
+  font-weight: var(--mobile-title-weight);
+  letter-spacing: -0.03em;
+}
+
+/* One horizontal category rail keeps the catalogue directly under the title. */
+.shell[data-mobile="true"] .store-categories {
+  flex-wrap: nowrap;
+  gap: 8px;
+  overflow-x: auto;
+  margin-inline: calc(var(--mobile-gutter) * -1);
+  padding: 0 var(--mobile-gutter) 4px;
+  scrollbar-width: none;
+  scroll-snap-type: x proximity;
+}
+
+.shell[data-mobile="true"] .store-categories::-webkit-scrollbar {
+  display: none;
+}
+
+.shell[data-mobile="true"] .store-categories > * {
+  flex: 0 0 auto;
+  scroll-snap-align: start;
+}
+
+.shell[data-mobile="true"] .store-browse-context {
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.shell[data-mobile="true"] .store-browse-context::-webkit-scrollbar {
+  display: none;
+}
+
+/* Below 480px the old showcase stacked three 140px spotlights, which pushed
+   the rest of the Store far below the fold. They become one swipeable rail. */
+@container storefront (max-width: 480px) {
+  .shell[data-mobile="true"] .store-showcase__main {
+    height: 290px;
+  }
+
+  .shell[data-mobile="true"] .store-showcase__side {
+    display: flex;
+    gap: 10px;
+    height: 120px;
+    overflow-x: auto;
+    padding-bottom: 2px;
+    scrollbar-width: none;
+    scroll-snap-type: x proximity;
+  }
+
+  .shell[data-mobile="true"] .store-showcase__side::-webkit-scrollbar {
+    display: none;
+  }
+
+  .shell[data-mobile="true"] .store-showcase__side-row {
+    display: contents;
+  }
+
+  .shell[data-mobile="true"] .store-showcase__side .store-spotlight {
+    flex: 0 0 min(76vw, 280px);
+    width: auto;
+    height: 120px;
+    scroll-snap-align: start;
+  }
+}
+
+/* --------------------------------------------------------------------------
+ * Settings app
+ * ----------------------------------------------------------------------- */
+
+/* The mobile nav bar + large title replace the desktop Settings heading. */
+.shell[data-mobile="true"] .settings-page-heading {
+  display: none !important;
+}
+
+
+
+/* --------------------------------------------------------------------------
+ * Files app
+ * ----------------------------------------------------------------------- */
+
+/* The file grid scrolls under the floating app dock; the old desktop status
+   strip would sit underneath it, so the count moves out of the phone chrome. */
+.shell[data-mobile="true"] .files-surface {
+  padding-bottom: calc(var(--mobile-tabbar-height) + var(--mobile-tabbar-inset) + 12px);
+}
+
+.shell[data-mobile="true"] .files-status {
+  display: none;
+}
+
+.shell[data-mobile="true"] .files-pager {
+  margin-bottom: calc(var(--mobile-tabbar-height) + var(--mobile-tabbar-inset) + 8px);
+}
+
+/* Two rows only: navigation + file actions, then search + view switch. */
+.shell[data-mobile="true"] .files-search {
+  order: 2;
+  flex: 1 1 180px;
+}
+
+.shell[data-mobile="true"] .files-view-switch {
+  order: 2;
+}
+
+/* --------------------------------------------------------------------------
+ * Launcher
+ * ----------------------------------------------------------------------- */
+
+.shell[data-mobile="true"] .launcher-workspace {
+  padding-left: var(--mobile-gutter);
+  padding-right: var(--mobile-gutter);
+}
+
+.shell[data-mobile="true"] .launcher-home {
+  gap: 10px;
+  padding-left: 0;
+  padding-right: 0;
+}
+
+.shell[data-mobile="true"] .launcher-heading {
+  gap: 8px;
+}
+
+.shell[data-mobile="true"] .launcher-greeting {
+  font-size: var(--mobile-body-size);
+  letter-spacing: 0;
+}
+
+.shell[data-mobile="true"] .launcher-greeting > span {
+  font-size: clamp(32px, 8.8vw, 38px);
+  font-weight: 550;
+  letter-spacing: -0.03em;
+}
+
+.shell[data-mobile="true"] .launcher-clock strong {
+  font-size: var(--mobile-label-size);
+}
+
+.shell[data-mobile="true"] .launcher-clock span {
+  font-size: 12px;
+}
+
+/* The launcher keeps its own dock, but it spans the phone edge to edge. */
+.shell[data-mobile="true"] .os-dock {
+  --dock-fit: 1;
+  --dock-unit: 1;
+  left: env(safe-area-inset-left, 0px) !important;
+  right: env(safe-area-inset-right, 0px) !important;
+  width: auto !important;
+  max-width: none !important;
+  min-height: var(--mobile-dock-height) !important;
+  padding: 12px !important;
+  justify-content: center !important;
+  gap: var(--mobile-dock-gap) !important;
+  transform: none !important;
+  border-radius: var(--mobile-dock-radius) !important;
+}
+
+.shell[data-mobile="true"] .os-dock > a,
+.shell[data-mobile="true"] .os-dock > button,
+.shell[data-mobile="true"] .os-dock .dock-windows > button {
+  flex: 0 0 var(--mobile-dock-item) !important;
+  width: var(--mobile-dock-item) !important;
+  min-width: var(--mobile-dock-item) !important;
+  height: var(--mobile-dock-item) !important;
+  min-height: var(--mobile-dock-item) !important;
+  border-radius: var(--mobile-dock-item-radius) !important;
+}
+
+.shell[data-mobile="true"] .os-dock svg {
+  width: var(--mobile-dock-icon) !important;
+  height: var(--mobile-dock-icon) !important;
+}
+
+.shell[data-mobile="true"] .os-dock .dock-windows {
+  flex: 0 0 auto;
+  justify-content: center;
+}
+
+/* --------------------------------------------------------------------------
+ * Activity
+ * ----------------------------------------------------------------------- */
+
+/* The audit log is a shell app, not the emergency centre. Keep the phone
+   surface in the same light app material, and turn the wide desktop table
+   into readable event cards. */
+.shell[data-mobile="true"] .activity-page {
+  min-height: 100%;
+  padding: 0 var(--mobile-gutter) var(--mobile-bottom-space);
+  border-radius: 0;
+  background: transparent;
+  color: var(--rumahl-ui-color-text-primary);
+}
+
+.shell[data-mobile="true"] .activity-page h1 {
+  margin: 10px 0 14px;
+  font-size: var(--mobile-title-size);
+  font-weight: var(--mobile-title-weight);
+  letter-spacing: -0.025em;
+  line-height: 1.12;
+}
+
+.shell[data-mobile="true"] .activity-page .event-monitor__filters {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  align-items: stretch;
+  margin-bottom: 14px;
+}
+
+.shell[data-mobile="true"] .activity-page .event-monitor__filters label {
+  gap: 4px;
+  min-width: 0;
+  color: var(--rumahl-ui-color-text-muted);
+  font-size: var(--mobile-micro-label-size);
+  font-weight: 650;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.shell[data-mobile="true"] .activity-page .event-monitor__filters :is(select, input) {
+  width: 100%;
+  min-width: 0;
+  min-height: var(--mobile-touch-target);
+  padding: 9px 13px;
+  border: 1px solid var(--control-border, var(--surface-edge));
+  border-radius: 999px;
+  background: var(--control-fill, var(--surface-fill));
+  color: var(--rumahl-ui-color-text-primary);
+  font-size: var(--mobile-label-size);
+}
+
+.shell[data-mobile="true"] .activity-page .event-monitor__filters button[type="submit"] {
+  grid-column: 1 / -1;
+  min-height: var(--mobile-touch-target);
+  border-color: transparent;
+  background: var(--rumahl-ui-color-accent);
+  color: var(--rumahl-ui-color-on-accent);
+}
+
+.shell[data-mobile="true"] .activity-page .event-monitor__filters :is(select, input):focus-visible {
+  border-color: var(--rumahl-ui-color-accent);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--rumahl-ui-color-accent) 35%, transparent);
+}
+
+.shell[data-mobile="true"] .activity-page .event-monitor__scroll {
+  max-height: none;
+  overflow: visible;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+
+.shell[data-mobile="true"] .activity-page .event-monitor__table,
+.shell[data-mobile="true"] .activity-page .event-monitor__table tbody {
+  display: block;
+  width: 100%;
+}
+
+.shell[data-mobile="true"] .activity-page .event-monitor__table thead {
+  display: none;
+}
+
+.shell[data-mobile="true"] .activity-page .event-monitor__table tbody {
+  display: grid;
+  gap: 8px;
+}
+
+.shell[data-mobile="true"] .activity-page .event-monitor__table tbody tr {
+  display: grid;
+  gap: 5px;
+  padding: 12px 14px;
+  border: 1px solid var(--material-line, var(--surface-edge));
+  border-radius: var(--group-radius, 15px);
+  background: color-mix(in srgb, var(--rumahl-ui-color-text-primary) 2.5%, transparent);
+}
+
+.shell[data-mobile="true"] .activity-page .event-monitor__table tbody tr.is-selected {
+  border-color: color-mix(in srgb, var(--rumahl-ui-color-accent) 55%, transparent);
+  background: color-mix(in srgb, var(--rumahl-ui-color-accent) 10%, transparent);
+}
+
+.shell[data-mobile="true"] .activity-page .event-monitor__table td {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 14px;
+  max-width: none;
+  padding: 0;
+  border: 0;
+  color: var(--rumahl-ui-color-text-primary);
+  font-size: var(--mobile-label-size);
+  line-height: 1.35;
+  text-align: right;
+  word-break: break-word;
+}
+
+.shell[data-mobile="true"] .activity-page .event-monitor__table td::before {
+  content: attr(data-label);
+  flex: none;
+  color: var(--rumahl-ui-color-text-muted);
+  font-size: var(--mobile-micro-label-size);
+  font-weight: 650;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.shell[data-mobile="true"] .activity-page .event-monitor__level.is-information {
+  color: var(--rumahl-ui-color-accent-strong, var(--rumahl-ui-color-accent));
+}
+
+.shell[data-mobile="true"] .activity-page .event-monitor__level.is-warning {
+  color: var(--rumahl-ui-color-warning, #996000);
+}
+
+.shell[data-mobile="true"] .activity-page .event-monitor__level.is-error,
+.shell[data-mobile="true"] .activity-page .event-monitor__details .is-error {
+  color: var(--rumahl-ui-color-danger, #b3261e);
+}
+
+.shell[data-mobile="true"] .activity-page .event-monitor__details .is-information {
+  color: var(--rumahl-ui-color-accent-strong, var(--rumahl-ui-color-accent));
+}
+
+.shell[data-mobile="true"] .activity-page .event-monitor__details .is-warning {
+  color: var(--rumahl-ui-color-warning, #996000);
+}
+
+.shell[data-mobile="true"] .activity-page .event-monitor__source,
+.shell[data-mobile="true"] .activity-page .event-monitor__time,
+.shell[data-mobile="true"] .activity-page .event-monitor__target {
+  color: var(--rumahl-ui-color-text-muted);
+}
+
+.shell[data-mobile="true"] .activity-page .event-monitor__details {
+  margin-top: 12px;
+  padding: 14px;
+  border: 1px solid var(--material-line, var(--surface-edge));
+  border-radius: var(--group-radius, 15px);
+  background: color-mix(in srgb, var(--rumahl-ui-color-text-primary) 2.5%, transparent);
+  color: var(--rumahl-ui-color-text-primary);
+}
+
+.shell[data-mobile="true"] .activity-page .event-monitor__detailsHead .btn,
+.shell[data-mobile="true"] .activity-page .event-monitor__pager .btn {
+  min-height: var(--mobile-touch-target);
+  border-color: var(--control-border, var(--surface-edge));
+  background: var(--control-fill, var(--surface-fill));
+  color: var(--rumahl-ui-color-text-primary);
+}
+
+.shell[data-mobile="true"] .activity-page .event-monitor__detailsHead .btn:hover,
+.shell[data-mobile="true"] .activity-page .event-monitor__pager .btn:hover {
+  background: var(--control-hover, var(--surface-fill));
+}
+
+.shell[data-mobile="true"] .activity-page .event-monitor__details dl {
+  gap: 6px 14px;
+  font-size: var(--mobile-label-size);
+}
+
+.shell[data-mobile="true"] .activity-page .event-monitor__details dt {
+  color: var(--rumahl-ui-color-text-muted);
+}
+
+.shell[data-mobile="true"] .activity-page .event-monitor__pager {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 14px;
+}
+
+.shell[data-mobile="true"] .activity-page .event-monitor__empty {
+  color: var(--rumahl-ui-color-text-muted);
+}
+
+/* --------------------------------------------------------------------------
+ * Settings and Files touch targets
+ * ----------------------------------------------------------------------- */
+
+.shell[data-mobile="true"] .settings-content .settings-back {
+  width: var(--mobile-touch-target);
+  height: var(--mobile-touch-target);
+  min-width: var(--mobile-touch-target);
+  min-height: var(--mobile-touch-target);
+}
+
+.shell[data-mobile="true"] .settings-content :is(
+  button,
+  select,
+  input:not([type="checkbox"]):not([type="radio"]):not([type="range"]),
+  textarea
+) {
+  min-height: var(--mobile-touch-target);
+}
+
+.shell[data-mobile="true"] :is(input[type="checkbox"], input[type="radio"]) {
+  accent-color: var(--rumahl-ui-color-accent);
+}
+
+.shell[data-mobile="true"] .settings-content :is(input[type="checkbox"]:not([role="switch"]), input[type="radio"]) {
+  width: 24px;
+  min-width: 24px;
+  height: 24px;
+  min-height: 24px;
+}
+
+.shell[data-mobile="true"] .files-toolbar :is(.files-icon-btn, .files-action-btn, .files-upload) {
+  width: var(--mobile-touch-target);
+  min-width: var(--mobile-touch-target);
+  height: var(--mobile-touch-target);
+  min-height: var(--mobile-touch-target);
+}
+
+.shell[data-mobile="true"] .files-sidebar-toggle {
+  width: auto;
+  min-width: var(--mobile-touch-target);
+  height: var(--mobile-touch-target);
+  min-height: var(--mobile-touch-target);
+}
+
+.shell[data-mobile="true"] .files-item-menu::before {
+  content: "";
+  position: absolute;
+  inset: -5px;
+}
+
+.shell[data-mobile="true"] .files-crumbs button {
+  min-height: var(--mobile-touch-target);
+}
+
+.shell[data-mobile="true"] .topbar__button {
+  width: var(--mobile-touch-target) !important;
+  height: var(--mobile-touch-target) !important;
+}
+
+.shell[data-mobile="true"] .menubar__user {
+  width: var(--mobile-touch-target);
+  height: var(--mobile-touch-target);
+}
+
+.shell[data-mobile="true"] .launcher-search .rumahl-input {
+  min-height: var(--mobile-touch-target);
+}
+
+/* Launcher search uses the same light Liquid Glass recipe as the app dock. */
+.shell[data-mobile="true"] .launcher-search .rumahl-input-group {
+  border-color: color-mix(in srgb, var(--rumahl-ui-color-text-primary) 16%, transparent);
+  background: color-mix(in srgb, var(--rumahl-ui-color-panel-background, #f8faf7) 62%, transparent);
+  box-shadow:
+    0 12px 28px color-mix(in srgb, var(--rumahl-ui-color-shadow, #000) 24%, transparent),
+    inset 0 1px 0 color-mix(in srgb, var(--rumahl-ui-color-on-wallpaper, #fff) 40%, transparent);
+  backdrop-filter: blur(var(--mobile-tabbar-blur)) saturate(var(--mobile-tabbar-saturation));
+  -webkit-backdrop-filter: blur(var(--mobile-tabbar-blur)) saturate(var(--mobile-tabbar-saturation));
+}
+
+.shell[data-mobile="true"] .launcher-search .rumahl-input::placeholder {
+  color: color-mix(in srgb, var(--rumahl-ui-color-text-primary) 62%, transparent);
+}
+
+.shell[data-mobile="true"][data-material="solid"] .launcher-search .rumahl-input-group {
+  border-color: var(--control-border);
+  background: var(--rumahl-ui-color-panel-background, #f8faf7);
+  box-shadow: var(--control-inset);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+
+.shell[data-mobile="true"] .launcher-pages {
+  gap: 4px;
+}
+
+.shell[data-mobile="true"] .launcher-pages button {
+  position: relative;
+  width: var(--mobile-touch-target);
+  height: var(--mobile-touch-target);
+  padding: 0;
+  border-radius: 999px;
+  background: transparent;
+  transform: none;
+}
+
+.shell[data-mobile="true"] .launcher-pages button::before {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--rumahl-ui-color-on-wallpaper, #fff) 38%, transparent);
+  transform: translate(-50%, -50%);
+  transition: width 0.15s ease, background 0.15s ease;
+}
+
+.shell[data-mobile="true"] .launcher-pages button[aria-current="page"]::before {
+  width: 18px;
+  background: var(--rumahl-ui-color-on-wallpaper, #fff);
+}
+
+/* --------------------------------------------------------------------------
+ * Open windows / app switcher
+ * ----------------------------------------------------------------------- */
+
+/* A real shell surface, not a desktop modal: the iOS navigation bar is the
+   topbar, the running windows are a full-height horizontal carousel. */
+/* Open windows shows the real launcher topbar above it. The topbar stays
+   interactive; the overlay sits one layer below it. */
+.shell[data-mobile="true"][data-launcher="app"][data-switcher-open="true"] .menubar.topbar {
+  display: flex !important;
+}
+
+.shell[data-mobile="true"][data-switcher-open="true"] .mobile-app-nav {
+  display: none !important;
+}
+
+.shell[data-mobile="true"] .app-switcher-overlay--mobile {
+  position: fixed;
+  inset: 0;
+  z-index: 65;
+  display: flex;
+  padding: 0;
+  background: color-mix(in srgb, var(--rumahl-ui-color-panel-background, #f8faf7) 52%, transparent);
+  backdrop-filter: blur(30px) saturate(1.2);
+  -webkit-backdrop-filter: blur(30px) saturate(1.2);
+}
+
+.shell[data-mobile="true"] .app-switcher.app-switcher--mobile {
+  padding-top: calc(62px + env(safe-area-inset-top, 0px));
+}
+
+.shell[data-mobile="true"] .app-switcher {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  height: 100%;
+  max-height: none;
+  padding: 0;
+  gap: 0;
+  overflow: hidden;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  color: var(--rumahl-ui-color-text-primary);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+
+.shell[data-mobile="true"] .app-switcher > .mobile-nav-bar {
+  flex: 0 0 auto;
+}
+
+/* The current app is the full card at the top. Every other app is a compact
+   card underneath it, so the whole stack is visible and the current app never
+   leaves the top of the overview. */
+.shell[data-mobile="true"] .app-switcher__rail {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  max-width: 100%;
+  padding: 2px 16px 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: none;
+}
+
+.shell[data-mobile="true"] .app-switcher__rail::-webkit-scrollbar {
+  display: none;
+}
+
+.shell[data-mobile="true"] .app-switcher__rail-item {
+  display: flex;
+  align-items: center;
+  flex: none;
+  gap: 8px;
+  padding: 4px;
+  color: var(--rumahl-ui-color-text-primary);
+  font: inherit;
+  background: transparent;
+  border: 0;
+  border-radius: 999px;
+}
+
+.shell[data-mobile="true"] .app-switcher__rail-item .app-switcher__icon {
+  width: 32px;
+  height: 32px;
+  border-radius: 9px;
+  background: transparent;
+  opacity: 0.58;
+  transition:
+    width 0.2s ease,
+    height 0.2s ease,
+    border-radius 0.2s ease,
+    opacity 0.2s ease;
+}
+
+.shell[data-mobile="true"] .app-switcher__rail-item.is-current .app-switcher__icon {
+  width: 40px;
+  height: 40px;
+  border-radius: 12px;
+  opacity: 1;
+}
+
+.shell[data-mobile="true"] .app-switcher__rail-title {
+  overflow: hidden;
+  max-width: 130px;
+  font-size: 14px;
+  font-weight: 650;
+  letter-spacing: -0.01em;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.shell[data-mobile="true"] .app-switcher__rail-item:focus-visible {
+  outline: 2px solid var(--rumahl-ui-color-accent);
+  outline-offset: 2px;
+}
+
+/* Horizontal iOS deck: the current app is centered and in front, the apps
+   before and after it stay visible at the edges. */
+.shell[data-mobile="true"] .app-switcher__grid {
+  --switcher-card: min(68vw, 340px);
+  --switcher-half: min(34vw, 170px);
+  --switcher-overlap: 12px;
+  display: flex;
+  flex: 1 1 auto;
+  gap: 0;
+  min-width: 0;
+  min-height: 0;
+  align-items: flex-start;
+  padding: 12px calc(50% - var(--switcher-half) + var(--switcher-overlap)) calc(10px + env(safe-area-inset-bottom, 0px));
+  overflow-x: auto;
+  overflow-y: hidden;
+  scroll-snap-type: x mandatory;
+  overscroll-behavior: contain;
+  scrollbar-width: none;
+}
+
+.shell[data-mobile="true"] .app-switcher__grid::-webkit-scrollbar {
+  display: none;
+}
+
+.shell[data-mobile="true"] .app-switcher__card {
+  flex: 0 0 var(--switcher-card);
+  width: var(--switcher-card);
+  height: min(56dvh, 480px);
+  margin-inline: calc(var(--switcher-overlap) * -1);
+  overflow: hidden;
+  border: 1px solid color-mix(in srgb, var(--rumahl-ui-color-text-primary) 16%, transparent);
+  border-radius: 26px;
+  background: var(--rumahl-ui-color-panel-background, #f8faf7);
+  color: var(--rumahl-ui-color-text-primary);
+  box-shadow:
+    0 26px 62px color-mix(in srgb, var(--rumahl-ui-color-shadow, #000) 28%, transparent),
+    inset 0 1px 0 color-mix(in srgb, var(--rumahl-ui-color-on-wallpaper, #fff) 34%, transparent);
+  scroll-snap-align: center;
+  transform-origin: center center;
+  transition:
+    transform 0.32s cubic-bezier(0.22, 0.8, 0.24, 1),
+    opacity 0.24s ease,
+    border-color 0.2s ease,
+    box-shadow 0.3s ease;
+  will-change: transform;
+}
+
+.shell[data-mobile="true"] .app-switcher__card.is-current {
+  border-color: color-mix(in srgb, var(--rumahl-ui-color-accent) 68%, transparent);
+  box-shadow:
+    0 34px 84px color-mix(in srgb, var(--rumahl-ui-color-shadow, #000) 38%, transparent),
+    0 0 0 1px color-mix(in srgb, var(--rumahl-ui-color-accent) 24%, transparent),
+    inset 0 1px 0 color-mix(in srgb, var(--rumahl-ui-color-on-wallpaper, #fff) 42%, transparent);
+}
+
+.shell[data-mobile="true"] .app-switcher__preview {
+  height: 100%;
+  margin: 0;
+  overflow: hidden;
+  border: 0;
+  border-radius: 0;
+  background: color-mix(in srgb, var(--rumahl-ui-color-panel-background, #f8faf7) 94%, transparent);
+}
+
+.shell[data-mobile="true"] .app-switcher__open--cover {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  padding: 0;
+  color: transparent;
+  background: transparent;
+  border: 0;
+  border-radius: inherit;
+}
+
+.shell[data-mobile="true"] .app-switcher__open--cover::after {
+  display: none;
+}
+
+.shell[data-mobile="true"] .app-switcher__remove {
+  top: 14px;
+  right: 14px;
+  z-index: 3;
+  width: 34px;
+  height: 34px;
+  border-color: color-mix(in srgb, var(--rumahl-ui-color-text-primary) 14%, transparent);
+  background: color-mix(in srgb, var(--rumahl-ui-color-panel-background, #f8faf7) 82%, transparent);
+  box-shadow: 0 4px 14px color-mix(in srgb, var(--rumahl-ui-color-shadow, #000) 22%, transparent);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+}
+
+.shell[data-mobile="true"] .app-switcher__remove svg {
+  width: 15px;
+  height: 15px;
+}
+
+.shell[data-mobile="true"] .app-switcher__footer {
+  display: flex;
+  flex: 0 0 auto;
+  justify-content: center;
+  padding: 6px 16px calc(16px + env(safe-area-inset-bottom, 0px));
+}
+
+.shell[data-mobile="true"] .app-switcher__footer button {
+  flex: 0 1 240px;
+  width: min(240px, 100%);
+  min-height: 52px;
+}
+
+.shell[data-mobile="true"] .app-switcher__nav-action {
+  display: inline-flex;
+  width: var(--mobile-touch-target);
+  height: var(--mobile-touch-target);
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--rumahl-ui-color-accent);
+}
+
+.shell[data-mobile="true"] .app-switcher__nav-action svg {
+  width: var(--mobile-tab-icon-size);
+  height: var(--mobile-tab-icon-size);
+}
+
+.shell[data-mobile="true"] .app-switcher__nav-action:active {
+  opacity: 0.55;
+}
+
+.shell[data-mobile="true"] .app-switcher__nav-action.app-switcher__close {
+  border: 0;
+  background: transparent;
+  color: var(--rumahl-ui-color-accent);
+}
+
+.shell[data-mobile="true"] .app-switcher__empty {
+  margin: 18px;
+  padding: 28px 18px;
+}
+
+/* --------------------------------------------------------------------------
+ * Bottom spacing for the remaining phone surfaces
+ * ----------------------------------------------------------------------- */
+
+.shell[data-mobile="true"][data-launcher="app"] .files-surface,
+.shell[data-mobile="true"][data-launcher="app"] .store-content,
+.shell[data-mobile="true"][data-launcher="app"] .settings-content,
+.shell[data-mobile="true"][data-launcher="app"] .pets-app {
+  overscroll-behavior: contain;
+}
+
+@media (max-height: 520px) {
+  .shell[data-mobile="true"] .app-switcher__rail {
+    padding-top: 0;
+  }
+
+  .shell[data-mobile="true"] .app-switcher__grid {
+    padding-block: 4px;
+  }
+
+  .shell[data-mobile="true"] .app-switcher__card {
+    height: min(44dvh, 280px);
+  }
+}

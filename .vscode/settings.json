@@ -1,3 +1,6 @@
 {
-    "codeQL.createQuery.qlPackLocation": "/workspace/rumahl"
+    "codeQL.createQuery.qlPackLocation": "/workspace/rumahl",
+    "cSpell.words": [
+        "rumahl"
+    ]
 }

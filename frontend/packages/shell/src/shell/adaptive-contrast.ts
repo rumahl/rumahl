@@ -3,6 +3,8 @@ import { hexToHsl, hexToRgb, hslToHex } from "@rumahl/ui/color";
 import { composite } from "@rumahl/ui/palette";
 import {
   adaptiveShadow,
+  averageColor,
+  colorsInCssBackground,
   decideInk,
   decideMuted,
   ensureReadableTextColor,
@@ -72,6 +74,25 @@ function mediaElement(): HTMLVideoElement | HTMLImageElement | null {
   const image = document.querySelector<HTMLImageElement>(".wallpaper-image");
   if (image && image.complete && image.naturalWidth > 0) return image;
   return null;
+}
+
+/**
+ * Wallpapers may be painted as CSS gradients rather than a media element.
+ * Read the first layer that actually carries colour so labels do not fall back
+ * to a theme-level ink that assumes the wrong wallpaper.
+ */
+function wallpaperCssColors(): string[] {
+  for (const selector of [".wallpaper", ".media-wall", ".scene", "body"]) {
+    const element = document.querySelector<HTMLElement>(selector);
+    if (!element) continue;
+    const style = getComputedStyle(element);
+    const colors = [
+      ...colorsInCssBackground(style.backgroundImage),
+      ...(style.backgroundColor !== "rgba(0, 0, 0, 0)" ? colorsInCssBackground(style.backgroundColor) : [])
+    ];
+    if (colors.length) return colors.slice(0, 12);
+  }
+  return [];
 }
 
 interface ToneState {
@@ -161,31 +182,37 @@ export function useAdaptiveContrast(): void {
     const tick = (): number => {
       if (document.hidden) return SAMPLE_STATIC_MS;
       const source = mediaElement();
-      if (!source) return SAMPLE_STATIC_MS;
-      resize();
-      const sourceWidth = source instanceof HTMLVideoElement ? source.videoWidth : source.naturalWidth;
-      const sourceHeight = source instanceof HTMLVideoElement ? source.videoHeight : source.naturalHeight;
-      if (!sourceWidth || !sourceHeight) return SAMPLE_STATIC_MS;
-      const scale = Math.max(width / sourceWidth, height / sourceHeight);
-      const drawWidth = sourceWidth * scale;
-      const drawHeight = sourceHeight * scale;
-      let frame: ImageData;
-      try {
-        ctx.clearRect(0, 0, width, height);
-        ctx.drawImage(source, (width - drawWidth) / 2, (height - drawHeight) / 2, drawWidth, drawHeight);
-        // The single readback for all text regions. GPU→CPU sync stays bounded
-        // even when many widgets are visible.
-        frame = ctx.getImageData(0, 0, width, height);
-      } catch {
-        return SAMPLE_STATIC_MS;
-      }
+      const cssColors = source ? [] : wallpaperCssColors();
+      if (!source && cssColors.length === 0) return SAMPLE_STATIC_MS;
+      let frame: ImageData | null = null;
+      if (source) {
+        resize();
+        const sourceWidth = source instanceof HTMLVideoElement ? source.videoWidth : source.naturalWidth;
+        const sourceHeight = source instanceof HTMLVideoElement ? source.videoHeight : source.naturalHeight;
+        if (!sourceWidth || !sourceHeight) return SAMPLE_STATIC_MS;
+        const scale = Math.max(width / sourceWidth, height / sourceHeight);
+        const drawWidth = sourceWidth * scale;
+        const drawHeight = sourceHeight * scale;
+        try {
+          ctx.clearRect(0, 0, width, height);
+          ctx.drawImage(source, (width - drawWidth) / 2, (height - drawHeight) / 2, drawWidth, drawHeight);
+          // The single readback for all text regions. GPU→CPU sync stays bounded
+          // even when many widgets are visible.
+          frame = ctx.getImageData(0, 0, width, height);
+        } catch {
+          return SAMPLE_STATIC_MS;
+        }
 
-      const signature = signatureOf(frame.data);
-      const delta = lastSignature
-        ? signature.reduce((sum, value, index) => sum + Math.abs(value - lastSignature![index]!), 0) / signature.length
-        : 0;
-      lastSignature = signature;
-      smoothedSceneDelta = smoothedSceneDelta * 0.55 + delta * 0.45;
+        const signature = signatureOf(frame.data);
+        const delta = lastSignature
+          ? signature.reduce((sum, value, index) => sum + Math.abs(value - lastSignature![index]!), 0) / signature.length
+          : 0;
+        lastSignature = signature;
+        smoothedSceneDelta = smoothedSceneDelta * 0.55 + delta * 0.45;
+      } else {
+        lastSignature = null;
+        smoothedSceneDelta = 0;
+      }
 
       const viewportWidth = Math.max(1, window.innerWidth);
       const viewportHeight = Math.max(1, window.innerHeight);
@@ -201,6 +228,10 @@ export function useAdaptiveContrast(): void {
         const surface = glass ? element.querySelector<HTMLElement>(".rumahl-glass-surface") : null;
         const surfaceStyle = surface ? getComputedStyle(surface) : null;
         const surfaceColor = surfaceStyle ? parseColor(surfaceStyle.backgroundColor) : null;
+        // Solid mode hides the glass surface and paints the frame instead; the
+        // sampler has to read the surface that is actually visible.
+        const solidFrame = glass && solid ? element.querySelector<HTMLElement>(".rumahl-glass-frame") : null;
+        const solidColor = solidFrame ? parseColor(getComputedStyle(solidFrame).backgroundColor) : null;
         const filters = parseFilters(surfaceStyle?.getPropertyValue("backdrop-filter") || surfaceStyle?.getPropertyValue("-webkit-backdrop-filter") || "");
         const blur = glass ? filters.blur ?? materialBlur : 0;
         const saturation = glass ? filters.saturate ?? materialSaturation : 1;
@@ -213,15 +244,18 @@ export function useAdaptiveContrast(): void {
         const top = Math.max(0, rect.top - margin);
         const right = Math.min(viewportWidth, rect.right + margin);
         const bottom = Math.min(viewportHeight, rect.bottom + margin);
-        const raw = sampleColors(frame.data, left, top, right, bottom, viewportWidth, viewportHeight);
+        const raw = frame
+          ? sampleColors(frame.data, left, top, right, bottom, viewportWidth, viewportHeight)
+          : cssColors;
         const backgrounds: string[] = [];
         for (const sample of raw) {
           let background = sample;
           if (glass) {
             background = adjustSaturation(background, saturation);
             background = adjustBrightness(background, brightness);
-            if (solid && surfaceColor) {
-              background = rgbHex(surfaceColor.r, surfaceColor.g, surfaceColor.b);
+            if (solid && (solidColor ?? surfaceColor)) {
+              const solidBase = solidColor ?? surfaceColor!;
+              background = rgbHex(solidBase.r, solidBase.g, solidBase.b);
             } else {
               if (surfaceColor && surfaceColor.a > 0) {
                 background = composite(background, rgbHex(surfaceColor.r, surfaceColor.g, surfaceColor.b), surfaceColor.a);
@@ -235,6 +269,11 @@ export function useAdaptiveContrast(): void {
         }
         if (backgrounds.length === 0) continue;
 
+        // Photos are sampled around the exact label, so the worst sample is the
+        // right basis. A CSS gradient shares one layer across the whole shell;
+        // use its representative colour for ink choice and keep the halo
+        // worst-case aware so a mixed gradient still gets a readable edge.
+        const decisionBackgrounds = frame ? backgrounds : [averageColor(backgrounds)];
         const state = stateFor(element);
         const desired = element.dataset.adaptiveColor?.trim();
         const inkDecision = desired
@@ -242,19 +281,23 @@ export function useAdaptiveContrast(): void {
               // A requested brand/text colour keeps its hue, but its lightness
               // is allowed to move immediately with the scene. It is already
               // worst-case checked, so no light/dark hysteresis is needed.
-              const adjusted = ensureReadableTextColor(backgrounds, desired);
+              const adjusted = ensureReadableTextColor(decisionBackgrounds, desired);
               return { color: adjusted.color, ratio: adjusted.ratio, currentRatio: worstContrast(state.ink, backgrounds), critical: true };
             })()
-          : decideInk(backgrounds, state.ink);
-        const mutedDecision = decideMuted(backgrounds, state.muted);
+          : decideInk(decisionBackgrounds, state.ink);
+        const mutedDecision = decideMuted(decisionBackgrounds, state.muted);
         const ink = commitTone(state.ink, inkDecision.color, inkDecision.critical, state.pendingInk, now);
         const muted = commitTone(state.muted, mutedDecision.color, mutedDecision.critical, state.pendingMuted, now);
         state.pendingInk = ink.pending;
         state.pendingMuted = muted.pending;
 
-        // Keep the shadow stable. Switching between "strong" and "normal"
-        // shadows was visually abrupt and could obscure the glyphs.
-        const shadow = adaptiveShadow(backgrounds[0]!);
+        // Keep the halo stable and tie its polarity to the chosen ink. A
+        // worst-case contrast below the critical threshold gets a stronger
+        // halo instead of silently accepting unreadable text.
+        const shadow = adaptiveShadow(
+          ink.color,
+          worstContrast(ink.color, backgrounds)
+        );
         const key = `${ink.color}|${muted.color}|${shadow}`;
         if (state.ink !== ink.color || state.muted !== muted.color || element.dataset.adaptiveKey !== key) {
           state.ink = ink.color;

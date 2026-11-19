@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, within } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { describe, expect, test, vi } from "vitest";
 import { App } from "./App";
 import { demoSnapshot as fixtureSnapshot } from "./demo/snapshot";
@@ -11,7 +11,7 @@ describe("protected shell behavior", () => {
     expect(within(nav).getByRole("link", { name: "Settings" })).toBeInTheDocument();
     fireEvent.click(within(nav).getByRole("link", { name: "Settings" }));
 
-    expect(screen.getByRole("heading", { level: 1, name: "Settings" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { level: 1, name: "Overview" })).toBeInTheDocument();
     expect(screen.getByRole("navigation", { name: "Main navigation" })).toBeInTheDocument();
   });
 
@@ -84,5 +84,29 @@ describe("protected shell behavior", () => {
     expect(frame).not.toHaveAttribute("src", expect.stringContaining("token="));
     fireEvent.click(within(window).getByRole("button", { name: "Close Firefox" }));
     expect(screen.queryByRole("region", { name: "Firefox" })).not.toBeInTheDocument();
+  });
+
+  test("follows the system motion preference with the same switch as the appearance setting", async () => {
+    const original = window.matchMedia;
+    window.matchMedia = vi.fn((query: string) => ({
+      matches: query.includes("prefers-reduced-motion"),
+      media: query,
+      onchange: null,
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+      addListener: vi.fn(),
+      removeListener: vi.fn(),
+      dispatchEvent: vi.fn()
+    })) as unknown as typeof window.matchMedia;
+    try {
+      render(<App snapshot={fixtureSnapshot} initialLocation="/" />);
+      await waitFor(() => {
+        expect(document.querySelector(".shell")).toHaveAttribute("data-animations", "off");
+      });
+      expect(document.body).toHaveClass("animations-off");
+    } finally {
+      window.matchMedia = original;
+      document.body.classList.remove("animations-off");
+    }
   });
 });

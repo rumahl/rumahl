@@ -10,7 +10,7 @@ import { ShellLink } from "../../routing/ShellLink";
 import { useShell } from "../ShellContext";
 import { useDesktopFiles, type DesktopFile } from "../desktop-files";
 import { useSafeMode } from "../../preferences/safe-mode";
-import { FileIcon, FolderIcon } from "../../apps/files/icons";
+import { FileArtwork, FolderArtwork } from "../../apps/files/icons";
 import { DesktopContextMenu, type DesktopMenuState } from "./DesktopContextMenu";
 import { useDesktopLayout } from "./desktop-layout";
 import { DesktopWidgets } from "./DesktopWidgets";
@@ -238,14 +238,14 @@ export function DesktopHome() {
         {items.map((item) => item.kind === "folder"
           ? <button key={item.id} type="button" className="desktop-icon desktop-app" data-grid-id={item.id} onClick={() => { setFolder(item.folderId!); setSelected(new Set()); }}>
             <span className="desktop-icon__art folder-preview" aria-hidden="true">{(workspace.effective.folders.find((entry) => entry.id === item.folderId)?.apps ?? []).slice(0, 9).map((id) => { const app = byId.get(id); return app ? <span key={id}><AppIcon app={app} /></span> : null; })}</span>
-            <span className="desktop-icon__label" data-adaptive-text="">{item.name}</span>
+            <span className="desktop-icon__label" data-adaptive-text="" title={item.name}>{item.name}</span>
           </button>
           : item.kind === "file"
           ? <button key={item.id} type="button" className="desktop-icon desktop-app" data-grid-id={item.id}
               onDoubleClick={() => openFile(item.file!)}
               onContextMenu={(event) => { event.preventDefault(); event.stopPropagation(); }}>
-              <span className="desktop-icon__art is-file" aria-hidden="true">{item.file!.directory ? <FolderIcon /> : <FileIcon />}</span>
-              <span className="desktop-icon__label" data-adaptive-text="">{item.name}</span>
+              <span className="desktop-icon__art is-file" aria-hidden="true">{item.file!.directory ? <FolderArtwork count={item.file!.children} /> : <FileArtwork className="desktop-file-art" name={item.file!.name} />}</span>
+              <span className="desktop-icon__label" data-adaptive-text="" title={item.name}>{item.name}</span>
             </button>
           : <ShellLink
             key={item.id}
@@ -253,7 +253,7 @@ export function DesktopHome() {
             className={`desktop-icon desktop-app${selected.has(item.id) ? " is-selected" : ""}`}
             data-grid-id={item.id}
             data-app-id={item.id}
-            aria-pressed={selected.has(item.id)}
+            aria-current={selected.has(item.id) ? "true" : undefined}
             draggable={false}
             onClick={(event) => onIconClick(item.app!, event)}
             onKeyDown={(event) => onIconKeyDown(item.app!, event)}
@@ -262,7 +262,7 @@ export function DesktopHome() {
             onContextMenu={(event) => { event.preventDefault(); event.stopPropagation(); setSelected(new Set([item.id])); setMenu({ x: event.clientX, y: event.clientY, appId: item.id }); }}
           >
             <span className={`desktop-icon__art${item.app!.system ? " is-system" : ""}`} aria-hidden="true"><AppIcon app={item.app!} /></span>
-            <span className="desktop-icon__label" data-adaptive-text="">{item.app!.title}</span>
+            <span className="desktop-icon__label" data-adaptive-text="" title={item.app!.title}>{item.app!.title}</span>
           </ShellLink>)}
       </div>
       {marquee ? <span className="desktop-marquee" aria-hidden="true" ref={(element) => {

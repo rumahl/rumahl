@@ -50,7 +50,8 @@ describe("isolated widget frame", () => {
     }));
     render(<I18nProvider locale="en"><WidgetFrame request={request} widget={widget} /></I18nProvider>);
 
-    expect(await screen.findByRole("status")).toHaveTextContent("Widget unavailable");
+    const unavailable = await screen.findByText(/Widget unavailable/);
+    expect(unavailable).toHaveAttribute("role", "status");
     expect(screen.queryByTitle("Home")).not.toBeInTheDocument();
   });
 

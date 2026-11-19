@@ -1,7 +1,7 @@
 {
   "id": "com.rumahl.core",
   "name": "rumahl UI Core",
-  "base": "clean",
+  "base": "ground",
   "modes": [
     "light",
     "dark"
@@ -30,5 +30,6 @@
     "motion.duration": "0ms",
     "motion.duration.fast": "0ms",
     "texture.wallpaper": "linear-gradient(#ffffff, #ffffff)"
-  }
+  },
+  "paletteTuning": true
 }

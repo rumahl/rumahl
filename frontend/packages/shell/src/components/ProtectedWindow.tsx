@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useState, type PropsWithChildren, type CSSProperties, type PointerEvent as ReactPointerEvent, type PointerEventHandler, type KeyboardEventHandler, type ReactNode } from "react";
+import { createContext, useContext, useEffect, useRef, useState, type PropsWithChildren, type CSSProperties, type PointerEvent as ReactPointerEvent, type PointerEventHandler, type KeyboardEventHandler, type ReactNode } from "react";
 import type { WindowChromeVariant } from "@rumahl/contracts";
 import { useTheme } from "@rumahl/ui";
 import { renderSlot, type SlotBindings, type SlotComponentProps } from "@rumahl/ui/slots";
@@ -16,6 +16,8 @@ interface ProtectedWindowProps extends PropsWithChildren {
   focused: boolean;
   /** Let the routed first-party app render its own topbar into this window. */
   customTopbar?: boolean;
+  /** Keep the app's custom topbar visible in exclusive fullscreen. */
+  fullscreenTopbar?: boolean;
   frameless?: boolean;
   /** Hosted iframe app: the content fills the window with no padding. */
   flush?: boolean;
@@ -40,7 +42,7 @@ interface ProtectedWindowProps extends PropsWithChildren {
 }
 
 export function ProtectedWindow({
-  children, customTopbar = false, style, frameless, flush = false, maximized, fullscreen, onMaximize, onFullscreen, onSnap, onTitlePointerDown, onTitleKeyDown, onResizePointerDown, onResizeKeyDown,
+  children, customTopbar = false, fullscreenTopbar = false, style, frameless, flush = false, maximized, fullscreen, onMaximize, onFullscreen, onSnap, onTitlePointerDown, onTitleKeyDown, onResizePointerDown, onResizeKeyDown,
   focused,
   id,
   onClose,
@@ -55,6 +57,8 @@ export function ProtectedWindow({
   const { theme } = useTheme();
   const [topbarHost, setTopbarHost] = useState<HTMLElement | null>(null);
   const [topbarReady, setTopbarReady] = useState(false);
+  const titlebar = useRef<HTMLElement>(null);
+  const controls = useRef<HTMLDivElement>(null);
   useEffect(() => {
     if (!customTopbar || !topbarHost) {
       setTopbarReady(false);
@@ -66,11 +70,29 @@ export function ProtectedWindow({
     observer.observe(topbarHost, { childList: true });
     return () => observer.disconnect();
   }, [customTopbar, topbarHost]);
+  useEffect(() => {
+    const bar = titlebar.current;
+    const group = controls.current;
+    if (!bar || !group) return;
+    const update = () => {
+      const width = getComputedStyle(group).display === "none" ? 0 : Math.ceil(group.getBoundingClientRect().width);
+      bar.style.setProperty("--window-controls-safe", `${width + 24}px`);
+    };
+    update();
+    if (typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(update);
+    observer.observe(group);
+    if (topbarHost) observer.observe(topbarHost);
+    return () => observer.disconnect();
+  }, [topbarHost, fullscreen, fullscreenTopbar]);
   // Portal content sits in the app's React tree, so React's synthetic bubble
   // from the header never sees it. Bind window dragging directly to the host.
   useEffect(() => {
     if (!customTopbar || !topbarHost) return;
-    const down = (event: globalThis.PointerEvent) => onTitlePointerDown?.(event as unknown as ReactPointerEvent<HTMLElement>);
+    const down = (event: globalThis.PointerEvent) => {
+      if ((event.target as HTMLElement).closest("button, input, select, textarea, a, label")) return;
+      onTitlePointerDown?.(event as unknown as ReactPointerEvent<HTMLElement>);
+    };
     const double = (event: MouseEvent) => {
       if (!(event.target as HTMLElement).closest("button, input, select, textarea, a")) onMaximize?.();
     };
@@ -90,7 +112,7 @@ export function ProtectedWindow({
   </div>;
   const maximizeButton = onMaximize ? controlButton("maximize", t(maximized ? "window.restore" : "window.maximize", { title }), onMaximize, maximized ? <WindowRestoreIcon aria-hidden="true" /> : <WindowMaximizeIcon aria-hidden="true" />) : null;
   const fullscreenButton = onFullscreen ? controlButton("fullscreen", t(fullscreen ? "window.exitFullscreen" : "window.fullscreen", { title }), onFullscreen, fullscreen ? <WindowExitFullscreenIcon aria-hidden="true" /> : <WindowFullscreenIcon aria-hidden="true" />) : null;
-  const controlsBlock = <div aria-label={t("window.controls")} className="winbuttons shell-window__controls">
+  const controlsBlock = <div ref={controls} aria-label={t("window.controls")} className="winbuttons shell-window__controls">
     {controlButton("minimize", t("window.minimize", { title }), onMinimize, <WindowMinimizeIcon aria-hidden="true" />)}
     {onMaximize && onSnap
       ? <div className="window-control-group">
@@ -138,14 +160,14 @@ export function ProtectedWindow({
       onPointerDown={onFocus}
       onFocusCapture={onFocus}
     >
-      <header hidden={frameless} className="titlebar shell-window__titlebar" data-custom={customTopbar ? "" : undefined} tabIndex={onTitleKeyDown ? 0 : undefined}
+      <header ref={titlebar} hidden={frameless} className="titlebar shell-window__titlebar" data-custom={customTopbar ? "" : undefined} data-fullscreen-topbar={fullscreenTopbar && fullscreen ? "" : undefined} tabIndex={onTitleKeyDown ? 0 : undefined}
         aria-label={onTitleKeyDown ? t("window.move", { title }) : undefined}
         onPointerDown={onTitlePointerDown} onKeyDown={onTitleKeyDown}
         onDoubleClick={(event) => { if (!(event.target as HTMLElement).closest("button, input, select, textarea, a")) onMaximize?.(); }}>
         {customTopbar ? <>
           {topbarReady ? null : <div className="shell-window__topbar-fallback">{titleBlock}</div>}
           <div className="shell-window__app-topbar" ref={setTopbarHost} />
-          {controlsBlock}
+          {fullscreenTopbar && fullscreen ? null : controlsBlock}
         </> : windowSlot ? renderSlot(windowSlot, bindings) : <>{titleBlock}{controlsBlock}</>}
       </header>
       <div className="shell-window__content">{children}</div>

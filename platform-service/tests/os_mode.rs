@@ -37,9 +37,11 @@ async fn raising_the_mode_requires_reauthentication() {
 
     let app = router(GatewayState {
         host_files: None,
+        weather_warnings: None,
         config: GatewayConfig::new("https://rumahl.test", root.join("ssr.sock")).unwrap(),
         backend: shell_backend(&accounts, &root.join("platform.sqlite"), "test", "en").unwrap(),
         browser_sessions: Some(sessions.clone()),
+        admin: None,
         login_slots: Arc::new(tokio::sync::Semaphore::new(2)),
         audit: None,
         state_dir: None,

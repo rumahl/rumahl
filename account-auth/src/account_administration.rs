@@ -168,6 +168,46 @@ where
         Ok(revoked)
     }
 
+    /// Administrative password reset. Unlike a user-initiated change this does
+    /// not require a fresh authentication proof, but it revokes every session.
+    pub fn reset_password(
+        &self,
+        state: &mut AccountState,
+        user_id: UserId,
+        candidate: String,
+        changed_at: UnixTimestamp,
+    ) -> Result<usize, PasswordChangeError<R::Error>> {
+        let account = state
+            .accounts()
+            .get(&user_id)
+            .ok_or(PasswordChangeError::AccountNotFound)?;
+        if !account.can_authenticate() && account.status() != AccountStatus::Locked {
+            return Err(PasswordChangeError::AccountUnavailable);
+        }
+
+        let credential = self
+            .prepare_credential(user_id, candidate, changed_at)
+            .map_err(map_password_change_credential_error)?;
+        let session_ids = state
+            .sessions()
+            .sessions_for_user(&user_id)
+            .filter(|session| session.revoked_at().is_none())
+            .map(|session| *session.session_id())
+            .collect::<Vec<SessionId>>();
+        let mut staged = state.clone();
+        let revoked = staged
+            .revoke_sessions_for_user(&user_id, changed_at)
+            .map_err(PasswordChangeError::Account)?;
+
+        self.repository
+            .replace_password_and_revoke_sessions(&credential, &session_ids, changed_at)
+            .map_err(PasswordChangeError::Repository)?;
+
+        *state = staged;
+
+        Ok(revoked)
+    }
+
     pub fn repository(&self) -> &R {
         &self.repository
     }

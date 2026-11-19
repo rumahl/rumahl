@@ -1,4 +1,4 @@
-@layer foundation, presentation;
+@layer foundation, presentation, reference;
 @import "@rumahl/ui/materials.css";
 @import "@rumahl/ui/recipes.css";
 @import "./glass-engine/glass.css" layer(presentation);
@@ -7,7 +7,7 @@
 @import "./shell/materials.css" layer(presentation);
 @import "@rumahl/ui/default-theme.css" layer(presentation);
 @import "./shell/new-design.css" layer(presentation);
-@import "./shell/reference/reference.css";
+@import "./shell/reference/reference.css" layer(reference);
 @import "./pages/settings.css" layer(presentation);
 @import "./components/controls.css";
 @import "./components/scrollbars.css";
@@ -22,7 +22,7 @@
 @import "./shell/topbar.css";
 @import "@rumahl/ui/base.css";
 @import "@rumahl/ui/primitives.css";
-@import "./shell/base-clean.css";
+@import "./shell/base-ground.css";
 @import "./shell/mobile.css";
 @import "./shell/update-notice.css";
 @import "./shell/immersive.css";
@@ -31,6 +31,11 @@
 @import "@rumahl/ui/group.css";
 @import "./shell/font-scale.css";
 @import "./apps/store.css";
+@import "./shell/mobile-system.css";
+@import "./shell/weather-warnings.css";
+@import "./shell/kinetics.css";
+/* Keep last: the motion switch has to win over every component animation. */
+@import "./shell/motion.css";
 
 @layer foundation {
   :root {
@@ -213,7 +218,7 @@
     border: 1px solid var(--line);
     border-radius: 6px;
     background: rgba(255, 255, 255, 0.7);
-    font: 600 11px/1.2 inherit;
+    font: 600 12px/1.2 inherit;
   }
 
   .dashboard,
@@ -322,7 +327,7 @@
     padding: 5px 8px;
     border-radius: 999px;
     background: rgba(255, 255, 255, 0.15);
-    font-size: 10px;
+    font-size: 12px;
     font-weight: 700;
     text-transform: uppercase;
   }
@@ -402,7 +407,7 @@
 
   .contribution-card small {
     color: var(--rumahl-ui-color-text-muted, var(--rumahl-color-text-muted));
-    font-size: 11px;
+    font-size: 12px;
   }
 
   .contribution-card--widget .contribution-card__monogram {
@@ -532,7 +537,7 @@
   .shell-window__titlebar p {
     margin-bottom: 3px;
     color: var(--rumahl-ui-color-text-muted, var(--rumahl-color-text-muted));
-    font-size: 10px;
+    font-size: 12px;
     font-weight: 720;
     letter-spacing: 0.1em;
     text-transform: uppercase;
@@ -659,7 +664,7 @@
   .command-palette__results > p {
     padding: 4px 8px;
     color: var(--rumahl-ui-color-text-muted, var(--rumahl-color-text-muted));
-    font-size: 10px;
+    font-size: 12px;
     font-weight: 750;
     letter-spacing: 0.1em;
     text-transform: uppercase;
@@ -895,6 +900,11 @@
   position: relative;
   display: flex;
 }
+/* App launchers use the native <small>; keep its UA size above the OS floor. */
+.shell .app-tile small,
+.shell .app-tile-item small {
+  font-size: var(--type-label-size, 12px);
+}
 .app-tile-item > .app-tile {
   flex: 1 1 auto;
 }
@@ -998,6 +1008,17 @@
   white-space: nowrap;
   border: 0;
 }
+
+/* Symbolic loading: a spinner carries the state, the label stays for AT. */
+.loading-status {
+  display: inline-flex;
+  align-items: center;
+  min-height: var(--control-h, 28px);
+  color: var(--rumahl-ui-color-text-muted, var(--rumahl-color-text-muted));
+}
+.loading-status .rumahl-spinner { --spinner-size: 26px; }
+.loading-status--inline { min-height: 0; vertical-align: middle; }
+.loading-status--inline .rumahl-spinner { --spinner-size: 16px; }
 .installed-app-loading {
   display: grid;
   place-content: center;
@@ -1018,9 +1039,6 @@
   animation: installed-app-spin 900ms linear infinite;
 }
 @keyframes installed-app-spin { to { transform: rotate(1turn); } }
-@media (prefers-reduced-motion: reduce) {
-  .installed-app-loading__spinner { animation: none; }
-}
 
 /* Shell chrome disables text selection; form fields and code stay selectable. */
 .shell {
@@ -1032,19 +1050,80 @@
   user-select: text;
 }
 
-@media (prefers-reduced-motion: no-preference) {
-  @view-transition { navigation: auto; }
-}
 ::view-transition-group(root) { animation-duration: 240ms; }
 ::view-transition-old(root),
 ::view-transition-new(root) {
   animation-duration: 320ms;
   animation-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
 }
+html[data-settings-transition] { view-transition-name: none; }
+html[data-settings-transition] .settings-content { view-transition-name: settings-content; }
+::view-transition-group(settings-content) { animation-duration: 260ms; }
+::view-transition-old(settings-content),
+::view-transition-new(settings-content) {
+  animation-duration: 300ms;
+  animation-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+  mix-blend-mode: normal;
+}
+::view-transition-old(settings-content) { animation-name: rumahl-view-out; }
+::view-transition-new(settings-content) { animation-name: rumahl-view-in; }
+@keyframes rumahl-view-out { to { opacity: 0; transform: translateY(-4px); } }
+@keyframes rumahl-view-in { from { opacity: 0; transform: translateY(4px); } }
 @media (prefers-reduced-motion: reduce) {
   ::view-transition-group(*) { animation-duration: 0s; }
   ::view-transition-old(*),
   ::view-transition-new(*) { animation: none; }
+}
+
+/* High contrast / forced colours: chrome becomes an opaque, border-led surface.
+   We keep the theme's semantic roles instead of a fixed navy so Ground themes
+   do not inherit Iris colours in an accessibility mode. */
+@media (prefers-contrast: more), (forced-colors: active) {
+  .shell
+    :is(
+      .topbar__island,
+      .menubar,
+      .shell-window,
+      .desktop-menu,
+      .menubar__dropdown,
+      .topbar__dropdown,
+      .command-palette
+    ) {
+    background: var(--rumahl-ui-color-panel-background) !important;
+    border-color: var(--rumahl-ui-color-text-primary) !important;
+    box-shadow: none !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+  }
+
+  /* Adaptive wallpaper text yields to an opaque, semantic treatment when the
+     user asks for more contrast. */
+  .shell .desktop-icon__label[data-adaptive-text] {
+    color: var(--rumahl-ui-color-text-primary) !important;
+    background: var(--rumahl-ui-color-panel-background) !important;
+    padding: 1px 4px;
+    text-shadow: none !important;
+  }
+  .shell .desktop-widget {
+    background: var(--rumahl-ui-color-panel-background) !important;
+    border: 1px solid var(--rumahl-ui-color-text-primary) !important;
+    box-shadow: none !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+  }
+  .shell .desktop-widget :is(.rumahl-glass-frame, .rumahl-glass-surface) {
+    display: none !important;
+  }
+  .shell .desktop-widget[data-adaptive-text] {
+    color: var(--rumahl-ui-color-text-primary) !important;
+    text-shadow: none !important;
+  }
+  .shell .desktop-widget[data-adaptive-text] :is(p, strong, small, span) {
+    color: inherit !important;
+  }
+  .shell .desktop-widget[data-adaptive-text][class] .desktop-widget__eyebrow {
+    color: var(--rumahl-ui-color-text-primary) !important;
+  }
 }
 
 /* Popovers, menus and dialogs use the same material as the OS windows: the
@@ -1109,32 +1188,41 @@
 /* Adaptive contrast: text directly on the wallpaper/video follows the sampled
    backdrop, with a smooth colour transition instead of abrupt switches. This
    is a readability aid, so it keeps its cross-fade even when decorative
-   animations are disabled by the Aura profile. Reduced-motion still opts out. */
+   animations are disabled by the Iris profile. Reduced-motion still opts out. */
 [data-adaptive-text] {
-  transition: color 1.4s cubic-bezier(0.4, 0, 0.2, 1), text-shadow 1.4s cubic-bezier(0.4, 0, 0.2, 1);
+  transition: color var(--adaptive-color-duration, 1.4s) cubic-bezier(0.4, 0, 0.2, 1),
+    text-shadow var(--adaptive-color-duration, 1.4s) cubic-bezier(0.4, 0, 0.2, 1);
 }
 [data-adaptive-text] :is(strong, p, small, span, h1, h2) {
-  transition: color 1.4s cubic-bezier(0.4, 0, 0.2, 1), text-shadow 1.4s cubic-bezier(0.4, 0, 0.2, 1);
+  transition: color var(--adaptive-color-duration, 1.4s) cubic-bezier(0.4, 0, 0.2, 1),
+    text-shadow var(--adaptive-color-duration, 1.4s) cubic-bezier(0.4, 0, 0.2, 1);
 }
 @media (prefers-reduced-motion: no-preference) {
   .shell [data-adaptive-text],
   .shell [data-adaptive-text] :is(strong, p, small, span, h1, h2) {
-    transition: color 1.4s cubic-bezier(0.4, 0, 0.2, 1), text-shadow 1.4s cubic-bezier(0.4, 0, 0.2, 1) !important;
+    transition:
+      color var(--adaptive-color-duration, 1.4s) cubic-bezier(0.4, 0, 0.2, 1),
+      text-shadow var(--adaptive-color-duration, 1.4s) cubic-bezier(0.4, 0, 0.2, 1) !important;
   }
 }
 .desktop-icon__label[data-adaptive-text] {
-  color: var(--adaptive-ink, #eef5f6);
+  color: var(--adaptive-ink, var(--rumahl-ui-color-on-wallpaper, #eef5f6));
   text-shadow: var(--adaptive-shadow, none);
 }
-.desktop-widget[data-adaptive-text] {
+.shell .desktop-widget[data-adaptive-text] {
   color: var(--adaptive-ink, currentColor);
   text-shadow: var(--adaptive-shadow, none);
+  /* Readability outranks the decorative tone fade: a wallpaper change must
+     settle before the user needs to read the clock. */
+  transition-duration: var(--adaptive-color-duration, 0.28s) !important;
 }
-.desktop-widget[data-adaptive-text] :is(p, strong, small, span) {
+.shell .desktop-widget[data-adaptive-text] :is(p, strong, small, span) {
   color: inherit;
+  transition-duration: var(--adaptive-color-duration, 0.28s) !important;
 }
-.desktop-widget[data-adaptive-text] .desktop-widget__eyebrow {
+.shell .desktop-widget[data-adaptive-text] .desktop-widget__eyebrow {
   color: var(--adaptive-muted, currentColor) !important;
+  transition-duration: var(--adaptive-color-duration, 0.28s) !important;
 }
 .desktop-wordmark[data-adaptive-text] {
   color: var(--adaptive-ink, #eef5f6);
@@ -1160,14 +1248,14 @@
    dock and make it diverge from the widget colour. */
 .shell .os-dock,
 .shell .os-dock.dock {
-  background: transparent !important;
+  background: var(--dock-background, transparent) !important;
 }
 .shell .os-dock .rumahl-glass-surface,
 .shell .os-dock .rumahl-glass-surface.rumahl-glass-webgl {
   background: rgba(25, 32, 54, 0.12);
 }
 
-/* Aura's curated preset families are full-width rows: copy first, controls
+/* Iris's curated preset families are full-width rows: copy first, controls
    below. Material cards must never collapse into the narrow value column. */
 .settings-content .settings-section-help {
   max-width: 720px;
@@ -1176,33 +1264,49 @@
   font-size: 12px;
   line-height: 1.5;
 }
-.shell .settings-content .setting.aura-preset-row {
+.shell .settings-content .setting.iris-preset-row {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
   align-items: stretch;
   gap: 12px;
 }
-.shell .settings-content .setting.aura-preset-row .copy {
+.shell .settings-content .setting.iris-preset-row .copy {
   flex: none;
   min-width: 0;
 }
-.shell .settings-content .setting.aura-preset-row .visual {
+.shell .settings-content .setting.iris-preset-row .visual {
   width: 100%;
   min-width: 0;
 }
-.shell .settings-content .aura-preset-row .look-preset-picker,
-.shell .settings-content .aura-preset-row .look-preset-picker .segmented {
+.shell .settings-content .iris-preset-row .look-preset-picker,
+.shell .settings-content .iris-preset-row .look-preset-picker .segmented {
   width: 100%;
   max-width: none;
 }
-.shell .settings-content .aura-preset-row .material-presets {
+.shell .settings-content .iris-preset-row .material-presets {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
   gap: 10px;
   width: 100%;
   margin: 0;
 }
-.shell .settings-content .aura-preset-row .material-card {
+.shell .settings-content .iris-preset-row .material-card {
   width: auto;
   min-width: 0;
+}
+
+/* Theme code layers: a theme may draw behind the windows and above them. */
+.theme-layer {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+.theme-layer--background {
+  z-index: 2;
+  overflow: hidden;
+}
+.theme-layer--overlay {
+  position: fixed;
+  z-index: 125;
+  overflow: hidden;
 }

@@ -102,7 +102,7 @@ export const ColoredVariants: Story = {
     <div style={{ display: "grid", gap: 12 }}>
       {(["secondary", "ghost", "primary", "danger"] as const).map((variant) => (
         <div key={variant} style={{ display: "flex", gap: 10, alignItems: "center" }}>
-          <span style={{ width: 72, fontSize: 11, color: "var(--rumahl-ui-color-text-muted)" }}>{variant}</span>
+          <span style={{ width: 72, fontSize: 12, color: "var(--rumahl-ui-color-text-muted)" }}>{variant}</span>
           {PALETTE.map((color) => (
             <Button key={color} variant={variant} color={color}>
               Colored
@@ -192,7 +192,7 @@ export const ColoredStates: Story = {
 export const GlassSaturation: Story = {
   render: (_args, context) => (
     <div className="shell" data-material="glass" data-scheme={context.globals.scheme === "dark" ? "dark" : "light"} style={{ display: "grid", gap: 20, maxWidth: 600 }}>
-      <p style={{ margin: 0, fontSize: 13 }}>Switch Light / Dark in the toolbar to compare the original colour with the tinted glass surface.</p>
+      <p style={{ margin: 0, fontSize: 13}}>Switch Light / Dark in the toolbar to compare the original colour with the tinted glass surface.</p>
       {["#00c98d", "#0088ff", "#e832ba", "#f27b16"].map(color => (
         <div key={color} style={{ display: "flex", gap: 14, alignItems: "center", flexWrap: "wrap", "--rumahl-ui-color-accent": color } as CSSProperties}>
           <span aria-label={`Original pigment ${color}`} style={{ width: 28, height: 28, borderRadius: 6, background: color }} />

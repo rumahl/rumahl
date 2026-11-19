@@ -3,7 +3,7 @@
    window, top bar, dock and settings controls. */
 
 .shell {
-  --nd-accent: #a58aff;
+  --nd-accent: var(--rumahl-ui-color-accent, #28694c);
   --nd-ink: #f9f9ff;
   --nd-muted: rgba(240, 241, 255, 0.58);
   --nd-window: rgba(17, 19, 35, 0.82);
@@ -232,7 +232,7 @@
   height: auto;
   clip-path: none;
   margin: 0;
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 400;
   letter-spacing: 0;
   text-transform: none;
@@ -261,7 +261,7 @@
   margin: 0 0 28px;
 }
 .shell .display-settings legend {
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 750;
   letter-spacing: 0.015em;
   padding: 0 2px;
@@ -272,7 +272,7 @@
   padding: 8px 12px;
   background: var(--nd-button);
   color: var(--nd-ink);
-  font-size: 11px;
+  font-size: 12px;
   min-height: 32px;
 }
 .shell .display-settings button:not(.theme-swatch):hover {
@@ -356,7 +356,7 @@
   border-radius: 50%;
   background: #fff;
   box-shadow: 0 1px 4px rgba(0, 0, 0, 0.27);
-  transition: transform 0.2s;
+  transition: transform var(--motion-hover-duration, 0.2s);
   transform: none;
 }
 .shell .appearance-switch input:checked {
@@ -370,7 +370,7 @@
 
 /* Settings page heading (design pagetitle/pagedesc) */
 .shell .settings-page-heading > span {
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 650;
 }
 .shell .settings-page-heading h1 {
@@ -390,7 +390,7 @@
 .shell .settings-scope-help,
 .shell .display-settings > p {
   color: var(--nd-muted);
-  font-size: 11px;
+  font-size: 12px;
 }
 
 /* Content scrollbars */
@@ -424,7 +424,7 @@
 .shell .settings-identity span,
 .shell .settings-identity span:last-child {
   color: var(--nd-muted);
-  font-size: 10px;
+  font-size: 12px;
 }
 .shell .settings-sidebar nav {
   gap: 2px;
@@ -448,7 +448,7 @@
     color-mix(in srgb, var(--nd-accent), transparent 80%);
 }
 .shell .settings-content {
-  padding: 35px 45px 45px 42px;
+  padding: 0 45px 45px 42px;
   color: var(--nd-ink);
 }
 .shell .settings-content p {
@@ -474,7 +474,7 @@
   margin: 0 0 28px;
 }
 .shell .settings-content legend {
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 750;
   letter-spacing: 0.015em;
 }
@@ -517,10 +517,10 @@
 }
 .shell .desktop-widget__eyebrow {
   text-transform: uppercase;
-  font-size: 9px;
-  letter-spacing: 0.18em;
+  font-size: 12px;
+  letter-spacing: 0.14em;
   font-weight: 800;
-  color: var(--nd-muted) !important;
+  color: var(--nd-muted);
   margin: 0;
 }
 .shell .desktop-widget__time {
@@ -536,7 +536,7 @@
 
 /* Reference blocks (verbatim values) — ready for the literal markup port. */
 .shell .badge {
-  font-size: 10px;
+  font-size: 12px;
   font-weight: 650;
   color: var(--nd-accent);
   padding: 7px 10px;
@@ -546,7 +546,7 @@
   white-space: nowrap;
 }
 .shell .section-title {
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 750;
   letter-spacing: 0.015em;
   margin: 0 0 13px 2px;
@@ -593,9 +593,9 @@
 }
 .shell .setting .copy p {
   color: var(--nd-muted);
-  font-size: 10.5px;
+  font-size: 12px;
   margin: 5px 0 0;
-  line-height: 1.35;
+  line-height: 1.4;
 }
 .shell .preview {
   position: relative;
@@ -673,7 +673,7 @@
   color: var(--nd-ink);
   padding: 8px 11px;
   border-radius: 12px;
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 650;
 }
 .shell .media-chip.active {
@@ -697,7 +697,7 @@
 }
 .shell .titlebar-subtitle {
   margin: 0;
-  font-size: 11px;
+  font-size: 12px;
   color: var(--nd-muted);
 }
 .shell .winbuttons {
@@ -748,15 +748,15 @@
 }
 .shell .side-profile .small {
   margin-top: 3px;
-  font-size: 10px;
+  font-size: 12px;
   color: var(--nd-muted);
 }
 .shell .nav-heading {
   padding: 0 12px;
   margin: 0 0 11px;
   text-transform: uppercase;
-  letter-spacing: 0.13em;
-  font-size: 9px;
+  letter-spacing: 0.11em;
+  font-size: 12px;
   font-weight: 750;
   color: var(--nd-muted);
 }
@@ -799,7 +799,7 @@
   padding: 14px 11px 10px;
   border-top: 1px solid var(--nd-divider);
   color: var(--nd-muted);
-  font-size: 10px;
+  font-size: 12px;
   line-height: 1.7;
 }
 .shell .side-bottom .build b {
@@ -858,7 +858,7 @@
   background: transparent;
   color: #fff;
   text-shadow: 0 1px 8px rgba(18, 42, 73, 0.63);
-  font-size: 11px;
+  font-size: 12px;
 }
 .shell .desktop-icon:hover,
 .shell .desktop-icon.is-selected {
@@ -872,17 +872,15 @@
   box-shadow:
     inset 0 1px 1px #ffffff82,
     0 8px 17px #0003;
-  transition: transform 0.2s;
+  transition: transform var(--motion-hover-duration, 0.2s);
 }
 .shell .desktop-icon:hover .desktop-icon__art {
   transform: translateY(-3px);
 }
 .shell .desktop-icon__label {
-  color: #fff;
-  font-size: 11px;
-  text-shadow:
-    0 1px 8px rgba(18, 42, 73, 0.63),
-    0 0 12px #0009;
+  color: var(--adaptive-ink, var(--rumahl-ui-color-on-wallpaper, #fff));
+  font-size: 12px;
+  text-shadow: var(--adaptive-shadow, none);
 }
 
 /* Settings rows inside the reference groups */
@@ -957,7 +955,7 @@
   border-radius: 50%;
   background: #fff;
   box-shadow: 0 1px 4px rgba(0, 0, 0, 0.27);
-  transition: transform 0.2s;
+  transition: transform var(--motion-hover-duration, 0.2s);
 }
 .shell .setting .visual input[role="switch"]:checked {
   background: var(--nd-accent);
@@ -981,7 +979,7 @@
 /* Test media file inputs (Settings → Glas) */
 .shell .setting .visual input[type="file"] {
   max-width: 200px;
-  font-size: 10px;
+  font-size: 12px;
   color: var(--nd-muted);
 }
 .shell .setting .visual input[type="file"]::file-selector-button {
@@ -992,6 +990,6 @@
   background: var(--nd-button);
   color: var(--nd-ink);
   font: inherit;
-  font-size: 11px;
+  font-size: 12px;
   cursor: pointer;
 }
