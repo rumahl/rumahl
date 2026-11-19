@@ -1,0 +1,593 @@
+/*
+ * Hallows — grown-up horror, not a costume party: a black room, candle and
+ * ember light, blood seeping over the top edge, and once in a long while
+ * something looks back.
+ *
+ * Everything here is decorative motion. It only runs when the user has motion
+ * enabled *and* the system allows it; the global motion policy additionally
+ * kills it for the appearance setting, performance mode and reduced motion.
+ * The static composition (blood, vignette, red rim) stays in every case.
+ */
+
+/* The shared `.scene` paint is a blue fallback gradient with equal specificity
+   and a later import, so a wallpaper that is itself a gradient (no photo to
+   paint into `.wallpaper`) would never reach the glass. A theme-owned rule
+   keeps the authored room colour and the wallpaper token authoritative. */
+.shell[data-theme="com.rumahl.hallows"] {
+  background-color: #050202;
+}
+
+/* The bundled photograph, graded to a cold, overgrown room. */
+.shell[data-theme="com.rumahl.hallows"] .wallpaper-image {
+  filter: saturate(0.42) contrast(1.22) brightness(0.68) sepia(0.18) hue-rotate(-24deg);
+}
+
+/* Blood along the top edge, thickening towards the corners. */
+.shell[data-theme="com.rumahl.hallows"] .wallpaper::before {
+  background:
+    radial-gradient(ellipse 15px 86px at 32% 0, #5c0808, transparent 74%),
+    radial-gradient(ellipse 11px 60px at 61% 0, #4a0606, transparent 73%),
+    radial-gradient(ellipse 18px 104px at 86% 0, #6b0a0a, transparent 75%),
+    linear-gradient(180deg, rgb(64 6 6 / 0.6), transparent 14%),
+    linear-gradient(180deg, rgb(2 0 0 / 0.45), transparent 42%),
+    var(--wall-dim, rgb(2 0 0 / 0.35));
+  transform-origin: top center;
+}
+
+/* Warm light left over from the candles, now with an ember-red floor. */
+.shell[data-theme="com.rumahl.hallows"] .wallpaper::after {
+  background:
+    radial-gradient(ellipse at 22% 16%, rgb(226 58 40 / 0.2), transparent 42%),
+    radial-gradient(ellipse at 78% 74%, rgb(140 12 12 / 0.24), transparent 46%),
+    radial-gradient(ellipse at 52% 36%, rgb(255 220 210 / 0.02), transparent 55%),
+    linear-gradient(0deg, rgb(4 1 1 / 0.7), transparent 38%);
+}
+
+/* Ember rim on the chrome; the light source sits behind the glass. */
+.shell[data-theme="com.rumahl.hallows"] :is(.os-dock, .menubar) .rumahl-glass-surface {
+  box-shadow:
+    0 0 0 1px rgb(200 29 29 / 0.18) inset,
+    0 18px 44px rgb(90 10 6 / 0.34);
+}
+
+.shell[data-theme="com.rumahl.hallows"] .shell-window {
+  background: #000 !important;
+  --window-background: #000;
+  --window-background-solid: #000;
+  --window-sheen: none;
+  box-shadow:
+    0 0 0 1px rgb(200 29 29 / 0.26),
+    0 30px 80px rgb(36 0 0 / 0.55);
+}
+
+/* Panes and titlebars drop their own tint so the window stays black. */
+.shell[data-theme="com.rumahl.hallows"] .shell-window :is(
+  .shell-window__titlebar,
+  .shell-window__content,
+  .settings-content,
+  .settings-nav,
+  .app-settings
+) {
+  background: transparent;
+}
+
+.shell[data-theme="com.rumahl.hallows"] ::selection {
+  background: #7a0b0b;
+  color: #ffe9e4;
+}
+
+
+/* Windows are part of the set: grimy glass, paint smears in the corners and
+   blood running down from the top edge. The overlay never intercepts input. */
+.shell[data-theme="com.rumahl.hallows"] .shell-window::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 4;
+  border-radius: inherit;
+  pointer-events: none;
+  background:
+    url("data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAxNjAgMTYwIj48ZmlsdGVyIGlkPSJuIj48ZmVUdXJidWxlbmNlIHR5cGU9ImZyYWN0YWxOb2lzZSIgYmFzZUZyZXF1ZW5jeT0iMC44NSIgbnVtT2N0YXZlcz0iMyIgc3RpdGNoVGlsZXM9InN0aXRjaCIvPjxmZUNvbG9yTWF0cml4IHR5cGU9InNhdHVyYXRlIiB2YWx1ZXM9IjAiLz48L2ZpbHRlcj48cmVjdCB3aWR0aD0iMTYwIiBoZWlnaHQ9IjE2MCIgZmlsdGVyPSJ1cmwoI24pIiBvcGFjaXR5PSIwLjI2Ii8+PC9zdmc+Cg==") 0 0 / 160px 160px repeat,
+    linear-gradient(180deg, #5e0808, rgb(94 8 8 / 0)) 12% 0 / 4px 150px no-repeat,
+    linear-gradient(180deg, #4a0606, rgb(74 6 6 / 0)) 27% 0 / 2px 70px no-repeat,
+    linear-gradient(180deg, #6b0a0a, rgb(107 10 10 / 0)) 46% 0 / 6px 220px no-repeat,
+    linear-gradient(180deg, #4a0606, rgb(74 6 6 / 0)) 64% 0 / 3px 100px no-repeat,
+    linear-gradient(180deg, #5e0808, rgb(94 8 8 / 0)) 83% 0 / 5px 180px no-repeat,
+    radial-gradient(ellipse 130px 26px at 4% 0, rgb(150 12 12 / 0.5), transparent 72%) 0 0 / 100% 100% no-repeat,
+    radial-gradient(ellipse 96px 18px at 98% 0, rgb(120 8 8 / 0.46), transparent 72%) 0 0 / 100% 100% no-repeat,
+    radial-gradient(ellipse 150px 22px at 58% 100%, rgb(104 8 8 / 0.42), transparent 72%) 0 0 / 100% 100% no-repeat,
+    radial-gradient(ellipse 70px 14px at 16% 100%, rgb(90 6 6 / 0.34), transparent 72%) 0 0 / 100% 100% no-repeat;
+}
+
+
+/* Live app frames keep the blood at the frame, not over the app's controls. */
+.shell[data-theme="com.rumahl.hallows"] .shell-window--flush::after {
+  background:
+    linear-gradient(180deg, #5e0808, rgb(94 8 8 / 0)) 10% 0 / 3px 120px no-repeat,
+    linear-gradient(180deg, #6b0a0a, rgb(107 10 10 / 0)) 48% 0 / 5px 180px no-repeat,
+    linear-gradient(180deg, #4a0606, rgb(74 6 6 / 0)) 86% 0 / 2px 90px no-repeat;
+}
+
+
+@media (prefers-reduced-motion: no-preference) {
+  .shell[data-theme="com.rumahl.hallows"] .wallpaper::before {
+    animation: hallows-bleed 23s ease-in-out infinite alternate;
+  }
+
+  /* The room light stutters at random moments; the shell sets data-flicker. */
+  .shell[data-theme="com.rumahl.hallows"][data-flicker="true"] .wallpaper {
+    animation: hallows-stutter 260ms steps(2, end);
+  }
+}
+
+/* An old bulb failing: irregular dips, never a clean pulse. */
+/* A grid at its limit: deep brownouts, half recoveries, no rhythm. */
+@keyframes hallows-stutter {
+  0% { filter: brightness(1); }
+  9% { filter: brightness(0.18); }
+  16% { filter: brightness(0.82); }
+  24% { filter: brightness(0.35); }
+  31% { filter: brightness(0.95); }
+  40% { filter: brightness(0.12); }
+  52% { filter: brightness(0.7); }
+  61% { filter: brightness(0.25); }
+  74% { filter: brightness(1.02); }
+  86% { filter: brightness(0.45); }
+  100% { filter: brightness(1); }
+}
+
+/* The blood creeps down a little, then settles again. */
+@keyframes hallows-bleed {
+  from { transform: scaleY(1); opacity: 0.82; }
+  45% { transform: scaleY(1.02); opacity: 0.92; }
+  to { transform: scaleY(1.055); opacity: 1; }
+}
+
+/*
+ * Horror events. The shell sets data-dread to the chosen event for about a
+ * second: the lights die, the room bleeds red, or the light stutters hard.
+ * No face, no mask — the room itself misbehaves.
+ */
+.shell[data-theme="com.rumahl.hallows"]::after {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: 130;
+  opacity: 0;
+  pointer-events: none;
+  background: #000;
+}
+
+.shell[data-theme="com.rumahl.hallows"][data-dread="blackout"]::after {
+  animation: hallows-blackout 1.25s ease-out;
+}
+
+.shell[data-theme="com.rumahl.hallows"][data-dread="red"]::after {
+  background:
+    radial-gradient(ellipse at 50% 46%, rgb(150 10 10 / 0.55), rgb(40 0 0 / 0.92) 68%),
+    #3a0000;
+  animation: hallows-red 1.35s ease-out;
+}
+
+.shell[data-theme="com.rumahl.hallows"][data-dread="flicker"]::after {
+  animation: hallows-lights 1.1s steps(1, end);
+}
+
+@keyframes hallows-blackout {
+  0% { opacity: 0; }
+  6% { opacity: 0.94; }
+  62% { opacity: 0.9; }
+  68% { opacity: 0.32; }
+  74% { opacity: 0.82; }
+  100% { opacity: 0; }
+}
+
+@keyframes hallows-red {
+  0% { opacity: 0; }
+  7% { opacity: 0.86; }
+  38% { opacity: 0.72; }
+  62% { opacity: 0.42; }
+  100% { opacity: 0; }
+}
+
+@keyframes hallows-lights {
+  0% { opacity: 0; }
+  6% { opacity: 0.72; }
+  13% { opacity: 0.1; }
+  21% { opacity: 0.62; }
+  30% { opacity: 0; }
+  47% { opacity: 0.7; }
+  56% { opacity: 0.18; }
+  72% { opacity: 0.55; }
+  100% { opacity: 0; }
+}
+
+/* Live blood: random drips that run, swell and occasionally release a drop. */
+.hallows-blood {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  overflow: hidden;
+  pointer-events: none;
+}
+.hallows-blood i {
+  position: absolute;
+  top: 0;
+  display: block;
+  height: var(--hallows-h, 120px);
+  border-radius: 0 0 45% 55% / 0 0 9% 9%;
+  background:
+    linear-gradient(90deg, transparent 0%, rgb(120 12 12 / 0.85) 20%, #6b0a0a 50%, rgb(120 12 12 / 0.85) 80%, transparent 100%),
+    linear-gradient(180deg, rgb(94 8 8 / 0.95) 0%, rgb(66 4 4 / 0.9) 55%, #7a0d0d 100%);
+  box-shadow: 0 0 10px rgb(120 10 10 / 0.55), 0 2px 4px rgb(0 0 0 / 0.35);
+  filter: blur(0.15px);
+  animation-name: hallows-drip-cycle;
+  animation-timing-function: cubic-bezier(0.3, 0.1, 0.45, 1);
+  animation-fill-mode: both;
+  animation-iteration-count: 1;
+}
+.hallows-blood[data-animated="false"] i {
+  animation: none;
+  height: var(--hallows-h, 120px);
+  opacity: 0.9;
+}
+/* Two droplet streams: they fall while the streak shrinks, never fading. */
+.hallows-blood i::after,
+.hallows-blood i::before {
+  content: "";
+  position: absolute;
+  left: 50%;
+  bottom: -6px;
+  width: 5px;
+  height: 7px;
+  margin-left: -2.5px;
+  border-radius: 50% 50% 60% 60%;
+  background: radial-gradient(circle at 38% 30%, rgb(255 150 150 / 0.35), #7a0d0d 46%, #420404);
+  box-shadow: 0 0 6px rgb(120 10 10 / 0.6);
+  opacity: 0;
+}
+.hallows-blood i::after {
+  animation: hallows-drop var(--hallows-drop, 1.2s) cubic-bezier(0.4, 0, 1, 1) 3 both;
+  animation-delay: var(--hallows-drop-delay, 4s);
+}
+.hallows-blood i::before {
+  width: 3.5px;
+  height: 5px;
+  background: radial-gradient(circle at 38% 30%, rgb(255 150 150 / 0.3), #5a0808 50%, #360303);
+  animation: hallows-drop var(--hallows-drop, 1.2s) cubic-bezier(0.4, 0, 1, 1) 2 both;
+  animation-delay: var(--hallows-drop-delay2, 5s);
+}
+/* One full run: grow from the top (with a short pause), hold, shrink while dripping. */
+@keyframes hallows-drip-cycle {
+  0% { height: 0; }
+  15% { height: calc(var(--hallows-h) * 0.34); }
+  23% { height: calc(var(--hallows-h) * 0.33); }
+  62% { height: var(--hallows-h); }
+  76% { height: var(--hallows-h); }
+  100% { height: calc(var(--hallows-h) * 0.04); }
+}
+@keyframes hallows-drop {
+  0% { opacity: 0; transform: translateY(0) scale(0.55); }
+  12% { opacity: 1; transform: translateY(2px) scale(1); }
+  86% { opacity: 0.9; }
+  100% { opacity: 0; transform: translateY(62vh) scale(0.8); }
+}
+
+/* Something crosses the room, rarely and without ever being clearly visible. */
+.hallows-shadow {
+  position: absolute;
+  inset: -25% -45%;
+  z-index: 1;
+  pointer-events: none;
+  opacity: 0;
+  background: radial-gradient(ellipse 11% 42% at 50% 58%, rgb(0 0 0 / 0.9), transparent 70%);
+  filter: blur(22px);
+  animation: hallows-shadow-pass 61s linear infinite;
+}
+@keyframes hallows-shadow-pass {
+  0%, 82% { opacity: 0; transform: translateX(-34%); }
+  86% { opacity: 0.5; }
+  95% { opacity: 0.32; transform: translateX(26%); }
+  100% { opacity: 0; transform: translateX(38%); }
+}
+
+/* Window blood breathes and runs; the cadence differs per window. */
+@media (prefers-reduced-motion: no-preference) {
+  .shell[data-theme="com.rumahl.hallows"] .window-position:nth-child(3n + 1) .shell-window::after {
+    animation: hallows-window-flow 17s ease-in-out infinite alternate;
+  }
+  .shell[data-theme="com.rumahl.hallows"] .window-position:nth-child(3n + 2) .shell-window::after {
+    animation: hallows-window-flow 23s ease-in-out infinite alternate-reverse;
+  }
+  .shell[data-theme="com.rumahl.hallows"] .window-position:nth-child(3n) .shell-window::after {
+    animation: hallows-window-flow 13s ease-in-out infinite alternate;
+  }
+}
+@keyframes hallows-window-flow {
+  from { transform: scaleY(0.982); opacity: 0.82; }
+  to { transform: scaleY(1.03); opacity: 1; }
+}
+
+/* VHS surface: scanlines, noise and a slow tracking band over the whole display. */
+.hallows-screen {
+  position: fixed;
+  inset: 0;
+  z-index: 120;
+  overflow: hidden;
+  pointer-events: none;
+}
+.hallows-scanlines {
+  position: absolute;
+  inset: 0;
+  background: repeating-linear-gradient(180deg, rgb(0 0 0 / 0.32) 0 1px, transparent 1px 3px);
+  opacity: 0.26;
+  mix-blend-mode: multiply;
+}
+.hallows-noise {
+  position: absolute;
+  inset: -12%;
+  background: url("data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAxNjAgMTYwIj48ZmlsdGVyIGlkPSJuIj48ZmVUdXJidWxlbmNlIHR5cGU9ImZyYWN0YWxOb2lzZSIgYmFzZUZyZXF1ZW5jeT0iMC45IiBudW1PY3RhdmVzPSIzIiBzdGl0Y2hUaWxlcz0ic3RpdGNoIi8+PGZlQ29sb3JNYXRyaXggdHlwZT0ic2F0dXJhdGUiIHZhbHVlcz0iMCIvPjwvZmlsdGVyPjxyZWN0IHdpZHRoPSIxNjAiIGhlaWdodD0iMTYwIiBmaWx0ZXI9InVybCgjbikiIG9wYWNpdHk9IjAuMTIiLz48L3N2Zz4K") 0 0 / 220px 220px repeat;
+  opacity: 0.07;
+}
+.hallows-tracking {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 16%;
+  top: -20%;
+  background: linear-gradient(180deg, transparent, rgb(255 255 255 / 0.035), transparent);
+}
+.hallows-bands {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .hallows-scanlines {
+    animation: hallows-scanlines 7s linear infinite;
+  }
+  .hallows-noise {
+    animation: hallows-noise-jitter 620ms steps(3, end) infinite;
+  }
+  .hallows-tracking {
+    animation: hallows-tracking 19s linear infinite;
+  }
+}
+
+@keyframes hallows-scanlines {
+  from { background-position: 0 0; }
+  to { background-position: 0 6px; }
+}
+@keyframes hallows-noise-jitter {
+  0% { background-position: 0 0; }
+  25% { background-position: -42px 18px; }
+  50% { background-position: 34px -26px; }
+  75% { background-position: -18px 44px; }
+  100% { background-position: 0 0; }
+}
+@keyframes hallows-tracking {
+  from { top: -20%; }
+  to { top: 110%; }
+}
+
+/* Subtle glitch burst: the workspace slips sideways, colour bands tear. */
+.shell[data-theme="com.rumahl.hallows"][data-dread="glitch"] .shell__workspace {
+  animation: hallows-glitch 420ms steps(4, end);
+}
+.shell[data-theme="com.rumahl.hallows"][data-dread="glitch"] .hallows-noise {
+  opacity: 0.16;
+}
+.shell[data-theme="com.rumahl.hallows"][data-dread="glitch"] .hallows-bands {
+  opacity: 1;
+  background:
+    repeating-linear-gradient(0deg, transparent 0 11px, rgb(0 255 220 / 0.1) 11px 12px, transparent 12px 21px),
+    repeating-linear-gradient(0deg, transparent 0 33px, rgb(255 0 80 / 0.08) 33px 35px, transparent 35px 58px);
+  animation: hallows-bands 260ms steps(3, end);
+}
+
+@keyframes hallows-glitch {
+  0% { transform: none; filter: none; }
+  18% { transform: translate3d(-3px, 0, 0) skewX(0.4deg); filter: hue-rotate(-14deg) saturate(1.25); }
+  36% { transform: translate3d(2px, 0, 0); filter: hue-rotate(10deg) saturate(1.1); }
+  58% { transform: translate3d(-1px, 0, 0) skewX(-0.5deg); filter: none; }
+  100% { transform: none; filter: none; }
+}
+
+@keyframes hallows-bands {
+  0% { transform: translateY(0); }
+  33% { transform: translateY(-7px); }
+  66% { transform: translateY(4px); }
+  100% { transform: translateY(0); }
+}
+
+
+/* The wallpaper feed drops: static, rolling bar, no signal. */
+.hallows-nosignal {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  opacity: 0;
+  pointer-events: none;
+  background:
+    repeating-linear-gradient(180deg, rgb(255 255 255 / 0.11) 0 1px, transparent 1px 3px),
+    linear-gradient(180deg, rgb(18 18 18 / 0.92), rgb(6 6 6 / 0.96));
+}
+.shell[data-theme="com.rumahl.hallows"][data-signal="lost"] .hallows-nosignal {
+  opacity: 1;
+  animation: hallows-signal-roll 900ms steps(5, end) infinite;
+}
+@keyframes hallows-signal-roll {
+  0% { background-position: 0 0, 0 0; filter: brightness(1); }
+  40% { background-position: 0 7px, 0 0; filter: brightness(1.3); }
+  47% { background-position: 0 0, 0 0; filter: brightness(0.7); }
+  72% { background-position: 0 11px, 0 0; filter: brightness(1.15); }
+  100% { background-position: 0 0, 0 0; filter: brightness(1); }
+}
+
+/* Surveillance framing: camera labels, REC dot and corner brackets. */
+.shell[data-theme="com.rumahl.hallows"] .menubar {
+  border-bottom: 1px solid rgb(140 10 10 / 0.5);
+  background-image:
+    repeating-linear-gradient(180deg, rgb(255 255 255 / 0.03) 0 1px, transparent 1px 3px),
+    linear-gradient(180deg, transparent 55%, rgb(90 6 6 / 0.22));
+  box-shadow: inset 0 -1px 0 rgb(120 10 10 / 0.35), 0 1px 12px rgb(60 0 0 / 0.4);
+}
+.shell[data-theme="com.rumahl.hallows"] .menubar::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(ellipse 110px 16px at 3% 100%, rgb(140 10 10 / 0.55), transparent 74%),
+    radial-gradient(ellipse 70px 12px at 97% 100%, rgb(100 8 8 / 0.5), transparent 74%),
+    radial-gradient(ellipse 46px 10px at 62% 0, rgb(120 8 8 / 0.4), transparent 72%),
+    linear-gradient(90deg, transparent 12%, rgb(255 74 61 / 0.07) 50%, transparent 88%);
+}
+.shell[data-theme="com.rumahl.hallows"] .menubar::after {
+  content: "CAM 01  REC \25CF";
+  position: absolute;
+  inset-inline-start: 250px;
+  inset-inline-end: auto;
+  top: 50%;
+  transform: translateY(-50%);
+  font: 600 12px/1 ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+  letter-spacing: 0.14em;
+  color: #ff4a3d;
+  text-shadow: 0 0 6px rgb(255 60 40 / 0.5);
+  pointer-events: none;
+}
+.shell[data-theme="com.rumahl.hallows"] .os-dock {
+  border: 1px solid rgb(160 12 12 / 0.4);
+  background-image:
+    repeating-linear-gradient(180deg, rgb(255 255 255 / 0.025) 0 1px, transparent 1px 3px),
+    linear-gradient(0deg, rgb(70 3 3 / 0.35), transparent 60%);
+  box-shadow: 0 0 0 1px rgb(60 2 2 / 0.4), 0 14px 34px rgb(40 0 0 / 0.5);
+}
+.shell[data-theme="com.rumahl.hallows"] .os-dock::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  background:
+    radial-gradient(ellipse 64px 16px at 5% 100%, rgb(140 10 10 / 0.55), transparent 72%),
+    radial-gradient(ellipse 44px 12px at 95% 100%, rgb(100 8 8 / 0.5), transparent 72%),
+    radial-gradient(ellipse 38px 10px at 42% 100%, rgb(120 8 8 / 0.38), transparent 72%);
+}
+.shell[data-theme="com.rumahl.hallows"] .os-dock::after {
+  content: "CH 01 · REC";
+  position: absolute;
+  left: 14px;
+  top: -18px;
+  font: 600 12px/1 ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+  letter-spacing: 0.12em;
+  color: rgb(232 232 232 / 0.78);
+  pointer-events: none;
+}
+.hallows-screen::before {
+  content: "";
+  position: absolute;
+  inset: 14px;
+  background:
+    linear-gradient(#fff, #fff) left top / 18px 1px no-repeat,
+    linear-gradient(#fff, #fff) left top / 1px 18px no-repeat,
+    linear-gradient(#fff, #fff) right top / 18px 1px no-repeat,
+    linear-gradient(#fff, #fff) right top / 1px 18px no-repeat,
+    linear-gradient(#fff, #fff) left bottom / 18px 1px no-repeat,
+    linear-gradient(#fff, #fff) left bottom / 1px 18px no-repeat,
+    linear-gradient(#fff, #fff) right bottom / 18px 1px no-repeat,
+    linear-gradient(#fff, #fff) right bottom / 1px 18px no-repeat;
+  opacity: 0.16;
+}
+
+
+/* Presence: a faint silhouette in the room that leaves when a window moves. */
+.hallows-presence {
+  position: absolute;
+  bottom: -6%;
+  width: 9vmin;
+  height: 42vmin;
+  z-index: 1;
+  pointer-events: none;
+  border-radius: 50% 50% 12% 12% / 30% 30% 6% 6%;
+  background:
+    radial-gradient(ellipse 60% 18% at 50% 6%, rgb(0 0 0 / 0.95), transparent 72%),
+    linear-gradient(180deg, rgb(0 0 0 / 0.92), rgb(0 0 0 / 0.32));
+  filter: blur(9px);
+  animation: hallows-presence 7s ease-in-out both;
+}
+@keyframes hallows-presence {
+  0% { opacity: 0; transform: translateY(8px) scale(0.96); }
+  14% { opacity: 0.52; }
+  72% { opacity: 0.44; }
+  100% { opacity: 0; transform: translateY(0) scale(1.02); }
+}
+
+/* Unstable reality: a title bar tears for a moment and the label is wrong. */
+@keyframes hallows-unstable-bar {
+  0%, 100% { filter: none; opacity: 1; }
+  12% { filter: contrast(1.6) brightness(1.3); opacity: 0.85; }
+  18% { filter: none; opacity: 0.4; }
+  26% { filter: hue-rotate(20deg); opacity: 1; }
+  40% { filter: none; opacity: 0.7; }
+  52% { filter: brightness(0.6); }
+  70% { filter: none; opacity: 1; }
+}
+@keyframes hallows-unstable-text {
+  0%, 100% { opacity: 1; transform: none; }
+  20% { opacity: 0; transform: translateX(2px); }
+  45% { opacity: 0; }
+  70% { opacity: 1; transform: none; }
+}
+.shell[data-theme="com.rumahl.hallows"][data-dread="unstable"] .menubar,
+.shell[data-theme="com.rumahl.hallows"][data-dread="unstable"] .shell-window__titlebar {
+  animation: hallows-unstable-bar 700ms steps(3, end);
+}
+.shell[data-theme="com.rumahl.hallows"][data-dread="unstable"] .shell-window__titlebar h2 {
+  position: relative;
+  animation: hallows-unstable-text 700ms steps(2, end);
+}
+.shell[data-theme="com.rumahl.hallows"][data-dread="unstable"] .shell-window__titlebar h2::after {
+  content: var(--hallows-word, "");
+  position: absolute;
+  inset: 0;
+  color: #ff3b30;
+  letter-spacing: 0.18em;
+  text-shadow: 0 0 8px rgb(255 40 30 / 0.7);
+  background: #050505;
+}
+
+
+/* Widgets come from the same crime scene: smeared corners, a drip below. */
+.shell[data-theme="com.rumahl.hallows"] .desktop-widget {
+  position: relative;
+}
+.shell[data-theme="com.rumahl.hallows"] .desktop-widget::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  border-radius: inherit;
+  pointer-events: none;
+  background:
+    radial-gradient(circle 9px at 7% 7%, rgb(130 10 10 / 0.55), transparent 72%),
+    radial-gradient(circle 4px at 12% 15%, rgb(120 8 8 / 0.5), transparent 70%),
+    radial-gradient(ellipse 58px 12px at 4% 0, rgb(120 8 8 / 0.38), transparent 72%),
+    radial-gradient(circle 7px at 93% 9%, rgb(110 8 8 / 0.5), transparent 70%),
+    radial-gradient(ellipse 46px 10px at 97% 0, rgb(100 8 8 / 0.36), transparent 72%),
+    radial-gradient(ellipse 78px 14px at 64% 100%, rgb(90 6 6 / 0.34), transparent 74%),
+    linear-gradient(180deg, transparent 78%, rgb(60 2 2 / 0.22));
+}
+.shell[data-theme="com.rumahl.hallows"] .desktop-widget::before {
+  content: "";
+  position: absolute;
+  left: 15%;
+  bottom: -17px;
+  width: 3.5px;
+  height: 17px;
+  border-radius: 0 0 60% 60% / 0 0 24% 24%;
+  background: linear-gradient(180deg, #6b0a0a, #420404);
+  box-shadow: 0 0 8px rgb(120 10 10 / 0.55);
+  pointer-events: none;
+}

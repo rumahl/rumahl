@@ -126,7 +126,7 @@ impl PersonalFiles for SqlitePersonalFiles {
     fn list(&self, u: UserId, p: &str) -> Result<Vec<PersonalFile>, E> {
         let c = self.connect().map_err(db)?;
         parent(&c, u, p)?;
-        let mut s=c.prepare("SELECT id,parent,name,directory,size FROM personal_files WHERE owner=?1 AND parent=?2 ORDER BY directory DESC,name,id LIMIT 1001").map_err(db)?;
+        let mut s=c.prepare("SELECT id,parent,name,directory,size,(SELECT COUNT(*) FROM personal_files child WHERE child.owner=?1 AND child.parent=personal_files.id) FROM personal_files WHERE owner=?1 AND parent=?2 ORDER BY directory DESC,name,id LIMIT 1001").map_err(db)?;
         s.query_map(params![u.to_string(), p], |r| {
             Ok(PersonalFile {
                 id: r.get(0)?,
@@ -134,11 +134,53 @@ impl PersonalFiles for SqlitePersonalFiles {
                 name: r.get(2)?,
                 directory: r.get(3)?,
                 size: r.get::<_, i64>(4)? as u64,
+                children: r.get::<_, i64>(5)?.try_into().unwrap_or(0),
             })
         })
         .map_err(db)?
         .collect::<Result<Vec<_>, _>>()
         .map_err(db)
+    }
+    fn list_page(
+        &self,
+        u: UserId,
+        p: &str,
+        offset: usize,
+        limit: usize,
+        query: Option<&str>,
+    ) -> Result<(Vec<PersonalFile>, u64), E> {
+        let c = self.connect().map_err(db)?;
+        parent(&c, u, p)?;
+        let needle = query.unwrap_or("").trim().to_lowercase();
+        let total: i64 = c
+            .query_row(
+                "SELECT COUNT(*) FROM personal_files WHERE owner=?1 AND parent=?2 AND (?3='' OR instr(lower(name), ?3)>0)",
+                params![u.to_string(), p, needle],
+                |r| r.get(0),
+            )
+            .map_err(db)?;
+        let mut s = c
+            .prepare(
+                "SELECT id,parent,name,directory,size,(SELECT COUNT(*) FROM personal_files child WHERE child.owner=?1 AND child.parent=personal_files.id) FROM personal_files WHERE owner=?1 AND parent=?2 AND (?3='' OR instr(lower(name), ?3)>0) ORDER BY directory DESC,name,id LIMIT ?4 OFFSET ?5",
+            )
+            .map_err(db)?;
+        let limit = i64::try_from(limit).unwrap_or(i64::MAX);
+        let offset = i64::try_from(offset).unwrap_or(i64::MAX);
+        let items = s
+            .query_map(params![u.to_string(), p, needle, limit, offset], |r| {
+                Ok(PersonalFile {
+                    id: r.get(0)?,
+                    parent: r.get(1)?,
+                    name: r.get(2)?,
+                    directory: r.get(3)?,
+                    size: r.get::<_, i64>(4)? as u64,
+                    children: r.get::<_, i64>(5)?.try_into().unwrap_or(0),
+                })
+            })
+            .map_err(db)?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(db)?;
+        Ok((items, u64::try_from(total).unwrap_or(0)))
     }
     fn create(&self, u: UserId, p: &str, n: &str, data: Option<Vec<u8>>) -> Result<(), E> {
         if !name_valid(n) {
@@ -204,6 +246,44 @@ impl PersonalFiles for SqlitePersonalFiles {
             bytes
         };
         Ok((name, content))
+    }
+    fn write(&self, u: UserId, id: &str, data: Vec<u8>) -> Result<(), E> {
+        if data.len() > 16 * 1024 * 1024 {
+            return Err(E::Limit);
+        }
+        let mut c = self.connect().map_err(db)?;
+        let tx = c
+            .transaction_with_behavior(TransactionBehavior::Immediate)
+            .map_err(db)?;
+        let previous: Option<i64> = tx
+            .query_row(
+                "SELECT size FROM personal_files WHERE owner=?1 AND id=?2 AND directory=0",
+                params![u.to_string(), id],
+                |r| r.get(0),
+            )
+            .optional()
+            .map_err(db)?;
+        let Some(previous) = previous else {
+            return Err(E::Missing);
+        };
+        let stored_total: i64 = tx
+            .query_row(
+                "SELECT COALESCE(SUM(size),0) FROM personal_files WHERE owner=?1",
+                [u.to_string()],
+                |r| r.get(0),
+            )
+            .map_err(db)?;
+        let size = data.len() as i64;
+        if stored_total - previous + size > 128 * 1024 * 1024 {
+            return Err(E::Limit);
+        }
+        let (stored, encrypted) = self.encrypt(u, id, data)?;
+        tx.execute(
+            "UPDATE personal_files SET data=?3,size=?4,encrypted=?5 WHERE owner=?1 AND id=?2",
+            params![u.to_string(), id, stored, size, encrypted],
+        )
+        .map_err(db)?;
+        tx.commit().map_err(db)
     }
     fn relocate(&self, u: UserId, id: &str, p: &str, n: &str) -> Result<(), E> {
         if !name_valid(n) {

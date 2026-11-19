@@ -1,0 +1,1120 @@
+/*
+ * Kinetic layer for the OS shell.
+ *
+ * A single set of springy entrance and press behaviours sits on top of the
+ * themed surfaces. Motion.css is imported after this file, so the appearance
+ * setting, performance mode and prefers-reduced-motion still win over
+ * everything here.
+ */
+:root,
+.shell {
+  --rumahl-spring: var(--motion-spring-bouncy, cubic-bezier(0.34, 1.56, 0.64, 1));
+  --rumahl-spring-soft: var(--motion-spring-soft, cubic-bezier(0.22, 1, 0.36, 1));
+  --rumahl-spring-snap: var(--motion-spring-snap, cubic-bezier(0.2, 0.9, 0.2, 1));
+}
+
+@keyframes rumahl-spring-surface {
+  0% { opacity: 0; transform: translateY(12px) scale(0.985); }
+  68% { opacity: 1; transform: translateY(-2px) scale(1.002); }
+  100% { opacity: 1; transform: translateY(0) scale(1); }
+}
+@keyframes rumahl-spring-pop {
+  0% { opacity: 0; transform: translateY(14px) scale(0.9); }
+  62% { opacity: 1; transform: translateY(-3px) scale(1.018); }
+  100% { opacity: 1; transform: translateY(0) scale(1); }
+}
+@keyframes rumahl-menu-in {
+  0% { opacity: 0; transform: translateY(-8px) scale(0.94); }
+  66% { opacity: 1; transform: translateY(2px) scale(1.012); }
+  100% { opacity: 1; transform: translateY(0) scale(1); }
+}
+@keyframes rumahl-fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+@keyframes rumahl-dock-in {
+  0% { opacity: 0; transform: translateY(18px) scale(0.92); }
+  66% { opacity: 1; transform: translateY(-2px) scale(1.01); }
+  100% { opacity: 1; transform: translateY(0) scale(1); }
+}
+@keyframes rumahl-dock-jump {
+  0%, 100% { transform: translateY(-8px) scale(1.12); }
+  45% { transform: translateY(-16px) scale(1.16); }
+  72% { transform: translateY(-5px) scale(1.08); }
+}
+@keyframes rumahl-heading-in {
+  from { opacity: 0; transform: translateY(14px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@keyframes rumahl-widget-in {
+  0% { opacity: 0; transform: translateY(12px) scale(0.97); }
+  70% { opacity: 1; transform: translateY(-2px) scale(1.004); }
+  100% { opacity: 1; transform: translateY(0) scale(1); }
+}
+@keyframes rumahl-toast-progress {
+  from { transform: scaleX(1); }
+  to { transform: scaleX(0); }
+}
+@keyframes rumahl-toast-dot {
+  0% { opacity: 0; transform: scale(0.3); }
+  62% { opacity: 1; transform: scale(1.35); }
+  100% { opacity: 1; transform: scale(1); }
+}
+@keyframes rumahl-toast-sheen {
+  0% { opacity: 0; transform: translateX(-120%); }
+  35% { opacity: 0.55; }
+  100% { opacity: 0; transform: translateX(120%); }
+}
+
+/* Launcher and desktop surfaces */
+.shell .launcher-workspace,
+.shell .desktop-workspace {
+  animation: rumahl-spring-surface 0.42s var(--rumahl-spring-soft) backwards;
+}
+.shell .launcher-heading,
+.shell .desktop-wordmark {
+  animation: rumahl-heading-in 0.62s var(--rumahl-spring-soft) 80ms both;
+}
+.shell .springboard-cell,
+.shell .app-grid > .app-tile-item,
+.shell .desktop-grid > .desktop-app {
+  animation: rumahl-spring-pop 0.46s var(--rumahl-spring) backwards;
+  transform-origin: 50% 80%;
+}
+.shell .springboard-cell:nth-child(1),
+.shell .app-grid > .app-tile-item:nth-child(1),
+.shell .desktop-grid > .desktop-app:nth-child(1) { animation-delay: 30ms; }
+.shell .springboard-cell:nth-child(2),
+.shell .app-grid > .app-tile-item:nth-child(2),
+.shell .desktop-grid > .desktop-app:nth-child(2) { animation-delay: 60ms; }
+.shell .springboard-cell:nth-child(3),
+.shell .app-grid > .app-tile-item:nth-child(3),
+.shell .desktop-grid > .desktop-app:nth-child(3) { animation-delay: 90ms; }
+.shell .springboard-cell:nth-child(4),
+.shell .app-grid > .app-tile-item:nth-child(4),
+.shell .desktop-grid > .desktop-app:nth-child(4) { animation-delay: 120ms; }
+.shell .springboard-cell:nth-child(5),
+.shell .app-grid > .app-tile-item:nth-child(5),
+.shell .desktop-grid > .desktop-app:nth-child(5) { animation-delay: 150ms; }
+.shell .springboard-cell:nth-child(6),
+.shell .app-grid > .app-tile-item:nth-child(6),
+.shell .desktop-grid > .desktop-app:nth-child(6) { animation-delay: 180ms; }
+.shell .springboard-cell:nth-child(7),
+.shell .app-grid > .app-tile-item:nth-child(7),
+.shell .desktop-grid > .desktop-app:nth-child(7) { animation-delay: 210ms; }
+.shell .springboard-cell:nth-child(n + 8),
+.shell .app-grid > .app-tile-item:nth-child(n + 8),
+.shell .desktop-grid > .desktop-app:nth-child(n + 8) { animation-delay: 240ms; }
+
+/* Press and hover springs. The transform origin stays at the bottom so tiles
+   feel planted instead of sliding like flat web cards. */
+.shell :is(.app-tile, .desktop-app, .springboard-cell > a, .springboard-cell > button) {
+  transition:
+    transform 0.34s var(--rumahl-spring),
+    box-shadow 0.34s var(--rumahl-spring-soft),
+    background-color 0.2s ease,
+    border-color 0.2s ease,
+    filter 0.2s ease;
+}
+.shell :is(.app-tile, .desktop-app, .springboard-cell > a, .springboard-cell > button):hover {
+  transform: translateY(-4px) scale(1.02);
+}
+.shell :is(.app-tile, .desktop-app, .springboard-cell > a, .springboard-cell > button):active {
+  transform: translateY(-1px) scale(0.965);
+  transition-duration: 0.1s;
+}
+.shell .desktop-app:focus-visible,
+.shell .app-tile:focus-visible {
+  transform: translateY(-3px) scale(1.015);
+}
+
+/* Dock */
+.shell .os-dock {
+  animation: rumahl-dock-in 0.55s var(--rumahl-spring-soft) backwards;
+}
+.shell .dock-icon {
+  transition:
+    transform 0.34s var(--rumahl-spring),
+    filter 0.2s ease,
+    box-shadow 0.34s var(--rumahl-spring-soft);
+}
+.shell .dock-icon:hover {
+  transform: translateY(-9px) scale(1.14);
+}
+.shell .dock-icon:active {
+  transform: translateY(-5px) scale(1.04);
+  transition-duration: 0.1s;
+}
+.shell .dock-icon.is-launching {
+  animation: rumahl-dock-jump 0.66s var(--rumahl-spring) 2;
+}
+
+/* Menus, popovers and dialogs */
+.shell :is(
+    .menubar__dropdown,
+    .desktop-menu,
+    .start-menu,
+    .command-palette,
+    .control-center,
+    .app-switcher,
+    .launcher-folder,
+    .files-menu,
+    .rumahl-menu,
+    .rumahl-select__menu,
+    .rumahl-modal
+  ) {
+  animation: rumahl-menu-in 0.34s var(--rumahl-spring) backwards;
+  transform-origin: top center;
+}
+.shell .control-center,
+.shell .menubar__dropdown,
+.shell .files-menu {
+  transform-origin: top right;
+}
+.shell .launcher-folder-overlay,
+.shell .app-switcher-overlay {
+  animation: rumahl-fade-in 0.22s ease backwards;
+}
+.shell :is(.menubar__dropdown button, .command-palette__results button, .control-center button) {
+  transition:
+    transform 0.28s var(--rumahl-spring),
+    background-color 0.18s ease,
+    color 0.18s ease;
+}
+.shell .menubar__dropdown button:hover:not(:disabled),
+.shell .command-palette__results button:hover:not(:disabled) {
+  transform: translateX(2px);
+}
+/* Precision controls acknowledge a state without moving the pointer target. */
+.shell .command-palette__results button:hover:not(:disabled) { transform: none; }
+.shell :is(.command-palette, .rumahl-menu, .rumahl-select__menu) {
+  animation: rumahl-native-menu-in var(--motion-surface-duration) var(--motion-easing-standard);
+}
+@keyframes rumahl-native-menu-in {
+  from { opacity: 0.6; transform: translateY(-4px); }
+  to { opacity: 1; transform: none; }
+}
+.shell .control-center button:hover:not(:disabled) {
+  transform: translateY(-1px) scale(1.02);
+}
+.shell .control-center button:active:not(:disabled) {
+  transform: scale(0.97);
+}
+
+/* Widgets float a little more than surfaces. */
+.shell .desktop-widget {
+  animation: rumahl-widget-in 0.55s var(--rumahl-spring-soft) backwards;
+  transition:
+    transform 0.4s var(--rumahl-spring),
+    box-shadow 0.4s var(--rumahl-spring-soft),
+    border-color 0.25s ease;
+}
+.shell .desktop-widget:nth-child(2) { animation-delay: 70ms; }
+.shell .desktop-widget:nth-child(3) { animation-delay: 140ms; }
+.shell .desktop-widget:hover {
+  transform: translateY(-4px) scale(1.008);
+  box-shadow: var(--window-shadow, 0 18px 50px var(--shadow));
+}
+
+/* Toasts */
+.toast-entry {
+  transform-origin: top right;
+}
+.toast {
+  position: relative;
+  overflow: hidden;
+  transform-origin: top right;
+  transition:
+    transform 0.34s var(--rumahl-spring),
+    border-color 0.2s ease,
+    background-color 0.2s ease;
+}
+.toast:hover {
+  transform: translateY(-1px) scale(1.006);
+}
+.toast::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: linear-gradient(112deg, transparent 18%, rgb(255 255 255 / 0.2) 46%, transparent 68%);
+  mix-blend-mode: screen;
+  animation: rumahl-toast-sheen 1.05s ease-out 80ms both;
+}
+.toast__progress {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  height: 2px;
+  background: var(--accent);
+  transform-origin: left center;
+  animation: rumahl-toast-progress var(--toast-duration, 5000ms) linear forwards;
+}
+.toast.is-paused .toast__progress {
+  animation-play-state: paused;
+}
+.toast__dot {
+  animation: rumahl-toast-dot 0.48s var(--rumahl-spring) both;
+}
+.toast__close {
+  transition:
+    transform 0.3s var(--rumahl-spring),
+    color 0.18s ease;
+}
+.toast__close:hover {
+  transform: rotate(90deg) scale(1.08);
+}
+.toast__button {
+  transition:
+    transform 0.28s var(--rumahl-spring),
+    background-color 0.18s ease,
+    border-color 0.18s ease;
+}
+.toast__button:hover {
+  transform: translateY(-1px) scale(1.035);
+}
+.toast__button:active {
+  transform: scale(0.97);
+}
+
+/* Small settings and palette affordances. */
+.shell .settings-tabs > *,
+.shell .settings-content .setting,
+.shell .launcher-search .rumahl-input-group {
+  transition:
+    transform 0.3s var(--rumahl-spring-soft),
+    border-color 0.2s ease,
+    background-color 0.2s ease,
+    box-shadow 0.3s ease;
+}
+.shell .settings-tabs > *:hover {
+  transform: translateY(-1px);
+}
+.shell .settings-content .setting:hover {
+  transform: translateX(1px);
+}
+.shell .launcher-search .rumahl-input-group:focus-within {
+  transform: translateY(-2px) scale(1.008);
+}
+
+/* Chrome and cards share the same spring vocabulary. */
+.shell .menubar button,
+.shell .window-control-group button,
+.shell .window-launcher-controls button,
+.shell .window-exit-fullscreen {
+  transition:
+    transform 0.28s var(--rumahl-spring),
+    background-color 0.18s ease,
+    color 0.18s ease;
+}
+.shell .menubar button:hover:not(:disabled),
+.shell .window-control-group button:hover:not(:disabled),
+.shell .window-launcher-controls button:hover:not(:disabled) {
+  transform: translateY(-1px) scale(1.06);
+}
+.shell .menubar button:active:not(:disabled),
+.shell .window-control-group button:active:not(:disabled),
+.shell .window-launcher-controls button:active:not(:disabled) {
+  transform: scale(0.93);
+}
+.shell .store-edit-card {
+  transition:
+    transform 0.38s var(--rumahl-spring),
+    border-color 0.2s ease,
+    background-color 0.2s ease;
+}
+.shell .store-edit-card:hover {
+  transform: translateY(-4px) scale(1.006);
+}
+.shell .app-switcher__card {
+  transition:
+    transform 0.34s var(--rumahl-spring),
+    border-color 0.2s ease,
+    background-color 0.2s ease;
+}
+.shell .app-switcher__card:hover {
+  transform: translateY(-3px) scale(1.012);
+}
+
+/* Ding-style toast opening: a compact status pill unfolds into the card,
+   while the copy and actions arrive a beat later with a blur/translate. */
+@keyframes rumahl-toast-body-in {
+  0% { opacity: 0; transform: translateX(-10px); filter: blur(6px); }
+  58% { opacity: 1; transform: translateX(1px); filter: blur(0.4px); }
+  100% { opacity: 1; transform: translateX(0); filter: blur(0); }
+}
+@keyframes rumahl-toast-pill-out {
+  0% { opacity: 1; transform: scale(1); }
+  100% { opacity: 0; transform: scale(0.55); }
+}
+@keyframes rumahl-toast-pill-breathe {
+  0%, 100% { transform: scale(1); box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent) 22%, transparent); }
+  50% { transform: scale(1.035); box-shadow: 0 0 0 7px color-mix(in srgb, var(--accent) 0%, transparent); }
+}
+
+.toast {
+  width: 100%;
+}
+.toast__pill {
+  position: absolute;
+  top: 0;
+  right: 0;
+  z-index: 2;
+  display: grid;
+  place-items: center;
+  width: 52px;
+  height: 52px;
+  border-radius: 50%;
+  background:
+    radial-gradient(circle at 34% 26%, rgb(255 255 255 / 0.34), transparent 48%),
+    linear-gradient(145deg, color-mix(in srgb, var(--accent) 72%, #fff), var(--accent));
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 0.3),
+    0 8px 22px rgb(0 0 0 / 0.22),
+    0 0 0 7px color-mix(in srgb, var(--accent) 9%, transparent);
+  animation:
+    rumahl-toast-pill-out 0.3s ease 0.42s forwards,
+    rumahl-toast-pill-breathe 1.3s ease-in-out 0.08s 1;
+  pointer-events: none;
+}
+.toast__pill .toast__dot {
+  width: 9px;
+  height: 9px;
+  background: #fff;
+  box-shadow: 0 0 0 5px rgb(255 255 255 / 0.2);
+}
+.toast--success .toast__pill {
+  background:
+    radial-gradient(circle at 34% 26%, rgb(255 255 255 / 0.34), transparent 48%),
+    linear-gradient(145deg, color-mix(in srgb, #36bc92 70%, #fff), #36bc92);
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.3), 0 8px 22px rgb(0 0 0 / 0.22), 0 0 0 7px color-mix(in srgb, #36bc92 10%, transparent);
+}
+.toast--warning .toast__pill {
+  background:
+    radial-gradient(circle at 34% 26%, rgb(255 255 255 / 0.34), transparent 48%),
+    linear-gradient(145deg, color-mix(in srgb, #e0a34a 72%, #fff), #e0a34a);
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.3), 0 8px 22px rgb(0 0 0 / 0.22), 0 0 0 7px color-mix(in srgb, #e0a34a 11%, transparent);
+}
+.toast--error .toast__pill {
+  background:
+    radial-gradient(circle at 34% 26%, rgb(255 255 255 / 0.34), transparent 48%),
+    linear-gradient(145deg, color-mix(in srgb, #e5484d 72%, #fff), #e5484d);
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.3), 0 8px 22px rgb(0 0 0 / 0.22), 0 0 0 7px color-mix(in srgb, #e5484d 11%, transparent);
+}
+
+.toast__body {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  animation: rumahl-toast-body-in 0.58s var(--rumahl-spring-soft) 0.15s both;
+}
+.toast__head {
+  min-height: 18px;
+}
+.toast__message {
+  line-height: 1.35;
+}
+.toast__actions {
+  animation: rumahl-toast-body-in 0.5s var(--rumahl-spring-soft) 0.28s both;
+}
+.toast__progress {
+  z-index: 2;
+}
+
+@keyframes rumahl-toast-bump {
+  0%, 100% { transform: translateY(0) scale(1); }
+  42% { transform: translateY(-4px) scale(1.008); }
+}
+@keyframes rumahl-toast-count-pop {
+  0% { opacity: 0; transform: scale(0.6); }
+  65% { opacity: 1; transform: scale(1.12); }
+  100% { opacity: 1; transform: scale(1); }
+}
+.toast.is-bumping .toast__head {
+  animation: rumahl-toast-bump 0.46s var(--rumahl-spring);
+}
+.toast-stack__count {
+  animation: rumahl-toast-count-pop 0.38s var(--rumahl-spring) both;
+}
+
+/* Toast positions and stack structure. */
+.toast-stack {
+  align-items: flex-end;
+  pointer-events: none;
+}
+.toast-stack[data-position="top-left"] {
+  top: 16px;
+  right: auto;
+  left: 16px;
+  align-items: flex-start;
+}
+.toast-stack[data-position="top-center"] {
+  top: 16px;
+  right: auto;
+  left: 50%;
+  transform: translateX(-50%);
+  align-items: center;
+}
+.toast-stack[data-position="bottom-left"] {
+  top: auto;
+  right: auto;
+  bottom: 16px;
+  left: 16px;
+  flex-direction: column-reverse;
+  align-items: flex-start;
+}
+.toast-stack[data-position="bottom-center"] {
+  top: auto;
+  bottom: 16px;
+  left: 50%;
+  transform: translateX(-50%);
+  flex-direction: column-reverse;
+  align-items: center;
+}
+.toast-stack[data-position="bottom-right"] {
+  top: auto;
+  bottom: 16px;
+  flex-direction: column-reverse;
+  align-items: flex-end;
+}
+.toast-entry {
+  position: relative;
+  flex: none;
+  width: 52px;
+  height: 52px;
+  overflow: hidden;
+  border-radius: 26px;
+  pointer-events: auto;
+}
+.toast-entry.is-settled {
+  overflow: visible;
+}
+.toast-entry__card {
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: min(360px, calc(100vw - 32px));
+}
+.toast__spinner {
+  width: 18px;
+  height: 18px;
+  border: 2px solid color-mix(in srgb, var(--accent) 24%, transparent);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: rumahl-toast-spin 0.8s linear infinite;
+}
+@keyframes rumahl-toast-spin {
+  to { transform: rotate(1turn); }
+}
+.toast__image {
+  width: 26px;
+  height: 26px;
+  border-radius: 9px;
+  object-fit: cover;
+  box-shadow: 0 0 0 1px rgb(255 255 255 / 0.18);
+}
+.toast__count,
+.toast__meta {
+  margin-inline-start: 6px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 500;
+}
+.toast__count {
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: color-mix(in srgb, currentColor 9%, transparent);
+  font-variant-numeric: tabular-nums;
+}
+.toast__meter {
+  display: block;
+  height: 3px;
+  margin-top: 7px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: color-mix(in srgb, currentColor 12%, transparent);
+}
+.toast__meter i {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--accent);
+  transition: width 0.3s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+.toast--loading .toast__pill .toast__spinner {
+  width: 22px;
+  height: 22px;
+}
+.toast__head .toast__image {
+  width: 24px;
+  height: 24px;
+}
+.toast__head .toast__spinner {
+  width: 16px;
+  height: 16px;
+}
+
+/* 1:1 Ding surface language: compact pill, left status glyph, opaque
+   light/dark card, inline actions and a hairline timer. */
+.toast {
+  --toast-bg: light-dark(#ffffff, #0c0c0d);
+  --toast-fg: light-dark(#0f0f13, #fafafa);
+  --toast-muted: color-mix(in srgb, var(--toast-fg) 62%, transparent);
+  --toast-ring: light-dark(rgb(0 0 0 / 0.08), rgb(255 255 255 / 0.1));
+  --toast-accent: light-dark(#2f7de1, #60a5fa);
+  display: flex;
+  flex-direction: row;
+  align-items: stretch;
+  gap: 0;
+  width: max-content;
+  max-width: min(360px, calc(100vw - 32px));
+  min-height: 44px;
+  padding: 0;
+  border: 1px solid var(--toast-ring);
+  border-left-width: 1px;
+  border-radius: 22px;
+  background: var(--toast-bg);
+  color: var(--toast-fg);
+  box-shadow:
+    0 0 0 1px var(--toast-ring),
+    0 4px 12px -4px light-dark(rgb(0 0 0 / 0.16), rgb(0 0 0 / 0.48));
+  font: 500 14px/1.3 ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  overflow: hidden;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  transform-origin: top left;
+}
+.toast:hover {
+  transform: translateY(-1px) scale(1.004);
+}
+.toast__icon {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+}
+.toast__glyph {
+  width: 22px;
+  height: 22px;
+  fill: none;
+  stroke: var(--toast-accent);
+  stroke-width: 2.2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.toast--success { --toast-accent: light-dark(#12a36b, #4ade80); }
+.toast--error { --toast-accent: light-dark(#e5484d, #f87171); }
+.toast--warning { --toast-accent: light-dark(#c77d00, #fbbf24); }
+.toast--info,
+.toast--normal { --toast-accent: light-dark(#2f7de1, #60a5fa); }
+.toast--loading { --toast-accent: light-dark(#64748b, #cbd5e1); }
+.toast__spinner {
+  width: 20px;
+  height: 20px;
+  border: 2px solid color-mix(in srgb, var(--toast-accent) 24%, transparent);
+  border-top-color: var(--toast-accent);
+  border-radius: 50%;
+  animation: rumahl-toast-spin 0.8s linear infinite;
+}
+.toast__image {
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  object-fit: cover;
+  outline: 1px solid rgb(0 0 0 / 0.1);
+  outline-offset: -1px;
+}
+.toast__body {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  min-width: 0;
+  padding: 0 8px 0 0;
+  opacity: 0;
+  transform: translateX(-10px);
+  filter: blur(6px);
+  animation: none;
+}
+.toast-entry.is-open .toast__body {
+  animation: rumahl-toast-body-in 0.58s var(--rumahl-spring-soft) 0.08s both;
+}
+.toast__copy {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  max-width: min(330px, calc(100vw - 120px));
+  padding: 10px 6px 10px 0;
+}
+.toast__head {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  min-height: 0;
+}
+.toast__title {
+  min-width: 0;
+  font-size: 14px;
+  font-weight: 550;
+  line-height: 1.3;
+  text-wrap: pretty;
+  overflow-wrap: anywhere;
+}
+.toast__message {
+  color: var(--toast-muted);
+  font-size: 13px;
+  font-weight: 450;
+  line-height: 1.4;
+  text-wrap: pretty;
+  overflow-wrap: anywhere;
+}
+.toast__count,
+.toast__meta {
+  margin-left: 6px;
+  color: var(--toast-muted);
+  font-size: 12px;
+  font-weight: 450;
+}
+.toast__count {
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--toast-fg) 8%, transparent);
+  font-variant-numeric: tabular-nums;
+}
+.toast__actions {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 4px;
+  margin: 0;
+}
+.toast-entry.is-open .toast__actions {
+  animation: rumahl-toast-body-in 0.44s var(--rumahl-spring-soft) 0.18s both;
+}
+.toast__button {
+  height: 30px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--toast-muted);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 550;
+  white-space: nowrap;
+}
+.toast__button--primary {
+  padding: 0 14px;
+  background: var(--toast-fg);
+  color: var(--toast-bg);
+  font-weight: 600;
+}
+.toast__button:hover {
+  transform: translateY(-1px) scale(1.02);
+}
+.toast__button--primary:hover {
+  background: color-mix(in srgb, var(--toast-fg) 86%, var(--toast-bg));
+}
+.toast__close {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 30px;
+  height: 30px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--toast-muted);
+  font: inherit;
+  font-size: 13px;
+  line-height: 1;
+}
+.toast__close:hover {
+  transform: scale(1.06);
+  background: color-mix(in srgb, var(--toast-fg) 8%, transparent);
+  color: var(--toast-fg);
+}
+.toast__progress {
+  height: 2px;
+  background: var(--toast-accent);
+  opacity: 0.5;
+}
+.toast__meter {
+  height: 3px;
+  margin-top: 5px;
+  background: color-mix(in srgb, var(--toast-fg) 14%, transparent);
+}
+.toast__meter i {
+  background: var(--toast-accent);
+}
+.toast-entry__card {
+  left: 0;
+  right: auto;
+  width: max-content;
+  max-width: min(360px, calc(100vw - 32px));
+}
+.toast-entry {
+  width: 44px;
+  height: 44px;
+  border-radius: 22px;
+}
+.toast-stack__count {
+  border: 1px solid var(--toast-ring);
+  background: light-dark(#fff, #0c0c0d);
+  color: light-dark(#0f0f13, #fafafa);
+}
+
+@keyframes rumahl-toast-draw {
+  from { stroke-dashoffset: 1; opacity: 0.35; }
+  to { stroke-dashoffset: 0; opacity: 1; }
+}
+@keyframes rumahl-toast-icon-pop {
+  0%, 100% { transform: scale(1); }
+  45% { transform: scale(1.13); }
+}
+@keyframes rumahl-toast-icon-shake {
+  20% { transform: translateX(-2.5px); }
+  45% { transform: translateX(2.5px); }
+  70% { transform: translateX(-1.5px); }
+  100% { transform: translateX(0); }
+}
+@keyframes rumahl-toast-icon-hop {
+  0%, 100% { transform: translateY(0); }
+  40% { transform: translateY(-3px); }
+  70% { transform: translateY(1px); }
+}
+.toast__glyph :is(path, circle) {
+  stroke-dasharray: 1;
+  stroke-dashoffset: 1;
+  animation: rumahl-toast-draw 0.5s cubic-bezier(0.4, 0, 0.2, 1) 0.22s forwards;
+}
+.toast__glyph :is(path, circle):nth-child(n + 2) {
+  animation-delay: 0.32s;
+}
+.toast--success .toast__glyph {
+  animation: rumahl-toast-icon-pop 0.45s var(--rumahl-spring) 0.62s;
+}
+.toast--error .toast__glyph {
+  animation: rumahl-toast-icon-shake 0.42s cubic-bezier(0.3, 0, 0.3, 1) 0.55s;
+}
+.toast--warning .toast__glyph {
+  animation: rumahl-toast-icon-hop 0.45s var(--rumahl-spring) 0.55s;
+}
+
+@keyframes rumahl-toast-body-out {
+  to { opacity: 0; transform: translateY(-8px); filter: blur(4px); }
+}
+.toast-entry.is-leaving {
+  overflow: hidden;
+  border-radius: 22px;
+}
+.toast-entry.is-leaving .toast__body {
+  animation: rumahl-toast-body-out 0.3s cubic-bezier(0.2, 0.8, 0.2, 1) forwards;
+}
+.toast-entry.is-leaving .toast__glyph,
+.toast-entry.is-leaving .toast__spinner {
+  opacity: 0.75;
+}
+
+/* App-authored notifications keep the app identity in the leading 44px slot. */
+.toast__app-icon {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+}
+.toast__app-icon img {
+  display: block;
+  width: 28px;
+  height: 28px;
+  object-fit: contain;
+  filter: drop-shadow(0 2px 4px rgb(0 0 0 / 0.2));
+}
+.toast__app-status {
+  position: absolute;
+  right: -1px;
+  bottom: -1px;
+  width: 10px;
+  height: 10px;
+  border: 2px solid var(--toast-bg);
+  border-radius: 50%;
+  background: var(--toast-accent);
+}
+.toast__app-status--success { background: #12a36b; }
+.toast__app-status--warning { background: #c77d00; }
+.toast__app-status--error { background: #e5484d; }
+.toast__app-status--loading {
+  background: transparent;
+  border-color: var(--toast-bg);
+  box-shadow: 0 0 0 1.5px var(--toast-accent);
+  animation: rumahl-toast-spin 1s linear infinite;
+}
+.toast__app-icon.is-emergency {
+  filter: drop-shadow(0 0 5px color-mix(in srgb, #e5484d 70%, transparent));
+}
+.toast--emergency {
+  border-color: color-mix(in srgb, #e5484d 64%, var(--toast-ring));
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, #e5484d 38%, transparent),
+    0 4px 18px -4px color-mix(in srgb, #e5484d 52%, transparent);
+  animation: rumahl-emergency-pulse 2.4s ease-in-out infinite;
+}
+@keyframes rumahl-emergency-pulse {
+  0%, 100% { box-shadow: 0 0 0 1px color-mix(in srgb, #e5484d 38%, transparent), 0 4px 18px -4px color-mix(in srgb, #e5484d 52%, transparent); }
+  50% { box-shadow: 0 0 0 3px color-mix(in srgb, #e5484d 20%, transparent), 0 4px 24px -4px color-mix(in srgb, #e5484d 68%, transparent); }
+}
+
+.toast__media {
+  flex: none;
+  width: 40px;
+  height: 40px;
+  border: 1px solid var(--toast-ring);
+  border-radius: 11px;
+  object-fit: cover;
+  background: color-mix(in srgb, var(--toast-fg) 6%, transparent);
+}
+
+/* Rich app notifications need room for icon + copy + media + actions. */
+.toast-stack {
+  width: min(520px, calc(100vw - 32px));
+}
+.toast {
+  max-width: min(520px, calc(100vw - 32px));
+}
+.toast-entry__card {
+  max-width: min(520px, calc(100vw - 32px));
+}
+.toast__copy {
+  max-width: min(360px, calc(100vw - 180px));
+}
+
+/* ------------------------------------------------------------------------
+ * Refined app and emergency notifications
+ *
+ * The leading app icon is the identity. Rich app notifications get an eyebrow
+ * line, a larger media thumbnail and a separated action footer instead of
+ * squeezing copy, image and buttons into one Ding-sized row.
+ * ---------------------------------------------------------------------- */
+.toast-stack {
+  width: min(440px, calc(100vw - 24px));
+}
+.toast {
+  max-width: min(420px, calc(100vw - 24px));
+  min-height: 50px;
+  border-radius: 20px;
+}
+.toast-entry {
+  width: 46px;
+  height: 46px;
+  border-radius: 23px;
+}
+.toast-entry__card {
+  width: max-content;
+  max-width: min(420px, calc(100vw - 24px));
+}
+.toast--media {
+  width: min(360px, calc(100vw - 24px));
+}
+.toast__icon {
+  width: 50px;
+  height: 50px;
+}
+.toast__body {
+  flex: 1 1 auto;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0;
+  min-width: 0;
+  min-height: 50px;
+  padding: 0 8px 0 0;
+}
+.toast__main {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 9px;
+  min-width: 0;
+}
+.toast__copy {
+  flex: 1 1 auto;
+  gap: 2px;
+  min-width: 0;
+  max-width: none;
+  padding: 9px 0;
+}
+.toast__head {
+  min-width: 0;
+}
+.toast__eyebrow {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 14px;
+  margin-bottom: 1px;
+  color: var(--toast-muted);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.055em;
+  line-height: 1.2;
+  text-transform: uppercase;
+}
+.toast__app-name {
+  overflow: hidden;
+  max-width: 220px;
+  color: color-mix(in srgb, var(--toast-fg) 72%, transparent);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.toast__eyebrow .toast__meta {
+  margin-left: auto;
+  color: color-mix(in srgb, var(--toast-fg) 46%, transparent);
+  font-size: 12px;
+  font-weight: 550;
+  letter-spacing: 0.02em;
+  text-transform: none;
+  white-space: nowrap;
+}
+.toast__emergency-label {
+  padding: 2px 6px;
+  border-radius: 999px;
+  background: color-mix(in srgb, #e5484d 16%, transparent);
+  color: light-dark(#c52a30, #ff9a9e);
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+}
+.toast__title {
+  font-size: 14px;
+  font-weight: 620;
+  letter-spacing: -0.005em;
+}
+.toast__message {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  font-size: 12.5px;
+  line-height: 1.4;
+}
+.toast__description {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  color: color-mix(in srgb, var(--toast-fg) 52%, transparent);
+  font-size: 12px;
+  font-weight: 450;
+  line-height: 1.4;
+  text-wrap: pretty;
+  overflow-wrap: anywhere;
+}
+.toast__media {
+  display: block;
+  width: 100%;
+  height: 132px;
+  margin: 7px 0 3px;
+  overflow: hidden;
+  border: 1px solid var(--toast-ring);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--toast-fg) 5%, transparent);
+  box-shadow: 0 2px 10px -4px rgb(0 0 0 / 0.28);
+}
+.toast__media img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.toast__footer {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 1px;
+  padding: 7px 0 9px;
+  border-top: 1px solid var(--toast-ring);
+}
+.toast__footer .toast__actions {
+  margin-left: auto;
+}
+.toast__footer .toast__close {
+  width: 28px;
+  height: 28px;
+}
+.toast__main > .toast__actions {
+  margin-left: 1px;
+}
+.toast__main > .toast__close {
+  width: 28px;
+  height: 28px;
+}
+.toast__button {
+  height: 28px;
+  padding: 0 10px;
+  font-size: 12.5px;
+}
+.toast__button--primary {
+  padding: 0 13px;
+}
+.toast__app-icon {
+  width: 36px;
+  height: 36px;
+  border-radius: 11px;
+  background: color-mix(in srgb, var(--toast-fg) 5%, transparent);
+  box-shadow: inset 0 0 0 1px var(--toast-ring);
+}
+.toast__app-icon img {
+  width: 30px;
+  height: 30px;
+}
+.toast__app-status {
+  right: -2px;
+  bottom: -2px;
+  width: 11px;
+  height: 11px;
+  border-width: 2.5px;
+}
+.toast__app-icon.is-emergency {
+  background: color-mix(in srgb, #e5484d 13%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, #e5484d 38%, transparent);
+  filter: none;
+}
+.toast--emergency {
+  border-color: color-mix(in srgb, #e5484d 42%, var(--toast-ring));
+  background:
+    linear-gradient(100deg, color-mix(in srgb, #e5484d 9%, var(--toast-bg)), var(--toast-bg) 48%);
+  box-shadow:
+    inset 3px 0 0 #e5484d,
+    0 0 0 1px color-mix(in srgb, #e5484d 24%, transparent),
+    0 10px 34px -14px color-mix(in srgb, #e5484d 58%, transparent);
+  animation: none;
+}
+.toast--emergency::after {
+  display: none;
+}
+.toast--emergency .toast__close:hover {
+  background: color-mix(in srgb, #e5484d 12%, transparent);
+}
+@media (max-width: 560px) {
+  .toast-stack {
+    width: calc(100vw - 20px);
+  }
+  .toast,
+  .toast-entry__card {
+    max-width: calc(100vw - 20px);
+  }
+  .toast__app-name {
+    max-width: 150px;
+  }
+  .toast__media {
+    height: 112px;
+  }
+}

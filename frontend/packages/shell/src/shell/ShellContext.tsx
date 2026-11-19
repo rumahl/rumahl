@@ -19,3 +19,8 @@ export function useShell(): ShellContextValue {
   if (!context) throw new Error("Shell context missing");
   return context;
 }
+
+/** For components that also render in isolated Storybook/unit-test harnesses. */
+export function useOptionalShell(): ShellContextValue | null {
+  return useContext(ShellContext);
+}

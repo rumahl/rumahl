@@ -6,6 +6,9 @@ const NS='http://www.w3.org/2000/svg';
 const make=(name,attrs={})=>{const node=document.createElementNS(NS,name);for(const [k,v] of Object.entries(attrs))node.setAttribute(k,String(v));return node;};
 let nextId=0;
 export function svgBackdropSupported(){
+  // WebKit parses `url()` but does not render SVG backdrop filters (WebKit
+  // bug 245510, still open for feDisplacementMap), so feature detection alone
+  // would enable a silently flat surface there.
   return /Chrom(e|ium)|Edg\//.test(navigator.userAgent)&&CSS.supports('backdrop-filter','url(#glass-check)');
 }
 export class SvgBackdrop {

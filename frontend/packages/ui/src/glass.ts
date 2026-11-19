@@ -61,12 +61,29 @@ export function glassMaterialFromTokens(tokens: Tokens, overrides: GlassMaterial
   };
 }
 
-/** The tint used by the dock and widgets. `null` means "follow the accent". */
-export function glassColorTint(enabled: boolean | undefined, color: string | null | undefined, accent: string): string {
-  if (enabled === false) return "rgba(30,37,66,.05)";
-  const selected = color && /^#[0-9a-fA-F]{6}$/.test(color) ? color : (/^#[0-9a-fA-F]{6}$/.test(accent) ? accent : "#beff2d");
+/**
+ * The tint used by the dock and widgets. `null` means "follow the accent".
+ *
+ * The tint is composited over a light or dark glass base so the surfaces stay
+ * recognisably light or dark even while their accent follows the theme. The
+ * base is deliberately translucent: refraction still supplies most of the
+ * material, but the surface no longer looks identical in both schemes.
+ */
+export function glassColorTint(
+  enabled: boolean | undefined,
+  color: string | null | undefined,
+  accent: string,
+  scheme: "light" | "dark" = "dark",
+): string {
+  const selected = color && /^#[0-9a-fA-F]{6}$/.test(color) ? color : (/^#[0-9a-fA-F]{6}$/.test(accent) ? accent : "#28694c");
   const [r, g, b] = hexToRgb(selected);
-  return `rgba(${r}, ${g}, ${b}, 0.22)`;
+  const base = scheme === "light" ? [246, 249, 255] : [20, 26, 43];
+  const accentAlpha = enabled === false ? 0 : 0.2;
+  const baseAlpha = scheme === "light" ? 0.38 : 0.3;
+  const alpha = accentAlpha + baseAlpha * (1 - accentAlpha);
+  const mix = (channel: number, baseChannel: number) =>
+    Math.round((channel * accentAlpha + baseChannel * baseAlpha * (1 - accentAlpha)) / alpha);
+  return `rgba(${mix(r, base[0]!)}, ${mix(g, base[1]!)}, ${mix(b, base[2]!)}, ${alpha.toFixed(3)})`;
 }
 
 /** Adds or replaces only the material tint, preserving the engine settings. */

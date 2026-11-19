@@ -1,6 +1,8 @@
 import { useEffect, useState } from "react";
-import { SettingsIcon, StoreIcon } from "../icons";
-import { FolderArtwork } from "./files/icons";
+import { SettingsIcon } from "../icons";
+import filesAppIcon from "./files/folder-icons/folder-app.svg";
+import petsAppIcon from "./pets/pet-icon.svg";
+import defaultAppIcon from "./default-icons/default-app.svg";
 import { useI18n } from "../i18n";
 import { ShellLink } from "../routing/ShellLink";
 import { rememberRecent } from "./recents";
@@ -10,14 +12,9 @@ export function AppIcon({ app }: { app: ShellApp }) {
   const [failed, setFailed] = useState(false);
   useEffect(() => { setFailed(false); }, [app.icon]);
   if (app.icon && !failed) return <img className="icon" src={app.icon} alt="" onError={() => setFailed(true)} />;
-  if (app.id === "files") return <span className="app-icon-folder" aria-hidden="true"><FolderArtwork className="app-icon-folder__art" /></span>;
-  if (app.kind === "settings") return <SettingsIcon />;
-  if (app.id === "store") return <StoreIcon />;
-  const label = app.title.trim().slice(0, 1).toLocaleUpperCase() || "?";
-  let hue = 0;
-  for (let index = 0; index < app.id.length; index += 1) hue = (hue * 31 + app.id.charCodeAt(index)) % 360;
-  return <span className="app-icon-glyph" aria-hidden="true"
-    ref={(element) => { if (element) element.style.backgroundImage = `linear-gradient(150deg, hsl(${hue} 58% 54%), hsl(${(hue + 34) % 360} 52% 36%))`; }}>{label}</span>;
+  if (app.id === "files") return <span className="app-icon-folder" aria-hidden="true"><img className="app-icon-folder__art" src={filesAppIcon} alt="" draggable={false} /></span>;
+  if (app.id === "pets") return <img className="app-icon-pets" src={petsAppIcon} alt="" draggable={false} />;
+  return <img className="app-icon-default" src={defaultAppIcon} alt="" draggable={false} />;
 }
 
 export function AppTile({ app, onNavigate, minimal = false, status }: {

@@ -180,9 +180,11 @@ async fn catalog_and_launch_require_session_origin_and_current_installation() {
     );
     let app = router(GatewayState {
         host_files: None,
+        weather_warnings: None,
         config,
         backend: shell_backend(&accounts, &platform, "test", "en").unwrap(),
         browser_sessions: Some(sessions.clone()),
+        admin: None,
         login_slots: Arc::new(tokio::sync::Semaphore::new(2)),
         audit: None,
         state_dir: None,

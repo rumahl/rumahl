@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<svg width="710.64185" height="860.56348" viewBox="0 0 188.02399 227.69075" version="1.1" id="svg1" xml:space="preserve" xmlns:xlink="http://www.w3.org/1999/xlink" xmlns="http://www.w3.org/2000/svg" xmlns:svg="http://www.w3.org/2000/svg">
+  <defs id="defs1">
+    <linearGradient id="linearGradient56">
+      <stop style="stop-color:#000000;stop-opacity:0.18432203;" offset="0" id="stop57" />
+      <stop style="stop-color:#636363;stop-opacity:0.33050847;" offset="0.99837661" id="stop58" />
+    </linearGradient>
+    <linearGradient id="swatch55"><stop style="stop-color:#cdcdcd;stop-opacity:1;" offset="0" id="stop56" /></linearGradient>
+    <linearGradient xlink:href="#linearGradient56" id="linearGradient58" x1="605.06726" y1="-589.76904" x2="678.15405" y2="-538.59314" gradientUnits="userSpaceOnUse" gradientTransform="translate(-1.7197917,3.4395833)" />
+    <filter style="color-interpolation-filters:sRGB" id="filter59" x="-0.047083255" y="-0.046309799" width="1.0941665" height="1.0926196">
+      <feGaussianBlur stdDeviation="1.7457611" id="feGaussianBlur59" />
+    </filter>
+  </defs>
+  <g id="layer1" transform="translate(-502.52023,611.97065)">
+    <path id="rect16" style="fill:#f9f9f9;fill-opacity:1;stroke-width:0.264583" d="m 540.65692,-608.41248 c -21.12781,0 -38.13669,17.0094 -38.13669,38.13721 v 147.85816 c 0,21.12782 17.00888,38.13721 38.13669,38.13721 h 107.44771 c 21.12781,0 38.13669,-17.00939 38.13669,-38.13721 v -99.94377 l -86.0516,-86.0516 z" />
+    <path id="rect16-0-6-2" style="display:inline;opacity:1;mix-blend-mode:normal;fill:url(#linearGradient58);fill-opacity:1;fill-rule:nonzero;stroke:none;stroke-width:0.264583;filter:url(#filter59)" d="m 597.79297,-554.63953 c 0.84517,20.80584 16.78647,36.85155 37.4897,37.3326 l 37.71502,-1.45521 13.35668,-3.05071 -2.38139,-0.95044 -82.03726,-82.23965 -4.56897,-2.77786" />
+    <path id="rect16-0-6" style="display:inline;fill:#ffffff;fill-opacity:1;stroke-width:0.264583" d="m 600.20729,-608.39491 v 47.93455 c 0,20.823 16.52189,37.6453 37.22512,38.12635 h 48.82751 v -0.008 z" />
+    <rect style="fill:#808080;fill-opacity:1;stroke-width:0.145372" id="rect17" width="71.189583" height="13.946368" x="532.93762" y="-431.27142" ry="6.9731841" />
+    <rect style="fill:#808080;fill-opacity:1;stroke-width:0.18791" id="rect17-1" width="118.94688" height="13.946368" x="532.93762" y="-459.16049" ry="6.9731841" />
+    <rect style="fill:#808080;fill-opacity:1;stroke-width:0.18791" id="rect17-1-1" width="118.94688" height="13.946368" x="532.93762" y="-487.05286" ry="6.9731841" />
+  </g>
+</svg>

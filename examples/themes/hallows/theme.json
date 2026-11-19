@@ -1,0 +1,294 @@
+{
+  "id": "com.rumahl.hallows",
+  "name": "Hallows",
+  "description": "Adult horror: a real room, blood, failing light and things that should not be there.",
+  "version": "1.0.0",
+  "author": "rumahl",
+  "locked": true,
+  "modes": [
+    "dark"
+  ],
+  "variants": {
+    "shellLayout": "dock",
+    "launcherLayout": "springboard",
+    "windowChrome": "standard"
+  },
+  "css": "styles.css",
+  "code": "code.js",
+  "tokens": {
+    "color.accent": "#c81d1d",
+    "color.accent.strong": "#ef4b3a",
+    "color.on.accent": "#f8ece7",
+    "color.surface": "#0f0706e0",
+    "color.surface.strong": "#0f0706",
+    "color.outline": "#ff8a7a22",
+    "color.on.wallpaper": "#efe2da",
+    "color.shadow": "#000000e6",
+    "color.text.primary": "#e9ddd3",
+    "color.text.muted": "#9c837c",
+    "color.canvas.background": "#020101",
+    "color.panel.background": "#080403",
+    "color.window.titlebar.background": "#080403",
+    "color.window.titlebar.foreground": "#e9ddd3",
+    "color.wallpaper.tint": "#00000000",
+    "material.blur": "36px",
+    "material.saturation": "1.25",
+    "material.opacity": "0.62",
+    "material.morphism": "0.88",
+    "shape.radius.window": "14px",
+    "shape.radius.dock": "26px",
+    "shape.radius.icon": "16px",
+    "icon.gradient": "linear-gradient(150deg, #d62828, #6b0a0a)",
+    "texture.wallpaper": "default",
+    "typography.display": "\"Fraunces Variable\", \"New York\", Georgia, serif",
+    "effect.dread": "45",
+    "effect.blood": "1",
+    "effect.blackout": "1",
+    "effect.red": "1",
+    "effect.flicker": "1",
+    "effect.glitch": "1",
+    "effect.vhs": "1",
+    "effect.signal": "1",
+    "effect.presence": "1",
+    "effect.unstable": "1"
+  },
+  "parameters": [
+    {
+      "kind": "range",
+      "id": "dread",
+      "token": "effect.dread",
+      "min": 0,
+      "max": 100,
+      "step": 1,
+      "label": {
+        "en": "Event frequency",
+        "de": "Event-Häufigkeit"
+      }
+    },
+    {
+      "kind": "choice",
+      "id": "blood",
+      "token": "effect.blood",
+      "options": [
+        {
+          "value": "1",
+          "label": {
+            "en": "On",
+            "de": "An"
+          }
+        },
+        {
+          "value": "0",
+          "label": {
+            "en": "Off",
+            "de": "Aus"
+          }
+        }
+      ],
+      "label": {
+        "en": "Blood",
+        "de": "Blut"
+      }
+    },
+    {
+      "kind": "choice",
+      "id": "blackout",
+      "token": "effect.blackout",
+      "options": [
+        {
+          "value": "1",
+          "label": {
+            "en": "On",
+            "de": "An"
+          }
+        },
+        {
+          "value": "0",
+          "label": {
+            "en": "Off",
+            "de": "Aus"
+          }
+        }
+      ],
+      "label": {
+        "en": "Blackout",
+        "de": "Blackout"
+      }
+    },
+    {
+      "kind": "choice",
+      "id": "red",
+      "token": "effect.red",
+      "options": [
+        {
+          "value": "1",
+          "label": {
+            "en": "On",
+            "de": "An"
+          }
+        },
+        {
+          "value": "0",
+          "label": {
+            "en": "Off",
+            "de": "Aus"
+          }
+        }
+      ],
+      "label": {
+        "en": "Red room",
+        "de": "Roter Raum"
+      }
+    },
+    {
+      "kind": "choice",
+      "id": "flicker",
+      "token": "effect.flicker",
+      "options": [
+        {
+          "value": "1",
+          "label": {
+            "en": "On",
+            "de": "An"
+          }
+        },
+        {
+          "value": "0",
+          "label": {
+            "en": "Off",
+            "de": "Aus"
+          }
+        }
+      ],
+      "label": {
+        "en": "Light flicker",
+        "de": "Lichtflackern"
+      }
+    },
+    {
+      "kind": "choice",
+      "id": "glitch",
+      "token": "effect.glitch",
+      "options": [
+        {
+          "value": "1",
+          "label": {
+            "en": "On",
+            "de": "An"
+          }
+        },
+        {
+          "value": "0",
+          "label": {
+            "en": "Off",
+            "de": "Aus"
+          }
+        }
+      ],
+      "label": {
+        "en": "Glitches",
+        "de": "Glitches"
+      }
+    },
+    {
+      "kind": "choice",
+      "id": "vhs",
+      "token": "effect.vhs",
+      "options": [
+        {
+          "value": "1",
+          "label": {
+            "en": "On",
+            "de": "An"
+          }
+        },
+        {
+          "value": "0",
+          "label": {
+            "en": "Off",
+            "de": "Aus"
+          }
+        }
+      ],
+      "label": {
+        "en": "VHS / scanlines",
+        "de": "VHS / Scanlines"
+      }
+    },
+    {
+      "kind": "choice",
+      "id": "signal",
+      "token": "effect.signal",
+      "options": [
+        {
+          "value": "1",
+          "label": {
+            "en": "On",
+            "de": "An"
+          }
+        },
+        {
+          "value": "0",
+          "label": {
+            "en": "Off",
+            "de": "Aus"
+          }
+        }
+      ],
+      "label": {
+        "en": "No signal",
+        "de": "Kein Signal"
+      }
+    },
+    {
+      "kind": "choice",
+      "id": "presence",
+      "token": "effect.presence",
+      "options": [
+        {
+          "value": "1",
+          "label": {
+            "en": "On",
+            "de": "An"
+          }
+        },
+        {
+          "value": "0",
+          "label": {
+            "en": "Off",
+            "de": "Aus"
+          }
+        }
+      ],
+      "label": {
+        "en": "Presence",
+        "de": "Präsenz"
+      }
+    },
+    {
+      "kind": "choice",
+      "id": "unstable",
+      "token": "effect.unstable",
+      "options": [
+        {
+          "value": "1",
+          "label": {
+            "en": "On",
+            "de": "An"
+          }
+        },
+        {
+          "value": "0",
+          "label": {
+            "en": "Off",
+            "de": "Aus"
+          }
+        }
+      ],
+      "label": {
+        "en": "Unstable reality",
+        "de": "Unstabile Realität"
+      }
+    }
+  ]
+}

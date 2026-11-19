@@ -2,7 +2,10 @@ import { readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, expect, it, vi } from "vitest";
-import { classicTheme, rumahlTheme } from "@rumahl/ui/themes";
+import { rumahlTheme } from "@rumahl/ui/themes";
+import { loadThemePackage } from "../test/theme-packages";
+
+const classicTheme = loadThemePackage("classic");
 import { applyTokens, clearTokens } from "@rumahl/ui/tokens";
 import { rememberLoginAppearance } from "./login-appearance";
 

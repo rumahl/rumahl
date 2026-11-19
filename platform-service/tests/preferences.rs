@@ -35,9 +35,11 @@ async fn preferences_are_session_scoped_csrf_protected_and_revision_checked() {
     let bob = sessions.login("bob", password).unwrap();
     let app = router(GatewayState {
         host_files: None,
+        weather_warnings: None,
         config: GatewayConfig::new("https://rumahl.test", root.join("ssr.sock")).unwrap(),
         backend: shell_backend(&accounts, &root.join("platform.sqlite"), "test", "en").unwrap(),
         browser_sessions: Some(sessions.clone()),
+        admin: None,
         login_slots: Arc::new(tokio::sync::Semaphore::new(2)),
         audit: None,
         state_dir: None,
@@ -304,6 +306,88 @@ async fn preferences_are_session_scoped_csrf_protected_and_revision_checked() {
             .starts_with("attachment;")
     );
     assert_eq!(file.headers()["cache-control"], "private, no-store");
+    assert_eq!(
+        app.clone()
+            .oneshot(send(
+                "PUT",
+                &download,
+                &alice,
+                "https://evil.test",
+                "application/octet-stream",
+                b"edited".to_vec()
+            ))
+            .await
+            .unwrap()
+            .status(),
+        StatusCode::FORBIDDEN
+    );
+    assert_eq!(
+        app.clone()
+            .oneshot(send(
+                "PUT",
+                &download,
+                &bob,
+                "https://rumahl.test",
+                "application/octet-stream",
+                b"edited".to_vec()
+            ))
+            .await
+            .unwrap()
+            .status(),
+        StatusCode::NOT_FOUND
+    );
+    assert_eq!(
+        app.clone()
+            .oneshot(send(
+                "PUT",
+                &download,
+                &alice,
+                "https://rumahl.test",
+                "text/plain",
+                b"edited".to_vec()
+            ))
+            .await
+            .unwrap()
+            .status(),
+        StatusCode::UNSUPPORTED_MEDIA_TYPE
+    );
+    assert_eq!(
+        app.clone()
+            .oneshot(send(
+                "PUT",
+                &download,
+                &alice,
+                "https://rumahl.test",
+                "application/octet-stream",
+                b"<p>edited</p>".to_vec()
+            ))
+            .await
+            .unwrap()
+            .status(),
+        StatusCode::NO_CONTENT
+    );
+    let edited = app
+        .clone()
+        .oneshot(send(
+            "GET",
+            &download,
+            &alice,
+            "https://rumahl.test",
+            "",
+            vec![],
+        ))
+        .await
+        .unwrap();
+    assert_eq!(
+        edited
+            .into_body()
+            .collect()
+            .await
+            .unwrap()
+            .to_bytes()
+            .as_ref(),
+        b"<p>edited</p>"
+    );
     sessions.logout(&alice).unwrap();
     assert_eq!(
         app.oneshot(request(Some(&alice), None, None))

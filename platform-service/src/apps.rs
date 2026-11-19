@@ -182,6 +182,21 @@ impl PersistentApps {
             .find(|app| *app.installation_id() == installation)
             .ok_or(AppAccessError::Denied)
     }
+    fn surface_entry<'a>(app: &'a InstalledAppSnapshot, surface: &str) -> Option<&'a str> {
+        let id = ContributionId::parse(surface).ok()?;
+        let declaration = app
+            .manifest()
+            .surfaces()
+            .iter()
+            .find(|candidate| candidate.id() == &id)?;
+        let entrypoint = declaration.entrypoint()?;
+        let runtime = app.manifest().runtime();
+        let target = runtime.entrypoint(entrypoint)?;
+        if target.kind() != RuntimeEntrypointKind::WebAsset {
+            return None;
+        }
+        target.target().package_path().map(PackagePath::as_str)
+    }
     fn web_entry(app: &InstalledAppSnapshot) -> Option<&str> {
         if app.manifest().runtime().kind() != RuntimeKind::Web {
             return None;
@@ -427,6 +442,26 @@ impl AppProvider for PersistentApps {
     ) -> Result<String, AppAccessError> {
         let app = self.app(identity, installation)?;
         let path = Self::web_entry(&app).ok_or(AppAccessError::Denied)?;
+        self.read_asset(installation, path, false)?;
+        Ok(path.into())
+    }
+    fn surface_entrypoint(
+        &self,
+        identity: ShellIdentity,
+        installation: InstallationId,
+        surface: &str,
+    ) -> Result<String, AppAccessError> {
+        let app = self.app(identity, installation)?;
+        let path = Self::surface_entry(&app, surface).ok_or(AppAccessError::Denied)?;
+        // Only the published web root is frameable; package secrets and
+        // container artifacts stay unreachable even if declared.
+        let entry = Self::web_entry(&app).ok_or(AppAccessError::Denied)?;
+        let directory = entry
+            .rsplit_once('/')
+            .map_or("", |(directory, _)| directory);
+        if !directory.is_empty() && !path.starts_with(&format!("{directory}/")) {
+            return Err(AppAccessError::Denied);
+        }
         self.read_asset(installation, path, false)?;
         Ok(path.into())
     }

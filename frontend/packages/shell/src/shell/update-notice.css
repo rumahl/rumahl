@@ -102,7 +102,7 @@
   border-radius: 999px;
   color: inherit;
   background: color-mix(in srgb, currentColor 10%, transparent);
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 600;
   white-space: nowrap;
 }

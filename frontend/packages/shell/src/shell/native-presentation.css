@@ -83,10 +83,8 @@
     inset 0 1px 1px #ffffff60;
 }
 .desktop-icon__label {
-  color: var(--rumahl-ui-color-on-wallpaper, #ffffff);
-  text-shadow:
-    0 1px 4px #000,
-    0 0 12px #0009;
+  color: var(--adaptive-ink, var(--rumahl-ui-color-on-wallpaper, #ffffff));
+  text-shadow: var(--adaptive-shadow, none);
   font-size: 12px;
   line-height: 1.4;
 }
@@ -195,7 +193,7 @@
   color: #fff;
   background: #14201ccc;
   backdrop-filter: blur(12px);
-  font-size: 11px;
+  font-size: 12px;
   white-space: nowrap;
   opacity: 0;
   pointer-events: none;
@@ -698,7 +696,7 @@
   height: 13px;
 }
 .desktop-icon__art.folder-preview .app-icon-glyph {
-  font-size: 0.52rem;
+  font-size: 0.75rem;
 }
 /* Classic taskbar shell variant (theme variant shell.layout = "taskbar"). */
 .shell .taskbar {
@@ -760,8 +758,10 @@
   white-space: nowrap;
 }
 .taskbar__button > span:last-child {
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .taskbar__button:hover,
 .taskbar__button[aria-pressed="true"] {
@@ -770,7 +770,28 @@
 .taskbar__button svg {
   width: 18px;
   height: 18px;
+  flex: none;
   stroke: currentColor;
+}
+/* Ground bases underline links globally; taskbar buttons are chrome, not links. */
+.shell .taskbar__button {
+  text-decoration: none;
+}
+/* Running-window entries wrap the app icon in a span. Size that frame and any
+   artwork inside it so third-party app images cannot overflow the button. */
+.taskbar__button > span:first-child:not(:last-child) {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 18px;
+  height: 18px;
+  overflow: hidden;
+  border-radius: var(--rumahl-ui-shape-radius-icon, 4px);
+}
+.taskbar__button > span:first-child:not(:last-child) :is(img, svg) {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
 }
 .taskbar__window.is-minimized {
   opacity: 0.6;

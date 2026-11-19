@@ -5,14 +5,15 @@ use rumahl_account_auth::{
 };
 use rumahl_core::{
     AccountStateRepository, AuditAction, AuditActor, AuditLog, AuditOutcome, BrowserProfileId,
-    NewAuditEvent, OsMode, OsModeRepository, OsModeSettings, OsModeStoreError,
-    PlatformSnapshotRepository, PreferenceScope, ShellPreferencesRepository, UnixTimestamp, UserId,
-    WorkspaceRepository,
+    InstalledAppSnapshot, NewAuditEvent, OsMode, OsModeRepository, OsModeSettings,
+    OsModeStoreError, PlatformSnapshotRepository, PreferenceScope, ShellPreferencesRepository,
+    UnixTimestamp, UserId, UserRole, WorkspaceRepository,
 };
 use rumahl_persistence_sqlite::{
-    BrowserSessionError, SqliteAccountStateRepository, SqliteBrowserSessionRepository,
-    SqliteLocalAccountAdministrationRepository, SqlitePasswordCredentialRepository,
-    SqliteSessionCredentialRepository, SqliteShellPreferences, SqliteSnapshotRepository,
+    BrowserSessionError, SqliteAccountRoles, SqliteAccountStateRepository,
+    SqliteBrowserSessionRepository, SqliteLocalAccountAdministrationRepository,
+    SqlitePasswordCredentialRepository, SqliteSessionCredentialRepository, SqliteShellPreferences,
+    SqliteSnapshotRepository,
 };
 use rumahl_platform_api::{LocalSessionAuthenticator, ShellSnapshotProvider, ShellSnapshotSubject};
 use rumahl_platform_web::{
@@ -20,8 +21,9 @@ use rumahl_platform_web::{
     WidgetFrameResolver,
 };
 use rumahl_ui_contracts::{
-    ResolvedTheme, ShellApp, ShellMode, ShellSnapshot, ShellSystemStatus, ShellTheme, ShellUser,
-    SystemProtectionStatus, theme_by_id,
+    ExtensionContribution, ExtensionSize, ResolvedTheme, ShellApp, ShellMode, ShellSnapshot,
+    ShellSystemStatus, ShellTheme, ShellUser, ShellUserRole, SurfaceIcon, SurfaceKind,
+    SurfacePlacement, SurfaceSlot, SurfaceTone, SystemProtectionStatus, theme_by_id,
 };
 use sha2::{Digest, Sha256};
 use std::os::unix::fs::PermissionsExt;
@@ -29,6 +31,9 @@ use std::{collections::HashSet, path::Path, sync::Arc};
 use zeroize::Zeroizing;
 
 pub type ServiceError = Box<dyn std::error::Error + Send + Sync>;
+
+mod administration;
+pub use administration::LocalAdministration;
 
 /// A locally supplied blocklist is required when provisioning accounts. Login
 /// uses existing verifiers and does not depend on a cloud password service.
@@ -362,8 +367,107 @@ impl OsModeRepository for AuditedOsModeRepository {
     }
 }
 
+fn surface_contributions(
+    visible: &[InstalledAppSnapshot],
+) -> Result<Vec<ExtensionContribution>, ServiceError> {
+    let mut contributions = Vec::new();
+    let mut ids = HashSet::new();
+    for app in visible {
+        for surface in app.manifest().surfaces() {
+            if contributions.len() >= 128 || !ids.insert(surface.id().as_str().to_owned()) {
+                continue;
+            }
+            contributions.push(
+                ExtensionContribution::surface(
+                    surface.id().as_str(),
+                    app.manifest().display_name(),
+                    app.identity().app_id().as_str(),
+                    surface_slot(surface.slot()),
+                    surface_kind(surface.kind()),
+                    surface_size(surface.size()),
+                    surface_placement(surface.placement()),
+                    surface_tone(surface.tone()),
+                    surface_icon(surface.icon()),
+                    surface
+                        .entrypoint()
+                        .map(|entrypoint| entrypoint.as_str().to_owned()),
+                )
+                .map_err(|_| std::io::Error::other("invalid app surface"))?,
+            );
+        }
+    }
+    Ok(contributions)
+}
+
+fn surface_slot(value: rumahl_core::SurfaceSlot) -> SurfaceSlot {
+    match value {
+        rumahl_core::SurfaceSlot::Desktop => SurfaceSlot::Desktop,
+        rumahl_core::SurfaceSlot::Launcher => SurfaceSlot::Launcher,
+        rumahl_core::SurfaceSlot::Both => SurfaceSlot::Both,
+    }
+}
+
+fn surface_kind(value: rumahl_core::SurfaceKind) -> SurfaceKind {
+    match value {
+        rumahl_core::SurfaceKind::Companion => SurfaceKind::Companion,
+        rumahl_core::SurfaceKind::Badge => SurfaceKind::Badge,
+        rumahl_core::SurfaceKind::Panel => SurfaceKind::Panel,
+    }
+}
+
+fn surface_size(value: rumahl_core::SurfaceSize) -> ExtensionSize {
+    match value {
+        rumahl_core::SurfaceSize::Small => ExtensionSize::Small,
+        rumahl_core::SurfaceSize::Medium => ExtensionSize::Medium,
+        rumahl_core::SurfaceSize::Large => ExtensionSize::Large,
+    }
+}
+
+fn surface_placement(value: rumahl_core::SurfacePlacement) -> SurfacePlacement {
+    match value {
+        rumahl_core::SurfacePlacement::TopLeft => SurfacePlacement::TopLeft,
+        rumahl_core::SurfacePlacement::TopRight => SurfacePlacement::TopRight,
+        rumahl_core::SurfacePlacement::BottomLeft => SurfacePlacement::BottomLeft,
+        rumahl_core::SurfacePlacement::BottomRight => SurfacePlacement::BottomRight,
+    }
+}
+
+fn surface_tone(value: rumahl_core::SurfaceTone) -> SurfaceTone {
+    match value {
+        rumahl_core::SurfaceTone::Accent => SurfaceTone::Accent,
+        rumahl_core::SurfaceTone::Neutral => SurfaceTone::Neutral,
+        rumahl_core::SurfaceTone::Warm => SurfaceTone::Warm,
+        rumahl_core::SurfaceTone::Cool => SurfaceTone::Cool,
+        rumahl_core::SurfaceTone::Rose => SurfaceTone::Rose,
+        rumahl_core::SurfaceTone::Mint => SurfaceTone::Mint,
+    }
+}
+
+fn surface_icon(value: rumahl_core::SurfaceIcon) -> SurfaceIcon {
+    match value {
+        rumahl_core::SurfaceIcon::Dot => SurfaceIcon::Dot,
+        rumahl_core::SurfaceIcon::Star => SurfaceIcon::Star,
+        rumahl_core::SurfaceIcon::Bolt => SurfaceIcon::Bolt,
+        rumahl_core::SurfaceIcon::Leaf => SurfaceIcon::Leaf,
+        rumahl_core::SurfaceIcon::Moon => SurfaceIcon::Moon,
+        rumahl_core::SurfaceIcon::Heart => SurfaceIcon::Heart,
+        rumahl_core::SurfaceIcon::Orbit => SurfaceIcon::Orbit,
+        rumahl_core::SurfaceIcon::Pulse => SurfaceIcon::Pulse,
+    }
+}
+
+pub(crate) fn shell_role(role: UserRole) -> ShellUserRole {
+    match role {
+        UserRole::PreAuthentication | UserRole::User => ShellUserRole::User,
+        UserRole::Manager => ShellUserRole::Manager,
+        UserRole::Administrator => ShellUserRole::Administrator,
+        UserRole::Owner => ShellUserRole::Owner,
+    }
+}
+
 pub struct PersistentShellSnapshots {
     accounts: SqliteAccountStateRepository,
+    roles: SqliteAccountRoles,
     platform: SqliteSnapshotRepository,
     build_id: String,
     locale: String,
@@ -389,8 +493,11 @@ impl PersistentShellSnapshots {
             ShellSystemStatus::new(SystemProtectionStatus::Attention, 0, 1, None)?,
             vec![],
         )?;
+        let roles = SqliteAccountRoles::open(accounts)?;
+        roles.ensure_owner()?;
         Ok(Self {
             accounts: SqliteAccountStateRepository::open(accounts)?,
+            roles,
             platform: SqliteSnapshotRepository::open(platform)?,
             build_id: build_id.into(),
             locale: locale.into(),
@@ -463,6 +570,7 @@ impl PersistentShellSnapshots {
             .get(user_id)
             .filter(|a| a.can_authenticate())
             .ok_or_else(|| std::io::Error::other("account unavailable"))?;
+        let role = self.roles.role(*user_id)?;
         let platform = self.platform.load()?;
         let now_seconds = UnixTimestamp::now()?;
         let identity = state
@@ -499,6 +607,9 @@ impl PersistentShellSnapshots {
                 )
             })
             .collect::<Result<Vec<_>, _>>()?;
+        let contributions = surface_contributions(&visible)?;
+        let surface_revision = serde_json::to_vec(&contributions)
+            .map_err(|_| std::io::Error::other("invalid app surfaces"))?;
         let count = visible.len();
         let now = UnixTimestamp::now()?
             .as_seconds()
@@ -511,8 +622,10 @@ impl PersistentShellSnapshots {
             user_id.to_string(),
             user.display_name(),
             &self.locale,
+            role.as_str(),
             &self.build_id,
             &catalog_revision,
+            &surface_revision,
             theme.id(),
             mode.as_str(),
             workspace.as_deref().unwrap_or(""),
@@ -520,7 +633,7 @@ impl PersistentShellSnapshots {
         Ok(ShellSnapshot::new(
             &self.build_id,
             revision,
-            ShellUser::new(user.display_name(), &self.locale)?,
+            ShellUser::new(user.display_name(), &self.locale)?.with_role(shell_role(role)),
             ShellTheme::from_theme(theme_stylesheet(theme.id()).0, &theme)?,
             shell_apps,
             workspace,
@@ -531,7 +644,7 @@ impl PersistentShellSnapshots {
                 now,
                 None,
             )?,
-            vec![],
+            contributions,
         )?
         .with_mode(mode))
     }
@@ -583,7 +696,7 @@ pub fn theme_stylesheet(id: &str) -> (String, String) {
 /// All built-in stylesheets that must be served for the account theme to render
 /// correctly on the first paint (no flash of the default theme).
 pub fn theme_stylesheets() -> Vec<(String, String)> {
-    ["com.rumahl.default", "com.rumahl.classic"]
+    ["com.rumahl.default"]
         .into_iter()
         .map(theme_stylesheet)
         .collect()
@@ -610,3 +723,59 @@ fn sha256_hex(bytes: &[u8]) -> String {
 pub mod apps;
 pub mod host_files;
 pub mod install;
+
+#[cfg(test)]
+mod surface_tests {
+    use super::*;
+    use rumahl_core::{AppId, InstalledApp, PackagePath, PublisherId};
+    use rumahl_core::{
+        AppManifest, AppManifestValidator, AppVersion, RuntimeDescriptor, RuntimeEntrypoint,
+        RuntimeEntrypointId, SurfaceDeclaration, SurfaceIcon, SurfaceKind, SurfacePlacement,
+        SurfaceSize, SurfaceSlot, SurfaceTone,
+    };
+
+    fn installed_app_with_surface() -> InstalledApp {
+        let mut runtime = RuntimeDescriptor::web();
+        runtime
+            .add_entrypoint(RuntimeEntrypoint::web_asset(
+                RuntimeEntrypointId::parse("main").unwrap(),
+                PackagePath::parse("index.html").unwrap(),
+            ))
+            .unwrap();
+        let mut manifest = AppManifest::new(
+            AppId::parse("com.example.clock").unwrap(),
+            PublisherId::parse("com.example").unwrap(),
+            AppVersion::new(1, 0, 0),
+            "Clock",
+            runtime,
+        )
+        .unwrap();
+        manifest
+            .add_surface(
+                SurfaceDeclaration::new(
+                    rumahl_core::ContributionId::parse("com.example.clock.desktop").unwrap(),
+                    SurfaceSlot::Both,
+                    SurfaceKind::Companion,
+                    SurfaceSize::Medium,
+                    SurfacePlacement::BottomRight,
+                    SurfaceTone::Accent,
+                    SurfaceIcon::Pulse,
+                )
+                .with_entrypoint(Some(RuntimeEntrypointId::parse("main").unwrap())),
+            )
+            .unwrap();
+        InstalledApp::create(manifest, &AppManifestValidator::new()).unwrap()
+    }
+
+    #[test]
+    fn projects_installed_app_surfaces_into_shell_contributions() {
+        let app = InstalledAppSnapshot::capture(&installed_app_with_surface());
+        let contributions = surface_contributions(&[app]).unwrap();
+        assert_eq!(contributions.len(), 1);
+        let contribution = &contributions[0];
+        assert_eq!(contribution.id(), "com.example.clock.desktop");
+        let json = serde_json::to_value(contribution).unwrap();
+        assert_eq!(json["app"], "com.example.clock");
+        assert_eq!(json["entrypoint"], "main");
+    }
+}
