@@ -1,4 +1,5 @@
 import { cpSync, existsSync, mkdirSync, readdirSync, rmSync } from "node:fs";
+import { setTimeout as delay } from "node:timers/promises";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -30,7 +31,19 @@ for (const { from, to } of copies) {
 
   if (!cleared.has(target)) {
     rmSync(target, { recursive: true, force: true });
-    mkdirSync(target, { recursive: true });
+    // Recreating a freshly removed directory can race with file watchers
+    // observing the deletion (dev servers, editors): libuv's recursive mkdir
+    // then sees a vanished ancestor and reports ENOENT. A short retry makes
+    // the deterministic rebuild win; anything still failing is a real error.
+    for (let attempt = 1; ; attempt += 1) {
+      try {
+        mkdirSync(target, { recursive: true });
+        break;
+      } catch (error) {
+        if (error.code !== "ENOENT" || attempt === 10) throw error;
+        await delay(50 * attempt);
+      }
+    }
     cleared.add(target);
   }
 

@@ -94,6 +94,32 @@
    the logo-only island keeps its circle there too. */
 .shell .topbar__island--left:not([data-quick]) {
   border-radius: 50% !important;
+  flex: none;
+  width: var(--topbar-island-height);
+}
+.shell .topbar__island--left:not([data-quick]) .menubar__menus,
+.shell .topbar__island--left:not([data-quick]) .menubar__menu {
+  display: grid;
+  place-items: center;
+  width: 100%;
+  height: 100%;
+  gap: 0;
+  border-radius: inherit;
+}
+.shell .topbar__island--left:not([data-quick]) .menubar__item {
+  display: grid;
+  place-items: center;
+  width: 100%;
+  height: 100%;
+  padding: 0 !important; /* Override typography-scale's menu padding. */
+  border-radius: inherit;
+}
+.shell .topbar__island--left:not([data-quick]) .menubar__brand {
+  display: grid;
+  place-items: center;
+  width: 100%;
+  height: 100%;
+  gap: 0;
 }
 .menubar__quick {
   max-width: 22ch;
