@@ -57,15 +57,13 @@ def run(browser=False):
         project = root / "project"
         frontend_copy(project / "frontend")
         state = root / "state"
-        (root / "home").mkdir(mode=0o700)
         log = stack.enter_context((root / "dev.log").open("w+"))
         command = [NODE, str(project / "frontend/packages/ssr/dev/start.js"), "--binary", str(BINARY),
                    "--state-dir", str(state), "--port", "0", "--poll"]
 
         def launch():
             (state / "server.json").unlink(missing_ok=True)
-            process = subprocess.Popen(command, stdout=log, stderr=log,
-                                       env=dict(os.environ, RUMAHL_HOME_ROOT=str(root / "home")))
+            process = subprocess.Popen(command, stdout=log, stderr=log)
             stack.callback(stop, process)
             for _ in range(600):
                 if process.poll() is not None:
