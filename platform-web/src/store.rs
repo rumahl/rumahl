@@ -30,6 +30,7 @@ use sha2::{Digest, Sha256};
 use std::{
     fs,
     io::Write,
+    net::{IpAddr, SocketAddr},
     os::unix::fs::OpenOptionsExt,
     path::{Path, PathBuf},
     sync::{Arc, Mutex},
@@ -428,7 +429,10 @@ fn certificate_required(info: &CertificateInfo) -> Response {
     response
 }
 
-fn store_client(pinned: Option<&str>) -> Result<reqwest::Client, ()> {
+fn store_client(
+    pinned: Option<&str>,
+    resolved: Option<(&str, SocketAddr)>,
+) -> Result<reqwest::Client, ()> {
     let mut builder = reqwest::Client::builder()
         .redirect(reqwest::redirect::Policy::none())
         .timeout(Duration::from_secs(15))
@@ -438,7 +442,80 @@ fn store_client(pinned: Option<&str>) -> Result<reqwest::Client, ()> {
             fingerprint: pinned.to_owned(),
         })));
     }
+    if let Some((host, address)) = resolved {
+        builder = builder.resolve(host, address);
+    }
     builder.build().map_err(|_| ())
+}
+
+/// Store URLs are user-provided. A public deployment must never let one reach
+/// loopback, private, link-local or otherwise non-routable services, so every
+/// hostname is resolved and pinned before the request is made. Local
+/// development keeps its loopback example store.
+fn allows_private_targets(origin: &Url) -> bool {
+    matches!(
+        origin.host_str(),
+        Some("localhost" | "127.0.0.1" | "::1" | "[::1]")
+    )
+}
+
+fn local_hostname(host: &str) -> bool {
+    let host = host.trim_end_matches('.').to_ascii_lowercase();
+    host == "localhost"
+        || host.ends_with(".localhost")
+        || host.ends_with(".local")
+        || host.ends_with(".internal")
+        || host.ends_with(".home.arpa")
+}
+
+fn non_public_ip(ip: IpAddr) -> bool {
+    match ip {
+        IpAddr::V4(ip) => {
+            let octets = ip.octets();
+            ip.is_private()
+                || ip.is_loopback()
+                || ip.is_link_local()
+                || ip.is_broadcast()
+                || ip.is_documentation()
+                || ip.is_unspecified()
+                || ip.is_multicast()
+                || octets[0] == 0
+                || (octets[0] == 100 && (64..=127).contains(&octets[1]))
+                || (octets[0] == 198 && matches!(octets[1], 18 | 19))
+                || octets[0] >= 240
+        }
+        IpAddr::V6(ip) => {
+            if let Some(mapped) = ip.to_ipv4_mapped() {
+                return non_public_ip(IpAddr::V4(mapped));
+            }
+            let segments = ip.segments();
+            ip.is_loopback()
+                || ip.is_unspecified()
+                || ip.is_multicast()
+                || (segments[0] & 0xfe00) == 0xfc00
+                || (segments[0] & 0xffc0) == 0xfe80
+                || (segments[0] & 0xffc0) == 0xfec0
+                || (segments[0] == 0x2001 && segments[1] == 0x0db8)
+        }
+    }
+}
+
+async fn resolve_public_target(host: &str, port: u16, allow_private: bool) -> Option<SocketAddr> {
+    if !allow_private && local_hostname(host) {
+        return None;
+    }
+    let literal = host.trim_start_matches('[').trim_end_matches(']');
+    if let Ok(ip) = literal.parse::<IpAddr>() {
+        return (allow_private || !non_public_ip(ip)).then(|| SocketAddr::new(ip, port));
+    }
+    let addresses: Vec<SocketAddr> = tokio::net::lookup_host((host, port)).await.ok()?.collect();
+    if addresses.is_empty() {
+        return None;
+    }
+    if !allow_private && addresses.iter().any(|address| non_public_ip(address.ip())) {
+        return None;
+    }
+    addresses.first().copied()
 }
 
 struct RemoteResponse {
@@ -477,8 +554,30 @@ async fn fetch_remote(
     };
     let user_id = identity.user_id.to_string();
     let pinned = trusted_fingerprint(state.state_dir.as_deref(), &user_id, &host);
-    let client = store_client(pinned.as_deref()).map_err(|_| RemoteFailure::Unavailable)?;
+    let address = resolve_public_target(
+        &host,
+        port,
+        allows_private_targets(&state.config.public_origin),
+    )
+    .await
+    .ok_or(RemoteFailure::BadGateway)?;
+    let literal = host
+        .trim_start_matches('[')
+        .trim_end_matches(']')
+        .parse::<IpAddr>()
+        .is_ok();
+    let resolved = if literal {
+        None
+    } else {
+        Some((host.as_str(), address))
+    };
+    let client =
+        store_client(pinned.as_deref(), resolved).map_err(|_| RemoteFailure::Unavailable)?;
 
+    // The target is only reachable because `resolve_public_target` refused every
+    // non-public address above and `store_client` pins the checked address, so
+    // DNS cannot rebind between the check and this request. Redirects stay
+    // disabled, so the flow analysis below cannot be steered elsewhere.
     let response = match client
         .get(target.clone())
         .header(ACCEPT, accept)
@@ -662,11 +761,13 @@ async fn trust(
 #[cfg(test)]
 mod tests {
     use super::{
-        fingerprint, parse_fingerprint, remember_certificate, source_url, trusted_fingerprint,
+        allows_private_targets, fingerprint, local_hostname, non_public_ip, parse_fingerprint,
+        remember_certificate, resolve_public_target, source_url, trusted_fingerprint,
         untrusted_certificate,
     };
     use rustls::pki_types::{CertificateDer, PrivateKeyDer, PrivatePkcs8KeyDer};
-    use std::sync::Arc;
+    use std::{net::SocketAddr, sync::Arc};
+    use url::Url;
 
     const TEST_CERTIFICATE: &[u8] = include_bytes!("../tests/fixtures/store-test-cert.der");
     const TEST_KEY: &[u8] = include_bytes!("../tests/fixtures/store-test-key.der");
@@ -730,6 +831,78 @@ mod tests {
         assert!(source_url("https://user:pass@store.example/index.json").is_none());
         assert!(source_url("https://store.example/index.json#fragment").is_none());
         assert!(source_url("file:///tmp/index.json").is_none());
+    }
+
+    #[test]
+    fn rejects_non_public_addresses_and_local_names() {
+        for address in [
+            "0.0.0.0",
+            "10.0.0.5",
+            "100.64.0.1",
+            "127.0.0.1",
+            "169.254.10.1",
+            "192.168.1.1",
+            "198.18.0.1",
+            "255.255.255.255",
+            "::1",
+            "::ffff:127.0.0.1",
+            "fc00::1",
+            "fe80::1",
+        ] {
+            assert!(
+                non_public_ip(address.parse().unwrap()),
+                "{address} must not be reachable"
+            );
+        }
+        for address in ["1.1.1.1", "8.8.8.8", "2606:4700:4700::1111"] {
+            assert!(
+                !non_public_ip(address.parse().unwrap()),
+                "{address} is public"
+            );
+        }
+        for host in [
+            "localhost",
+            "app.localhost",
+            "printer.local",
+            "db.internal",
+            "nas.home.arpa",
+        ] {
+            assert!(local_hostname(host), "{host} is a local name");
+        }
+        assert!(!local_hostname("store.example"));
+    }
+
+    #[test]
+    fn only_local_deployments_may_reach_private_targets() {
+        let local = Url::parse("https://localhost:8443/").unwrap();
+        assert!(allows_private_targets(&local));
+        for origin in ["https://demo.rumahl.com/", "https://192.168.1.10/"] {
+            assert!(!allows_private_targets(&Url::parse(origin).unwrap()));
+        }
+    }
+
+    #[tokio::test]
+    async fn resolves_targets_only_when_they_are_public_or_explicitly_local() {
+        assert!(
+            resolve_public_target("127.0.0.1", 443, false)
+                .await
+                .is_none()
+        );
+        assert!(
+            resolve_public_target("localhost", 443, false)
+                .await
+                .is_none()
+        );
+        assert_eq!(
+            resolve_public_target("93.184.216.34", 443, false).await,
+            Some(SocketAddr::from(([93, 184, 216, 34], 443)))
+        );
+        assert_eq!(
+            resolve_public_target("127.0.0.1", 8787, true)
+                .await
+                .map(|address| address.port()),
+            Some(8787)
+        );
     }
 
     #[test]

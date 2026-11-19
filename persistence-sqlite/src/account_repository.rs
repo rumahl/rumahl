@@ -158,6 +158,55 @@ impl SqliteAccountStateRepository {
             .collect()
     }
 
+    /// Removes an account together with its credentials, sessions, role and
+    /// transport credentials. Personal files are intentionally preserved.
+    pub fn delete_account(
+        &self,
+        user_id: &UserId,
+    ) -> Result<bool, SqliteAccountStateRepositoryError> {
+        let mut connection = self
+            .connection
+            .lock()
+            .map_err(|_| SqliteAccountStateRepositoryError::LockPoisoned)?;
+        let transaction = connection
+            .transaction_with_behavior(TransactionBehavior::Immediate)
+            .map_err(Self::database_error)?;
+        let user_id = user_id.to_string();
+        transaction
+            .execute(
+                "DELETE FROM session_credential
+                 WHERE session_id IN (SELECT session_id FROM account_session WHERE user_id = ?1)",
+                params![&user_id],
+            )
+            .map_err(Self::database_error)?;
+        transaction
+            .execute(
+                "DELETE FROM account_session WHERE user_id = ?1",
+                params![&user_id],
+            )
+            .map_err(Self::database_error)?;
+        transaction
+            .execute(
+                "DELETE FROM password_credential WHERE user_id = ?1",
+                params![&user_id],
+            )
+            .map_err(Self::database_error)?;
+        transaction
+            .execute(
+                "DELETE FROM account_role WHERE user_id = ?1",
+                params![&user_id],
+            )
+            .map_err(Self::database_error)?;
+        let removed = transaction
+            .execute(
+                "DELETE FROM local_account WHERE user_id = ?1",
+                params![&user_id],
+            )
+            .map_err(Self::database_error)?;
+        transaction.commit().map_err(Self::database_error)?;
+        Ok(removed > 0)
+    }
+
     fn store_account(
         transaction: &Transaction<'_>,
         account: &LocalAccount,

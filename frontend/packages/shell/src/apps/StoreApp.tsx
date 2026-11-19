@@ -1,7 +1,9 @@
 import { useEffect, useId, useMemo, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { AppNavLayout, Button, Chip, GroupContainer, GroupRow, IconButton, RumahlInputGroup, RumahlModal, SidenavItem, SidenavSection, type MobileIslandNavItem } from "@rumahl/ui/components";
-import { ArrowIcon, ArrowLeftIcon, DesktopIcon, GridIcon, InfoIcon, RefreshIcon, SearchIcon, SettingsIcon, ShieldIcon, SlidersIcon, SparkIcon, StoreIcon, WindowStackIcon } from "../icons";
+import { LoadingStatus } from "../components/LoadingStatus";
+import { MobileNavBar } from "../components/MobileNavBar";
+import { ArrowIcon, ArrowLeftIcon, DesktopIcon, GridIcon, InfoIcon, RefreshIcon, SearchIcon, SettingsIcon, ShieldIcon, SparkIcon, StoreIcon, WindowStackIcon } from "../icons";
 import { useAppTopbarHost } from "../components/ProtectedWindow";
 import { useI18n } from "../i18n";
 import { useShell } from "../shell/ShellContext";
@@ -214,7 +216,7 @@ function StoreEditCard({ entry, app, installing, busy, lead = false, onDetails, 
         <AppArtwork id={entry.id} title={entry.title} iconUrl={entry.iconUrl} />
         <span className="store-edit-card__copy">
           <button type="button" className="store-edit-card__title" onClick={() => onDetails(entry)}>{entry.title}</button>
-          <small>{publisherLabel(entry)}</small>
+          <small>{entry.sourceName}</small>
         </span>
         <StoreAction entry={entry} app={app} installing={installing} busy={busy} onInstall={onInstall} onOpen={onOpen} compact />
       </div>
@@ -237,7 +239,7 @@ function StoreQuickAction({ entry, app, installing, busy, onInstall, onOpen }: {
   onOpen: (app: InstalledApp) => void;
 }) {
   const { t } = useI18n();
-  const label = app ? t("store.open") : installing ? t("store.installing") : t("store.get");
+  const label = app ? t("store.open") : installing ? t("store.installing") : t("store.install");
   return <button type="button" className="store-quick-action" disabled={!app && busy} aria-busy={installing || undefined}
     onClick={() => app ? onOpen(app) : onInstall(entry)}>{label}</button>;
 }
@@ -693,7 +695,7 @@ export function scrollToTop(element: HTMLElement | null | undefined, top = 0): v
 
 export function StoreApp() {
   const { t, locale } = useI18n();
-  const { live, open, state } = useShell();
+  const { live, open, state, mode } = useShell();
   const { tuning } = useThemeTuning();
   const windowLocation = useWindowLocation();
   const topbarHost = useAppTopbarHost();
@@ -850,6 +852,7 @@ export function StoreApp() {
   }, [enabledSources, prioritizedEntries]);
   const coverIds = useMemo(() => new Set(coverEntries.map(entryKey)), [coverEntries]);
   const spotlightEntries = useMemo(() => prioritizedEntries.filter((entry) => !coverIds.has(entryKey(entry))).slice(0, 3), [coverIds, prioritizedEntries]);
+  const spotlightIds = useMemo(() => new Set(spotlightEntries.map(entryKey)), [spotlightEntries]);
   const coverKey = coverEntries.map(entryKey).join("|");
   useEffect(() => setCoverIndex(0), [coverKey]);
   const chartEntries = useMemo(() => {
@@ -862,7 +865,7 @@ export function StoreApp() {
   const chartIds = useMemo(() => new Set(chartEntries.map(entryKey)), [chartEntries]);
   const editEntries = useMemo(() => {
     const picks: StoreAppEntry[] = [];
-    const used = new Set(coverIds);
+    const used = new Set([...coverIds, ...spotlightIds]);
     const represented = new Set<string>(coverEntries.flatMap((entry) => entry.categories));
     const add = (entry: StoreAppEntry) => {
       if (picks.length >= 3 || used.has(entryKey(entry))) return false;
@@ -887,7 +890,7 @@ export function StoreApp() {
       add(entry);
     }
     return picks;
-  }, [chartIds, coverEntries, coverIds, prioritizedEntries]);
+  }, [chartIds, coverEntries, coverIds, prioritizedEntries, spotlightIds]);
   const editIds = useMemo(() => new Set(editEntries.map(entryKey)), [editEntries]);
   const registryEntries = useMemo(() => {
     const candidates = prioritizedEntries
@@ -959,9 +962,7 @@ export function StoreApp() {
   const mobileIslandItems: MobileIslandNavItem[] = [
     { id: "discover", label: t("store.discover"), icon: <SparkIcon aria-hidden="true" /> },
     { id: "all", label: t("store.allApps"), icon: <GridIcon aria-hidden="true" /> },
-    { id: "categories", label: t("store.categories"), icon: <SlidersIcon aria-hidden="true" /> },
     { id: "library", label: t("store.myApps"), icon: <WindowStackIcon aria-hidden="true" /> },
-    { id: "sources", label: t("store.sources"), icon: <StoreIcon aria-hidden="true" /> },
     { id: "search", label: t("store.searchTab"), icon: <SearchIcon aria-hidden="true" /> }
   ];
   const navigateFromIsland = (id: string) => {
@@ -1055,7 +1056,7 @@ export function StoreApp() {
   const headerKicker = searching ? query.trim() ? t("store.results") : t("store.searchTab") : view === "categories" ? t("store.browse") : view === "sources" ? t("store.catalog") : selected ? t("store.catalog") : query.trim() ? t("store.results") : view === "library" ? t("store.library") : sourceFilter !== "all" ? t("store.source") : categoryFilter ? t("store.category") : view === "all" ? t("store.catalog") : t("store.today");
   const headerTitle = searching ? query.trim() ? t("store.resultsFor", { query: query.trim() }) : t("store.search") : view === "categories" ? t("store.categories") : view === "sources" ? t("store.sources") : selected ? selected.sourceName : query.trim() ? t("store.resultsFor", { query: query.trim() }) : view === "library" ? t("store.myApps") : sourceFilter !== "all" ? sourceName : categoryFilter ?? (view === "all" ? t("store.allApps") : t("store.discover"));
   const headerHelp = searching ? query.trim() ? t("store.appCount", { count: entries.length }) : t("store.searchHelp") : view === "categories" ? t("store.categoriesHelp") : view === "sources" ? t("store.sourcesHelp") : selected ? selectedSourceHost ?? selected.sourceName : query.trim() ? t("store.appCount", { count: entries.length }) : view === "library" ? t("store.libraryHelp") : sourceFilter !== "all" ? t("store.appCount", { count: sourceEntries.length }) : categoryFilter ? t("store.appCount", { count: entries.length }) : view === "all" ? t("store.allAppsHelp") : t("store.headlineHelp");
-  const headerAside = searching ? loading ? t("store.loading") : query.trim() ? "" : t("store.appCount", { count: allEntries.length }) : view === "sources" || view === "categories" ? "" : loading ? t("store.loading") : view === "library" ? t("store.appCount", { count: libraryEntries.length }) : query.trim() || sourceFilter !== "all" || categoryFilter ? "" : view === "all" ? t("store.appCount", { count: entries.length }) : today;
+  const headerAside = searching ? loading ? <LoadingStatus className="loading-status--inline" label={t("store.loading")} /> : query.trim() ? "" : t("store.appCount", { count: allEntries.length }) : view === "sources" || view === "categories" ? "" : loading ? <LoadingStatus className="loading-status--inline" label={t("store.loading")} /> : view === "library" ? t("store.appCount", { count: libraryEntries.length }) : query.trim() || sourceFilter !== "all" || categoryFilter ? "" : view === "all" ? t("store.appCount", { count: entries.length }) : today;
 
   const searchLabel = view === "library" ? t("store.searchInstalled") : sourceFilter !== "all" ? t("store.searchInSource", { source: sourceName }) : t("store.search");
   const topbar = <div className="store-topbar">
@@ -1074,6 +1075,15 @@ export function StoreApp() {
   return <>
     {topbarHost ? createPortal(topbar, topbarHost) : null}
     <main className="store-app" data-background-motion={tuning.wallpaperMotion === false ? "false" : "true"}>
+      {mode === "mobile" ? <MobileNavBar
+        title={t("store.title")}
+        back={selected || developer
+          ? <button type="button" className="mobile-nav-bar__back" onClick={selected ? closeDetails : closeDeveloper}>
+              <ArrowLeftIcon aria-hidden="true" /><span>{selected ? returnLabel : developerBackLabel}</span>
+            </button>
+          : undefined}
+        actions={<IconButton label={t("store.refresh")} title={t("store.refresh")} size="sm" variant="ghost" loading={loading} onClick={() => setReload((value) => value + 1)}><RefreshIcon /></IconButton>}
+      /> : null}
       {fullscreen || !topbarHost ? <div className="store-inline-tools">
         <div className="store-inline-tools__search"><RumahlInputGroup prefix={<SearchIcon aria-hidden="true" />} type="search" value={query} onChange={(event) => updateQuery(event.target.value)} placeholder={searchLabel} aria-label={searchLabel} /></div>
         <IconButton label={t("store.refresh")} title={t("store.refresh")} size="sm" variant="ghost" loading={loading} onClick={() => setReload((value) => value + 1)}><RefreshIcon /></IconButton>
@@ -1125,7 +1135,10 @@ export function StoreApp() {
                 <h1>{headerTitle}</h1>
                 <p>{headerHelp}</p>
               </div>
-              <div className="store-page-head__aside"><span>{headerAside}</span>{home && !loading ? <small>{t("store.appCount", { count: allEntries.length })} · {t("store.sourceCount", { count: enabledSources.length })}</small> : null}</div>
+              <div className="store-page-head__aside">
+                <span>{headerAside}</span>
+                {home && !loading ? <small>{t("store.appCount", { count: allEntries.length })} · {t("store.sourceCount", { count: enabledSources.length })}</small> : null}
+              </div>
             </header>
 
             {!home && view === "all" ? <div className="store-browse-context">
@@ -1153,7 +1166,7 @@ export function StoreApp() {
             </div> : view === "sources" ? <>
               <section className="store-panel"><h2>{t("store.howStoreWorks")}</h2><p>{t("store.sourceWorkflow")}</p></section>
               <div className="store-source-overview">{sources.sources.map((source) => <section className="store-panel" key={source.id}>
-                <div className="store-panel__head"><h3>{source.name}</h3><span className="store-tag">{!source.enabled ? t("store.sourceDisabled") : states[source.id]?.status === "error" ? t("store.sourceFailed") : states[source.id]?.status === "ready" ? t("store.appCount", { count: states[source.id]?.apps.length ?? 0 }) : t("store.loading")}</span></div>
+                <div className="store-panel__head"><h3>{source.name}</h3><span className="store-tag">{!source.enabled ? t("store.sourceDisabled") : states[source.id]?.status === "error" ? t("store.sourceFailed") : states[source.id]?.status === "ready" ? t("store.appCount", { count: states[source.id]?.apps.length ?? 0 }) : <LoadingStatus className="loading-status--inline" label={t("store.loading")} />}</span></div>
                 <p className="store-source-url">{source.url}</p>
                 <div className="store-source-overview__actions"><Button size="sm" disabled={!source.enabled} onClick={() => selectSource(source.id)}>{t("store.browseSource")}</Button><Button variant="ghost" size="sm" onClick={() => open("/settings/store")}>{t("store.manageSources")}</Button></div>
               </section>)}</div>
@@ -1166,11 +1179,11 @@ export function StoreApp() {
                 {(editEntries.length || chartEntries.length) ? <section className="store-section store-edit-section">
                   <div className={`store-edit-layout${editEntries.length && chartEntries.length ? "" : " store-edit-layout--solo"}`}>
                     {editEntries.length ? <div className="store-edit-main">
-                      <StoreSectionHead kicker={t("store.curated")} title={t("store.theEdit")} action={<Button variant="ghost" size="sm" onClick={browseAll} rightIcon={<ArrowIcon />}>{t("store.viewAll")}</Button>} />
+                      <StoreSectionHead kicker={t("store.curated")} title={t("store.theEdit")} />
                       <div className="store-edit-grid">{editEntries.map((entry, index) => <StoreEditCard key={entryKey(entry)} lead={index === 0} entry={entry} app={installed(entry)} installing={installing === entryKey(entry)} busy={installing !== null || installFeature.state !== "ready"} onDetails={openDetails} onInstall={install} onOpen={openInstalled} />)}</div>
                     </div> : null}
                     {chartEntries.length ? <aside className="store-chart-column">
-                      <StoreSectionHead kicker={t("store.popular")} title={t("store.topCharts")} action={<Button variant="ghost" size="sm" onClick={browseAll} rightIcon={<ArrowIcon />}>{t("store.viewAll")}</Button>} />
+                      <StoreSectionHead kicker={t("store.popular")} title={t("store.topCharts")} />
                       <div className="store-chart-panel"><div className="store-chart-list">{chartEntries.map((entry, index) => <StoreChartRow key={entryKey(entry)} entry={entry} rank={index + 1} app={installed(entry)} installing={installing === entryKey(entry)} busy={installing !== null || installFeature.state !== "ready"} onDetails={openDetails} onInstall={install} onOpen={openInstalled} />)}</div></div>
                       <button type="button" className="store-chart-source" onClick={() => open("/settings/store")}>
                         <span className="store-chart-source__icon"><ShieldIcon aria-hidden="true" /></span>
@@ -1187,7 +1200,7 @@ export function StoreApp() {
                   </div>
                 </section> : null}
 
-                {categoryEntries.length >= 2 ? <StoreRailSection kicker={t("store.browse")} title={t("store.collections")} action={<Button variant="ghost" size="sm" onClick={() => showOverview("categories")} rightIcon={<ArrowIcon />}>{t("store.allCategories")}</Button>}>
+                {categoryEntries.length >= 2 ? <StoreRailSection kicker={t("store.browse")} title={t("store.collections")} action={<Button variant="ghost" size="sm" onClick={() => showOverview("categories")} rightIcon={<ArrowIcon />}>{t("store.viewAll")}</Button>}>
                   {categoryEntries.slice(0, 12).map((category, index) => <StoreCategoryCard key={category.category} category={category.category} apps={category.apps} lead={category.lead} index={index} onSelect={selectCategory} />)}
                 </StoreRailSection> : null}
 
@@ -1196,7 +1209,7 @@ export function StoreApp() {
                 </StoreRailSection>)}
 
                 {registryEntries.length ? <section className="store-section">
-                  <StoreSectionHead kicker={t("store.registry")} title={t("store.fromRegistry")} action={<Button variant="ghost" size="sm" onClick={browseAll} rightIcon={<ArrowIcon />}>{t("store.viewAll")}</Button>} />
+                  <StoreSectionHead kicker={t("store.registry")} title={t("store.fromRegistry")} />
                   <div className="store-registry-panel"><div className="store-registry-grid">{registryEntries.map((entry) => <StoreRegistryRow key={entryKey(entry)} entry={entry} onDetails={openDetails} />)}</div></div>
                 </section> : null}
 

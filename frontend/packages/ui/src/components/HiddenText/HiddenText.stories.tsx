@@ -24,7 +24,7 @@ type Story = StoryObj<typeof meta>;
 /** The hidden text is not visible; it is announced by screen readers. */
 export const Default: Story = {
   render: (args) => (
-    <p style={{ fontSize: 14 }}>
+    <p style={{ fontSize: 14}}>
       Read more <HiddenText>{args.children}</HiddenText>
     </p>
   )

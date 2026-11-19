@@ -23,7 +23,7 @@
   color: var(--rumahl-ui-color-text-primary);
   line-height: 1.5;
 }
-.rumahl-text[data-size="xs"] { font-size: 11px; }
+.rumahl-text[data-size="xs"] { font-size: 12px; }
 .rumahl-text[data-size="sm"] { font-size: 12px; }
 .rumahl-text[data-size="md"] { font-size: 14px; }
 .rumahl-text[data-size="lg"] { font-size: 16px; }

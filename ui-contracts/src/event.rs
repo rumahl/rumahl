@@ -29,6 +29,11 @@ pub enum ShellEvent {
         event_version: u16,
         state: SystemState,
     },
+    /// The OS-owned active-warning set changed. Clients reload the warning API.
+    WarningsChanged {
+        #[serde(rename = "eventVersion")]
+        event_version: u16,
+    },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -62,6 +67,12 @@ impl ShellEvent {
         }
     }
 
+    pub fn warnings_changed() -> Self {
+        Self::WarningsChanged {
+            event_version: SHELL_EVENT_VERSION,
+        }
+    }
+
     pub fn parse(bytes: &[u8]) -> Result<Self, ShellEventError> {
         if bytes.len() > MAX_SHELL_EVENT_BYTES {
             return Err(ShellEventError::TooLarge);
@@ -78,6 +89,9 @@ impl ShellEvent {
             Self::SystemLifecycle { event_version, .. }
                 if *event_version == SHELL_EVENT_VERSION =>
             {
+                Ok(event)
+            }
+            Self::WarningsChanged { event_version } if *event_version == SHELL_EVENT_VERSION => {
                 Ok(event)
             }
             _ => Err(ShellEventError::Invalid),
@@ -104,6 +118,8 @@ mod tests {
     #[test]
     fn roundtrips_bounded_revision_signal() {
         let event = ShellEvent::snapshot_changed("revision-42").unwrap();
+        assert_eq!(ShellEvent::parse(event.to_json().as_bytes()), Ok(event));
+        let event = ShellEvent::warnings_changed();
         assert_eq!(ShellEvent::parse(event.to_json().as_bytes()), Ok(event));
     }
 

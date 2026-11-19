@@ -1,0 +1,171 @@
+/*
+ * rumahl UI Core: the open Ground foundation must not inherit any Iris geometry.
+ * Loaded after the shared UI base. The universal reset keeps the long tail
+ * square; the family rules below re-expose the documented recipe variables so a
+ * Ground theme can set `shape.radius.*` or an individual `--*-radius` without
+ * writing `!important` itself. The global `--ground-radius` hook remains the
+ * neutral fallback.
+ */
+[data-theme-base="ground"] {
+  --dock-radius: max(
+    var(--rumahl-ui-shape-radius-dock, 0px),
+    var(--ground-radius, 0px)
+  );
+  --dock-item-radius: max(
+    var(--rumahl-ui-shape-radius-icon, 0px),
+    var(--ground-radius, 0px)
+  );
+  --mobile-dock-radius: max(
+    var(--rumahl-ui-shape-radius-dock, 0px),
+    var(--ground-radius, 0px)
+  );
+  --mobile-dock-item-radius: max(
+    var(--rumahl-ui-shape-radius-icon, 0px),
+    var(--ground-radius, 0px)
+  );
+
+  /* Reference chrome bridges. Iris's reference stylesheet defines these as
+     fixed dark-glass values; Ground maps them to semantic tokens so no fixed
+     navy/purple material survives a theme switch. */
+  --ink: var(--rumahl-ui-color-text-primary, #000000);
+  --muted: var(--rumahl-ui-color-text-muted, #5f6368);
+  --accent-strong: var(--rumahl-ui-color-accent-strong, #4b8bf0);
+  --window: var(--rumahl-ui-color-window-background, #ffffff);
+  --side: var(--rumahl-ui-color-panel-background, #ffffff);
+  --row: var(--rumahl-ui-color-surface, #f2f2f2);
+  --row-hover: var(--rumahl-ui-color-surface-strong, #ffffff);
+  --stroke: var(--rumahl-ui-color-outline, #767676);
+  --dock: var(--rumahl-ui-color-panel-background, #ffffff);
+  --widget: var(--rumahl-ui-color-panel-background, #ffffff);
+  --shadow: var(--rumahl-ui-color-shadow, rgba(0, 0, 0, 0.28));
+  --menu: var(--rumahl-ui-color-panel-background, #ffffff);
+  --button: var(--rumahl-ui-color-surface, #f2f2f2);
+  --divider: var(--rumahl-ui-color-outline, #767676);
+  --wall-dim: transparent;
+}
+
+/* The ported desktop chrome keeps its own fixed navy palette. Map it onto the
+   semantic roles too; the extra attribute beats the `.shell[data-scheme]`
+   blocks that would otherwise restore navy ink inside a Ground theme. */
+.shell[data-theme-base="ground"][data-theme-base] {
+  --nd-ink: var(--rumahl-ui-color-text-primary, #000000);
+  --nd-muted: var(--rumahl-ui-color-text-muted, #5f6368);
+  --nd-window: var(--rumahl-ui-color-window-background, #ffffff);
+  --nd-side: var(--rumahl-ui-color-panel-background, #ffffff);
+  --nd-row: var(--rumahl-ui-color-surface, #f2f2f2);
+  --nd-row-hover: var(--rumahl-ui-color-surface-strong, #ffffff);
+  --nd-stroke: var(--rumahl-ui-color-outline, #767676);
+  --nd-dock: var(--rumahl-ui-color-panel-background, #ffffff);
+  --nd-widget: var(--rumahl-ui-color-panel-background, #ffffff);
+  --nd-menu: var(--rumahl-ui-color-panel-background, #ffffff);
+  --nd-button: var(--rumahl-ui-color-surface, #f2f2f2);
+  --nd-divider: var(--rumahl-ui-color-outline, #767676);
+  --nd-shadow: var(--rumahl-ui-color-shadow, rgba(0, 0, 0, 0.28));
+}
+@layer reference {
+[data-theme-base="ground"] *,
+[data-theme-base="ground"] *::before,
+[data-theme-base="ground"] *::after {
+  border-radius: var(--ground-radius, 0px) !important;
+}
+
+/* Shape families: opt back into the theme-facing recipe variables. */
+[data-theme-base="ground"] .shell-window {
+  border-radius: var(--window-radius, var(--ground-radius, 0px)) !important;
+}
+[data-theme-base="ground"] .shell-window__content {
+  border-radius: 0 0 var(--window-content-radius, var(--ground-radius, 0px))
+    var(--window-content-radius, var(--ground-radius, 0px)) !important;
+}
+[data-theme-base="ground"] .window-control {
+  border-radius: var(--window-control-radius, var(--ground-radius, 0px)) !important;
+}
+[data-theme-base="ground"] :is(.topbar__island, .menubar__island) {
+  border-radius: var(--topbar-island-radius, var(--menubar-island-radius, var(--ground-radius, 0px))) !important;
+}
+[data-theme-base="ground"] .os-dock {
+  border-radius: var(--dock-radius, var(--ground-radius, 0px)) !important;
+}
+[data-theme-base="ground"] .os-dock :is(.dock-item, .dock-icon, button, a) {
+  border-radius: var(--dock-item-radius, var(--ground-radius, 0px)) !important;
+}
+/* `[class]` keeps this at the same specificity as the reference solid-surface
+   rule, which lists a two-class member inside :is(). Ground's material still
+   wins because this layer is appended after the reference stylesheet. */
+.shell[data-theme-base="ground"] :is(.desktop-widget[class], .widget[class]) {
+  background: var(--widget-background, var(--rumahl-ui-color-panel-background, #ffffff)) !important;
+  border: var(--widget-border, 1px solid var(--rumahl-ui-color-outline, #767676)) !important;
+  color: var(--widget-ink, var(--rumahl-ui-color-text-primary, #000000)) !important;
+  box-shadow: var(--widget-shadow, none) !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  border-radius: var(--widget-radius, var(--ground-radius, 0px)) !important;
+  /* The widget surface is solid on Ground, so the wallpaper-derived adaptive
+     ink would be wrong. The recipe lets a dark Ground widget flip the ink. */
+  --adaptive-ink: var(--widget-ink, var(--rumahl-ui-color-text-primary, #000000)) !important;
+  --adaptive-muted: var(--widget-muted, var(--rumahl-ui-color-text-muted, #5f6368)) !important;
+}
+[data-theme-base="ground"] :is(.desktop-widget, .widget) :is(.rumahl-glass-frame, .rumahl-glass-surface) {
+  display: none !important;
+}
+[data-theme-base="ground"] :is(.settings-group, .rumahl-group) {
+  border-radius: var(--group-radius, var(--ground-radius, 0px)) !important;
+}
+[data-theme-base="ground"] .toolbar {
+  border-radius: var(--toolbar-radius, var(--ground-radius, 0px)) !important;
+}
+[data-theme-base="ground"] .command-palette {
+  border-radius: var(--command-palette-radius, var(--ground-radius, 0px)) !important;
+}
+
+/* Dropdowns and context menus: plain, token-coloured surfaces. */
+[data-theme-base="ground"] :is(.desktop-menu, .menubar__dropdown, .topbar__dropdown) {
+  /* Host window material is authoritative; a Ground theme replaces these
+     recipe variables rather than re-declaring the properties. */
+  background: var(--menu-background, var(--rumahl-ui-color-panel-background)) !important;
+  border: var(--menu-border, 1px solid var(--rumahl-ui-color-outline)) !important;
+  color: var(--rumahl-ui-color-text-primary);
+  box-shadow: var(--menu-shadow, none) !important;
+  backdrop-filter: var(--menu-backdrop, none) !important;
+  -webkit-backdrop-filter: var(--menu-backdrop, none) !important;
+  border-radius: var(--menu-radius, var(--ground-radius, 0px)) !important;
+}
+[data-theme-base="ground"] :is(.desktop-menu, .menubar__dropdown) :is(button, [role="menuitem"], [role="menuitemradio"]) {
+  border-radius: var(--menu-item-radius, var(--ground-radius, 0px)) !important;
+  box-shadow: none;
+}
+[data-theme-base="ground"] :is(.desktop-menu, .menubar__dropdown) :is(button, [role="menuitem"]):hover:not(:disabled) {
+  background: var(--menu-item-hover, color-mix(in srgb, var(--rumahl-ui-color-text-primary) 8%, transparent));
+}
+
+/* The wallpaper sampler writes `--adaptive-ink` inline on the label. A Ground
+   theme that puts an opaque surface behind the label needs an ink for that
+   surface instead, so it declares `--label-ink` and the sampler still owns the
+   fallback. */
+[data-theme-base="ground"] .desktop-icon__label[data-adaptive-text] {
+  color: var(--label-ink, var(--adaptive-ink, var(--rumahl-ui-color-on-wallpaper, #ffffff))) !important;
+}
+
+/* The dock is reference glass: the solid material pins the host to
+   `surface.strong` with an important reference declaration, and the glass
+   surface plus its sheen paint the visible material. Route all of it through
+   the dock recipe so an opaque theme owns the whole surface. The fallbacks are
+   the current Ground look, so a theme only has to set what it changes. */
+/* `[class]` reaches the same specificity as the reference solid-surface rule,
+   which lists a two-class member inside :is(); Ground wins by layer order. */
+.shell[data-theme-base="ground"] .dock.rumahl-glass-host[class] {
+  background: var(--dock-background, transparent) !important;
+  border: var(--dock-border, 0) !important;
+  box-shadow: var(--dock-shadow, 0 25px 56px rgba(5, 12, 36, 0.3)) !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+.shell[data-theme-base="ground"] .dock.rumahl-glass-host[class]::after {
+  content: var(--dock-sheen, "");
+}
+.shell[data-theme-base="ground"] .dock[class] .rumahl-glass-surface {
+  background: var(--dock-surface, var(--rumahl-ui-color-surface-strong, #ffffff)) !important;
+  border: var(--dock-surface-border, 1px solid var(--rumahl-ui-color-outline, #767676)) !important;
+  box-shadow: var(--dock-surface-shadow, inset 0 1px 0 rgba(255, 255, 255, 0.1)) !important;
+}
+}

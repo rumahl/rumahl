@@ -12,6 +12,7 @@ export interface RumahlModalProps {
   actions?: ReactNode;
   description?: string;
   kind?: "window" | "alert";
+  className?: string;
 }
 
 /** Native top-layer window: background inertness, Escape and focus restoration. */
@@ -25,6 +26,7 @@ export function RumahlModal({
   actions,
   description,
   kind = "window",
+  className,
 }: RumahlModalProps) {
   const ref = useRef<HTMLDialogElement>(null);
   const id = useId();
@@ -68,7 +70,7 @@ export function RumahlModal({
   return (
     <dialog
       ref={ref}
-      className={`rumahl-modal rumahl-modal--${kind}`}
+      className={`rumahl-modal rumahl-modal--${kind}${className ? ` ${className}` : ""}`}
       role={kind === "alert" ? "alertdialog" : "dialog"}
       aria-modal="true"
       aria-labelledby={`${id}-title`}

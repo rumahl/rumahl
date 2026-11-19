@@ -125,12 +125,14 @@
   let transition;
   async function replaceView(current, next, commit = () => {}) {
     clearPasswords();
+    const incomingAvatar = next.querySelector(".selected-avatar");
+    if (incomingAvatar) incomingAvatar.style.viewTransitionName = "login-avatar";
     const update = () => {
       commit();
       current.replaceWith(document.importNode(next, true));
       document.dispatchEvent(new Event("login:view"));
     };
-    if (!document.startViewTransition || window.matchMedia?.("(prefers-reduced-motion: reduce)").matches) { update(); return; }
+    if (!document.startViewTransition || window.matchMedia?.("(prefers-reduced-motion: reduce)").matches) { update(); clearAvatarNames(); return; }
     next.dataset.transitioned = "true";
     transition?.skipTransition();
     document.documentElement.dataset.loginTransition = "true";
@@ -138,12 +140,16 @@
     transition = active;
     active.ready.catch(() => {});
     active.finished.catch(() => {}).finally(() => {
+      clearAvatarNames();
       if (transition === active) delete document.documentElement.dataset.loginTransition;
     });
     await active.updateCallbackDone;
   }
   function clearPasswords() {
     document.querySelectorAll('.login-profiles input[type="password"]').forEach(input => { input.value = ""; });
+  }
+  function clearAvatarNames() {
+    document.querySelectorAll(".rumahl-avatar").forEach(avatar => avatar.style.removeProperty("view-transition-name"));
   }
   async function navigate(url, push) {
     pending?.abort();
@@ -186,7 +192,12 @@
     if (url.origin !== location.origin || url.pathname !== "/login") return;
     event.preventDefault();
     if (submitting) return;
-    if (link.classList.contains("account")) lastProfile = link.href;
+    clearAvatarNames();
+    if (link.classList.contains("account")) {
+      lastProfile = link.href;
+      const avatar = link.querySelector(".rumahl-avatar");
+      if (avatar) avatar.style.viewTransitionName = "login-avatar";
+    }
     void navigate(url, true);
   });
   window.addEventListener("popstate", () => {

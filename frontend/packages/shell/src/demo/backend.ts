@@ -52,6 +52,13 @@ function contentBytes(file: DemoFile): Uint8Array<ArrayBuffer> | null {
   }
 }
 
+function base64Of(bytes: Uint8Array): string {
+  let binary = "";
+  const chunk = 0x8000;
+  for (let index = 0; index < bytes.length; index += chunk) binary += String.fromCharCode(...bytes.subarray(index, index + chunk));
+  return btoa(binary);
+}
+
 function contentType(name: string): string {
   const extension = name.split(".").pop()?.toLowerCase() ?? "";
   return ({
@@ -104,6 +111,7 @@ export class DemoBackend {
     if (path === "/api/v1/shell/workspace") return this.workspace(init, method);
     if (path === "/api/v1/files") return this.files(url, init, method);
     if (path === "/api/v1/files/content" && method === "GET") return this.fileContent(url);
+    if (path === "/api/v1/files/content" && method === "PUT") return this.writeContent(url, init);
     if (path === "/api/v1/shell/fs" && method === "GET") return this.hostFiles(url);
     if (path === "/api/v1/shell/fs/content" && method === "GET") return this.hostContent(url);
     if (path === "/api/v1/shell/capabilities/invoke" && method === "POST") {
@@ -343,6 +351,30 @@ export class DemoBackend {
   private removeFile(id: string): void {
     for (const child of this.state.files.filter((file) => file.parent === id)) this.removeFile(child.id);
     this.state.files = this.state.files.filter((file) => file.id !== id);
+  }
+
+  private async writeContent(url: URL, init: RequestInit | undefined): Promise<Response> {
+    const file = this.state.files.find((entry) => entry.id === url.searchParams.get("id") && !entry.directory);
+    if (!file) return json({ error: "not found" }, 404);
+    if (!init?.body) return json({ error: "invalid" }, 400);
+    let bytes: Uint8Array;
+    try {
+      bytes = new Uint8Array(await new Response(init.body as BodyInit).arrayBuffer());
+    } catch {
+      return json({ error: "invalid" }, 400);
+    }
+    if (bytes.byteLength > 16 * 1024 * 1024) return json({ error: "limit" }, 413);
+    let text: string | null;
+    try {
+      text = new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+    } catch {
+      text = null;
+    }
+    file.content = text !== null && !text.includes("\u0000") ? { kind: "text", value: text } : { kind: "base64", value: base64Of(bytes) };
+    file.size = bytes.byteLength;
+    file.contentType = contentType(file.name);
+    saveDemoState(this.state);
+    return noContent();
   }
 
   private fileContent(url: URL): Response {

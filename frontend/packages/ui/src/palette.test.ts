@@ -13,6 +13,15 @@ describe("palette tokens", () => {
     expect(tokens["color.canvas.background"]).toBe("#c9c9ce");
   });
 
+  test("keeps semantic feedback pairs readable in both modes", () => {
+    for (const mode of [undefined, "dark"] as const) {
+      const tokens = paletteTokens("#28694c", mode ? { mode } : {});
+      for (const role of ["success", "warning", "danger", "info"] as const) {
+        expect(contrastRatio(tokens[`color.${role}`]!, tokens[`color.${role}.surface`]!).aa).toBe(true);
+      }
+    }
+  });
+
   test("derives distinct, readable dark materials from the colour engine", () => {
     const green = paletteTokens("#28694c", { mode: "dark" });
     const blue = paletteTokens("#0078ff", { mode: "dark" });

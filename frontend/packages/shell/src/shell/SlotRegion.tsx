@@ -38,7 +38,7 @@ export function SlotRegion({ name }: { name: SlotName }) {
         running: state.windows.some(item => windowBelongsToLink(item, app.path)),
         focused: state.windows.some(item => windowBelongsToLink(item, app.path) && !item.minimized && item.id === state.focusedWindowId)
       })),
-      windows: state.windows.filter(item => name !== "dock" || theme.id !== "com.rumahl.classic" || !apps.some(app => windowBelongsToLink(item, app.path))).map((item) => ({ id: item.id, title: item.title, location: item.location ?? "/", minimized: item.minimized, active: !item.minimized && active === item.id })),
+      windows: state.windows.filter(item => name !== "dock" || !apps.some(app => windowBelongsToLink(item, app.path))).map((item) => ({ id: item.id, title: item.title, location: item.location ?? "/", minimized: item.minimized, active: !item.minimized && active === item.id })),
       time: now ? new Intl.DateTimeFormat(locale, { hour: "2-digit", minute: "2-digit" }).format(now) : ""
     },
     actions: {
@@ -66,7 +66,7 @@ export function SlotRegion({ name }: { name: SlotName }) {
       clock: (props: SlotComponentProps) => <time className={props.className as string | undefined} dateTime={now ? now.toISOString() : undefined}>{bindings.data.time as string}</time>,
       label: (props: SlotComponentProps) => <span className={props.className as string | undefined}>{t("nav.main")}</span>,
       "command-button": (props: SlotComponentProps) => <button type="button" className={props.className as string | undefined} aria-label={t("search.system")} onClick={() => dispatch({ type: "toggle-command-palette" })}>{props.children ?? "⌘K"}</button>,
-      "user-badge": (props: SlotComponentProps) => <button type="button" className={props.className as string | undefined} aria-label={t("profile.open")} onClick={() => open("/settings")}>{bindings.data.userInitial as string}</button>,
+      "user-badge": (props: SlotComponentProps) => <button type="button" className={props.className as string | undefined} aria-label={t("profile.open")} onClick={() => open("/settings/account")}>{bindings.data.userInitial as string}</button>,
       icon: (props: SlotComponentProps) => {
         const icons: Record<string, (p: { className?: string | undefined }) => ReactNode> = {
           home: HomeIcon, grid: GridIcon, pulse: PulseIcon, settings: SettingsIcon, search: SearchIcon,

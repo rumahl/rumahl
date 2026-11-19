@@ -92,7 +92,7 @@ export const CustomTopbar: Story = {
                     color: "inherit",
                     font: "inherit",
                     fontSize: 12,
-                    padding: "5px 8px",
+                    padding: "5px 12px",
                     borderRadius: 6,
                     cursor: "pointer"
                   }}
@@ -102,7 +102,7 @@ export const CustomTopbar: Story = {
               ))}
             </nav>
             <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 6 }}>
-              <span style={{ fontSize: 11, color: "var(--rumahl-ui-color-text-muted)" }}>Search</span>
+              <span style={{ fontSize: 12, color: "var(--rumahl-ui-color-text-muted)" }}>Search</span>
               {controls}
             </div>
           </>

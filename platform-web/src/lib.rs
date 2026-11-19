@@ -1,6 +1,9 @@
 //! Local HTTP transport for the shell. TLS termination and socket ownership are
 //! deployment concerns; this crate never binds a public TCP listener.
 
+mod admin;
+pub use admin::{AdminAuditEntry, AdminError, AdminSession, AdminUser, Administration};
+
 mod backend;
 mod events;
 mod oidc;
@@ -59,4 +62,5 @@ pub use host_files::{HostArea, HostEntry, HostError, HostFiles};
 mod os_mode;
 
 mod files;
+mod weather_warnings;
 mod workspace;

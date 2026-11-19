@@ -108,11 +108,46 @@ pub enum SystemProtectionStatus {
     Attention,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ShellUserRole {
+    User,
+    Manager,
+    Administrator,
+    Owner,
+}
+
+impl ShellUserRole {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::User => "user",
+            Self::Manager => "manager",
+            Self::Administrator => "administrator",
+            Self::Owner => "owner",
+        }
+    }
+
+    pub fn parse(value: &str) -> Option<Self> {
+        match value {
+            "user" => Some(Self::User),
+            "manager" => Some(Self::Manager),
+            "administrator" => Some(Self::Administrator),
+            "owner" => Some(Self::Owner),
+            _ => None,
+        }
+    }
+
+    pub fn is_administrator(self) -> bool {
+        matches!(self, Self::Administrator | Self::Owner)
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ShellUser {
     display_name: String,
     locale: String,
+    role: ShellUserRole,
 }
 
 /// An authorized installed app the shell may display without a client fetch.
@@ -158,6 +193,55 @@ pub enum ExtensionSize {
     Large,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SurfaceSlot {
+    Desktop,
+    Launcher,
+    Both,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SurfaceKind {
+    Companion,
+    Badge,
+    Panel,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum SurfacePlacement {
+    TopLeft,
+    TopRight,
+    BottomLeft,
+    BottomRight,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SurfaceTone {
+    Accent,
+    Neutral,
+    Warm,
+    Cool,
+    Rose,
+    Mint,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SurfaceIcon {
+    Dot,
+    Star,
+    Bolt,
+    Leaf,
+    Moon,
+    Heart,
+    Orbit,
+    Pulse,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum ExtensionContribution {
@@ -178,6 +262,19 @@ pub enum ExtensionContribution {
         entrypoint: String,
         #[serde(skip_serializing_if = "Option::is_none")]
         size: Option<ExtensionSize>,
+    },
+    Surface {
+        id: String,
+        app: String,
+        title: String,
+        slot: SurfaceSlot,
+        surface: SurfaceKind,
+        size: ExtensionSize,
+        placement: SurfacePlacement,
+        tone: SurfaceTone,
+        icon: SurfaceIcon,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        entrypoint: Option<String>,
     },
 }
 
@@ -264,6 +361,8 @@ struct WireShellApp {
 struct WireShellUser {
     display_name: String,
     locale: String,
+    #[serde(default)]
+    role: Option<ShellUserRole>,
 }
 
 #[derive(Deserialize)]
@@ -304,6 +403,19 @@ enum WireExtensionContribution {
         title: String,
         slot: String,
         entrypoint: String,
+    },
+    Surface {
+        id: String,
+        app: String,
+        title: String,
+        slot: String,
+        surface: String,
+        size: String,
+        placement: String,
+        tone: String,
+        icon: String,
+        #[serde(default)]
+        entrypoint: Option<String>,
     },
 }
 
@@ -437,7 +549,17 @@ impl ShellUser {
         Ok(Self {
             display_name,
             locale,
+            role: ShellUserRole::User,
         })
+    }
+
+    pub fn with_role(mut self, role: ShellUserRole) -> Self {
+        self.role = role;
+        self
+    }
+
+    pub fn role(&self) -> ShellUserRole {
+        self.role
     }
 
     pub fn display_name(&self) -> &str {
@@ -611,11 +733,52 @@ impl ExtensionContribution {
         })
     }
 
+    #[allow(clippy::too_many_arguments)]
+    pub fn surface(
+        id: impl Into<String>,
+        title: impl Into<String>,
+        app: impl Into<String>,
+        slot: SurfaceSlot,
+        surface: SurfaceKind,
+        size: ExtensionSize,
+        placement: SurfacePlacement,
+        tone: SurfaceTone,
+        icon: SurfaceIcon,
+        entrypoint: Option<String>,
+    ) -> Result<Self, ShellSnapshotError> {
+        let id = id.into();
+        let title = title.into();
+        let app = app.into();
+        validate_contribution(&id, &title)?;
+        if !valid_namespaced_id(&app) {
+            return Err(ShellSnapshotError::InvalidAppId);
+        }
+        if entrypoint
+            .as_deref()
+            .is_some_and(|value| !valid_simple_id(value))
+        {
+            return Err(ShellSnapshotError::InvalidJson);
+        }
+        Ok(Self::Surface {
+            id,
+            app,
+            title,
+            slot,
+            surface,
+            size,
+            placement,
+            tone,
+            icon,
+            entrypoint,
+        })
+    }
+
     pub fn id(&self) -> &str {
         match self {
             Self::Command { id, .. }
             | Self::SearchProvider { id, .. }
-            | Self::Widget { id, .. } => id,
+            | Self::Widget { id, .. }
+            | Self::Surface { id, .. } => id,
         }
     }
 }
@@ -713,7 +876,8 @@ impl ShellSnapshot {
                 wire.extension_api_version,
             ));
         }
-        let user = ShellUser::new(wire.user.display_name, wire.user.locale)?;
+        let user = ShellUser::new(wire.user.display_name, wire.user.locale)?
+            .with_role(wire.user.role.unwrap_or(ShellUserRole::User));
         let theme = ShellTheme::from_wire(wire.theme)?;
         let apps = wire
             .apps
@@ -754,6 +918,29 @@ impl ShellSnapshot {
                     }
                     ExtensionContribution::widget(id, title, entrypoint)
                 }
+                WireExtensionContribution::Surface {
+                    id,
+                    app,
+                    title,
+                    slot,
+                    surface,
+                    size,
+                    placement,
+                    tone,
+                    icon,
+                    entrypoint,
+                } => ExtensionContribution::surface(
+                    id,
+                    title,
+                    app,
+                    parse_surface_slot(&slot)?,
+                    parse_surface_kind(&surface)?,
+                    parse_extension_size(&size)?,
+                    parse_surface_placement(&placement)?,
+                    parse_surface_tone(&tone)?,
+                    parse_surface_icon(&icon)?,
+                    entrypoint,
+                ),
             })
             .collect::<Result<Vec<_>, _>>()?;
         let snapshot = Self::new(
@@ -834,6 +1021,69 @@ fn validate_contribution(id: &str, title: &str) -> Result<(), ShellSnapshotError
         return Err(ShellSnapshotError::InvalidContributionTitle);
     }
     Ok(())
+}
+
+fn parse_extension_size(value: &str) -> Result<ExtensionSize, ShellSnapshotError> {
+    match value {
+        "small" => Ok(ExtensionSize::Small),
+        "medium" => Ok(ExtensionSize::Medium),
+        "large" => Ok(ExtensionSize::Large),
+        _ => Err(ShellSnapshotError::InvalidJson),
+    }
+}
+
+fn parse_surface_slot(value: &str) -> Result<SurfaceSlot, ShellSnapshotError> {
+    match value {
+        "desktop" => Ok(SurfaceSlot::Desktop),
+        "launcher" => Ok(SurfaceSlot::Launcher),
+        "both" => Ok(SurfaceSlot::Both),
+        _ => Err(ShellSnapshotError::InvalidJson),
+    }
+}
+
+fn parse_surface_kind(value: &str) -> Result<SurfaceKind, ShellSnapshotError> {
+    match value {
+        "companion" => Ok(SurfaceKind::Companion),
+        "badge" => Ok(SurfaceKind::Badge),
+        "panel" => Ok(SurfaceKind::Panel),
+        _ => Err(ShellSnapshotError::InvalidJson),
+    }
+}
+
+fn parse_surface_placement(value: &str) -> Result<SurfacePlacement, ShellSnapshotError> {
+    match value {
+        "top-left" => Ok(SurfacePlacement::TopLeft),
+        "top-right" => Ok(SurfacePlacement::TopRight),
+        "bottom-left" => Ok(SurfacePlacement::BottomLeft),
+        "bottom-right" => Ok(SurfacePlacement::BottomRight),
+        _ => Err(ShellSnapshotError::InvalidJson),
+    }
+}
+
+fn parse_surface_tone(value: &str) -> Result<SurfaceTone, ShellSnapshotError> {
+    match value {
+        "accent" => Ok(SurfaceTone::Accent),
+        "neutral" => Ok(SurfaceTone::Neutral),
+        "warm" => Ok(SurfaceTone::Warm),
+        "cool" => Ok(SurfaceTone::Cool),
+        "rose" => Ok(SurfaceTone::Rose),
+        "mint" => Ok(SurfaceTone::Mint),
+        _ => Err(ShellSnapshotError::InvalidJson),
+    }
+}
+
+fn parse_surface_icon(value: &str) -> Result<SurfaceIcon, ShellSnapshotError> {
+    match value {
+        "dot" => Ok(SurfaceIcon::Dot),
+        "star" => Ok(SurfaceIcon::Star),
+        "bolt" => Ok(SurfaceIcon::Bolt),
+        "leaf" => Ok(SurfaceIcon::Leaf),
+        "moon" => Ok(SurfaceIcon::Moon),
+        "heart" => Ok(SurfaceIcon::Heart),
+        "orbit" => Ok(SurfaceIcon::Orbit),
+        "pulse" => Ok(SurfaceIcon::Pulse),
+        _ => Err(ShellSnapshotError::InvalidJson),
+    }
 }
 
 fn valid_stylesheet_url(value: &str) -> bool {

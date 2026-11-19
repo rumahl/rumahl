@@ -8,3 +8,5 @@ export * from "./themes";
 export * from "./variants";
 export * from "./sdk";
 export { ThemeProvider, useTheme, type ThemeContextValue } from "./ThemeProvider";
+export * from "./icon-pack";
+export * from "./icon-pack-react";

@@ -19,6 +19,8 @@ export interface Item {
   label?: string;
   directory: boolean;
   size: number;
+  /** Direct children for directories. */
+  children?: number;
   modified: number;
   host: boolean;
   /** Desktop app shortcut: opens this path. */

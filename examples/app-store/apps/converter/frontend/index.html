@@ -1,0 +1,18 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Unit Converter</title>
+<style>*{box-sizing:border-box}body{margin:0;min-height:100vh;font:15px/1.55 system-ui,-apple-system,"Segoe UI",sans-serif;color:#e8eef0;background:radial-gradient(circle at 15% 10%,#24444d,#101719 60%);padding:2rem}main{max-width:760px;margin:auto}h1{font:600 2rem/1.1 Georgia,serif;margin:.2rem 0 .3rem}p.lead{color:#a9b7ba;margin:0 0 1.4rem}section{background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.13);border-radius:16px;padding:1.1rem;margin-bottom:1rem}input,textarea,button,select{font:inherit}input,textarea,select{width:100%;padding:.7rem .8rem;border:1px solid rgba(255,255,255,.18);border-radius:10px;background:rgba(0,0,0,.22);color:inherit}textarea{min-height:120px;resize:vertical}button{padding:.62rem .9rem;border:0;border-radius:10px;background:#5cc8a0;color:#061310;font-weight:750;cursor:pointer}button.secondary{background:rgba(255,255,255,.13);color:inherit}button.danger{background:#d56b62;color:#fff}.row{display:flex;gap:.6rem;flex-wrap:wrap}.row>*{flex:1 1 130px}.list{display:grid;gap:.5rem;margin-top:.8rem}.item{display:flex;align-items:center;justify-content:space-between;gap:.7rem;padding:.65rem .75rem;border-radius:10px;background:rgba(0,0,0,.2)}.item.done span{opacity:.5;text-decoration:line-through}.muted{color:#a9b7ba;font-size:.9rem}.stat{font:700 2.4rem/1 Georgia,serif;color:#8fe3c1}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:.7rem}.card{padding:.85rem;border-radius:12px;background:rgba(0,0,0,.2)}small{color:#9fb0b3}a{color:#8fe3c1}</style>
+<body>
+<main>
+<header><h1>Unit Converter</h1><p class="lead">Convert length, weight and temperature.</p></header>
+<section><div class="row"><select id="kind"><option value="length">Length</option><option value="weight">Weight</option><option value="temperature">Temperature</option></select><input id="value" type="number" value="1"></div><p class="muted" id="units"></p><div class="list" id="results"></div></section>
+</main>
+<script>const factors={length:{m:1,km:1000,cm:.01,mm:.001,inch:.0254,foot:.3048,mile:1609.344},weight:{kg:1,g:.001,lb:.45359237,oz:.028349523125,ton:1000}};
+const names={length:{m:'Metres',km:'Kilometres',cm:'Centimetres',mm:'Millimetres',inch:'Inches',foot:'Feet',mile:'Miles'},weight:{kg:'Kilograms',g:'Grams',lb:'Pounds',oz:'Ounces',ton:'Tonnes'}};
+const kind=document.querySelector('#kind'),value=document.querySelector('#value'),results=document.querySelector('#results'),units=document.querySelector('#units');
+function render(){const raw=Number(value.value)||0;results.innerHTML='';if(kind.value==='temperature'){units.textContent='Celsius, Fahrenheit and Kelvin';const c=raw;[['Celsius',c],['Fahrenheit',c*9/5+32],['Kelvin',c+273.15]].forEach(([label,result])=>{const item=document.createElement('div');item.className='item';item.innerHTML='<span>'+label+'</span><strong>'+Number(result.toPrecision(7))+'</strong>';results.append(item);});return;}units.textContent='Base unit: '+(kind.value==='length'?'metres':'kilograms');const base=raw*factors[kind.value].m;Object.entries(factors[kind.value]).forEach(([unit,factor])=>{const item=document.createElement('div');item.className='item';item.innerHTML='<span>'+names[kind.value][unit]+'</span><strong>'+Number((base/factor).toPrecision(8))+'</strong>';results.append(item);});}
+kind.onchange=render;value.oninput=render;render();</script>
+</body>
+</html>
