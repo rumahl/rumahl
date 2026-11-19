@@ -23,6 +23,7 @@ import { DisplayOverview, DisplaySettings } from "./DisplaySettings";
 import { ThemeManager } from "./ThemeManager";
 import { ThemeSettings } from "./ThemeSettings";
 import { AdminAuditSettings, AdminSessionsSettings, AdminUserDetailSettings, AdminUsersSettings, isAdministrator } from "./AdminSettings";
+import { AdminGroupsSettings, AdminPoliciesSettings } from "./AdminPolicies";
 import { SystemInfo } from "./SystemInfo";
 import { buildLabel, versionLabel } from "../system-labels";
 import { OsModeSettings } from "./OsModeSettings";
@@ -139,6 +140,8 @@ export function SettingsPage() {
       { path: "admin/users/:id", Component: AdminUserDetailSettings },
       { path: "admin/roles", element: <Navigate to="/settings/admin/users" replace /> },
       { path: "admin/sessions", Component: AdminSessionsSettings },
+      { path: "admin/policies", Component: AdminPoliciesSettings },
+      { path: "admin/groups", Component: AdminGroupsSettings },
       { path: "admin/audit", Component: AdminAuditSettings }
     ] : []),
     { path: "*", Component: UnavailablePage }
@@ -167,6 +170,8 @@ export function SettingsPage() {
         <div className="nav-heading">{t("settings.group.admin")}</div>
         <ShellLink className="nav-item" to="/settings/admin/users" aria-current={pathname.startsWith("/settings/admin/users") ? "page" : undefined}><UserIcon /><span>{t("settings.admin.users")}</span></ShellLink>
         <ShellLink className="nav-item" to="/settings/admin/sessions" aria-current={pathname.startsWith("/settings/admin/sessions") ? "page" : undefined}><PulseIcon /><span>{t("settings.admin.sessions")}</span></ShellLink>
+        <ShellLink className="nav-item" to="/settings/admin/policies" aria-current={pathname.startsWith("/settings/admin/policies") ? "page" : undefined}><ShieldIcon /><span>{t("settings.admin.policies")}</span></ShellLink>
+        <ShellLink className="nav-item" to="/settings/admin/groups" aria-current={pathname.startsWith("/settings/admin/groups") ? "page" : undefined}><UserIcon /><span>{t("settings.admin.groups")}</span></ShellLink>
         <ShellLink className="nav-item" to="/settings/admin/audit" aria-current={pathname.startsWith("/settings/admin/audit") ? "page" : undefined}><DocumentIcon /><span>{t("settings.admin.audit")}</span></ShellLink>
       </> : null}
     </nav>
@@ -209,6 +214,8 @@ function SettingsOverview() {
       <div className="settings-group settings-nav">
         <NavRow to="/settings/admin/users" icon={<UserIcon />} title={t("settings.admin.users")} subtitle={t("settings.admin.usersHelp")} />
         <NavRow to="/settings/admin/sessions" icon={<PulseIcon />} title={t("settings.admin.sessions")} subtitle={t("settings.admin.sessionsHelp")} />
+        <NavRow to="/settings/admin/policies" icon={<ShieldIcon />} title={t("settings.admin.policies")} subtitle={t("settings.admin.policiesHelp")} />
+        <NavRow to="/settings/admin/groups" icon={<UserIcon />} title={t("settings.admin.groups")} subtitle={t("settings.admin.groupsHelp")} />
         <NavRow to="/settings/admin/audit" icon={<DocumentIcon />} title={t("settings.admin.audit")} subtitle={t("settings.admin.auditHelp")} />
       </div>
     </> : null}
