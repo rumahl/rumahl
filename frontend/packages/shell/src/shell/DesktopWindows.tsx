@@ -11,6 +11,7 @@ import { useI18n } from "../i18n";
 import { WindowExitFullscreenIcon } from "../icons";
 import { RouteBoundary } from "../routing/RouteBoundary";
 import { useShell } from "./ShellContext";
+import { TopbarWindowContext } from "./TopbarActions";
 import { useWorkspace } from "../preferences/Workspace";
 import type { ShellWindow } from "../shell-state";
 import { centeredRect, constrainRect, placedRect, type WindowPlacement, type WindowRect, type WorkArea } from "./desktop/geometry";
@@ -288,6 +289,7 @@ function HostedWindow({ item, area, dockReserve, zIndex, animations: motionEnabl
     onPointerMove={move} onPointerUp={end} onPointerCancel={end} onLostPointerCapture={end}>
     {snap ? <div aria-hidden="true" className={`snap-preview snap-preview--${snap}`} /> : null}
     <MobileNavSlotContext.Provider value={mobileShell ? mobileNavSlot : null}>
+    <TopbarWindowContext.Provider value={item.id}>
     <ProtectedWindow customTopbar={customTopbar} fullscreenTopbar={customTopbarFullscreen} flush={flush} id={item.id} focused={state.focusedWindowId === item.id}
       style={area ? { left: rect.x, top: rect.y, width: rect.width, height: rect.height } : undefined}
       onClose={() => { dispatch({ type: "close-window", id: item.id }); if (active === item.id) open("/"); }}
@@ -301,6 +303,7 @@ function HostedWindow({ item, area, dockReserve, zIndex, animations: motionEnabl
       subtitle={item.subtitle} title={item.title} stream={item.streamId !== undefined} variant={variants.windowChrome}>
       <RouteBoundary location={item.location ?? "/"}><ShellRoutes location={item.location ?? "/"} /></RouteBoundary>
     </ProtectedWindow>
+    </TopbarWindowContext.Provider>
     </MobileNavSlotContext.Provider>
     {isFullscreen ? <button type="button" className="window-exit-fullscreen" onClick={() => dispatch({ type: "set-window-fullscreen", id: item.id, fullscreen: false })} aria-label={t("window.exitFullscreen")}>
       <WindowExitFullscreenIcon aria-hidden="true" /><span>{t("window.exitFullscreen")}</span>

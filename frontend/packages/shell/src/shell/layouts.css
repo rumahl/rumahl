@@ -18,6 +18,7 @@
 .menubar__about { display: grid; gap: 2px; margin: 2px 4px 4px; padding: 6px 8px; color: var(--rumahl-ui-color-text-muted, var(--rumahl-color-text-muted)); font-size: 12px; }
 .menubar__about small { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; }
 .menubar__empty { margin: 4px 6px; color: var(--rumahl-ui-color-text-muted, var(--rumahl-color-text-muted)); font-size: 12px; }
+.menubar__section { margin: 4px 8px 1px; color: var(--rumahl-ui-color-text-muted, var(--rumahl-color-text-muted)); font-size: 10.5px; font-weight: 620; letter-spacing: 0.04em; text-transform: uppercase; }
 .menubar__separator { height: 1px; margin: 5px 4px; background: var(--line); }
 .menubar__spotlight svg { width: 15px; height: 15px; stroke: currentColor; stroke-width: 1.8; }
 .menubar__mode select { height: 24px; padding: 0 6px; border: 1px solid var(--line); border-radius: 8px; color: var(--rumahl-ui-color-text-primary, var(--rumahl-color-text-primary)); background: color-mix(in srgb, var(--rumahl-ui-color-panel-background, var(--rumahl-color-panel-background)) 70%, transparent); font-size: 12px; }

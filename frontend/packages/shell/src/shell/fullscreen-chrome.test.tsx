@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { beforeEach, describe, expect, test } from "vitest";
 import { App } from "../App";
 import { demoSnapshot } from "../demo/snapshot";
@@ -90,8 +90,8 @@ describe("fullscreen chrome", () => {
   test("an open launcher app releases the dock row", async () => {
     render(<App snapshot={demoSnapshot} initialLocation="/app/files" />);
     await screen.findByRole("region", { name: "Files" });
-    fireEvent.click(screen.getByRole("button", { name: "View" }));
-    fireEvent.click(screen.getByRole("menuitemradio", { name: "Launcher" }));
+    fireEvent.click(screen.getByRole("button", { name: "rumahl OS" }));
+    fireEvent.click(within(screen.getByRole("menu")).getByRole("menuitemradio", { name: "Launcher" }));
     const shell = document.querySelector(".shell");
     await waitFor(() => expect(shell).toHaveAttribute("data-shell-mode", "launcher"));
     expect(shell).toHaveAttribute("data-dock-auto-hide", "true");

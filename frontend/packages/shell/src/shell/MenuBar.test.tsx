@@ -15,10 +15,13 @@ describe("menu bar", () => {
     expect(screen.queryByRole("menu")).toBeNull();
   });
 
-  test("switches the shell mode from the view menu", () => {
+  test("switches the shell mode from the view section", () => {
     render(<App snapshot={demoSnapshot} initialLocation="/" />);
-    fireEvent.click(screen.getByRole("button", { name: "View" }));
-    fireEvent.click(screen.getByRole("menuitemradio", { name: "Launcher" }));
+    // The system menus live in the logo dropdown now; the left island is the
+    // logo (round) plus the focused app's quick actions.
+    fireEvent.click(screen.getByRole("button", { name: "rumahl OS" }));
+    const menu = screen.getByRole("menu");
+    fireEvent.click(within(menu).getByRole("menuitemradio", { name: "Launcher" }));
     expect(document.querySelector(".shell")).toHaveAttribute("data-shell-mode", "launcher");
   });
 
@@ -103,9 +106,29 @@ describe("menu bar", () => {
 
   test("lists open windows and focuses one", () => {
     render(<App snapshot={demoSnapshot} initialLocation="/app/files" />);
-    fireEvent.click(screen.getByRole("button", { name: "Window" }));
+    fireEvent.click(screen.getByRole("button", { name: "rumahl OS" }));
     const menu = screen.getByRole("menu");
     fireEvent.click(within(menu).getByRole("menuitem", { name: "Files" }));
     expect(screen.getByRole("region", { name: "Files" })).toBeInTheDocument();
+  });
+
+  test("shows only the round logo island while no app contributes quick actions", () => {
+    render(<App snapshot={demoSnapshot} initialLocation="/" />);
+    const island = document.querySelector(".topbar__island--left");
+    expect(island).not.toHaveAttribute("data-quick");
+    // The wordmark is visually hidden in the circle; the mark stays named.
+    expect(within(island as HTMLElement).getByRole("button", { name: "rumahl OS" })).toBeInTheDocument();
+  });
+
+  test("carries the focused app's quick actions next to the logo", async () => {
+    render(<App snapshot={demoSnapshot} initialLocation="/app/files" />);
+    // The Files window registers its quick actions; the focused window is
+    // Files, so the left island stretches into a pill with those actions.
+    await waitFor(() => {
+      const island = document.querySelector(".topbar__island--left");
+      expect(island).toHaveAttribute("data-quick");
+      expect(within(island as HTMLElement).getByRole("button", { name: "New folder" })).toBeInTheDocument();
+      expect(within(island as HTMLElement).getByRole("button", { name: "Refresh" })).toBeInTheDocument();
+    });
   });
 });

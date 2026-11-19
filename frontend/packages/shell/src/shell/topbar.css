@@ -73,8 +73,33 @@
   -webkit-backdrop-filter: var(--topbar-island-backdrop);
   color: var(--rumahl-ui-color-text-primary, #f5f7f8);
 }
+/* Without quick actions the left island is the logo alone — macOS-style, a
+   round island. With the focused app's actions it stretches back into a pill. */
 .topbar__island--left {
+  justify-content: center;
+  padding: 0;
+  aspect-ratio: 1 / 1;
+  border-radius: 50%;
+}
+.topbar__island--left[data-quick] {
+  justify-content: flex-start;
   padding: 0 6px;
+  aspect-ratio: auto;
+  border-radius: var(--topbar-island-radius);
+}
+.topbar__island--left:not([data-quick]) .menubar__wordmark {
+  display: none;
+}
+/* Ground themes force their island radius with !important; out-specify them so
+   the logo-only island keeps its circle there too. */
+.shell .topbar__island--left:not([data-quick]) {
+  border-radius: 50% !important;
+}
+.menubar__quick {
+  max-width: 22ch;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .topbar__island--right {
   margin-left: auto;

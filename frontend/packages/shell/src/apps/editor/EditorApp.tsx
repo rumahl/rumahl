@@ -4,6 +4,7 @@ import { createPortal } from "react-dom";
 import { RumahlButtonGroup, RumahlDialog } from "@rumahl/ui/components";
 import { DocumentIcon, RefreshIcon } from "../../icons";
 import { useAppTopbarHost } from "../../components/ProtectedWindow";
+import { useRegisterTopbarActions } from "../../shell/TopbarActions";
 import { EditorToolIcon, type EditorTool } from "./EditorToolIcon";
 import { useI18n } from "../../i18n";
 import { browserProfile } from "../../preferences/storage";
@@ -168,6 +169,12 @@ export function EditorApp() {
     if (!element) return;
     setText(htmlToMarkdown(element));
   }, []);
+
+  // The OS topbar carries the focused app's quick actions, macOS-style: for
+  // the editor that is exactly one thing, Save.
+  useRegisterTopbarActions(target ? [
+    { id: "save", label: t("editor.save"), disabled: readOnly || !dirty || saving, onSelect: () => void save() }
+  ] : null);
 
   const updateFormat = useCallback(() => {
     if (!rich.current || !rich.current.contains(document.activeElement)) return;

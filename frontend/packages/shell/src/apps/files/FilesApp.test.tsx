@@ -448,17 +448,23 @@ test("opens a typed rumahl folder and file through the service", async () => {
     return { ok: true, headers: new Headers({ "x-total-count": "0" }), json: async () => [] };
   });
   render(<FilesApp />);
+  // Advanced mode shows the Windows-style crumbs; the edit toggle opens the
+  // raw address input.
+  fireEvent.click(screen.getByRole("button", { name: "files.editPath" }));
   const address = screen.getByRole("textbox", { name: "files.address" });
 
   fireEvent.change(address, { target: { value: "/home/alice/Documents" } });
   fireEvent.submit(address.closest("form")!);
   // The internal path lands in the one personal store view, addressed by the
-  // stable id of the folder, and the bar shows the client-neutral URI.
+  // stable id of the folder; the bar returns to crumbs with that folder as
+  // the current page.
   await waitFor(() => expect(seen.some((url) => url.startsWith("/api/v1/files?parent=documents-id"))).toBe(true));
-  expect(address).toHaveValue("rumahl://home/Documents");
+  await waitFor(() => expect(screen.getByRole("button", { name: "Documents" })).toHaveAttribute("aria-current", "page"));
 
-  fireEvent.change(address, { target: { value: "rumahl://home/Documents/notes.txt" } });
-  fireEvent.submit(address.closest("form")!);
+  fireEvent.click(screen.getByRole("button", { name: "files.editPath" }));
+  const typed = screen.getByRole("textbox", { name: "files.address" });
+  fireEvent.change(typed, { target: { value: "rumahl://home/Documents/notes.txt" } });
+  fireEvent.submit(typed.closest("form")!);
   await waitFor(() => expect(state.open).toHaveBeenCalledTimes(1));
   const opened = state.open.mock.calls[0]![0] as string;
   expect(opened).toContain("/app/editor?");
@@ -504,4 +510,44 @@ test("clears the search from the button and with Escape", async () => {
   fireEvent.keyDown(input, { key: "Escape" });
   expect(input).toHaveValue("");
   expect(await screen.findByText("photo.png")).toBeInTheDocument();
+});
+
+test("advanced mode shows a Windows-style crumb path", async () => {
+  state.advanced = true;
+  listing([{ id: "folder-1", name: "Projects", directory: true, size: 0 }]);
+  render(<FilesApp />);
+  const bar = () => document.querySelector(".files-path") as HTMLElement;
+  // The root crumb is the current page until a folder is opened.
+  const root = within(bar()).getByRole("button", { name: "files.root" });
+  expect(root).toHaveAttribute("aria-current", "page");
+  fireEvent.doubleClick(await screen.findByText("Projects"));
+  // One crumb per folder; the last is the current page.
+  const projects = await within(bar()).findByRole("button", { name: "Projects" });
+  expect(projects).toHaveAttribute("aria-current", "page");
+  expect(root).not.toHaveAttribute("aria-current");
+
+  // Navigating a crumb rewinds the trail.
+  fireEvent.click(root);
+  await waitFor(() => expect(within(bar()).queryByRole("button", { name: "Projects" })).toBeNull());
+});
+
+test("crumb chevrons open the subfolders of that folder", async () => {
+  state.advanced = true;
+  listing([{ id: "folder-1", name: "Projects", directory: true, size: 0 }]);
+  render(<FilesApp />);
+  const bar = () => document.querySelector(".files-path") as HTMLElement;
+  const chevrons = await within(bar()).findAllByRole("button", { name: "files.subfolders" });
+  // The root crumb's chevron lists the root's folders from the store.
+  fireEvent.click(chevrons[0]!);
+  const menu = await screen.findByRole("menu", { name: "files.subfoldersLabel" });
+  expect(within(menu).getByRole("menuitem", { name: "Projects" })).toBeInTheDocument();
+  fireEvent.click(within(menu).getByRole("menuitem", { name: "Projects" }));
+  await waitFor(() => expect(within(bar()).getByRole("button", { name: "Projects" })).toHaveAttribute("aria-current", "page"));
+});
+
+test("guided mode keeps the plain address input", async () => {
+  listing([{ id: "folder-1", name: "Projects", directory: true, size: 0 }]);
+  render(<FilesApp />);
+  expect(screen.getByRole("textbox", { name: "files.address" })).toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: "files.editPath" })).toBeNull();
 });
