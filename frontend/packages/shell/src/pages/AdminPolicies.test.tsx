@@ -23,11 +23,17 @@ import { AdminGroupsSettings, AdminPoliciesSettings } from "./AdminPolicies";
 const policies = {
   policiesVersion: 1,
   policies: [
-    { key: "rumahl.os.advanced_mode", kind: "boolean", default: true, minimum: null, maximum: null, description: "Advanced exposure mode." },
-    { key: "rumahl.home.cross_user_read", kind: "boolean", default: false, minimum: null, maximum: null, description: "Administrators may read other homes." },
-    { key: "rumahl.files.quota_bytes", kind: "number", default: 134217728, minimum: 16777216, maximum: 68719476736, description: "Personal files budget." }
+    { key: "rumahl.password.min_length", area: "password", kind: "number", default: 15, minimum: 6, maximum: 128, description: "Minimum password length." },
+    { key: "rumahl.session.lifetime_seconds", area: "session", kind: "number", default: 43200, minimum: 300, maximum: 2592000, description: "Session lifetime." },
+    { key: "rumahl.os.advanced_mode", area: "os", kind: "boolean", default: true, minimum: null, maximum: null, description: "Advanced exposure mode." },
+    { key: "rumahl.home.cross_user_read", area: "home", kind: "boolean", default: false, minimum: null, maximum: null, description: "Administrators may read other homes." },
+    { key: "rumahl.files.quota_bytes", area: "files", kind: "number", default: 134217728, minimum: 16777216, maximum: 68719476736, description: "Personal files budget." },
+    { key: "rumahl.apps.allowed_publishers", area: "apps", kind: "list", default: [], minimum: null, maximum: 64, description: "Trusted publishers." }
   ],
-  assignments: [{ subject: "device", key: "rumahl.files.quota_bytes", value: 33554432 }]
+  assignments: [
+    { subject: "device", key: "rumahl.files.quota_bytes", value: 33554432 },
+    { subject: "device", key: "rumahl.apps.allowed_publishers", value: ["com.rumahl"] }
+  ]
 };
 const users = [
   { id: "01990000-0000-7000-8000-000000000001", username: "alice", displayName: "Alice", status: "active", role: "owner" },
@@ -35,7 +41,7 @@ const users = [
 ];
 const groups = [{ id: "01990000-0000-7000-8000-0000000000aa", name: "engineering", members: [users[1]!.id] }];
 
-const setPolicy = vi.fn<(subject: string, key: string, value: boolean | number | null) => Promise<void>>(async () => {});
+const setPolicy = vi.fn<(subject: string, key: string, value: boolean | number | string | readonly string[] | null) => Promise<void>>(async () => {});
 const createGroup = vi.fn<(name: string) => Promise<(typeof groups)[number]>>(async () => groups[0]!);
 const deleteGroup = vi.fn<(id: string) => Promise<void>>(async () => {});
 const updateMembers = vi.fn<(id: string, add: readonly string[], remove: readonly string[]) => Promise<(typeof groups)[number]>>(async () => groups[0]!);
@@ -60,17 +66,49 @@ beforeEach(() => {
   updateMembers.mockClear();
 });
 
-test("lists the catalog with defaults and existing assignments", async () => {
+test("lists the catalog grouped by area with defaults and assignments", async () => {
   render(<AdminPoliciesSettings />);
   expect(await screen.findByText("admin.policies.advancedMode")).toBeInTheDocument();
   expect(screen.getByText("admin.policies.crossUserRead")).toBeInTheDocument();
   expect(screen.getByText("admin.policies.quotaBytes")).toBeInTheDocument();
+  // Every area has its section heading.
+  for (const area of ["password", "session", "os", "home", "files", "apps"]) {
+    expect(screen.getByText(`admin.policies.area.${area}`)).toBeInTheDocument();
+  }
   // The device quota assignment (32 MiB) shows as the input's value.
   const quota = screen.getByRole("spinbutton", { name: "admin.policies.quotaBytes" }) as HTMLInputElement;
   expect(quota.value).toBe("32");
+  // The session lifetime is entered in minutes (12 hours = 720).
+  const lifetime = screen.getByRole("spinbutton", { name: "admin.policies.sessionLifetime" }) as HTMLInputElement;
+  expect(lifetime.value).toBe("720");
   // Each policy offers the device, groups and users as subjects.
   const subjects = screen.getAllByLabelText("admin.policies.subjectLabel");
-  expect(subjects.length).toBe(3);
+  expect(subjects.length).toBe(6);
+});
+
+test("edits the publisher allowlist one entry per line", async () => {
+  render(<AdminPoliciesSettings />);
+  const field = await screen.findByRole("textbox", { name: "admin.policies.allowedPublishers" }) as HTMLTextAreaElement;
+  expect(field.value).toBe("com.rumahl");
+  await act(async () => { fireEvent.change(field, { target: { value: "com.rumahl\norg.example\n" } }); });
+  await act(async () => { fireEvent.blur(field); });
+  expect(setPolicy).toHaveBeenLastCalledWith(
+    "device",
+    "rumahl.apps.allowed_publishers",
+    ["com.rumahl", "org.example"]
+  );
+});
+
+test("filters the catalog by label and key", async () => {
+  render(<AdminPoliciesSettings />);
+  await screen.findByText("admin.policies.advancedMode");
+  const filter = screen.getByRole("searchbox", { name: "admin.policies.filter" });
+  await act(async () => { fireEvent.change(filter, { target: { value: "publisher" } }); });
+  expect(screen.queryByText("admin.policies.advancedMode")).toBeNull();
+  expect(screen.getByText("admin.policies.allowedPublishers")).toBeInTheDocument();
+  await act(async () => { fireEvent.change(filter, { target: { value: "rumahl.password" } }); });
+  expect(screen.getByText("admin.policies.passwordMinLength")).toBeInTheDocument();
+  expect(screen.queryByText("admin.policies.allowedPublishers")).toBeNull();
 });
 
 test("assigns and clears a boolean policy through the service", async () => {

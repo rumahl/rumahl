@@ -98,12 +98,15 @@ export async function listAdminAudit(limit = 50, offset = 0): Promise<AdminAudit
   return (await request<{ events: AdminAuditEntry[] }>(`/api/v1/admin/audit?${query}`)).events;
 }
 
-export type AdminPolicyKind = "boolean" | "number";
+export type AdminPolicyKind = "boolean" | "number" | "text" | "list";
+export type AdminPolicyValue = boolean | number | string | readonly string[];
 
 export interface AdminPolicyDefinition {
   key: string;
+  /** Policy area (`rumahl.<area>.<name>`), used to group the editor. */
+  area: string;
   kind: AdminPolicyKind;
-  default: boolean | number;
+  default: AdminPolicyValue;
   minimum: number | null;
   maximum: number | null;
   description: string;
@@ -112,7 +115,7 @@ export interface AdminPolicyDefinition {
 export interface AdminPolicyAssignment {
   subject: string;
   key: string;
-  value: boolean | number;
+  value: AdminPolicyValue;
 }
 
 export interface AdminPolicies {
@@ -134,7 +137,7 @@ export async function listAdminPolicies(): Promise<AdminPolicies> {
 export async function setAdminPolicy(
   subject: string,
   key: string,
-  value: boolean | number | null
+  value: AdminPolicyValue | null
 ): Promise<void> {
   await request("/api/v1/admin/policies", mutation("PUT", { subject, key, value }));
 }
