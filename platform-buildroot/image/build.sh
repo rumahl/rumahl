@@ -36,6 +36,8 @@ Options:
   --jobs N          parallel build jobs (default: $RUMAHL_BUILDROOT_JOBS or nproc)
   --trust-store FILE  bake a development package trust store into the image
   --first-boot-env FILE  bake an unattended first-boot setup file (dev only)
+  --config-fragment FILE  merge a Kconfig fragment after the defconfig
+                    (repeatable; used for BR2_CCACHE, see image/ccache.fragment)
   -h, --help        show this help
 EOF
 }
@@ -75,6 +77,7 @@ artifacts="${RUMAHL_ARTIFACTS:-$repo/buildroot/artifacts}"
 jobs="${RUMAHL_BUILDROOT_JOBS:-$(nproc)}"
 trust_store=""
 first_boot_env=""
+config_fragments=()
 
 while [ "$#" -gt 0 ]; do
   case "$1" in
@@ -86,6 +89,7 @@ while [ "$#" -gt 0 ]; do
     --jobs) jobs="$2"; shift 2 ;;
     --trust-store) trust_store="$2"; shift 2 ;;
     --first-boot-env) first_boot_env="$2"; shift 2 ;;
+    --config-fragment) config_fragments+=("$2"); shift 2 ;;
     -h|--help) usage; exit 0 ;;
     *) usage; die "unknown option: $1" ;;
   esac
@@ -127,6 +131,15 @@ echo "==> Configuring $output"
 make -C "$source" O="$output" BR2_EXTERNAL="$external" "$defconfig"
 "$source/utils/config" --file "$output/.config" \
   --set-str BR2_PACKAGE_RUMAHL_SHELL_ARTIFACTS "$artifacts"
+if [ "${#config_fragments[@]}" -gt 0 ]; then
+  merge="$source/support/kconfig/merge_config.sh"
+  [ -x "$merge" ] || die "merge_config.sh not found in the Buildroot source"
+  for fragment in "${config_fragments[@]}"; do
+    [ -f "$fragment" ] || die "config fragment not found: $fragment"
+    echo "==> Merging config fragment $(basename "$fragment")"
+    "$merge" -m "$output/.config" "$(realpath "$fragment")"
+  done
+fi
 make -C "$source" O="$output" olddefconfig
 
 # 3. The Rust services must be built with this image's toolchain.

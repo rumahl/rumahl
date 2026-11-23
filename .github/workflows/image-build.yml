@@ -7,9 +7,8 @@ name: OS image build
 # A cold build compiles the pinned Buildroot (toolchain, kernel, ICU/Node,
 # nginx) and takes one to three hours on a 4-vCPU runner; the UEFI target adds
 # the Docker engine and a large firmware set and runs longer. Buildroot package
-# downloads, the Cargo registry, and the pnpm store are cached between runs.
-# Buildroot host ccache needs a config-fragment option in build.sh first and
-# is deliberately not wired here yet.
+# downloads, the host ccache (image/ccache.fragment), the Cargo registry, and
+# the pnpm store are cached between runs, so repeat builds are much faster.
 
 on:
   workflow_dispatch:
@@ -62,7 +61,7 @@ jobs:
           sudo apt-get update
           sudo apt-get install --yes \
             build-essential cpio unzip rsync bc file wget patch gettext gawk \
-            libncurses-dev libelf-dev libssl-dev acl attr
+            libncurses-dev libelf-dev libssl-dev acl attr ccache
 
       - name: Install pinned Rust toolchain
         run: rustup show active-toolchain
@@ -76,12 +75,13 @@ jobs:
           cache: pnpm
           cache-dependency-path: frontend/pnpm-lock.yaml
 
-      - name: Cache Buildroot downloads and the Cargo registry
+      - name: Cache Buildroot downloads, host ccache, and the Cargo registry
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: |
             /mnt/rumahl-build/buildroot/dl
             /mnt/rumahl-build/dl
+            ~/.cache/buildroot
             ~/.cargo/registry
             ~/.cargo/git
           key: buildroot-${{ inputs.target || 'rumahl_qemu_x86_64_defconfig' }}-${{ hashFiles('platform-buildroot/image/buildroot-source.json', 'Cargo.lock') }}
@@ -94,6 +94,7 @@ jobs:
           mkdir -p /mnt/rumahl-build "$RUMAHL_BUILDROOT_SOURCE" /mnt/rumahl-build/dl
           platform-buildroot/image/build.sh \
             --defconfig "${{ inputs.target || 'rumahl_qemu_x86_64_defconfig' }}" \
+            --config-fragment platform-buildroot/image/ccache.fragment \
             --download /mnt/rumahl-build/dl
 
       - name: Report image artifacts

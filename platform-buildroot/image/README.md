@@ -1,5 +1,33 @@
 # Buildroot browser milestone
 
+## One-command acceptance
+
+On a fresh Ubuntu 24.04 host, three commands take a clean clone to a fully
+checked QEMU appliance:
+
+```sh
+# 1. host prerequisites (root for apt; also prints the hosts-entry line)
+sudo platform-buildroot/image/host-setup.sh
+
+# 2. once per host: resolve the QEMU origin locally
+echo '127.0.0.1 rumahl.home.arpa' | sudo tee -a /etc/hosts
+
+# 3. build, boot and check — unattended end to end
+platform-buildroot/image/acceptance.sh
+```
+
+`acceptance.sh` runs the whole pipeline: preflight (tools, ≥ 20 GiB free
+disk, hosts entry, free port 8443), image build with host ccache
+(`ccache.fragment`, reuse makes rebuilds minutes instead of hours), dev seed
+provisioning (alice/bob accounts, development CA, ext4 data disk), an
+unattended QEMU boot, the HTTPS acceptance checks from
+`tests/e2e/hardware/check.py`, and a clean VM shutdown. Everything reusable
+lands under `buildroot/acceptance/` (Buildroot output, seed, data disk,
+`acceptance.out` report, `qemu.log`). Useful flags: `--skip-build` after a
+code change that only touches staged assets, `--fresh` to reprovision the
+seed, `--tpm` to exercise the sealed secret store, `--keep-vm` to keep the
+appliance up for manual poking afterwards.
+
 This is a new, small `BR2_EXTERNAL` tree, informed by the prototype rather than
 copied from it. The first target is QEMU x86-64. It uses the Buildroot-maintained
 QEMU kernel configuration and hash files, systemd, Node with ICU and nginx.
@@ -32,7 +60,10 @@ platform-buildroot/image/build.sh
 ```
 
 It defaults to `<repo>/buildroot/{buildroot-<version>,output,artifacts}` and
-accepts `--source`, `--output`, `--artifacts`, `--download` and `--jobs`. The
+accepts `--source`, `--output`, `--artifacts`, `--download`, `--jobs`,
+`--defconfig`, `--trust-store`, `--first-boot-env` and `--config-fragment`
+(repeatable; `image/ccache.fragment` enables the Buildroot host ccache, its
+directory defaults to `~/.cache/buildroot`). The
 manual steps, and the variables they export, are:
 
 Use a Linux build host with the [Buildroot host prerequisites](https://buildroot.org/downloads/manual/manual.html#requirement-mandatory).
