@@ -1,4 +1,5 @@
 //! Composition root for the first locally hosted OS shell.
+pub mod app_ports;
 use rumahl_account_auth::{
     LocalAccountAdministrationService, PasswordAttemptPolicy, PasswordAuthenticationError,
     PasswordAuthenticationService, PasswordBlocklist, PasswordPolicy, SessionToken,

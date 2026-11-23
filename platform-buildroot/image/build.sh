@@ -24,6 +24,7 @@ usage() {
 usage: build.sh [options]
 
 Options:
+  --defconfig NAME  Buildroot defconfig target (default: rumahl_qemu_x86_64_defconfig)
   --source DIR      extracted Buildroot source tree
                     (default: $RUMAHL_BUILDROOT_SOURCE or <repo>/buildroot/buildroot-<version>)
   --output DIR      Buildroot output directory
@@ -33,6 +34,8 @@ Options:
   --download DIR    directory that caches the source archive
                     (default: the parent of --source)
   --jobs N          parallel build jobs (default: $RUMAHL_BUILDROOT_JOBS or nproc)
+  --trust-store FILE  bake a development package trust store into the image
+  --first-boot-env FILE  bake an unattended first-boot setup file (dev only)
   -h, --help        show this help
 EOF
 }
@@ -65,18 +68,24 @@ sha256="$(json_field sha256)"
 [ -n "$version" ] && [ -n "$url" ] && [ -n "$sha256" ] \
   || die "buildroot-source.json must define version, url and sha256"
 
+defconfig="rumahl_qemu_x86_64_defconfig"
 source="${RUMAHL_BUILDROOT_SOURCE:-$repo/buildroot/buildroot-$version}"
 output="${RUMAHL_BUILDROOT_OUTPUT:-$repo/buildroot/output}"
 artifacts="${RUMAHL_ARTIFACTS:-$repo/buildroot/artifacts}"
 jobs="${RUMAHL_BUILDROOT_JOBS:-$(nproc)}"
+trust_store=""
+first_boot_env=""
 
 while [ "$#" -gt 0 ]; do
   case "$1" in
+    --defconfig) defconfig="$2"; shift 2 ;;
     --source) source="$2"; shift 2 ;;
     --output) output="$2"; shift 2 ;;
     --artifacts) artifacts="$2"; shift 2 ;;
     --download) download="$2"; shift 2 ;;
     --jobs) jobs="$2"; shift 2 ;;
+    --trust-store) trust_store="$2"; shift 2 ;;
+    --first-boot-env) first_boot_env="$2"; shift 2 ;;
     -h|--help) usage; exit 0 ;;
     *) usage; die "unknown option: $1" ;;
   esac
@@ -115,8 +124,7 @@ fi
 
 # 2. Configure the external tree and the staged-artifacts path.
 echo "==> Configuring $output"
-make -C "$source" O="$output" BR2_EXTERNAL="$external" \
-  rumahl_qemu_x86_64_defconfig
+make -C "$source" O="$output" BR2_EXTERNAL="$external" "$defconfig"
 "$source/utils/config" --file "$output/.config" \
   --set-str BR2_PACKAGE_RUMAHL_SHELL_ARTIFACTS "$artifacts"
 make -C "$source" O="$output" olddefconfig
@@ -138,6 +146,8 @@ export CC_x86_64_unknown_linux_gnu="$linker"
 cargo build --locked --release --target "$target" -p rumahl-platform-service
 cargo build --locked --release --target "$target" \
   -p rumahl-platform-buildroot --bin rumahl-runtime-supervisor
+cargo build --locked --release --target "$target" \
+  -p rumahl-platform-buildroot --bin rumahl-host-config
 
 # 5. Build the frontend bundle the image serves.
 echo "==> Building frontend"
@@ -146,10 +156,17 @@ echo "==> Building frontend"
 # 6. Stage target assets into a fresh directory. stage.py refuses to overwrite.
 echo "==> Staging target assets into $artifacts"
 rm -rf "$artifacts"
-python3 "$repo/platform-buildroot/deployment/stage.py" \
-  --binary "$repo/target/buildroot/$target/release/rumahl-platform-service" \
-  --supervisor-binary "$repo/target/buildroot/$target/release/rumahl-runtime-supervisor" \
-  --output "$artifacts"
+stage_args=(--binary "$repo/target/buildroot/$target/release/rumahl-platform-service"
+  --supervisor-binary "$repo/target/buildroot/$target/release/rumahl-runtime-supervisor"
+  --host-config-binary "$repo/target/buildroot/$target/release/rumahl-host-config"
+  --output "$artifacts")
+if [ -n "$trust_store" ]; then
+  stage_args+=(--trust-store "$(realpath "$trust_store")")
+fi
+if [ -n "$first_boot_env" ]; then
+  stage_args+=(--first-boot-env "$(realpath "$first_boot_env")")
+fi
+python3 "$repo/platform-buildroot/deployment/stage.py" "${stage_args[@]}"
 
 # 7. Build the image. A previously built local package must be cleaned so it
 #    picks up the freshly staged assets.
@@ -157,10 +174,22 @@ if compgen -G "$output/build/rumahl-shell-*" >/dev/null; then
   echo "==> Cleaning previous rumahl-shell package build"
   make -C "$source" O="$output" rumahl-shell-dirclean
 fi
+# Stale development-only files must not survive an incremental target tree.
+if [ -z "$first_boot_env" ]; then
+  rm -f "$output/target/etc/rumahl/first-boot.env"
+fi
+if [ -z "$trust_store" ]; then
+  rm -f "$output/target/etc/rumahl/package-trust-store.json"
+fi
 echo "==> Building system image (-j$jobs)"
 make -C "$source" O="$output" -j"$jobs"
 
 echo
-echo "Kernel: $output/images/bzImage"
-echo "Rootfs: $output/images/rootfs.ext2"
-echo "Boot with: $repo/platform-buildroot/image/boot.sh --output '$output'"
+echo "Images in $output/images:"
+ls -1 "$output/images" 2>/dev/null || true
+if [ "$defconfig" = "rumahl_qemu_x86_64_defconfig" ]; then
+  echo "Boot with: $repo/platform-buildroot/image/boot.sh --output '$output'"
+else
+  echo "Disk image: $output/images/rumahl-disk.img"
+  echo "Boot with: $repo/platform-buildroot/image/boot-uefi.sh '$output'"
+fi

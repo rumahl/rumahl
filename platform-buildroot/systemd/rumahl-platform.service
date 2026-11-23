@@ -1,7 +1,7 @@
 [Unit]
 Description=rumahl local platform and browser gateway
 Wants=rumahl-shell.service
-After=local-fs.target rumahl-shell.service
+After=local-fs.target rumahl-hosts.service rumahl-host-config.service rumahl-shell.service
 RequiresMountsFor=/var/lib/rumahl
 StartLimitIntervalSec=60
 StartLimitBurst=10
@@ -27,6 +27,8 @@ CapabilityBoundingSet=
 PrivateTmp=yes
 PrivateDevices=yes
 ProtectSystem=strict
+# The platform provisions account homes and app data on the data disk, so /home
+# stays writable; installed apps still get a private directory under /apps.
 ProtectHome=no
 ReadWritePaths=/home /apps
 ProtectKernelTunables=yes

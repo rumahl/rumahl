@@ -27,7 +27,7 @@ use rumahl_persistence_sqlite::{
 };
 use rumahl_platform_buildroot::{
     PackageImportError, PackageImporter, PackageImporterConfig, PackageImporterConfigError,
-    Tpm2Authorization, Tpm2SealedKey, Tpm2UnsealKeyProvider, UnixAppRuntimeProvider,
+    Tpm2Authorization, Tpm2Object, Tpm2SealedKey, Tpm2UnsealKeyProvider, UnixAppRuntimeProvider,
     UnixAppRuntimeProviderConfig, UnixAppRuntimeProviderError, UnixDockerImageImporter,
     UnixDockerImageImporterConfig, UnixRuntimeSecretDelivery, UnixRuntimeSecretDeliveryConfig,
 };
@@ -285,7 +285,7 @@ struct InstallConfig {
     trust_store: PathBuf,
     tpm_executable: PathBuf,
     secret_key_id: SecretEncryptionKeyId,
-    secret_key_object: PathBuf,
+    secret_key_object: Tpm2Object,
     secret_key_policy_session: Option<PathBuf>,
     app_host_suffix: String,
 }
@@ -306,7 +306,8 @@ impl InstallConfig {
             trust_store: required_path("RUMAHL_PACKAGE_TRUST_STORE")?,
             tpm_executable: required_path("RUMAHL_TPM2_EXECUTABLE")?,
             secret_key_id,
-            secret_key_object: required_path("RUMAHL_SECRET_KEY_OBJECT")?,
+            secret_key_object: Tpm2Object::parse(&required("RUMAHL_SECRET_KEY_OBJECT")?)
+                .map_err(|_| InstallError::InvalidEnv("RUMAHL_SECRET_KEY_OBJECT"))?,
             secret_key_policy_session,
             app_host_suffix: app_host_suffix()?,
         })
@@ -716,7 +717,7 @@ fn secret_key_provider(config: &InstallConfig) -> Result<Tpm2UnsealKeyProvider, 
     };
     let sealed_key = Tpm2SealedKey::new(
         config.secret_key_id.clone(),
-        &config.secret_key_object,
+        config.secret_key_object.clone(),
         authorization,
     )
     .map_err(InstallError::provider)?;
@@ -1083,7 +1084,7 @@ mod tests {
             trust_store: trust_store_path,
             tpm_executable: PathBuf::from("/usr/bin/tpm2_unseal"),
             secret_key_id: SecretEncryptionKeyId::parse("root-1").unwrap(),
-            secret_key_object: state.path().join("root-1.ctx"),
+            secret_key_object: state.path().join("root-1.ctx").into(),
             secret_key_policy_session: None,
             app_host_suffix: "apps.rumahl.test".to_owned(),
         };
@@ -1178,7 +1179,7 @@ mod tests {
             trust_store: trust_store_path,
             tpm_executable: PathBuf::from("/usr/bin/tpm2_unseal"),
             secret_key_id: SecretEncryptionKeyId::parse("root-1").unwrap(),
-            secret_key_object: state.path().join("root-1.ctx"),
+            secret_key_object: state.path().join("root-1.ctx").into(),
             secret_key_policy_session: None,
             app_host_suffix: "apps.rumahl.test".to_owned(),
         };
@@ -1429,7 +1430,7 @@ mod tests {
             trust_store: trust_store_path,
             tpm_executable: PathBuf::from("/usr/bin/tpm2_unseal"),
             secret_key_id: SecretEncryptionKeyId::parse("root-1").unwrap(),
-            secret_key_object: state.path().join("root-1.ctx"),
+            secret_key_object: state.path().join("root-1.ctx").into(),
             secret_key_policy_session: None,
             app_host_suffix: "apps.rumahl.test".to_owned(),
         };

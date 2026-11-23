@@ -220,6 +220,23 @@ enables the supervisor. The Docker engine and `tpm2-tools` are part of the
 `rumahl_qemu_x86_64_defconfig`; a different board supplies its own image
 configuration with the same service contract.
 
+## Multi-host access and IP app ports
+
+The shell accepts every origin in `RUMAHL_PUBLIC_HOSTS` plus the device's
+current unicast IPs. `rumahl-hosts.service` turns that configuration into the
+nginx host allowlist and the serial-console address banner at boot.
+
+`rumahl-host-config.service` is a small root broker for the operations the
+unprivileged platform must not perform. Over a peer-UID-checked Unix socket it
+allocates a dynamic TCP port per installation by binding to port 0, writes the
+matching nginx server block under `/run/nginx/rumahl-apps/`, persists the
+mapping in `/var/lib/rumahl-host/app-ports.json`, and reloads nginx. The
+platform reads the published port map to accept `<ip>:<port>` app hosts and to
+launch apps through the address the browser used. The broker also re-signs the
+device certificate from the device-local CA in `/var/lib/rumahl-ca` with DNS
+SANs for every shell host, `*.apps.<host>` and IP SANs for the current device
+addresses, so direct IP access does not depend on local name resolution.
+
 ## Real-container end-to-end test
 
 `tests/container_app_e2e.rs` exercises the full install and uninstall path with

@@ -47,7 +47,7 @@ mod apps;
 pub use apps::{
     AppAccess, AppAccessError, AppAsset, AppData, AppDataEntry, AppFileAccess, AppFileAction,
     AppFileDeny, AppFileOutcome, AppGrantInfo, AppGrantState, AppNetworkError, AppNetworkOrigin,
-    AppNetworkRequest, AppPermissionRequestInfo, AppProvider, AppRuntimeEnvEntry,
+    AppNetworkRequest, AppPermissionRequestInfo, AppPortProvider, AppProvider, AppRuntimeEnvEntry,
     AppRuntimeEnvironment, AppSettingInfo, AppSettingOptionInfo, AppSettingsInfo, AppStorageInfo,
     BrowserDelivery, CapabilityOutcome, CapabilityResource, CapabilityResult, CatalogApp,
     GrantIssue, GrantValidityChoice, ImportedApp, PackageUploadFile, PreparedNetworkRequest,

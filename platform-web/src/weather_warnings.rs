@@ -685,7 +685,9 @@ mod tests {
                         .collect(),
                 }),
                 &config.public_origin,
-                "apps.rumahl.test",
+                &config.allowed_origins,
+                &["apps.rumahl.test".to_owned()],
+                None,
             )
             .unwrap(),
         );

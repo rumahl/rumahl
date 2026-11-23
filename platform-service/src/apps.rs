@@ -782,6 +782,7 @@ impl AppProvider for PersistentApps {
         files: Vec<PackageUploadFile>,
     ) -> Result<ImportedApp, AppAccessError> {
         let state_dir = self.root.parent().ok_or(AppAccessError::Unavailable)?;
+        let _ = std::fs::write(state_dir.join("last-import-stage"), b"started");
         let staging = state_dir.join("import-staging").join(format!(
             "{}-{}",
             std::process::id(),
@@ -792,6 +793,9 @@ impl AppProvider for PersistentApps {
         ));
         let result = write_staging(&staging, &files).and_then(|()| {
             crate::install::install_package_dir(state_dir, &staging).map_err(|error| {
+                // Keep the concrete failure available for local diagnosis; the
+                // API still fails closed with an empty service-unavailable body.
+                let _ = std::fs::write(state_dir.join("last-import-error"), format!("{error:?}"));
                 // A policy denial is a denial, not an outage: the publisher
                 // allowlist refuses this package's publisher.
                 if matches!(
@@ -1005,15 +1009,20 @@ impl AppProvider for PersistentApps {
 
 /// Writes uploaded package files into a fresh owner-only staging directory.
 fn write_staging(dir: &Path, files: &[PackageUploadFile]) -> Result<(), AppAccessError> {
-    std::fs::create_dir_all(dir).map_err(|_| AppAccessError::Unavailable)?;
-    std::fs::set_permissions(dir, std::fs::Permissions::from_mode(0o700))
-        .map_err(|_| AppAccessError::Unavailable)?;
+    let fail = |error: std::io::Error| {
+        if let Some(state_dir) = dir.parent().and_then(Path::parent) {
+            let _ = std::fs::write(state_dir.join("last-import-error"), error.to_string());
+        }
+        AppAccessError::Unavailable
+    };
+    std::fs::create_dir_all(dir).map_err(fail)?;
+    std::fs::set_permissions(dir, std::fs::Permissions::from_mode(0o700)).map_err(fail)?;
     for file in files {
         let target = dir.join(&file.path);
         if let Some(parent) = target.parent() {
-            std::fs::create_dir_all(parent).map_err(|_| AppAccessError::Unavailable)?;
+            std::fs::create_dir_all(parent).map_err(fail)?;
         }
-        std::fs::write(&target, &file.bytes).map_err(|_| AppAccessError::Unavailable)?;
+        std::fs::write(&target, &file.bytes).map_err(fail)?;
     }
     Ok(())
 }

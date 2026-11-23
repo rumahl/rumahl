@@ -174,7 +174,9 @@ async fn catalog_and_launch_require_session_origin_and_current_installation() {
                 PersistentApps::open(&accounts, &platform, dir.path().join("app-assets")).unwrap(),
             ),
             &config.public_origin,
-            "apps.rumahl.test",
+            &config.allowed_origins,
+            &["apps.rumahl.test".to_owned()],
+            None,
         )
         .unwrap(),
     );
@@ -263,6 +265,7 @@ async fn catalog_and_launch_require_session_origin_and_current_installation() {
             )
             .header("content-type", "application/json")
             .header("origin", "https://rumahl.test")
+            .header("host", "rumahl.test")
             .body(Body::from(body.clone()))
             .unwrap()
     };

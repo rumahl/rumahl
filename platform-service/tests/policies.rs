@@ -810,9 +810,15 @@ fn app_with_apps(root: &Path) -> Router {
         .unwrap()
         .public_origin;
     state.apps = Some(Arc::new(
-        AppAccess::new(Arc::new(GateApps), &origin, "apps.rumahl.test")
-            .unwrap()
-            .with_policies(policies),
+        AppAccess::new(
+            Arc::new(GateApps),
+            &origin,
+            &[],
+            &["apps.rumahl.test".to_owned()],
+            None,
+        )
+        .unwrap()
+        .with_policies(policies),
     ));
     router(state)
 }

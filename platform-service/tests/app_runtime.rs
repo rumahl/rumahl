@@ -109,7 +109,9 @@ fn gateway(root: &std::path::Path) -> axum::Router {
             AppAccess::new(
                 Arc::new(provider),
                 &config.public_origin,
-                "apps.rumahl.test",
+                &config.allowed_origins,
+                &["apps.rumahl.test".to_owned()],
+                None,
             )
             .unwrap(),
         )),

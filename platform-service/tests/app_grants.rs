@@ -129,7 +129,9 @@ fn gateway(root: &std::path::Path) -> axum::Router {
             AppAccess::new(
                 Arc::new(provider),
                 &config.public_origin,
-                "apps.rumahl.test",
+                &config.allowed_origins,
+                &["apps.rumahl.test".to_owned()],
+                None,
             )
             .unwrap(),
         )),
@@ -756,7 +758,14 @@ async fn channel_paths_resolve_only_the_callers_home() {
     let origin = GatewayConfig::new(ORIGIN, root.join("ssr.sock"))
         .unwrap()
         .public_origin;
-    let access = AppAccess::new(Arc::new(provider), &origin, "apps.rumahl.test").unwrap();
+    let access = AppAccess::new(
+        Arc::new(provider),
+        &origin,
+        &[],
+        &["apps.rumahl.test".to_owned()],
+        None,
+    )
+    .unwrap();
 
     // Both the internal absolute path and the client-neutral URI resolve to
     // the same store id; consent still applies to that id.

@@ -53,6 +53,72 @@ fn private_directory(path: &std::path::Path) -> Result<(), ServiceError> {
     Ok(())
 }
 
+/// Device addresses published by rumahl-hosts.service. The platform sandbox
+/// blocks netlink, so interface enumeration is only a fallback for hosts that
+/// do not run that service.
+fn configured_device_ips() -> Vec<std::net::IpAddr> {
+    let path = env::var("RUMAHL_DEVICE_IPS_FILE").unwrap_or_else(|_| "/run/rumahl/ips".to_owned());
+    match std::fs::read_to_string(path) {
+        Ok(value) => value
+            .lines()
+            .map(str::trim)
+            .filter(|line| !line.is_empty())
+            .filter_map(|line| line.parse().ok())
+            .collect(),
+        Err(_) => local_unicast_addresses(),
+    }
+}
+
+/// Current non-loopback unicast IPv4/IPv6 addresses of this device.
+fn local_unicast_addresses() -> Vec<std::net::IpAddr> {
+    use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
+
+    let mut addresses = Vec::new();
+    let mut list: *mut libc::ifaddrs = std::ptr::null_mut();
+    // Safety: getifaddrs fills a NULL-terminated list owned by libc, which
+    // freeifaddrs releases exactly once below.
+    if unsafe { libc::getifaddrs(&mut list) } != 0 {
+        return addresses;
+    }
+    let mut current = list;
+    while !current.is_null() {
+        let entry = unsafe { &*current };
+        let address = entry.ifa_addr;
+        if !address.is_null() {
+            match unsafe { (*address).sa_family } as i32 {
+                libc::AF_INET => {
+                    let raw = unsafe { &*(address as *const libc::sockaddr_in) };
+                    let ip = Ipv4Addr::from(u32::from_be(raw.sin_addr.s_addr));
+                    if !ip.is_loopback() && !ip.is_unspecified() && !ip.is_link_local() {
+                        addresses.push(IpAddr::V4(ip));
+                    }
+                }
+                libc::AF_INET6 => {
+                    let raw = unsafe { &*(address as *const libc::sockaddr_in6) };
+                    let ip = Ipv6Addr::from(raw.sin6_addr.s6_addr);
+                    let link_local = ip
+                        .segments()
+                        .first()
+                        .is_some_and(|segment| segment & 0xffc0 == 0xfe80);
+                    if !ip.is_loopback()
+                        && !ip.is_unspecified()
+                        && !link_local
+                        && ip.to_ipv4_mapped().is_none()
+                    {
+                        addresses.push(IpAddr::V6(ip));
+                    }
+                }
+                _ => {}
+            }
+        }
+        current = entry.ifa_next;
+    }
+    unsafe { libc::freeifaddrs(list) };
+    addresses.sort();
+    addresses.dedup();
+    addresses
+}
+
 /// Builds the field-encryption key provider from the TPM environment, if set.
 /// A deployment without TPM stores file content as plaintext.
 fn optional_key_provider() -> Option<Arc<dyn rumahl_persistence_sqlite::FieldKeyProvider>> {
@@ -61,7 +127,9 @@ fn optional_key_provider() -> Option<Arc<dyn rumahl_persistence_sqlite::FieldKey
         env::var("RUMAHL_SECRET_KEY_ID").ok()?,
     )
     .ok()?;
-    let object = PathBuf::from(env::var("RUMAHL_SECRET_KEY_OBJECT").ok()?);
+    let object =
+        rumahl_platform_buildroot::Tpm2Object::parse(&env::var("RUMAHL_SECRET_KEY_OBJECT").ok()?)
+            .ok()?;
     let authorization = match env::var("RUMAHL_SECRET_KEY_POLICY_SESSION") {
         Ok(value) if !value.is_empty() => {
             rumahl_platform_buildroot::Tpm2Authorization::PolicySession(PathBuf::from(value))
@@ -191,14 +259,68 @@ async fn run() -> Result<(), ServiceError> {
         .ok_or_else(|| std::io::Error::other("client build ID missing"))?;
     let locale = env::var("RUMAHL_LOCALE").unwrap_or_else(|_| "en".into());
     let platform = state_dir.join("platform.sqlite");
-    let config = GatewayConfig::new(
-        &required("RUMAHL_PUBLIC_ORIGIN")?,
-        required("RUMAHL_SSR_SOCKET")?,
-    )
-    .map_err(|_| std::io::Error::other("invalid gateway configuration"))?;
-    let authority = config.public_origin.as_str()[8..].to_owned();
-    let app_suffix = env::var("RUMAHL_APP_HOST_SUFFIX")
-        .unwrap_or_else(|_| format!("apps.{}", config.public_origin.host_str().unwrap()));
+    let primary_origin = required("RUMAHL_PUBLIC_ORIGIN")?;
+    let mut config = GatewayConfig::new(&primary_origin, required("RUMAHL_SSR_SOCKET")?)
+        .map_err(|_| std::io::Error::other("invalid gateway configuration"))?;
+    let primary_host = config
+        .public_origin
+        .host_str()
+        .unwrap_or_default()
+        .to_owned();
+    let port_suffix = config
+        .public_origin
+        .port()
+        .map(|port| format!(":{port}"))
+        .unwrap_or_default();
+    // RUMAHL_PUBLIC_HOSTS is a comma-separated allowlist of shell host names.
+    // The token IP expands to the device's current unicast addresses, which are
+    // always accepted so a device stays reachable when local name resolution
+    // is unavailable.
+    let mut host_names: Vec<String> = env::var("RUMAHL_PUBLIC_HOSTS")
+        .ok()
+        .map(|value| {
+            value
+                .split(',')
+                .map(str::trim)
+                .filter(|entry| !entry.is_empty() && !entry.eq_ignore_ascii_case("ip"))
+                .map(str::to_owned)
+                .collect()
+        })
+        .unwrap_or_default();
+    if host_names.is_empty() {
+        host_names.push(primary_host.clone());
+    }
+    let device_ips = configured_device_ips();
+    let mut allowed_origins: Vec<String> = host_names
+        .iter()
+        .map(|host| format!("https://{host}{port_suffix}"))
+        .collect();
+    allowed_origins.extend(device_ips.iter().map(|ip| match ip {
+        std::net::IpAddr::V6(_) => format!("https://[{ip}]{port_suffix}"),
+        std::net::IpAddr::V4(_) => format!("https://{ip}{port_suffix}"),
+    }));
+    config
+        .add_allowed_origins(allowed_origins)
+        .map_err(|_| std::io::Error::other("invalid public host configuration"))?;
+    let allowed_authorities: Vec<String> = config
+        .allowed_origins
+        .iter()
+        .map(|origin| origin.as_str()[8..].trim_end_matches('/').to_owned())
+        .collect();
+    // App hosts use per-host suffixes. RUMAHL_APP_HOST_SUFFIX keeps a single
+    // explicit suffix for the primary host for backwards compatibility.
+    let mut app_suffixes: Vec<String> = Vec::new();
+    if let Ok(explicit) = env::var("RUMAHL_APP_HOST_SUFFIX")
+        && !explicit.is_empty()
+    {
+        app_suffixes.push(explicit);
+    }
+    for host in &host_names {
+        let suffix = format!("apps.{host}");
+        if !app_suffixes.contains(&suffix) {
+            app_suffixes.push(suffix);
+        }
+    }
     let app_root = state_dir.join("app-assets");
     // The home is the source of truth for user files: the shell's Files app and
     // consented app access both see the account's real documents. The SQLite
@@ -275,11 +397,30 @@ async fn run() -> Result<(), ServiceError> {
         Some(adapters) => apps_provider.with_runtime_adapters(adapters),
         None => apps_provider,
     };
+    let app_ports: Option<Arc<dyn rumahl_platform_web::AppPortProvider>> = match (
+        env::var("RUMAHL_HOST_CONFIG_SOCKET"),
+        env::var("RUMAHL_APP_PORTS_FILE"),
+    ) {
+        (Ok(socket), Ok(ports_file)) => {
+            let socket = PathBuf::from(socket);
+            let ports_file = PathBuf::from(ports_file);
+            if socket.is_absolute() && ports_file.is_absolute() {
+                Some(Arc::new(
+                    rumahl_platform_service::app_ports::BrokerAppPorts::new(socket, ports_file),
+                ))
+            } else {
+                None
+            }
+        }
+        _ => None,
+    };
     let apps = Arc::new(
         rumahl_platform_web::AppAccess::new(
             Arc::new(apps_provider),
             &config.public_origin,
-            &app_suffix,
+            &config.allowed_origins,
+            &app_suffixes,
+            app_ports,
         )
         .map_err(|_| std::io::Error::other("invalid app host configuration"))?
         .with_policies(policies.clone()),
@@ -397,7 +538,7 @@ async fn run() -> Result<(), ServiceError> {
         );
     }
     let app = app.layer(middleware::from_fn(move |request: Request, next: Next| {
-        let authority = authority.clone();
+        let allowed_authorities = allowed_authorities.clone();
         let apps = apps.clone();
         async move {
             let host = request
@@ -437,7 +578,7 @@ async fn run() -> Result<(), ServiceError> {
                     ),
                 };
             }
-            if host != authority.trim_end_matches('/') {
+            if !allowed_authorities.iter().any(|allowed| allowed == &host) {
                 let mut response = Response::new(Body::empty());
                 *response.status_mut() = StatusCode::MISDIRECTED_REQUEST;
                 return response;

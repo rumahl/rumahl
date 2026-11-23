@@ -24,9 +24,67 @@ pub enum Tpm2Authorization {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Tpm2Object {
+    PersistentHandle(u32),
+    Context(PathBuf),
+}
+
+impl Tpm2Object {
+    pub fn parse(value: &str) -> Result<Self, Tpm2SealedKeyError> {
+        if let Some(raw) = value
+            .strip_prefix("0x")
+            .or_else(|| value.strip_prefix("0X"))
+        {
+            let handle = u32::from_str_radix(raw, 16)
+                .map_err(|_| Tpm2SealedKeyError::InvalidObjectReference)?;
+            if !(0x8100_0000..=0x81ff_ffff).contains(&handle) {
+                return Err(Tpm2SealedKeyError::InvalidObjectReference);
+            }
+            return Ok(Self::PersistentHandle(handle));
+        }
+        let path = PathBuf::from(value);
+        if !path.is_absolute() {
+            return Err(Tpm2SealedKeyError::ObjectContextMustBeAbsolute);
+        }
+        Ok(Self::Context(path))
+    }
+
+    fn argument(&self) -> std::ffi::OsString {
+        match self {
+            Self::PersistentHandle(handle) => format!("0x{handle:08x}").into(),
+            Self::Context(path) => path.clone().into(),
+        }
+    }
+}
+
+impl From<PathBuf> for Tpm2Object {
+    fn from(value: PathBuf) -> Self {
+        Self::Context(value)
+    }
+}
+
+impl From<&Path> for Tpm2Object {
+    fn from(value: &Path) -> Self {
+        Self::Context(value.to_owned())
+    }
+}
+
+impl From<&PathBuf> for Tpm2Object {
+    fn from(value: &PathBuf) -> Self {
+        Self::Context(value.clone())
+    }
+}
+
+impl From<&str> for Tpm2Object {
+    fn from(value: &str) -> Self {
+        Self::Context(PathBuf::from(value))
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Tpm2SealedKey {
     id: SecretEncryptionKeyId,
-    object_context: PathBuf,
+    object_context: Tpm2Object,
     authorization: Tpm2Authorization,
 }
 
@@ -34,6 +92,7 @@ pub struct Tpm2SealedKey {
 pub enum Tpm2SealedKeyError {
     ObjectContextMustBeAbsolute,
     PolicySessionMustBeAbsolute,
+    InvalidObjectReference,
 }
 
 #[derive(Debug)]
@@ -64,11 +123,13 @@ pub enum Tpm2UnsealKeyProviderError {
 impl Tpm2SealedKey {
     pub fn new(
         id: SecretEncryptionKeyId,
-        object_context: impl Into<PathBuf>,
+        object_context: impl Into<Tpm2Object>,
         authorization: Tpm2Authorization,
     ) -> Result<Self, Tpm2SealedKeyError> {
         let object_context = object_context.into();
-        if !object_context.is_absolute() {
+        if let Tpm2Object::Context(path) = &object_context
+            && !path.is_absolute()
+        {
             return Err(Tpm2SealedKeyError::ObjectContextMustBeAbsolute);
         }
         if let Tpm2Authorization::PolicySession(path) = &authorization
@@ -84,11 +145,19 @@ impl Tpm2SealedKey {
         })
     }
 
+    pub fn from_reference(
+        id: SecretEncryptionKeyId,
+        reference: &str,
+        authorization: Tpm2Authorization,
+    ) -> Result<Self, Tpm2SealedKeyError> {
+        Self::new(id, Tpm2Object::parse(reference)?, authorization)
+    }
+
     pub fn id(&self) -> &SecretEncryptionKeyId {
         &self.id
     }
 
-    pub fn object_context(&self) -> &Path {
+    pub fn object_context(&self) -> &Tpm2Object {
         &self.object_context
     }
 
@@ -154,7 +223,7 @@ impl Tpm2UnsealKeyProvider {
         let mut command = Command::new(&self.executable);
         command
             .arg("--object-context")
-            .arg(&sealed_key.object_context)
+            .arg(sealed_key.object_context.argument())
             .arg("--quiet")
             .env_clear()
             .stdin(Stdio::null())
@@ -249,6 +318,10 @@ impl fmt::Display for Tpm2SealedKeyError {
             Self::PolicySessionMustBeAbsolute => {
                 write!(f, "TPM policy session path must be absolute")
             }
+            Self::InvalidObjectReference => write!(
+                f,
+                "TPM object must be an absolute context path or a persistent handle in 0x81000000..0x81ffffff"
+            ),
         }
     }
 }
@@ -446,6 +519,27 @@ mod tests {
             )
             .unwrap_err(),
             Tpm2SealedKeyError::PolicySessionMustBeAbsolute
+        );
+    }
+
+    #[test]
+    fn accepts_a_persistent_handle() {
+        let id = SecretEncryptionKeyId::parse("device-key-1").unwrap();
+        let key = Tpm2SealedKey::from_reference(id, "0x81000001", Tpm2Authorization::Passwordless)
+            .unwrap();
+        assert_eq!(
+            key.object_context(),
+            &Tpm2Object::PersistentHandle(0x8100_0001)
+        );
+    }
+
+    #[test]
+    fn rejects_non_persistent_handles() {
+        let id = SecretEncryptionKeyId::parse("device-key-1").unwrap();
+        assert_eq!(
+            Tpm2SealedKey::from_reference(id, "0x00000001", Tpm2Authorization::Passwordless)
+                .unwrap_err(),
+            Tpm2SealedKeyError::InvalidObjectReference
         );
     }
 

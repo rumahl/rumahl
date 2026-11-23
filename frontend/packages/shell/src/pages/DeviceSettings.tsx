@@ -12,6 +12,15 @@ export function DeviceSettings() {
   const [busy, setBusy] = useState(false);
   const [revision, refresh] = useState(0);
   const [browser, setBrowser] = useState({ agent: "—", language: "—", screen: "—", mode: "browser", online: true, secure: false, supported: false });
+  const [addresses, setAddresses] = useState<string[]>([]);
+  useEffect(() => {
+    let disposed = false;
+    fetch("/api/v1/device/addresses", { credentials: "same-origin" })
+      .then(response => response.ok ? response.json() : Promise.reject(new Error(String(response.status))))
+      .then((data: { addresses?: string[] }) => { if (!disposed) setAddresses(data.addresses ?? []); })
+      .catch(() => { if (!disposed) setAddresses([]); });
+    return () => { disposed = true; };
+  }, []);
   useEffect(() => {
     let disposed = false;
     const cleanups: (() => void)[] = [];
@@ -78,6 +87,13 @@ export function DeviceSettings() {
       {row(t("device.mode"), t(`device.${browser.mode as "browser" | "fullscreen" | "standalone"}`))}
       {row(t("device.connection"), t(browser.online ? "device.online" : "device.offline"))}
     </div>
+    {addresses.length > 0 && <>
+      <h3 className="section-title">{t("device.addresses")}</h3>
+      <div className="settings-group">
+        {row(t("device.addresses"), <ul style={{ margin: 0, paddingLeft: "1rem" }}>{addresses.map(address => <li key={address}><a href={address}>{address}</a></li>)}</ul>)}
+      </div>
+      <p className="settings-footnote">{t("device.addressesHelp")}</p>
+    </>}
     <p className="settings-footnote">{t("device.kioskHelp")}</p>
     <h3 className="section-title">Service Worker</h3>
     <div className="settings-group">
