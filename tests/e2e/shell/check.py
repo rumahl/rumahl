@@ -104,6 +104,15 @@ def run():
         for old, new in replacements.items():
             site = site.replace(old, new)
         (root / "proxy.inc").write_text((REPO / "platform-buildroot/nginx/rumahl-proxy.inc").read_text())
+        # The image generates this map at boot (rumahl-hosts.sh) and includes it
+        # before rumahl.conf; mirror that so the shipped config validates.
+        (root / "rumahl-hosts.inc").write_text(
+            "map $host $rumahl_shell_host_ok {\n"
+            "    default 0;\n"
+            "    localhost 1;\n"
+            "    127.0.0.1 1;\n"
+            "}\n"
+        )
         config = root / "nginx.conf"
         config.write_text(f'''daemon off;
 master_process off;
@@ -117,6 +126,7 @@ http {{
     fastcgi_temp_path {root}/nginx/fastcgi;
     uwsgi_temp_path {root}/nginx/uwsgi;
     scgi_temp_path {root}/nginx/scgi;
+    include {root}/rumahl-hosts.inc;
     {site}
 }}
 ''')
