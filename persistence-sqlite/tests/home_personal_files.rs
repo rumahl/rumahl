@@ -86,7 +86,7 @@ impl Fixture {
                 format!("test password for {username}"),
                 UnixTimestamp::from_seconds(10),
             )
-            .unwrap_or_else(|_| panic!("provision {username}"));
+            .unwrap_or_else(|_| panic!("provision test account failed"));
         std::fs::create_dir_all(self.home_root().join(username)).unwrap();
         user
     }

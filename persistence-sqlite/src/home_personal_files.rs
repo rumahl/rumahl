@@ -23,7 +23,6 @@ use std::time::Duration;
 
 use rumahl_core::{AccountStateRepository, FileError as E, PersonalFile, PersonalFiles, UserId};
 use rusqlite::{Connection, OptionalExtension, params};
-use sha2::{Digest, Sha256};
 
 use crate::{FieldEnvelope, FieldKeyProvider, open_field, seal_field};
 
@@ -146,15 +145,22 @@ impl HomePersonalFiles {
         Ok(segments)
     }
 
-    fn derived_id(owner: UserId, path: &str) -> String {
-        let digest = Sha256::digest(format!("{owner}\0{path}").as_bytes());
-        digest[..16]
-            .iter()
-            .map(|byte| format!("{byte:02x}"))
-            .collect()
+    /// Opaque 16-byte file id. Ids are persisted in the index, never derived
+    /// from the path, so the id cannot leak the file name.
+    fn new_id() -> String {
+        let mut bytes = [0u8; 16];
+        if getrandom::fill(&mut bytes).is_err() {
+            // The kernel entropy pool is unavailable; fall back to a
+            // monotonic counter so the store still yields distinct ids.
+            use std::sync::atomic::{AtomicU64, Ordering};
+            static COUNTER: AtomicU64 = AtomicU64::new(1);
+            let value = COUNTER.fetch_add(1, Ordering::Relaxed).to_le_bytes();
+            bytes[..8].copy_from_slice(&value);
+        }
+        bytes.iter().map(|byte| format!("{byte:02x}")).collect()
     }
 
-    /// The id for a path: the remembered one, or the derived id when free.
+    /// The id for a path: the remembered one, or a fresh id when free.
     fn id_for_path(connection: &Connection, owner: UserId, path: &str) -> Result<String, E> {
         let existing: Option<String> = connection
             .query_row(
@@ -167,27 +173,24 @@ impl HomePersonalFiles {
         if let Some(id) = existing {
             return Ok(id);
         }
-        let id = Self::derived_id(owner, path);
-        let taken: Option<String> = connection
-            .query_row(
-                "SELECT path FROM home_file_index WHERE owner=?1 AND id=?2",
-                params![owner.to_string(), id],
-                |row| row.get(0),
-            )
-            .optional()
-            .map_err(db)?;
-        // A derived id that already names another path is a collision, never a
-        // reason to merge two files onto one id.
-        if taken.as_deref().is_some_and(|other| other != path) {
-            return Err(E::Conflict);
-        }
+        let id = Self::new_id();
         connection
             .execute(
                 "INSERT INTO home_file_index (owner, id, path) VALUES (?1, ?2, ?3) ON CONFLICT(owner, path) DO NOTHING",
                 params![owner.to_string(), id, path],
             )
             .map_err(db)?;
-        Ok(id)
+        // A concurrent writer may have won the insert; always return the id
+        // that is actually persisted for this path.
+        connection
+            .query_row(
+                "SELECT id FROM home_file_index WHERE owner=?1 AND path=?2",
+                params![owner.to_string(), path],
+                |row| row.get(0),
+            )
+            .optional()
+            .map_err(db)?
+            .ok_or(E::Missing)
     }
 
     fn path_for_id(connection: &Connection, owner: UserId, id: &str) -> Result<String, E> {
