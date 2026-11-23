@@ -192,6 +192,7 @@ async fn catalog_and_launch_require_session_origin_and_current_installation() {
         widgets: Arc::new(NoWidgets),
         streams: None,
         apps: Some(apps.clone()),
+        store: None,
         preferences: None,
         os_mode: None,
         workspace: None,

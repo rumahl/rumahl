@@ -663,6 +663,7 @@ mod tests {
             widgets: Arc::new(NoWidgets),
             streams: None,
             apps: None,
+            store: None,
             preferences: None,
             os_mode: None,
             workspace: None,

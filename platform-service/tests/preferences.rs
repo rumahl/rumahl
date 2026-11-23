@@ -45,6 +45,7 @@ async fn preferences_are_session_scoped_csrf_protected_and_revision_checked() {
         widgets: Arc::new(NoWidgets),
         streams: None,
         apps: None,
+        store: None,
         oidc: None,
         files: Some(Arc::new(
             rumahl_persistence_sqlite::SqlitePersonalFiles::open(root.join("files.sqlite"))

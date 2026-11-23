@@ -194,6 +194,19 @@ Install a real, signed app into the running developer state with:
 pnpm --dir frontend dev:app
 ```
 
+The App Store can install from website and GitHub sources. See
+[app store sources](architecture/app-store.md). For twenty ready-to-install
+example apps and a local source server, run:
+
+```sh
+scripts/dev-example-store.sh
+```
+
+Then add `https://127.0.0.1:8787/site/store.json` as a website source in the
+App Store. The generated local CA is trusted by the developer server. To use the
+GitHub source path locally, start the developer server with
+`RUMAHL_GITHUB_RAW_BASE=https://127.0.0.1:8787/github` and add `example/apps`.
+
 It builds and signs the built-in development app, installs it into
 `.rumahl-dev/data` and grants launch access to the existing accounts, so it
 appears in `/apps`. This runs the same signed-package path as production,

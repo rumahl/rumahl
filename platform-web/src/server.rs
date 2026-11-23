@@ -128,6 +128,8 @@ pub struct GatewayState {
     /// None keeps core Shell and recovery paths available without an engine.
     pub streams: Option<Arc<StreamAccess>>,
     pub apps: Option<Arc<crate::AppAccess>>,
+    /// Website and GitHub app-store sources; None keeps the store offline.
+    pub store: Option<Arc<dyn crate::StoreProvider>>,
     pub files: Option<Arc<dyn rumahl_core::PersonalFiles>>,
     pub workspace: Option<Arc<dyn rumahl_core::WorkspaceRepository>>,
     pub preferences: Option<Arc<dyn rumahl_core::ShellPreferencesRepository>>,
@@ -245,6 +247,19 @@ pub fn router(state: GatewayState) -> Router {
         .route(
             "/api/v1/shell/apps/import",
             post(app_import).layer(axum::extract::DefaultBodyLimit::max(32 * 1024 * 1024)),
+        )
+        .route("/api/v1/shell/store", get(store_list))
+        .route(
+            "/api/v1/shell/store/sources",
+            post(store_add_source).layer(axum::extract::DefaultBodyLimit::max(4096)),
+        )
+        .route(
+            "/api/v1/shell/store/sources/{id}",
+            axum::routing::delete(store_remove_source),
+        )
+        .route(
+            "/api/v1/shell/store/install",
+            post(store_install).layer(axum::extract::DefaultBodyLimit::max(4096)),
         )
         .route(
             "/api/v1/shell/capabilities/invoke",
@@ -375,6 +390,222 @@ async fn app_catalog(State(state): State<Arc<GatewayState>>, headers: HeaderMap)
         Err(_) => error(StatusCode::SERVICE_UNAVAILABLE),
     }
 }
+fn store_error(failure: crate::StoreError) -> Response {
+    match failure {
+        crate::StoreError::InvalidRequest => error(StatusCode::BAD_REQUEST),
+        crate::StoreError::Unavailable => error(StatusCode::SERVICE_UNAVAILABLE),
+    }
+}
+
+fn store_source_json(source: &crate::StoreSource) -> serde_json::Value {
+    serde_json::json!({
+        "id": source.id,
+        "kind": source.kind,
+        "location": source.location,
+        "title": source.title,
+        "status": source.status,
+        "error": source.error,
+    })
+}
+
+fn store_app_json(app: &crate::StoreApp) -> serde_json::Value {
+    serde_json::json!({
+        "sourceId": app.source_id,
+        "id": app.id,
+        "title": app.title,
+        "version": app.version,
+        "description": app.description,
+        "publisher": app.publisher,
+        "icon": app.icon,
+    })
+}
+
+async fn store_list(State(state): State<Arc<GatewayState>>, headers: HeaderMap) -> Response {
+    let identity = match credential(&headers) {
+        Ok(token) => match authenticate(&state, &token).await {
+            Ok(identity) => identity,
+            Err(error) => return backend_error(error),
+        },
+        Err(_) => return error(StatusCode::UNAUTHORIZED),
+    };
+    let Some(store) = state.store.clone() else {
+        return error(StatusCode::SERVICE_UNAVAILABLE);
+    };
+    match tokio::task::spawn_blocking(move || store.list(identity)).await {
+        Ok(Ok(listing)) => {
+            let sources: Vec<_> = listing.sources.iter().map(store_source_json).collect();
+            let apps: Vec<_> = listing.apps.iter().map(store_app_json).collect();
+            let mut response = axum::Json(serde_json::json!({
+                "storeVersion": 1,
+                "sources": sources,
+                "apps": apps,
+            }))
+            .into_response();
+            secure_headers(&mut response);
+            response
+        }
+        Ok(Err(error)) => store_error(error),
+        Err(_) => error(StatusCode::SERVICE_UNAVAILABLE),
+    }
+}
+
+async fn store_add_source(
+    State(state): State<Arc<GatewayState>>,
+    headers: HeaderMap,
+    body: axum::body::Bytes,
+) -> Response {
+    if !state.config.accepts_origin(&headers) {
+        return error(StatusCode::FORBIDDEN);
+    }
+    if headers.get("content-type").and_then(|v| v.to_str().ok()) != Some("application/json") {
+        return error(StatusCode::UNSUPPORTED_MEDIA_TYPE);
+    }
+    let identity = match credential(&headers) {
+        Ok(token) => match authenticate(&state, &token).await {
+            Ok(identity) => identity,
+            Err(error) => return backend_error(error),
+        },
+        Err(_) => return error(StatusCode::UNAUTHORIZED),
+    };
+    let Ok(value) = serde_json::from_slice::<serde_json::Value>(&body) else {
+        return error(StatusCode::BAD_REQUEST);
+    };
+    let Some(object) = value.as_object() else {
+        return error(StatusCode::BAD_REQUEST);
+    };
+    if object.keys().any(|key| key != "kind" && key != "location") {
+        return error(StatusCode::BAD_REQUEST);
+    }
+    let (Some(kind), Some(location)) = (
+        value.get("kind").and_then(|v| v.as_str()),
+        value.get("location").and_then(|v| v.as_str()),
+    ) else {
+        return error(StatusCode::BAD_REQUEST);
+    };
+    let Some(store) = state.store.clone() else {
+        return error(StatusCode::SERVICE_UNAVAILABLE);
+    };
+    let kind = kind.to_owned();
+    let location = location.to_owned();
+    match tokio::task::spawn_blocking(move || store.add_source(identity, &kind, &location)).await {
+        Ok(Ok(source)) => {
+            let mut response = axum::Json(serde_json::json!({
+                "storeVersion": 1,
+                "source": store_source_json(&source),
+            }))
+            .into_response();
+            secure_headers(&mut response);
+            response
+        }
+        Ok(Err(error)) => store_error(error),
+        Err(_) => error(StatusCode::SERVICE_UNAVAILABLE),
+    }
+}
+
+async fn store_remove_source(
+    State(state): State<Arc<GatewayState>>,
+    headers: HeaderMap,
+    UrlPath(id): UrlPath<String>,
+) -> Response {
+    if !state.config.accepts_origin(&headers) {
+        return error(StatusCode::FORBIDDEN);
+    }
+    let identity = match credential(&headers) {
+        Ok(token) => match authenticate(&state, &token).await {
+            Ok(identity) => identity,
+            Err(error) => return backend_error(error),
+        },
+        Err(_) => return error(StatusCode::UNAUTHORIZED),
+    };
+    let Some(store) = state.store.clone() else {
+        return error(StatusCode::SERVICE_UNAVAILABLE);
+    };
+    match tokio::task::spawn_blocking(move || store.remove_source(identity, &id)).await {
+        Ok(Ok(())) => {
+            let mut response = StatusCode::NO_CONTENT.into_response();
+            secure_headers(&mut response);
+            response
+        }
+        Ok(Err(error)) => store_error(error),
+        Err(_) => error(StatusCode::SERVICE_UNAVAILABLE),
+    }
+}
+
+async fn store_install(
+    State(state): State<Arc<GatewayState>>,
+    headers: HeaderMap,
+    body: axum::body::Bytes,
+) -> Response {
+    if !state.config.accepts_origin(&headers) {
+        return error(StatusCode::FORBIDDEN);
+    }
+    if headers.get("content-type").and_then(|v| v.to_str().ok()) != Some("application/json") {
+        return error(StatusCode::UNSUPPORTED_MEDIA_TYPE);
+    }
+    let identity = match credential(&headers) {
+        Ok(token) => match authenticate(&state, &token).await {
+            Ok(identity) => identity,
+            Err(error) => return backend_error(error),
+        },
+        Err(_) => return error(StatusCode::UNAUTHORIZED),
+    };
+    let Ok(value) = serde_json::from_slice::<serde_json::Value>(&body) else {
+        return error(StatusCode::BAD_REQUEST);
+    };
+    let Some(object) = value.as_object() else {
+        return error(StatusCode::BAD_REQUEST);
+    };
+    if object
+        .keys()
+        .any(|key| key != "sourceId" && key != "appId" && key != "device")
+    {
+        return error(StatusCode::BAD_REQUEST);
+    }
+    let (Some(source_id), Some(app_id), Some(device)) = (
+        value.get("sourceId").and_then(|v| v.as_str()),
+        value.get("appId").and_then(|v| v.as_str()),
+        value
+            .get("device")
+            .and_then(|v| v.as_str())
+            .and_then(BrowserProfileId::parse),
+    ) else {
+        return error(StatusCode::BAD_REQUEST);
+    };
+    // Installing app packages requires an OS mode that permits it.
+    let Some(mode_repository) = state.os_mode.clone() else {
+        return error(StatusCode::SERVICE_UNAVAILABLE);
+    };
+    let user = identity.user_id;
+    let mode = match tokio::task::spawn_blocking(move || mode_repository.load(user, device)).await {
+        Ok(Ok(settings)) => settings.effective_mode(),
+        Ok(Err(_)) | Err(_) => return error(StatusCode::SERVICE_UNAVAILABLE),
+    };
+    if !mode.policy().can_install_apps() {
+        return error(StatusCode::FORBIDDEN);
+    }
+    let Some(store) = state.store.clone() else {
+        return error(StatusCode::SERVICE_UNAVAILABLE);
+    };
+    let source_id = source_id.to_owned();
+    let app_id = app_id.to_owned();
+    match tokio::task::spawn_blocking(move || store.install(identity, &source_id, &app_id)).await {
+        Ok(Ok(app)) => {
+            let mut response = axum::Json(serde_json::json!({
+                "importVersion": 1,
+                "id": app.id,
+                "installationId": app.installation_id.to_string(),
+                "title": app.title,
+                "version": app.version,
+            }))
+            .into_response();
+            secure_headers(&mut response);
+            response
+        }
+        Ok(Err(error)) => store_error(error),
+        Err(_) => error(StatusCode::SERVICE_UNAVAILABLE),
+    }
+}
+
 async fn app_launch(
     State(state): State<Arc<GatewayState>>,
     UrlPath(id): UrlPath<String>,
@@ -3066,6 +3297,7 @@ mod tests {
             widgets: Arc::new(TestWidgets(widget_url)),
             streams: None,
             apps: None,
+            store: None,
             preferences: None,
             os_mode: None,
             workspace: None,
@@ -3197,6 +3429,7 @@ mod tests {
             widgets: Arc::new(TestWidgets("https://weather.apps.rumahl.dev/widget")),
             streams: Some(Arc::new(StreamAccess::new(provider))),
             apps: None,
+            store: None,
             preferences: None,
             os_mode: None,
             workspace: None,
@@ -3333,6 +3566,7 @@ mod tests {
             widgets: Arc::new(TestWidgets("https://weather.apps.rumahl.dev/widget")),
             streams: Some(Arc::new(StreamAccess::new(provider))),
             apps: None,
+            store: None,
             preferences: None,
             os_mode: None,
             workspace: None,

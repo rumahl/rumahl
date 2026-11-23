@@ -281,7 +281,18 @@ try {
     RUMAHL_APP_HOST_SUFFIX: "apps.localhost", RUMAHL_APPS_ROOT: join(state, "data", "apps"),
     RUMAHL_CLIENT_BUILD: buildFile, RUMAHL_PASSWORD_BLOCKLIST: blocklist,
     RUMAHL_GATEWAY_SOCKET: join(runtime, "gateway.sock"), RUMAHL_GATEWAY_SOCKET_ACCESS: "owner",
-    RUMAHL_SSR_SOCKET: join(runtime, "ssr.sock"), RUMAHL_SSR_SOCKET_ACCESS: "owner" };
+    RUMAHL_SSR_SOCKET: join(runtime, "ssr.sock"), RUMAHL_SSR_SOCKET_ACCESS: "owner",
+    // Store installs use the same signed-package path as production. Development
+    // keys live beside the state and the runtime broker is not contacted for web apps.
+    RUMAHL_RUNTIME_UID: String(process.getuid()),
+    RUMAHL_RUNTIME_CONTROL_SOCKET: join(runtime, "control.sock"),
+    RUMAHL_RUNTIME_SECRET_SOCKET: join(runtime, "secret.sock"),
+    RUMAHL_RUNTIME_IMAGE_SOCKET: join(runtime, "image.sock"),
+    RUMAHL_PACKAGE_TRUST_STORE: join(state, "keys", "trust-store.json"),
+    RUMAHL_APP_STORE_CA_FILE: join(state, "example-store-tls", "ca.pem"),
+    RUMAHL_TPM2_EXECUTABLE: "/bin/true",
+    RUMAHL_SECRET_KEY_ID: "dev-root",
+    RUMAHL_SECRET_KEY_OBJECT: join(runtime, "root.ctx") };
   await provision();
   await launchPlatform();
   watchRust();

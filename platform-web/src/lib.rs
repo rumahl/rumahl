@@ -50,6 +50,9 @@ pub use app_channel::{
     read_hello, run_connection, serve_channel_listener,
 };
 
+mod store;
+pub use store::{StoreApp, StoreError, StoreListing, StoreProvider, StoreSource};
+
 mod preferences;
 
 mod host_files;

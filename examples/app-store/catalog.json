@@ -1,0 +1,26 @@
+{
+  "name": "rumahl Example Store",
+  "description": "Twenty small, real web apps for testing the rumahl App Store.",
+  "apps": [
+    { "slug": "notes", "title": "Notes", "description": "A quiet place for quick notes that stay on this device." },
+    { "slug": "tasks", "title": "Tasks", "description": "A small to-do list with local persistence." },
+    { "slug": "calculator", "title": "Calculator", "description": "A keyboard-friendly four-function calculator." },
+    { "slug": "clock", "title": "Clock", "description": "A large local clock and calendar view." },
+    { "slug": "stopwatch", "title": "Stopwatch", "description": "Precise stopwatch with laps." },
+    { "slug": "timer", "title": "Timer", "description": "A countdown timer with a clear alarm." },
+    { "slug": "converter", "title": "Unit Converter", "description": "Convert length, weight and temperature." },
+    { "slug": "password", "title": "Password Generator", "description": "Generate strong passwords without sending anything to a server." },
+    { "slug": "palette", "title": "Colour Palette", "description": "Create five-colour palettes with one click." },
+    { "slug": "markdown", "title": "Markdown Preview", "description": "Write Markdown and see a safe local preview." },
+    { "slug": "flashcards", "title": "Flashcards", "description": "Study a deck of question-and-answer cards." },
+    { "slug": "budget", "title": "Budget", "description": "Track small expenses and see the running total." },
+    { "slug": "habits", "title": "Habits", "description": "Build a daily habit streak on this device." },
+    { "slug": "recipes", "title": "Recipes", "description": "Keep a personal recipe collection." },
+    { "slug": "contacts", "title": "Contacts", "description": "A private contact book stored in the browser." },
+    { "slug": "bookmarks", "title": "Bookmarks", "description": "A quick launchpad for useful links." },
+    { "slug": "shopping", "title": "Shopping List", "description": "A checkable shopping list for the next trip." },
+    { "slug": "dice", "title": "Dice Roller", "description": "Roll dice for games and decide the result." },
+    { "slug": "metronome", "title": "Metronome", "description": "A simple audible practice metronome." },
+    { "slug": "bmi", "title": "BMI Calculator", "description": "Calculate body mass index and a healthy weight range." }
+  ]
+}

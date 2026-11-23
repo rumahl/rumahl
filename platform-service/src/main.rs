@@ -332,6 +332,7 @@ async fn run() -> Result<(), ServiceError> {
         .with_preferences(snapshot_store.clone())
         .with_workspace(snapshot_store.clone());
     let account_feed = SqliteAccountStateRepository::open(&accounts)?;
+    let app_store = Arc::new(rumahl_platform_service::store::AppStore::open(&state_dir)?);
     let audit: Arc<dyn rumahl_core::AuditLog> = Arc::new(
         rumahl_persistence_sqlite::SqliteAuditLog::open(state_dir.join("audit.sqlite"))?,
     );
@@ -357,6 +358,7 @@ async fn run() -> Result<(), ServiceError> {
         widgets: Arc::new(NoWidgets),
         streams: None,
         apps: Some(apps.clone()),
+        store: Some(app_store),
         files: Some(match optional_key_provider() {
             Some(provider) => Arc::new(
                 rumahl_persistence_sqlite::SqlitePersonalFiles::open_encrypted(

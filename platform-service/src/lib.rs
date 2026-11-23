@@ -611,3 +611,4 @@ fn sha256_hex(bytes: &[u8]) -> String {
 pub mod apps;
 pub mod host_files;
 pub mod install;
+pub mod store;

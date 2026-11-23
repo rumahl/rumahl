@@ -43,6 +43,7 @@ async fn raising_the_mode_requires_reauthentication() {
         widgets: Arc::new(NoWidgets),
         streams: None,
         apps: None,
+        store: None,
         oidc: None,
         files: None,
         workspace: Some(Arc::new(

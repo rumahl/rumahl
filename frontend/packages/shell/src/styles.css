@@ -582,6 +582,176 @@
     padding: 30px;
   }
 
+  .app-store {
+    display: grid;
+    gap: 22px;
+    max-width: 1120px;
+    margin: 0 auto;
+  }
+
+  .app-store__intro h1 {
+    margin: 4px 0 8px;
+    font:
+      500 34px/1.1 Georgia,
+      serif;
+  }
+
+  .app-store__intro p:last-child,
+  .app-store__add p,
+  .app-store__source > p {
+    max-width: 720px;
+    color: var(--rumahl-ui-color-text-muted, var(--rumahl-color-text-muted));
+    line-height: 1.55;
+  }
+
+  .app-store__add,
+  .app-store__source {
+    padding: 18px;
+    border: 1px solid var(--line);
+    border-radius: var(--rumahl-radius-window);
+    background: var(
+      --rumahl-ui-color-panel-background,
+      var(--rumahl-color-panel-background)
+    );
+  }
+
+  .app-store__add h2,
+  .app-store__heading h2 {
+    margin-bottom: 6px;
+    font-size: 16px;
+  }
+
+  .app-store__form {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: end;
+    gap: 10px;
+    margin-top: 14px;
+  }
+
+  .app-store__form label {
+    display: grid;
+    gap: 5px;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+  }
+
+  .app-store__form select,
+  .app-store__form input {
+    min-width: 160px;
+    padding: 9px 11px;
+    border: 1px solid var(--line);
+    border-radius: 9px;
+    background: var(--rumahl-ui-color-panel-background, #fff);
+    color: var(--rumahl-ui-color-text-primary, inherit);
+    font: inherit;
+    letter-spacing: normal;
+    text-transform: none;
+  }
+
+  .app-store__location {
+    flex: 1 1 320px;
+  }
+
+  .app-store__location input {
+    width: 100%;
+  }
+
+  .app-store__heading {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 10px;
+  }
+
+  .app-store__sources {
+    display: grid;
+    gap: 12px;
+  }
+
+  .app-store__source > header {
+    display: flex;
+    align-items: start;
+    justify-content: space-between;
+    gap: 16px;
+    margin-bottom: 12px;
+  }
+
+  .app-store__source h3 {
+    margin: 5px 0 3px;
+    font-size: 17px;
+  }
+
+  .app-store__source small {
+    display: block;
+    overflow-wrap: anywhere;
+    color: var(--rumahl-ui-color-text-muted, var(--rumahl-color-text-muted));
+  }
+
+  .app-store__badge {
+    display: inline-block;
+    padding: 2px 7px;
+    border-radius: 999px;
+    background: rgba(40, 105, 76, 0.12);
+    font-size: 10px;
+    font-weight: 800;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+  }
+
+  .app-store__badge.is-github {
+    background: rgba(60, 70, 90, 0.12);
+  }
+
+  .app-store__apps {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+    gap: 10px;
+  }
+
+  .app-store__app {
+    display: flex;
+    min-height: 150px;
+    flex-direction: column;
+    gap: 8px;
+    padding: 13px;
+    border: 1px solid var(--line);
+    border-radius: 12px;
+  }
+
+  .app-store__app-head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 10px;
+  }
+
+  .app-store__app-head h4 {
+    margin: 0;
+    font-size: 14px;
+  }
+
+  .app-store__app-head span {
+    color: var(--rumahl-ui-color-text-muted, var(--rumahl-color-text-muted));
+    font-size: 11px;
+  }
+
+  .app-store__app p {
+    flex: 1;
+    margin: 0;
+    color: var(--rumahl-ui-color-text-muted, var(--rumahl-color-text-muted));
+    font-size: 12px;
+    line-height: 1.5;
+  }
+
+  .app-store__app-actions {
+    display: flex;
+    justify-content: end;
+  }
+
   .app-manager {
     display: flex;
     align-items: end;

@@ -70,6 +70,7 @@ export function useShellCommands(): ShellCommand[] {
     { id: "open.activity", title: t("command.run.openActivity"), hint: "/activity", keywords: "activity aktivitaet log", run: () => open("/activity") },
     { id: "open.home", title: t("command.run.openHome"), hint: "/", keywords: "home start startseite desktop", run: () => open("/") },
     { id: "open.appManager", title: t("command.run.openAppManager"), hint: "/app/app-manager", keywords: "app manager verwalten install", run: () => open("/app/app-manager") },
+    { id: "open.appStore", title: t("command.run.openAppStore"), hint: "/app/app-store", keywords: "app store shop marketplace quellen sources install", run: () => open("/app/app-store") },
     { id: "theme.dark", title: t("command.run.darkMode"), hint: "dark", keywords: "dark dunkel night nacht", run: () => tuning.setMode("dark") },
     { id: "theme.light", title: t("command.run.lightMode"), hint: "light", keywords: "light hell day tag", run: () => tuning.setMode("light") },
     { id: "shell.desktop", title: t("command.run.desktopMode"), hint: "desktop", keywords: "desktop", run: () => setMode("desktop") },
