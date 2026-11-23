@@ -11,7 +11,15 @@ import {
   type BridgeCapabilityResource,
   type BridgeCapabilityResult,
   type BridgeEvent,
+  type BridgeFilesAccess,
+  type BridgeFilesReadResult,
+  type BridgeFilesRequestResult,
+  type BridgeFilesWriteResult,
   type BridgeMessage,
+  type BridgeNetworkRequest,
+  type BridgeNetworkResponse,
+  type BridgeSettings,
+  type BridgeSettingsWrite,
   type BridgeNotification,
   type BridgePetAction,
   type BridgePetActionRegistration,
@@ -51,6 +59,22 @@ export interface AppBridgeHandlers {
   petRegisterAction?: (action: BridgePetActionRegistration) => (() => void) | null;
   /** Removes one previously registered pet action. */
   petUnregisterAction?: (id: string) => boolean;
+  /**
+   * Opens the shell's file picker so the user can grant this app access to
+   * personal files. Resolves with the picked files, or `null` when the user
+   * declined. The app only ever learns file ids through this consent.
+   */
+  filesRequest?: (access: BridgeFilesAccess) => Promise<BridgeFilesRequestResult | null>;
+  /** Reads one granted personal file on the app's behalf. */
+  filesRead?: (key: string) => Promise<BridgeFilesReadResult>;
+  /** Writes one granted personal file on the app's behalf. */
+  filesWrite?: (key: string, contentBase64: string) => Promise<BridgeFilesWriteResult>;
+  /** Reads the app's own non-secret settings and configured secret keys. */
+  settings?: () => Promise<BridgeSettings>;
+  /** Writes the app's own settings; secret values are write-only. */
+  setSettings?: (input: BridgeSettingsWrite) => Promise<BridgeSettings>;
+  /** Performs a brokered HTTP(S) request to a user-approved origin. */
+  netRequest?: (input: BridgeNetworkRequest) => Promise<BridgeNetworkResponse>;
   /** Registers this installed app as an OS weather-warning source. */
   warningRegister?: () => Promise<BridgeWarningRegistration>;
   /** Publishes or updates warnings; the server re-checks the app capability. */
@@ -218,6 +242,70 @@ function normalizePetActionRegistration(value: unknown): BridgePetActionRegistra
   };
 }
 
+function normalizeSettingsWrite(value: unknown): BridgeSettingsWrite | null {
+  if (typeof value !== "object" || value === null) return null;
+  const record = value as Record<string, unknown>;
+  if (Object.keys(record).some((key) => key !== "values")) return null;
+  if (typeof record.values !== "object" || record.values === null || Array.isArray(record.values)) return null;
+  const entries = Object.entries(record.values);
+  if (entries.length > 64) return null;
+  const values: Record<string, string | number | boolean | null> = {};
+  for (const [key, entry] of entries) {
+    if (!/^[a-z0-9._-]{1,64}$/.test(key)) return null;
+    if (entry === null) { values[key] = null; continue; }
+    if (typeof entry === "string") {
+      if (entry.length > 64 * 1024) return null;
+    } else if (typeof entry === "number") {
+      if (!Number.isFinite(entry)) return null;
+    } else if (typeof entry !== "boolean") {
+      return null;
+    }
+    values[key] = entry;
+  }
+  return { values };
+}
+
+function normalizeNetworkRequest(value: unknown): BridgeNetworkRequest | null {
+  if (typeof value !== "object" || value === null) return null;
+  const record = value as Record<string, unknown>;
+  const allowed = new Set(["url", "method", "headers", "body", "secret", "maxBytes"]);
+  if (Object.keys(record).some((key) => !allowed.has(key))) return null;
+  if (typeof record.url !== "string" || record.url.length === 0 || record.url.length > 4096) return null;
+  const request: BridgeNetworkRequest = { url: record.url };
+  if (record.method !== undefined) {
+    if (typeof record.method !== "string" ||
+        !["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD"].includes(record.method)) return null;
+    request.method = record.method as NonNullable<BridgeNetworkRequest["method"]>;
+  }
+  if (record.headers !== undefined) {
+    if (typeof record.headers !== "object" || record.headers === null || Array.isArray(record.headers)) return null;
+    const entries = Object.entries(record.headers);
+    if (entries.length > 16) return null;
+    const headers: Record<string, string> = {};
+    const allowedHeaders = new Set(["accept", "content-type", "cache-control", "if-none-match", "if-modified-since"]);
+    for (const [name, entry] of entries) {
+      if (!/^[A-Za-z0-9-]{1,128}$/.test(name) || !allowedHeaders.has(name.toLowerCase())) return null;
+      if (typeof entry !== "string" || entry.length > 1024) return null;
+      headers[name] = entry;
+    }
+    request.headers = headers;
+  }
+  if (record.body !== undefined) {
+    if (typeof record.body !== "string" || record.body.length > 256 * 1024) return null;
+    request.body = record.body;
+  }
+  if (record.secret !== undefined) {
+    if (typeof record.secret !== "string" || !/^[a-z0-9._-]{1,64}$/.test(record.secret)) return null;
+    request.secret = record.secret;
+  }
+  if (record.maxBytes !== undefined) {
+    if (typeof record.maxBytes !== "number" || !Number.isInteger(record.maxBytes) ||
+        record.maxBytes < 1024 || record.maxBytes > 2 * 1024 * 1024) return null;
+    request.maxBytes = record.maxBytes;
+  }
+  return request;
+}
+
 /**
  * Handles a request, awaiting capability invocations. Synchronous methods
  * resolve immediately; `os.capabilities.invoke` calls the OS on the user's
@@ -225,10 +313,16 @@ function normalizePetActionRegistration(value: unknown): BridgePetActionRegistra
  */
 const ASYNC_METHODS: ReadonlySet<string> = new Set([
   "os.capabilities.invoke",
+  "os.settings.get",
+  "os.settings.set",
+  "os.net.request",
   "os.warnings.register",
   "os.warnings.publish",
   "os.warnings.test",
-  "os.warnings.clear"
+  "os.warnings.clear",
+  "os.files.request",
+  "os.files.read",
+  "os.files.write"
 ]);
 
 export async function handleBridgeRequestAsync(message: BridgeRequest, handlers: AppBridgeHandlers): Promise<BridgeResponse> {
@@ -240,15 +334,64 @@ export async function handleBridgeRequestAsync(message: BridgeRequest, handlers:
     ok,
     ...extra
   });
+  try {
+    // The picker is the consent surface: it is available to any app that
+    // declared a filesystem permission, and it never grants more than the
+    // user picked. The generic single-capability gate cannot express
+    // "either", so it runs first.
+    if (message.method === "os.files.request") {
+      const access = normalizeFilesAccess(message.params);
+      if (!access) return respond(false, { error: { code: "invalid-params", message: "a files access of read or write is required" } });
+      const declared = [BRIDGE_CAPABILITIES.filesRead, BRIDGE_CAPABILITIES.filesWrite] as const;
+      if (!declared.some((permission) => handlers.capabilities.includes(permission))) {
+        return respond(false, { error: { code: "denied", message: `missing capability: ${BRIDGE_CAPABILITIES.filesRead} or ${BRIDGE_CAPABILITIES.filesWrite}` } });
+      }
+      if (!handlers.filesRequest) return respond(false, { error: { code: "denied", message: "file access unavailable" } });
+      const picked = await handlers.filesRequest(access);
+      if (!picked) return respond(false, { error: { code: "denied", message: "the user declined file access" } });
+      return respond(true, { result: picked });
+    }
+  } catch (error) {
+    return respond(false, { error: { code: "failed", message: error instanceof Error ? error.message : String(error) } });
+  }
   const capability = capabilityForMethod(message.method);
   if (capability === null) return respond(false, { error: { code: "unknown-method", message: `unknown method: ${message.method}` } });
   if (!handlers.capabilities.includes(capability)) return respond(false, { error: { code: "denied", message: `missing capability: ${capability}` } });
   try {
     switch (message.method) {
+      case "os.files.read": {
+        const key = normalizeFilesKey(message.params);
+        if (!key) return respond(false, { error: { code: "invalid-params", message: "a personal file key is required" } });
+        if (!handlers.filesRead) return respond(false, { error: { code: "denied", message: "file access unavailable" } });
+        return respond(true, { result: await handlers.filesRead(key) });
+      }
+      case "os.files.write": {
+        const write = normalizeFilesWrite(message.params);
+        if (!write) return respond(false, { error: { code: "invalid-params", message: "a file key and base64 content are required" } });
+        if (!handlers.filesWrite) return respond(false, { error: { code: "denied", message: "file access unavailable" } });
+        const result = await handlers.filesWrite(write.key, write.contentBase64);
+        return respond(true, { result: result });
+      }
       case "os.capabilities.invoke": {
         const invocation = normalizeCapabilityInvocation(message.params);
         if (!invocation) return respond(false, { error: { code: "invalid-params", message: "a capability id is required" } });
         return respond(true, { result: await handlers.invokeCapability(invocation.capability, invocation.resource) });
+      }
+      case "os.settings.get": {
+        if (!handlers.settings) return respond(false, { error: { code: "denied", message: "settings unavailable" } });
+        return respond(true, { result: await handlers.settings() });
+      }
+      case "os.settings.set": {
+        const write = normalizeSettingsWrite(message.params);
+        if (!write) return respond(false, { error: { code: "invalid-params", message: "invalid settings write" } });
+        if (!handlers.setSettings) return respond(false, { error: { code: "denied", message: "settings unavailable" } });
+        return respond(true, { result: await handlers.setSettings(write) });
+      }
+      case "os.net.request": {
+        const request = normalizeNetworkRequest(message.params);
+        if (!request) return respond(false, { error: { code: "invalid-params", message: "invalid network request" } });
+        if (!handlers.netRequest) return respond(false, { error: { code: "denied", message: "network unavailable" } });
+        return respond(true, { result: await handlers.netRequest(request) });
       }
       case "os.warnings.register": {
         if (!handlers.warningRegister) return respond(false, { error: { code: "denied", message: "weather warnings unavailable" } });
@@ -379,6 +522,68 @@ export interface AppBridge {
  * `event.origin` is always `"null"`. Returns a handle whose `ready` promise
  * resolves when the app handshakes, so capability delivery can wait for it.
  */
+/** Personal-file ids: 32 lowercase hex, as minted by the files API. */
+const FILES_KEY = /^[0-9a-f]{32}$/;
+/** Decoded bytes an app may write through one bridge call. The platform's
+ * own files API accepts 16 MiB; base64 inflates by a third, so the bridge
+ * stays below that line. */
+const MAX_FILES_CONTENT_BYTES = 12 * 1024 * 1024;
+const BASE64 = /^[A-Za-z0-9+/]+={0,2}$/;
+
+function normalizeFilesAccess(value: unknown): BridgeFilesAccess | null {
+  if (typeof value !== "object" || value === null) return null;
+  const record = value as Record<string, unknown>;
+  if (Object.keys(record).length !== 1 || typeof record.access !== "string") return null;
+  return record.access === "read" || record.access === "write" ? record.access : null;
+}
+
+function normalizeFilesKey(value: unknown): string | null {
+  if (typeof value !== "object" || value === null) return null;
+  const record = value as Record<string, unknown>;
+  if (Object.keys(record).length !== 1 || typeof record.key !== "string") return null;
+  return FILES_KEY.test(record.key) ? record.key : null;
+}
+
+function base64DecodedBytes(encoded: string): number {
+  const padding = encoded.endsWith("==") ? 2 : encoded.endsWith("=") ? 1 : 0;
+  return Math.floor((encoded.length * 3) / 4) - padding;
+}
+
+function normalizeFilesWrite(value: unknown): { key: string; contentBase64: string } | null {
+  if (typeof value !== "object" || value === null) return null;
+  const record = value as Record<string, unknown>;
+  if (Object.keys(record).some((key) => key !== "key" && key !== "contentBase64")) return null;
+  if (typeof record.key !== "string" || !FILES_KEY.test(record.key)) return null;
+  if (typeof record.contentBase64 !== "string" || !BASE64.test(record.contentBase64)) return null;
+  if (base64DecodedBytes(record.contentBase64) > MAX_FILES_CONTENT_BYTES) return null;
+  return { key: record.key, contentBase64: record.contentBase64 };
+}
+
+/** Decodes bridge base64 into bytes; rejects malformed or padded-junk input. */
+export function decodeBridgeBase64(value: string): Uint8Array | null {
+  if (typeof value !== "string" || !BASE64.test(value)) return null;
+  if (base64DecodedBytes(value) > MAX_FILES_CONTENT_BYTES) return null;
+  try {
+    const binary = atob(value);
+    const bytes = new Uint8Array(binary.length);
+    for (let index = 0; index < binary.length; index += 1) bytes[index] = binary.charCodeAt(index);
+    return bytes;
+  } catch {
+    return null;
+  }
+}
+
+/** Encodes bytes for the bridge; null when the content is out of bounds. */
+export function encodeBridgeBase64(bytes: Uint8Array): string | null {
+  if (bytes.length > MAX_FILES_CONTENT_BYTES) return null;
+  let binary = "";
+  const step = 0x8000;
+  for (let offset = 0; offset < bytes.length; offset += step) {
+    binary += String.fromCharCode(...bytes.subarray(offset, offset + step));
+  }
+  return btoa(binary);
+}
+
 export function attachAppBridge(iframe: HTMLIFrameElement, handlers: AppBridgeHandlers): AppBridge {
   const source = iframe.contentWindow;
   let resolveReady: () => void = () => undefined;

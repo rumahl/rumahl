@@ -10,6 +10,15 @@ pub mod identity;
 pub mod permissions;
 pub mod persistence;
 pub mod platform;
+pub mod policies;
+
+pub use policies::{
+    DEFAULT_APP_STORAGE_QUOTA_BYTES, DEFAULT_MAX_FILE_BYTES, DEFAULT_PASSWORD_ATTEMPT_LIMIT,
+    DEFAULT_PASSWORD_LOCKOUT_SECONDS, DEFAULT_PASSWORD_MIN_LENGTH, DEFAULT_PERSONAL_QUOTA_BYTES,
+    DEFAULT_SESSION_SECONDS, PolicyAssignment, PolicyDefault, PolicyDefinition, PolicyKey,
+    PolicyKeyError, PolicyKind, PolicySubject, PolicyValue, policy_catalog, policy_definition,
+    resolve_device_policy, resolve_policy, validate_assignment,
+};
 pub mod resources;
 pub mod runtime;
 pub mod secrets;
@@ -25,22 +34,22 @@ pub use accounts::{
 pub use app_operations::{
     AppOperation, AppOperationError, AppOperationId, AppOperationIdError, AppOperationKind,
     AppOperationPhase, AppOperationRepository, AppOperationResource, AppOperationResourceState,
-    AppOperationStep,
+    AppOperationStep, activates_at_install,
 };
 
 pub use apps::{
-    AppLifecycle, AppLifecycleError, AppManifest, AppManifestError, AppManifestValidationError,
-    AppManifestValidator, AppSettingDeclaration, AppSettingError, AppSettingKey, AppSettingKind,
-    AppSettingOption, AppUninstallResult, AppVersion, AppVersionError,
-    CommandContributionDeclaration, CommandContributionDeclarationError, ConnectorDeclaration,
-    ConnectorTarget, ConnectorTargetError, ContributionDeclaration, InstalledApp,
-    InstalledAppError, InstalledAppRegistry, InstalledAppRegistryError, MAX_APP_SETTINGS,
-    OidcCallbackPath, OidcCallbackPathError, OidcClientDeclaration, OidcClientDeclarationError,
-    OidcClientType, OidcScope, PlatformDeregistrationReport, PlatformRegistrar,
-    PlatformRegistrarError, PlatformRegistration, PlatformRegistrationError, PreferredStreamSize,
-    RuntimeLifecycle, STREAMING_ENGINE_CAPABILITY, SearchContributionDeclaration,
-    StreamPresentation, StreamPresentationError, SurfaceDeclaration, SurfaceIcon, SurfaceKind,
-    SurfacePlacement, SurfaceSize, SurfaceSlot, SurfaceTone,
+    APP_NETWORK_PERMISSION, AppLifecycle, AppLifecycleError, AppManifest, AppManifestError,
+    AppManifestValidationError, AppManifestValidator, AppSettingDeclaration, AppSettingError,
+    AppSettingKey, AppSettingKind, AppSettingOption, AppUninstallResult, AppVersion,
+    AppVersionError, CommandContributionDeclaration, CommandContributionDeclarationError,
+    ConnectorDeclaration, ConnectorTarget, ConnectorTargetError, ContributionDeclaration,
+    InstalledApp, InstalledAppError, InstalledAppRegistry, InstalledAppRegistryError,
+    MAX_APP_SETTINGS, OidcCallbackPath, OidcCallbackPathError, OidcClientDeclaration,
+    OidcClientDeclarationError, OidcClientType, OidcScope, PlatformDeregistrationReport,
+    PlatformRegistrar, PlatformRegistrarError, PlatformRegistration, PlatformRegistrationError,
+    PreferredStreamSize, RuntimeLifecycle, STREAMING_ENGINE_CAPABILITY,
+    SearchContributionDeclaration, StreamPresentation, StreamPresentationError, SurfaceDeclaration,
+    SurfaceIcon, SurfaceKind, SurfacePlacement, SurfaceSize, SurfaceSlot, SurfaceTone,
 };
 
 pub use context::{CorrelationId, CorrelationIdError, OperationContext};
@@ -52,9 +61,9 @@ pub use databases::{
 };
 
 pub use identity::{
-    AppId, AppIdError, AppIdentity, Identity, InstallationId, InstallationIdError, PublisherId,
-    PublisherIdError, ServiceId, ServiceIdError, ServiceIdentity, SessionId, SessionIdError,
-    UserId, UserIdError, UserIdentity,
+    AppId, AppIdError, AppIdentity, GroupId, GroupIdError, Identity, InstallationId,
+    InstallationIdError, PublisherId, PublisherIdError, ServiceId, ServiceIdError, ServiceIdentity,
+    SessionId, SessionIdError, UserId, UserIdError, UserIdentity,
 };
 
 pub use resources::{
@@ -87,9 +96,11 @@ pub use runtime::{
 
 pub use permissions::{
     AuthorizationDecision, AuthorizationDenyReason, AuthorizationEngine, AuthorizationRequest,
-    GrantAuthority, GrantAuthorityError, GrantId, GrantIdError, GrantIssuerPolicy,
-    GrantIssuerPolicyError, InMemoryGrantStore, PermissionGrant, PermissionGrantError,
-    PermissionId, PermissionIdError, PermissionRequest, PermissionScope, UserRole,
+    FILES_READ_PERMISSION, FILES_WRITE_PERMISSION, GrantAuthority, GrantAuthorityError, GrantId,
+    GrantIdError, GrantIssuerPolicy, GrantIssuerPolicyError, GrantValidity, InMemoryGrantStore,
+    OsPermission, OsPermissionCatalogError, PermissionGrant, PermissionGrantError, PermissionId,
+    PermissionIdError, PermissionRequest, PermissionScope, UserRole, os_permission_catalog,
+    os_permission_catalog_validate,
 };
 
 pub use persistence::{
@@ -169,4 +180,4 @@ pub use shell_preferences::{
 mod workspace;
 pub use workspace::{WorkspacePreferences, WorkspaceRepository};
 mod personal_files;
-pub use personal_files::{FileError, PersonalFile, PersonalFiles};
+pub use personal_files::{FileError, PersonalFile, PersonalFiles, personal_path_segments};

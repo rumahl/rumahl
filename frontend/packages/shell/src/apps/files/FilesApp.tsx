@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { RumahlDialog, useRegisterMobileNav, type MobileIslandNavItem } from "@rumahl/ui/components";
 import { CheckIcon, GridIcon, RefreshIcon, SearchIcon, SettingsIcon } from "../../icons";
@@ -7,10 +7,12 @@ import { useOsModePolicy } from "../../preferences/OsMode";
 import { browserProfile } from "../../preferences/storage";
 import { isMobile } from "../../shell/device";
 import { useShell } from "../../shell/ShellContext";
+import { useRegisterTopbarActions } from "../../shell/TopbarActions";
 import { useAppTopbarHost } from "../../components/ProtectedWindow";
+import { useWindowLocation } from "../../routing/window-location";
 import { useShellApps } from "../../apps/useShellApps";
 import { useWorkspace } from "../../preferences/Workspace";
-import { Breadcrumb } from "./Breadcrumb";
+import { PathBar, type PathCrumb, type PathOption } from "./PathBar";
 import { ContextMenu, type MenuItem } from "./ContextMenu";
 import { FileGrid, FileList, type ViewProps } from "./FileViews";
 import { SearchField } from "./SearchField";
@@ -18,7 +20,9 @@ import { Sidebar } from "./Sidebar";
 import { Toolbar } from "./Toolbar";
 import { Topbar } from "./Topbar";
 import { AlertIcon, ArrowLeftIcon, DesktopArtwork, DownloadIcon, FilePlusIcon, FolderArtwork, FolderIcon, GridViewIcon, ListViewIcon, MoreIcon, MoveIcon, OpenIcon, PencilIcon, PlusIcon, TrashIcon, UploadIcon } from "./icons";
-import { freshDesktop, freshHost, freshStore, placeLabelKey, type Item } from "./types";
+import { freshDesktop, freshHost, freshStore, placeLabelKey, ROOT, type Item } from "./types";
+import { extensionOf, fileAssociation } from "./fileTypes";
+import { fetchHostList, parseRumahlPath, PathResolutionError, resolveRumahlPath, type PathResolutionReason } from "../fsClient";
 import { useExplorer } from "./useExplorer";
 import { useMarquee } from "./useMarquee";
 import { useSelection } from "./useSelection";
@@ -31,6 +35,13 @@ import "./files.css";
  * appear from advanced mode upwards.
  */
 type Menu = { x: number; y: number; item: Item | null; anchor: HTMLElement | null };
+
+const ADDRESS_ERROR_KEYS = {
+  invalid: "files.pathInvalid",
+  denied: "files.pathDenied",
+  missing: "files.pathMissing",
+  unavailable: "files.pathUnavailable"
+} as const;
 
 /** Page size for the file grid/list. Parsing stays client-side; pagination keeps
  * the DOM bounded without pretending a very large folder is a short one. */
@@ -111,6 +122,9 @@ export function FilesApp() {
   const [pendingRename, setPendingRename] = useState<string | null>(null);
   const [mounted, setMounted] = useState(false);
   const [compact, setCompact] = useState(false);
+  const [addressError, setAddressError] = useState<PathResolutionReason | null>(null);
+  const addressGeneration = useRef(0);
+  const windowLocation = useWindowLocation();
   const root = useRef<HTMLElement>(null);
   const uploadInput = useRef<HTMLInputElement>(null);
   const sidebarToggle = useRef<HTMLButtonElement>(null);
@@ -146,6 +160,14 @@ export function FilesApp() {
     observer.observe(element);
     return () => observer.disconnect();
   }, [topbarHost]);
+  // The OS topbar carries the focused app's quick actions, macOS-style.
+  useRegisterTopbarActions(mounted ? [
+    { id: "new-folder", label: t("files.newFolder"), disabled: !explorer.isWritable || explorer.busy, onSelect: () => void newFolder() },
+    { id: "new-file", label: t("files.newFile"), disabled: !explorer.isWritable || explorer.busy, onSelect: () => void newFile() },
+    { id: "upload", label: t("files.upload"), disabled: !explorer.isWritable || explorer.busy, onSelect: () => uploadInput.current?.click() },
+    { id: "refresh", label: t("files.refresh"), disabled: explorer.busy, onSelect: explorer.refresh }
+  ] : null);
+
   // A refresh, delete or move can remove entries while they are still selected.
   useEffect(() => { prune(explorer.entries.map((entry) => entry.key)); }, [explorer.entries, prune]);
   useEffect(() => {
@@ -156,6 +178,146 @@ export function FilesApp() {
 
   useEffect(() => { clear(); setSearch(""); setQuery(""); setRenameKey(null); setPendingRename(null); setMenu(null); setMobileMenu(null); setMobileSearchOpen(false); setSidebarOpen(false); createdSearch.current = false; }, [explorer.nav, clear]);
   useEffect(() => { if (explorer.error) clear(); }, [explorer.error, clear]);
+
+  const addressPath = useMemo(() => {
+    const place = explorer.nav.place;
+    if (place.kind === "desktop") return "rumahl://desktop";
+    if (place.kind === "store") {
+      const names = explorer.nav.trail.slice(1).map((crumb) => crumb.name);
+      return names.length ? `rumahl://home/${names.join("/")}` : "rumahl://home";
+    }
+    const segments = explorer.nav.segments;
+    return segments.length ? `rumahl://${place.area}/${segments.join("/")}` : `rumahl://${place.area}`;
+  }, [explorer.nav]);
+
+  /** Crumbs from the area root to the current folder, for the path bar. */
+  const crumbs = useMemo<PathCrumb[]>(() => {
+    const place = explorer.nav.place;
+    if (place.kind === "desktop") return [{ key: "desktop", label: t("files.desktop") }];
+    if (place.kind === "store") return [
+      { key: ROOT.id, label: t("files.root") },
+      ...explorer.nav.trail.slice(1).map((crumb) => ({ key: crumb.id, label: crumb.name }))
+    ];
+    return [
+      { key: `area:${place.area}`, label: t(placeLabelKey(place)) },
+      ...explorer.nav.segments.map((name, index) => ({ key: `${index}:${name}`, label: name }))
+    ];
+  }, [explorer.nav, t]);
+
+  /** Navigates to the crumb at `index`; the last crumb is where we already are. */
+  const navigateCrumb = useCallback((index: number) => {
+    const nav = explorer.nav;
+    if (nav.place.kind === "desktop") {
+      if (index === 0) explorer.navigate(freshDesktop());
+      return;
+    }
+    if (nav.place.kind === "store") {
+      if (index < nav.trail.length) explorer.navigate({ ...nav, trail: nav.trail.slice(0, index + 1), segments: [] });
+      return;
+    }
+    explorer.navigate({ ...nav, trail: [ROOT], segments: nav.segments.slice(0, index) });
+  }, [explorer]);
+
+  /** The subfolders of the crumb at `index`, for its Windows-style dropdown. */
+  const crumbOptions = useCallback(async (index: number): Promise<readonly PathOption[]> => {
+    const nav = explorer.nav;
+    const request = live?.request;
+    if (!request || nav.place.kind === "desktop") return [];
+    if (nav.place.kind === "store") {
+      const parent = nav.trail[index]?.id ?? "root";
+      const response = await request(`/api/v1/files?parent=${encodeURIComponent(parent)}&limit=200&offset=0`, { credentials: "same-origin", cache: "no-store" });
+      if (!response.ok) return [];
+      const entries = (await response.json()) as { id: string; name: string; directory: boolean }[];
+      if (!Array.isArray(entries)) return [];
+      return entries
+        .filter((entry) => entry.directory)
+        .map((entry) => ({
+          label: entry.name,
+          onSelect: () => explorer.navigate({
+            place: { kind: "store" },
+            trail: [...nav.trail.slice(0, index + 1), { id: entry.id, name: entry.name }],
+            segments: []
+          })
+        }));
+    }
+    const parent = nav.segments.slice(0, index).join("/");
+    const entries = await fetchHostList(request, nav.place.area, parent, device, new AbortController().signal);
+    return entries
+      .filter((entry) => entry.directory)
+      .map((entry) => ({
+        label: entry.name,
+        onSelect: () => explorer.navigate({ ...nav, trail: [ROOT], segments: [...nav.segments.slice(0, index), entry.name] })
+      }));
+  }, [explorer, live, device]);
+
+  // The address line addresses a rumahl area, never a host path. The service
+  // resolves it with the same gates as browsing and decides folder vs file.
+  const submitAddress = useCallback(async (input: string) => {
+    setAddressError(null);
+    const parsed = parseRumahlPath(input);
+    if (!parsed) {
+      setAddressError("invalid");
+      return;
+    }
+    if (!live) {
+      setAddressError("unavailable");
+      return;
+    }
+    const generation = ++addressGeneration.current;
+    try {
+      const target = await resolveRumahlPath(live.request, parsed, device, new AbortController().signal);
+      if (generation !== addressGeneration.current) return;
+      if (target.directory) {
+        if (target.area === "desktop") {
+          explorer.navigate(freshDesktop());
+        } else if (target.area === "home" && target.trail) {
+          // The home and the personal store are one tree: address the path,
+          // land in the stable-id store view instead of a second home.
+          explorer.navigate({
+            place: { kind: "store" },
+            trail: [{ id: ROOT.id, name: "" }, ...target.trail.map((entry) => ({ id: entry.id, name: entry.name }))],
+            segments: []
+          });
+        } else {
+          explorer.navigate({ place: { kind: "host", area: target.area }, trail: [ROOT], segments: target.relative ? target.relative.split("/") : [] });
+        }
+        return;
+      }
+      if (target.area === "home" && target.id) {
+        // Personal files open by their stable id, exactly like the list does.
+        explorer.open({ key: target.id, name: target.name, directory: false, size: 0, modified: 0, host: false });
+        return;
+      }
+      const extension = extensionOf(target.name);
+      const handler = fileAssociation(target.name);
+      if (!handler) {
+        explorer.reportOpenError({ name: target.name, extension });
+        return;
+      }
+      if (!handler.installed || !handler.appPath) {
+        explorer.reportOpenError({ name: target.name, extension, program: handler.label });
+        return;
+      }
+      const params = new URLSearchParams({ name: target.name, source: "host", area: target.area, path: target.relative });
+      openPath(`${handler.appPath}?${params.toString()}`);
+    } catch (cause) {
+      if (generation !== addressGeneration.current) return;
+      setAddressError(cause instanceof PathResolutionError ? cause.reason : "unavailable");
+    }
+  }, [live, device, explorer, openPath]);
+
+  // A deep link (`/app/files?path=rumahl://home/Documents`) opens once, after
+  // the live request exists, and never fights later navigation.
+  const deepLink = useMemo(() => {
+    const search = (windowLocation ?? "").split("?")[1] ?? "";
+    return new URLSearchParams(search).get("path");
+  }, [windowLocation]);
+  const openedDeepLink = useRef<string | null>(null);
+  useEffect(() => {
+    if (!deepLink || !live || openedDeepLink.current === deepLink) return;
+    openedDeepLink.current = deepLink;
+    void submitAddress(deepLink);
+  }, [deepLink, live, submitAddress]);
 
   const pageCount = Math.max(1, Math.ceil(explorer.total / PAGE_SIZE));
   const safePage = Math.min(page, pageCount - 1);
@@ -298,7 +460,7 @@ export function FilesApp() {
     onDropOn: (folder) => {
       if (draggingKey && !folder.appFolder && !folder.appPath) {
         const item = explorer.entries.find((entry) => entry.key === draggingKey);
-        if (item && !item.appPath && !item.appFolder && item.key !== folder.key) void explorer.relocate(item.key, item.name, folder.key);
+        if (item && explorer.canMove && !item.appPath && !item.appFolder && item.key !== folder.key) void explorer.relocate(item.key, item.name, folder.key);
       }
       setDraggingKey(null);
       setDragOverKey(null);
@@ -314,7 +476,7 @@ export function FilesApp() {
         ...(explorer.isWritable && !item.appPath && !item.appFolder
           ? [
               { label: t("files.rename"), icon: <PencilIcon />, disabled: explorer.busy, onSelect: () => setRenameKey(item.key) },
-              { label: t("files.move"), icon: <MoveIcon />, disabled: explorer.busy, onSelect: () => setClipboard({ id: item.key, name: item.name }) },
+              ...(explorer.canMove ? [{ label: t("files.move"), icon: <MoveIcon />, disabled: explorer.busy, onSelect: () => setClipboard({ id: item.key, name: item.name }) }] : []),
               {
                 label: t("files.delete"),
                 icon: <TrashIcon />,
@@ -334,7 +496,7 @@ export function FilesApp() {
         { label: t("files.newFile"), icon: <FilePlusIcon />, disabled: explorer.busy, onSelect: newFile },
         { label: t("files.upload"), icon: <UploadIcon />, disabled: explorer.busy, onSelect: () => uploadInput.current?.click() },
       );
-      if (clipboard) items.push({ label: t("files.moveHere"), icon: <MoveIcon />, disabled: explorer.busy, onSelect: paste });
+      if (clipboard && explorer.canMove) items.push({ label: t("files.moveHere"), icon: <MoveIcon />, disabled: explorer.busy, onSelect: paste });
     }
     items.push(
       { label: t("files.selectAll"), onSelect: selectAll },
@@ -365,7 +527,7 @@ export function FilesApp() {
       icon: view === "list" ? <GridViewIcon /> : <ListViewIcon />,
       onSelect: () => chooseView(view === "list" ? "grid" : "list")
     },
-    ...(clipboard ? [{
+    ...(clipboard && explorer.canMove ? [{
       label: t("files.moveHere"),
       icon: <MoveIcon />,
       disabled: explorer.busy,
@@ -402,10 +564,11 @@ export function FilesApp() {
   }
 
   const topbar = <Topbar
-    nav={explorer.nav} compact={compact} writable={explorer.isWritable} busy={explorer.busy}
+    nav={explorer.nav} addressPath={addressPath} crumbs={crumbs} advanced={advancedSettings && !mobile} compact={compact} writable={explorer.isWritable} busy={explorer.busy}
     canBack={explorer.canBack} canForward={explorer.canForward} canUp={explorer.canUp}
     canPaste={!!clipboard} view={view} search={search}
-    onNavigate={explorer.navigate} onBack={explorer.back} onForward={explorer.forward} onUp={explorer.up}
+    onNavigate={explorer.navigate} onAddress={submitAddress} onNavigateCrumb={navigateCrumb} onCrumbOptions={crumbOptions}
+    onBack={explorer.back} onForward={explorer.forward} onUp={explorer.up}
     onView={chooseView} onSearch={setSearch}
     onNewFolder={newFolder} onNewFile={newFile} onUpload={explorer.upload}
     onPaste={paste}
@@ -434,13 +597,17 @@ export function FilesApp() {
           }}><MoreIcon /></button>
         </div>
         {mobileSearchOpen || search.trim() ? <SearchField className="files-search files-mobile-search" value={search} onChange={setSearch} autoFocus={mobileSearchOpen} /> : null}
+        <div className="files-address files-address--mobile">
+          <FolderIcon className="files-address__icon" />
+          <PathBar path={addressPath} crumbs={crumbs} advanced={false} busy={explorer.busy} onNavigate={navigateCrumb} onOptions={crumbOptions} onSubmit={submitAddress} />
+        </div>
       </header> : fallbackChrome ? <>
         <div className="files-address">
           <button ref={sidebarToggle} className="files-sidebar-toggle" type="button" aria-label={t("files.locations")} aria-expanded={sidebarOpen} aria-controls="files-locations-drawer" onClick={() => setSidebarOpen(true)}>
             <FolderIcon /> <span>{t("files.locations")}</span>
           </button>
           <FolderIcon className="files-address__icon" />
-          <Breadcrumb nav={explorer.nav} onNavigate={explorer.navigate} />
+          <PathBar path={addressPath} crumbs={crumbs} advanced={advancedSettings} busy={explorer.busy} onNavigate={navigateCrumb} onOptions={crumbOptions} onSubmit={submitAddress} />
         </div>
         <Toolbar
           writable={explorer.isWritable} busy={explorer.busy}
@@ -452,6 +619,11 @@ export function FilesApp() {
           onPaste={paste}
         />
       </> : null}
+      {addressError ? <div className="files-alert" role="alert">
+        <AlertIcon className="files-alert__icon" />
+        <span className="files-alert__text">{t(ADDRESS_ERROR_KEYS[addressError])}</span>
+        <button type="button" className="files-alert__close" aria-label={t("files.dismiss")} onClick={() => setAddressError(null)}>×</button>
+      </div> : null}
       {explorer.error ? <div className="files-alert" role="alert">
         <AlertIcon className="files-alert__icon" />
         <span className="files-alert__text">{t(`files.${explorer.error}`)}</span>

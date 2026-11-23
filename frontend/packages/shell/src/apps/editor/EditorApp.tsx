@@ -4,12 +4,13 @@ import { createPortal } from "react-dom";
 import { RumahlButtonGroup, RumahlDialog } from "@rumahl/ui/components";
 import { DocumentIcon, RefreshIcon } from "../../icons";
 import { useAppTopbarHost } from "../../components/ProtectedWindow";
+import { useRegisterTopbarActions } from "../../shell/TopbarActions";
 import { EditorToolIcon, type EditorTool } from "./EditorToolIcon";
 import { useI18n } from "../../i18n";
 import { browserProfile } from "../../preferences/storage";
 import { useWindowLocation } from "../../routing/window-location";
 import { useShell } from "../../shell/ShellContext";
-import { hostContentUrl } from "../fsClient";
+import { hostContentUrl, writeHostFile } from "../fsClient";
 import { MarkdownDocument, htmlToMarkdown, isMarkdownFile, markdownToHtml } from "./markdown";
 import "./editor.css";
 
@@ -29,7 +30,7 @@ type BlockFormat = "p" | "h1" | "h2" | "h3" | "blockquote";
 interface EditorTarget {
   name: string;
   id?: string;
-  host?: { area: "apps" | "system"; path: string };
+  host?: { area: "apps" | "system" | "home"; path: string };
 }
 
 function readTarget(search: string): EditorTarget | null {
@@ -39,7 +40,8 @@ function readTarget(search: string): EditorTarget | null {
   if (id && /^[a-zA-Z0-9._-]{1,255}$/.test(id)) return { name: name || id, id };
   const path = params.get("path");
   if (params.get("source") === "host" && path !== null && path.length <= 2048) {
-    const area = params.get("area") === "system" ? "system" : "apps";
+    const raw = params.get("area");
+    const area = raw === "system" ? "system" : raw === "home" ? "home" : "apps";
     return { name: name || path.split("/").at(-1) || path, host: { area, path } };
   }
   return null;
@@ -83,7 +85,9 @@ export function EditorApp() {
   const loaded = useRef<string | null>(null);
   const generation = useRef(0);
 
-  const readOnly = target?.host !== undefined || target?.id === undefined;
+  // The user's own home is writable; installed apps and the system tree stay
+  // read-only, exactly as in the file explorer.
+  const readOnly = (target?.host !== undefined && target.host.area !== "home") || target?.id === undefined && target?.host === undefined;
   const dirty = !readOnly && text !== savedText;
   const words = useMemo(() => (text.trim() ? text.trim().split(/\s+/).length : 0), [text]);
   const showWrite = mode !== "preview";
@@ -138,16 +142,20 @@ export function EditorApp() {
 
   const save = useCallback(async () => {
     const request = live?.request;
-    if (!target?.id || readOnly || saving || !request) return;
+    if ((!target?.id && !target?.host) || readOnly || saving || !request) return;
     setSaving(true);
     setSaveError(false);
     try {
-      const response = await request(`/api/v1/files/content?id=${encodeURIComponent(target.id)}`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/octet-stream" },
-        body: text
-      });
-      if (!response.ok) throw new Error("save");
+      if (target.host) {
+        await writeHostFile(request, target.host.path, text, browserProfile().id, new AbortController().signal);
+      } else {
+        const response = await request(`/api/v1/files/content?id=${encodeURIComponent(target.id!)}`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/octet-stream" },
+          body: text
+        });
+        if (!response.ok) throw new Error("save");
+      }
       setSavedText(text);
     } catch {
       setSaveError(true);
@@ -161,6 +169,12 @@ export function EditorApp() {
     if (!element) return;
     setText(htmlToMarkdown(element));
   }, []);
+
+  // The OS topbar carries the focused app's quick actions, macOS-style: for
+  // the editor that is exactly one thing, Save.
+  useRegisterTopbarActions(target ? [
+    { id: "save", label: t("editor.save"), disabled: readOnly || !dirty || saving, onSelect: () => void save() }
+  ] : null);
 
   const updateFormat = useCallback(() => {
     if (!rich.current || !rich.current.contains(document.activeElement)) return;

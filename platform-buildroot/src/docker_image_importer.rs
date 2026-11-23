@@ -24,9 +24,69 @@ const ARCHIVE_FILE_MODE: u32 = 0o600;
 
 /// Upper bound for one imported image archive.
 pub const MAX_ARCHIVE_BYTES: usize = 64 * 1024 * 1024;
+/// Upper bound for the environment captured from an image. The view is
+/// diagnostic: more entries than this are simply not reported.
+pub const MAX_IMAGE_ENV_ENTRIES: usize = 64;
+/// Longest accepted `NAME=VALUE` line from an image environment.
+pub const MAX_IMAGE_ENV_LINE_BYTES: usize = 1024;
+
+/// One `NAME=VALUE` pair baked into an image's configuration.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct StagedImageEnvironment {
+    pub name: String,
+    pub value: String,
+}
+
+impl StagedImageEnvironment {
+    /// Parses one `NAME=VALUE` line. The name is bounded to a conservative
+    /// identifier charset so the value can never smuggle control characters
+    /// into a line-oriented record.
+    pub fn parse(line: &str) -> Option<Self> {
+        let (name, value) = line.split_once('=')?;
+        if name.is_empty() || name.len() > 128 || value.len() > MAX_IMAGE_ENV_LINE_BYTES {
+            return None;
+        }
+        if !name
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'_' | b'.' | b'-'))
+        {
+            return None;
+        }
+        Some(Self {
+            name: name.to_owned(),
+            value: value.to_owned(),
+        })
+    }
+}
+
+/// What the supervisor captured while staging one image: the immutable
+/// reference it recorded and the image's own configuration environment.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct StagedImage {
+    reference: DockerImageReference,
+    environment: Vec<StagedImageEnvironment>,
+}
+
+impl StagedImage {
+    pub fn new(reference: DockerImageReference, environment: Vec<StagedImageEnvironment>) -> Self {
+        Self {
+            reference,
+            environment,
+        }
+    }
+
+    pub fn reference(&self) -> &DockerImageReference {
+        &self.reference
+    }
+
+    pub fn environment(&self) -> &[StagedImageEnvironment] {
+        &self.environment
+    }
+}
 
 /// Stages the declared OCI/Docker artifact of an installation so the runtime
-/// resolver can hand the supervisor an immutable image reference.
+/// resolver can hand the supervisor an immutable image reference, and reports
+/// what was captured about the image.
 pub trait ContainerImageImporter {
     type Error: Error + Send + Sync + 'static;
 
@@ -35,7 +95,7 @@ pub trait ContainerImageImporter {
         installation_id: &InstallationId,
         package_root: &Path,
         artifact: &PackagePath,
-    ) -> Result<(), Self::Error>;
+    ) -> Result<StagedImage, Self::Error>;
 }
 
 /// Host-side boundary for loading an image archive into the Docker engine and
@@ -48,7 +108,7 @@ pub trait DockerImageTarget {
         installation_id: &InstallationId,
         artifact: &PackagePath,
         archive: &[u8],
-    ) -> Result<(), Self::Error>;
+    ) -> Result<StagedImage, Self::Error>;
 }
 
 #[derive(Debug, Clone)]
@@ -234,6 +294,33 @@ impl DockerImageImporter {
         DockerImageReference::parse(format!("{SHA256_PREFIX}{digest}"))
             .map_err(DockerImageImportError::InvalidReference)
     }
+
+    /// Captures the image's own configuration environment. This is diagnostic
+    /// metadata for the extended configuration view, never load-bearing for
+    /// the runtime: a broken or unusual environment reporting leaves the
+    /// staged image importable and simply reports nothing.
+    fn inspect_environment(&self, reference: &DockerImageReference) -> Vec<StagedImageEnvironment> {
+        let output = match run_command(
+            &self.config.executable,
+            &[
+                "image".to_owned(),
+                "inspect".to_owned(),
+                "--format".to_owned(),
+                "{{range .Config.Env}}{{println .}}{{end}}".to_owned(),
+                reference.as_str().to_owned(),
+            ],
+            self.config.timeout,
+            "image environment",
+        ) {
+            Ok(output) if output.status.success() => output,
+            _ => return Vec::new(),
+        };
+        let text = combined_output(&output);
+        text.lines()
+            .take(MAX_IMAGE_ENV_ENTRIES)
+            .filter_map(StagedImageEnvironment::parse)
+            .collect()
+    }
 }
 
 impl DockerImageTarget for DockerImageImporter {
@@ -244,7 +331,7 @@ impl DockerImageTarget for DockerImageImporter {
         installation_id: &InstallationId,
         artifact: &PackagePath,
         archive: &[u8],
-    ) -> Result<(), Self::Error> {
+    ) -> Result<StagedImage, Self::Error> {
         if archive.is_empty() {
             return Err(DockerImageImportError::ArchiveEmpty);
         }
@@ -272,7 +359,11 @@ impl DockerImageTarget for DockerImageImporter {
         let outcome = self.load_archive(&path).and_then(|reference| {
             self.writer
                 .write(installation_id, artifact, &reference)
-                .map_err(DockerImageImportError::StagedReference)
+                .map_err(DockerImageImportError::StagedReference)?;
+            Ok(StagedImage::new(
+                reference.clone(),
+                self.inspect_environment(&reference),
+            ))
         });
         let _ = fs::remove_file(&path);
         outcome
@@ -287,7 +378,7 @@ impl ContainerImageImporter for DockerImageImporter {
         installation_id: &InstallationId,
         package_root: &Path,
         artifact: &PackagePath,
-    ) -> Result<(), Self::Error> {
+    ) -> Result<StagedImage, Self::Error> {
         let path = package_root.join(artifact.as_str());
         let metadata =
             fs::symlink_metadata(&path).map_err(|_| DockerImageImportError::ArtifactNotRegular)?;
@@ -624,6 +715,76 @@ mod tests {
         assert_eq!(
             reference_file(&images, &installation_id),
             format!("RDI1\nruntime/server.oci\nsha256:{DIGEST_B}\n")
+        );
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn captures_the_image_environment_at_import() {
+        let _guard = process_spawn_guard();
+        let (root, package, work, images) = fixture();
+        let executable = root.join("docker");
+        write_script(
+            &executable,
+            &format!(
+                "#!/bin/sh\ncase \"$1 $2\" in\n  'load --input') printf 'Loaded image: test/app:1\\n' >&2; exit 0 ;;\n  'image inspect') case \"$4\" in\n    '{{{{.Id}}}}') printf 'sha256:%s\\n' '{DIGEST_B}' ;;\n    *) printf 'PATH=/usr/bin:/bin\\nRUMAHL_APP_MODE=batch\\nnot-a-pair\\n' ;;\n  esac ;;\n  *) exit 1 ;;\nesac\n"
+            ),
+        );
+        let installation_id = InstallationId::new();
+
+        let staged = importer(&executable, &work, &images)
+            .stage_image(
+                &installation_id,
+                &package,
+                &PackagePath::parse("runtime/server.oci").unwrap(),
+            )
+            .unwrap();
+
+        assert_eq!(staged.reference().as_str(), &format!("sha256:{DIGEST_B}"));
+        assert_eq!(
+            staged.environment(),
+            vec![
+                StagedImageEnvironment {
+                    name: "PATH".to_owned(),
+                    value: "/usr/bin:/bin".to_owned(),
+                },
+                StagedImageEnvironment {
+                    name: "RUMAHL_APP_MODE".to_owned(),
+                    value: "batch".to_owned(),
+                },
+            ]
+        );
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn a_broken_environment_report_leaves_the_import_working() {
+        let _guard = process_spawn_guard();
+        let (root, package, work, images) = fixture();
+        let executable = root.join("docker");
+        write_script(
+            &executable,
+            &format!(
+                "#!/bin/sh\ncase \"$1\" in\n  load) printf 'Loaded image ID: sha256:%s\\n' '{DIGEST_A}' >&2; exit 0 ;;\n  image) exit 3 ;;\n  *) exit 1 ;;\nesac\n"
+            ),
+        );
+        let installation_id = InstallationId::new();
+
+        let staged = importer(&executable, &work, &images)
+            .stage_image(
+                &installation_id,
+                &package,
+                &PackagePath::parse("runtime/server.oci").unwrap(),
+            )
+            .unwrap();
+
+        // The image stays imported with its reference recorded; the
+        // diagnostic environment simply reports nothing.
+        assert_eq!(staged.reference().as_str(), &format!("sha256:{DIGEST_A}"));
+        assert!(staged.environment().is_empty());
+        assert_eq!(
+            reference_file(&images, &installation_id),
+            format!("RDI1\nruntime/server.oci\nsha256:{DIGEST_A}\n")
         );
         fs::remove_dir_all(root).unwrap();
     }

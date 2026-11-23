@@ -1,0 +1,112 @@
+name: OS image build
+
+# Builds the rumahl OS Buildroot images in CI so installable artifacts exist
+# without a local Buildroot setup. Both targets run on manual dispatch; a tag
+# push builds the QEMU acceptance image as a release by-product.
+#
+# A cold build compiles the pinned Buildroot (toolchain, kernel, ICU/Node,
+# nginx) and takes one to three hours on a 4-vCPU runner; the UEFI target adds
+# the Docker engine and a large firmware set and runs longer. Buildroot package
+# downloads, the host ccache (image/ccache.fragment), the Cargo registry, and
+# the pnpm store are cached between runs, so repeat builds are much faster.
+
+on:
+  workflow_dispatch:
+    inputs:
+      target:
+        description: 'Buildroot defconfig target'
+        type: choice
+        options:
+          - rumahl_qemu_x86_64_defconfig
+          - rumahl_x86_64_uefi_defconfig
+        default: rumahl_qemu_x86_64_defconfig
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: image-build
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: ${{ github.event_name == 'workflow_dispatch' && inputs.target || 'rumahl_qemu_x86_64_defconfig' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 350
+    env:
+      RUMAHL_BUILDROOT_JOBS: '4'
+      RUMAHL_BUILDROOT_SOURCE: /mnt/rumahl-build/buildroot
+      RUMAHL_BUILDROOT_OUTPUT: /mnt/rumahl-build/output
+      RUMAHL_ARTIFACTS: /mnt/rumahl-build/artifacts
+      CARGO_TERM_COLOR: always
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # The Buildroot output tree needs well over 10 GiB with this package
+      # set; the runner image ships ~25 GiB of reclaimable SDKs.
+      - name: Reclaim runner disk
+        run: |
+          sudo rm -rf /usr/local/lib/android /usr/share/dotnet /opt/ghc \
+            /usr/local/.ghcup /usr/local/share/boost /usr/lib/jvm || true
+          sudo docker image prune --all --force >/dev/null 2>&1 || true
+          df -h /
+
+      - name: Install Buildroot host prerequisites
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes \
+            build-essential cpio unzip rsync bc file wget patch gettext gawk \
+            libncurses-dev libelf-dev libssl-dev acl attr ccache
+
+      - name: Install pinned Rust toolchain
+        run: rustup show active-toolchain
+
+      - name: Install pnpm
+        run: npm install --global pnpm@11.19.0
+
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: '24'
+          cache: pnpm
+          cache-dependency-path: frontend/pnpm-lock.yaml
+
+      - name: Cache Buildroot downloads, host ccache, and the Cargo registry
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            /mnt/rumahl-build/buildroot/dl
+            /mnt/rumahl-build/dl
+            ~/.cache/buildroot
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: buildroot-${{ inputs.target || 'rumahl_qemu_x86_64_defconfig' }}-${{ hashFiles('platform-buildroot/image/buildroot-source.json', 'Cargo.lock') }}
+          restore-keys: |
+            buildroot-${{ inputs.target || 'rumahl_qemu_x86_64_defconfig' }}-
+            buildroot-
+
+      - name: Build the image
+        run: |
+          mkdir -p /mnt/rumahl-build "$RUMAHL_BUILDROOT_SOURCE" /mnt/rumahl-build/dl
+          platform-buildroot/image/build.sh \
+            --defconfig "${{ inputs.target || 'rumahl_qemu_x86_64_defconfig' }}" \
+            --config-fragment platform-buildroot/image/ccache.fragment \
+            --download /mnt/rumahl-build/dl
+
+      - name: Report image artifacts
+        run: |
+          ls -lh "$RUMAHL_BUILDROOT_OUTPUT/images" || true
+          df -h /
+
+      - name: Upload image artifacts
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: rumahl-os-image-${{ inputs.target || 'rumahl_qemu_x86_64_defconfig' }}
+          path: |
+            ${{ env.RUMAHL_BUILDROOT_OUTPUT }}/images/*
+          if-no-files-found: error
+          retention-days: 7

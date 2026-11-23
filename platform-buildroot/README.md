@@ -220,6 +220,23 @@ enables the supervisor. The Docker engine and `tpm2-tools` are part of the
 `rumahl_qemu_x86_64_defconfig`; a different board supplies its own image
 configuration with the same service contract.
 
+## Multi-host access and IP app ports
+
+The shell accepts every origin in `RUMAHL_PUBLIC_HOSTS` plus the device's
+current unicast IPs. `rumahl-hosts.service` turns that configuration into the
+nginx host allowlist and the serial-console address banner at boot.
+
+`rumahl-host-config.service` is a small root broker for the operations the
+unprivileged platform must not perform. Over a peer-UID-checked Unix socket it
+allocates a dynamic TCP port per installation by binding to port 0, writes the
+matching nginx server block under `/run/nginx/rumahl-apps/`, persists the
+mapping in `/var/lib/rumahl-host/app-ports.json`, and reloads nginx. The
+platform reads the published port map to accept `<ip>:<port>` app hosts and to
+launch apps through the address the browser used. The broker also re-signs the
+device certificate from the device-local CA in `/var/lib/rumahl-ca` with DNS
+SANs for every shell host, `*.apps.<host>` and IP SANs for the current device
+addresses, so direct IP access does not depend on local name resolution.
+
 ## Real-container end-to-end test
 
 `tests/container_app_e2e.rs` exercises the full install and uninstall path with
@@ -266,3 +283,28 @@ timeouts require a matching explicit `UnixAppRuntimeProviderConfig::with_timeout
 budget. A client timeout does not cancel an operation already running in the
 supervisor; recovery must recheck runtime state and use the existing replay-safe
 operation journal.
+
+## App channel
+
+Always-on container apps receive OS events and invocation-scoped file access
+over one Unix socket. The platform service listens on
+`RUMAHL_CHANNEL_SOCKET` (production:
+`/run/rumahl-platform/channel/channel.sock`); the supervisor mounts that
+directory read-only into every app container at `/run/rumahl/channel`. Before
+a container is prepared, the service writes `<data>/.rumahl/channel.json`
+(mode `0600`) with the protocol, installation ID, container socket path and a
+256-bit token. The authoritative token lives in the state volume
+(`channel-tokens/<installation>`, mode `0600`, removed on uninstall), so it
+survives reboots and a serving restart does not invalidate running apps.
+
+The app connects, sends a `hello` frame with its installation ID and token, and
+keeps the connection open; frames are JSON lines versioned by
+`rumahl.channel.v1`. File requests are authorized with the user and session of
+the capability invocation that is still in flight, never with the app's own
+claim. A missing token, an unknown installation or a stale invocation denies
+the request. A file request may carry `path` instead of `key`:
+`/home/<caller>/Documents/...` or `rumahl://home/Documents/...` is resolved with
+the invocation's identity, every other account and area is rejected, and the
+resolved personal-file id is then authorized exactly like a key request. The listener bounds hello/frame sizes and concurrent connections,
+and a channel directory that cannot be delivered leaves the app running
+without a channel instead of opening an unauthenticated path.

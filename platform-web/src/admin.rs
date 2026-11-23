@@ -7,9 +7,9 @@ use axum::{
     extract::{DefaultBodyLimit, Path as UrlPath, Query, State},
     http::{HeaderMap, StatusCode, header::CONTENT_TYPE},
     response::{IntoResponse, Response},
-    routing::{delete, get, patch, post},
+    routing::{delete, get, patch, post, put},
 };
-use rumahl_core::{SessionId, UserId, UserRole};
+use rumahl_core::{AuditOutcome, SessionId, UserId, UserRole};
 use rumahl_ui_contracts::ShellUserRole;
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 
@@ -79,6 +79,60 @@ pub struct ResetAdminPassword {
     pub password: String,
 }
 
+/// One policy assignment as the administration UI sees it. `value` is `null`
+/// after a clear request; the catalog default then applies.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AdminPolicyAssignment {
+    pub subject: String,
+    pub key: String,
+    pub value: serde_json::Value,
+}
+
+/// One catalog policy as the administration UI sees it, with the bounds the
+/// editor needs to offer legal values only.
+fn policy_json_value(value: &rumahl_core::PolicyValue) -> serde_json::Value {
+    match value {
+        rumahl_core::PolicyValue::Boolean(value) => serde_json::json!(value),
+        rumahl_core::PolicyValue::Number(value) => serde_json::json!(value),
+        rumahl_core::PolicyValue::Text(value) => serde_json::json!(value),
+        rumahl_core::PolicyValue::List(values) => serde_json::json!(values),
+    }
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AdminGroup {
+    pub id: String,
+    pub name: String,
+    pub members: Vec<String>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct SetAdminPolicy {
+    /// `device`, `group:<uuid>` or `user:<uuid>`.
+    pub subject: String,
+    pub key: String,
+    /// `null` clears the assignment.
+    pub value: Option<serde_json::Value>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct CreateAdminGroup {
+    pub name: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct UpdateAdminGroupMembers {
+    #[serde(default)]
+    pub add: Vec<String>,
+    #[serde(default)]
+    pub remove: Vec<String>,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AdminError {
     Forbidden,
@@ -139,6 +193,30 @@ pub trait Administration: Send + Sync + 'static {
         limit: usize,
         offset: usize,
     ) -> Result<Vec<AdminAuditEntry>, AdminError>;
+    /// Every stored policy assignment, for the administration view.
+    fn list_policy_assignments(
+        &self,
+        actor: UserId,
+    ) -> Result<Vec<AdminPolicyAssignment>, AdminError>;
+    /// Stores or clears one assignment. The key must be in the catalog and the
+    /// subject must exist; anything else is refused.
+    fn set_policy_assignment(
+        &self,
+        actor: UserId,
+        subject: rumahl_core::PolicySubject,
+        key: rumahl_core::PolicyKey,
+        value: Option<rumahl_core::PolicyValue>,
+    ) -> Result<(), AdminError>;
+    fn list_groups(&self, actor: UserId) -> Result<Vec<AdminGroup>, AdminError>;
+    fn create_group(&self, actor: UserId, name: &str) -> Result<AdminGroup, AdminError>;
+    fn delete_group(&self, actor: UserId, id: rumahl_core::GroupId) -> Result<(), AdminError>;
+    fn update_group_members(
+        &self,
+        actor: UserId,
+        id: rumahl_core::GroupId,
+        add: Vec<UserId>,
+        remove: Vec<UserId>,
+    ) -> Result<AdminGroup, AdminError>;
 }
 
 pub(crate) fn routes() -> Router<Arc<GatewayState>> {
@@ -152,6 +230,10 @@ pub(crate) fn routes() -> Router<Arc<GatewayState>> {
         .route("/api/v1/admin/sessions", get(sessions))
         .route("/api/v1/admin/sessions/{id}", delete(revoke))
         .route("/api/v1/admin/audit", get(audit))
+        .route("/api/v1/admin/policies", get(policies).put(set_policy))
+        .route("/api/v1/admin/groups", get(groups).post(create_group))
+        .route("/api/v1/admin/groups/{id}", delete(delete_group))
+        .route("/api/v1/admin/groups/{id}/members", put(update_members))
         .layer(DefaultBodyLimit::max(8192))
 }
 
@@ -441,6 +523,270 @@ async fn audit(
     let offset = params.offset.unwrap_or(0).min(10_000);
     match tokio::task::spawn_blocking(move || admin.audit(actor, limit, offset)).await {
         Ok(Ok(events)) => json(serde_json::json!({ "events": events })),
+        Ok(Err(error_value)) => admin_error(error_value),
+        Err(_) => error(StatusCode::SERVICE_UNAVAILABLE),
+    }
+}
+
+fn policy_json(assignments: Vec<AdminPolicyAssignment>) -> serde_json::Value {
+    let policies: Vec<serde_json::Value> = rumahl_core::policy_catalog()
+        .iter()
+        .map(|definition| {
+            serde_json::json!({
+                "key": definition.key,
+                "area": definition.area(),
+                "kind": definition.kind.as_str(),
+                "default": policy_json_value(&definition.default.to_value()),
+                "minimum": if definition.minimum == 0 { serde_json::Value::Null } else { serde_json::json!(definition.minimum) },
+                "maximum": if definition.maximum == 0 { serde_json::Value::Null } else { serde_json::json!(definition.maximum) },
+                "description": definition.description,
+            })
+        })
+        .collect();
+    serde_json::json!({ "policiesVersion": 1, "policies": policies, "assignments": assignments })
+}
+
+async fn policies(State(state): State<Arc<GatewayState>>, headers: HeaderMap) -> Response {
+    let actor = match actor(&state, &headers).await {
+        Ok(actor) => actor,
+        Err(response) => return response,
+    };
+    let admin = match admin(&state) {
+        Ok(admin) => admin,
+        Err(response) => return response,
+    };
+    match tokio::task::spawn_blocking(move || admin.list_policy_assignments(actor)).await {
+        Ok(Ok(assignments)) => json(policy_json(assignments)),
+        Ok(Err(error_value)) => admin_error(error_value),
+        Err(_) => error(StatusCode::SERVICE_UNAVAILABLE),
+    }
+}
+
+fn decode_assignment(
+    input: &SetAdminPolicy,
+) -> Result<
+    (
+        rumahl_core::PolicySubject,
+        rumahl_core::PolicyKey,
+        Option<rumahl_core::PolicyValue>,
+    ),
+    AdminError,
+> {
+    let subject = rumahl_core::PolicySubject::decode(&input.subject).ok_or(AdminError::Invalid)?;
+    let key = rumahl_core::PolicyKey::parse(&input.key).map_err(|_| AdminError::Invalid)?;
+    let value = match input.value.as_ref() {
+        None | Some(serde_json::Value::Null) => None,
+        Some(serde_json::Value::Bool(value)) => Some(rumahl_core::PolicyValue::Boolean(*value)),
+        Some(serde_json::Value::Number(number)) => Some(rumahl_core::PolicyValue::Number(
+            number.as_u64().ok_or(AdminError::Invalid)?,
+        )),
+        Some(_) => return Err(AdminError::Invalid),
+    };
+    Ok((subject, key, value))
+}
+
+async fn set_policy(
+    State(state): State<Arc<GatewayState>>,
+    headers: HeaderMap,
+    bytes: Bytes,
+) -> Response {
+    if let Err(response) = origin(&state, &headers) {
+        return response;
+    }
+    let actor = match actor(&state, &headers).await {
+        Ok(actor) => actor,
+        Err(response) => return response,
+    };
+    let input: SetAdminPolicy = match body(&headers, &bytes) {
+        Ok(input) => input,
+        Err(response) => return response,
+    };
+    let (subject, key, value) = match decode_assignment(&input) {
+        Ok(decoded) => decoded,
+        Err(error_value) => return admin_error(error_value),
+    };
+    let target = format!("policy:{}:{}", subject.encode(), key);
+    let admin = match admin(&state) {
+        Ok(admin) => admin,
+        Err(response) => return response,
+    };
+    let outcome = match tokio::task::spawn_blocking(move || {
+        admin.set_policy_assignment(actor, subject, key, value)
+    })
+    .await
+    {
+        Ok(result) => match result {
+            Ok(()) => AuditOutcome::Success,
+            Err(error_value) => return audit_policy_change(&state, actor, &target, error_value),
+        },
+        Err(_) => return error(StatusCode::SERVICE_UNAVAILABLE),
+    };
+    let _ = outcome;
+    crate::server::record_audit(
+        &state,
+        rumahl_core::AuditActor::User(actor),
+        rumahl_core::AuditAction::Maintenance,
+        AuditOutcome::Success,
+        Some(&target),
+    );
+    error(StatusCode::NO_CONTENT)
+}
+
+#[allow(clippy::result_large_err)]
+fn audit_policy_change(
+    state: &Arc<GatewayState>,
+    actor: UserId,
+    target: &str,
+    error_value: AdminError,
+) -> Response {
+    crate::server::record_audit(
+        state,
+        rumahl_core::AuditActor::User(actor),
+        rumahl_core::AuditAction::Maintenance,
+        AuditOutcome::Failure,
+        Some(target),
+    );
+    admin_error(error_value)
+}
+
+async fn groups(State(state): State<Arc<GatewayState>>, headers: HeaderMap) -> Response {
+    let actor = match actor(&state, &headers).await {
+        Ok(actor) => actor,
+        Err(response) => return response,
+    };
+    let admin = match admin(&state) {
+        Ok(admin) => admin,
+        Err(response) => return response,
+    };
+    match tokio::task::spawn_blocking(move || admin.list_groups(actor)).await {
+        Ok(Ok(groups)) => json(serde_json::json!({ "groups": groups })),
+        Ok(Err(error_value)) => admin_error(error_value),
+        Err(_) => error(StatusCode::SERVICE_UNAVAILABLE),
+    }
+}
+
+async fn create_group(
+    State(state): State<Arc<GatewayState>>,
+    headers: HeaderMap,
+    bytes: Bytes,
+) -> Response {
+    if let Err(response) = origin(&state, &headers) {
+        return response;
+    }
+    let actor = match actor(&state, &headers).await {
+        Ok(actor) => actor,
+        Err(response) => return response,
+    };
+    let input: CreateAdminGroup = match body(&headers, &bytes) {
+        Ok(input) => input,
+        Err(response) => return response,
+    };
+    let admin = match admin(&state) {
+        Ok(admin) => admin,
+        Err(response) => return response,
+    };
+    match tokio::task::spawn_blocking(move || admin.create_group(actor, &input.name)).await {
+        Ok(Ok(group)) => {
+            crate::server::record_audit(
+                &state,
+                rumahl_core::AuditActor::User(actor),
+                rumahl_core::AuditAction::Maintenance,
+                AuditOutcome::Success,
+                Some(&format!("group:{}", group.name)),
+            );
+            json(group)
+        }
+        Ok(Err(error_value)) => admin_error(error_value),
+        Err(_) => error(StatusCode::SERVICE_UNAVAILABLE),
+    }
+}
+
+#[allow(clippy::result_large_err)]
+fn group_id(raw: &str) -> Result<rumahl_core::GroupId, Response> {
+    rumahl_core::GroupId::parse(raw).map_err(|_| error(StatusCode::BAD_REQUEST))
+}
+
+async fn delete_group(
+    State(state): State<Arc<GatewayState>>,
+    UrlPath(id): UrlPath<String>,
+    headers: HeaderMap,
+) -> Response {
+    if let Err(response) = origin(&state, &headers) {
+        return response;
+    }
+    let actor = match actor(&state, &headers).await {
+        Ok(actor) => actor,
+        Err(response) => return response,
+    };
+    let Ok(id) = group_id(&id) else {
+        return error(StatusCode::BAD_REQUEST);
+    };
+    let admin = match admin(&state) {
+        Ok(admin) => admin,
+        Err(response) => return response,
+    };
+    match tokio::task::spawn_blocking(move || admin.delete_group(actor, id)).await {
+        Ok(Ok(())) => {
+            crate::server::record_audit(
+                &state,
+                rumahl_core::AuditActor::User(actor),
+                rumahl_core::AuditAction::Maintenance,
+                AuditOutcome::Success,
+                Some("group"),
+            );
+            error(StatusCode::NO_CONTENT)
+        }
+        Ok(Err(error_value)) => admin_error(error_value),
+        Err(_) => error(StatusCode::SERVICE_UNAVAILABLE),
+    }
+}
+
+async fn update_members(
+    State(state): State<Arc<GatewayState>>,
+    UrlPath(id): UrlPath<String>,
+    headers: HeaderMap,
+    bytes: Bytes,
+) -> Response {
+    if let Err(response) = origin(&state, &headers) {
+        return response;
+    }
+    let actor = match actor(&state, &headers).await {
+        Ok(actor) => actor,
+        Err(response) => return response,
+    };
+    let Ok(id) = group_id(&id) else {
+        return error(StatusCode::BAD_REQUEST);
+    };
+    let input: UpdateAdminGroupMembers = match body(&headers, &bytes) {
+        Ok(input) => input,
+        Err(response) => return response,
+    };
+    let add = match input
+        .add
+        .iter()
+        .map(|value| UserId::parse(value))
+        .collect::<Result<Vec<_>, _>>()
+    {
+        Ok(add) => add,
+        Err(_) => return error(StatusCode::BAD_REQUEST),
+    };
+    let remove = match input
+        .remove
+        .iter()
+        .map(|value| UserId::parse(value))
+        .collect::<Result<Vec<_>, _>>()
+    {
+        Ok(remove) => remove,
+        Err(_) => return error(StatusCode::BAD_REQUEST),
+    };
+    let admin = match admin(&state) {
+        Ok(admin) => admin,
+        Err(response) => return response,
+    };
+    match tokio::task::spawn_blocking(move || admin.update_group_members(actor, id, add, remove))
+        .await
+    {
+        Ok(Ok(group)) => json(group),
         Ok(Err(error_value)) => admin_error(error_value),
         Err(_) => error(StatusCode::SERVICE_UNAVAILABLE),
     }

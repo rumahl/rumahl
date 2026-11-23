@@ -1,7 +1,9 @@
 //! Composition root for the first locally hosted OS shell.
+pub mod app_ports;
 use rumahl_account_auth::{
-    LocalAccountAdministrationService, PasswordAuthenticationError, PasswordAuthenticationService,
-    PasswordBlocklist, SessionToken, StoredSessionCredentialResolver,
+    LocalAccountAdministrationService, PasswordAttemptPolicy, PasswordAuthenticationError,
+    PasswordAuthenticationService, PasswordBlocklist, PasswordPolicy, SessionToken,
+    StoredSessionCredentialResolver,
 };
 use rumahl_core::{
     AccountStateRepository, AuditAction, AuditActor, AuditLog, AuditOutcome, BrowserProfileId,
@@ -27,7 +29,11 @@ use rumahl_ui_contracts::{
 };
 use sha2::{Digest, Sha256};
 use std::os::unix::fs::PermissionsExt;
-use std::{collections::HashSet, path::Path, sync::Arc};
+use std::{
+    collections::HashSet,
+    path::Path,
+    sync::{Arc, Mutex},
+};
 use zeroize::Zeroizing;
 
 pub type ServiceError = Box<dyn std::error::Error + Send + Sync>;
@@ -69,11 +75,12 @@ pub fn provision(
 }
 
 /// State-volume databases, in backup order.
-pub const STATE_DATABASES: [&str; 5] = [
+pub const STATE_DATABASES: [&str; 6] = [
     "accounts.sqlite",
     "platform.sqlite",
     "preferences.sqlite",
     "files.sqlite",
+    "files-index.sqlite",
     "audit.sqlite",
 ];
 
@@ -84,6 +91,16 @@ pub const STATE_DATABASES: [&str; 5] = [
 /// database written by a newer binary is refused instead of copied. Snapshots
 /// use the SQLite online backup API, never a live file copy.
 pub fn backup_state(state_dir: &Path, destination: &Path) -> Result<(), ServiceError> {
+    backup_state_with_home(state_dir, destination, &user_homes::home_root())
+}
+
+/// [`backup_state`] with an explicit home root, for tests and callers that
+/// manage the layout themselves.
+pub fn backup_state_with_home(
+    state_dir: &Path,
+    destination: &Path,
+    home_root: &Path,
+) -> Result<(), ServiceError> {
     std::fs::create_dir_all(destination)?;
     let metadata = std::fs::symlink_metadata(destination)?;
     if !metadata.is_dir() || metadata.file_type().is_symlink() {
@@ -99,6 +116,68 @@ pub fn backup_state(state_dir: &Path, destination: &Path) -> Result<(), ServiceE
             std::io::Error::other(format!("database schema check failed: {error}"))
         })?;
         rumahl_persistence_sqlite::backup_database(&source, &destination.join(name))?;
+    }
+    backup_account_homes(&state_dir.join("accounts.sqlite"), home_root, destination)
+}
+
+/// Copies each account's home into `destination/home`.
+///
+/// The home is the source of truth for user documents, so a state backup that
+/// skipped it would silently lose them. Only accounts known to this deployment
+/// are copied (never every directory that happens to live under `/home`), and
+/// symlinks are never followed: a link in a home must not pull in files from
+/// outside it.
+fn backup_account_homes(
+    accounts: &Path,
+    home_root: &Path,
+    destination: &Path,
+) -> Result<(), ServiceError> {
+    if !home_root.is_dir() {
+        return Ok(());
+    }
+    let home_backup = destination.join("home");
+    if let (Ok(root), Ok(target)) = (home_root.canonicalize(), destination.canonicalize())
+        && target.starts_with(&root)
+    {
+        return Err(
+            std::io::Error::other("backup destination must not be inside the home root").into(),
+        );
+    }
+    let state = SqliteAccountStateRepository::open(accounts)?.load()?;
+    std::fs::create_dir_all(&home_backup)?;
+    std::fs::set_permissions(&home_backup, std::fs::Permissions::from_mode(0o700))?;
+    for account in state.accounts().accounts() {
+        let source = home_root.join(account.username().as_str());
+        if !source.is_dir() {
+            continue;
+        }
+        copy_home_tree(&source, &home_backup.join(account.username().as_str()), 0)?;
+    }
+    Ok(())
+}
+
+/// Bounded, symlink-safe copy. Backups are owner-only and keep the modes the
+/// files would have in a fresh home.
+fn copy_home_tree(source: &Path, destination: &Path, depth: usize) -> Result<(), ServiceError> {
+    const MAX_DEPTH: usize = 128;
+    if depth > MAX_DEPTH {
+        return Err(std::io::Error::other("home backup directory nesting is too deep").into());
+    }
+    std::fs::create_dir_all(destination)?;
+    std::fs::set_permissions(destination, std::fs::Permissions::from_mode(0o700))?;
+    for entry in std::fs::read_dir(source)? {
+        let entry = entry?;
+        let metadata = std::fs::symlink_metadata(entry.path())?;
+        if metadata.file_type().is_symlink() {
+            continue;
+        }
+        let target = destination.join(entry.file_name());
+        if metadata.is_dir() {
+            copy_home_tree(&entry.path(), &target, depth + 1)?;
+        } else if metadata.is_file() {
+            std::fs::copy(entry.path(), &target)?;
+            std::fs::set_permissions(&target, std::fs::Permissions::from_mode(0o600))?;
+        }
     }
     Ok(())
 }
@@ -118,24 +197,32 @@ pub fn apps_data_root() -> Option<std::path::PathBuf> {
     }
 }
 
+type PasswordService =
+    PasswordAuthenticationService<SqlitePasswordCredentialRepository, LocalPasswordBlocklist>;
+
 pub struct LocalBrowserSessions {
     accounts: SqliteAccountStateRepository,
-    passwords:
-        PasswordAuthenticationService<SqlitePasswordCredentialRepository, LocalPasswordBlocklist>,
+    credentials_path: std::path::PathBuf,
     sessions: SqliteBrowserSessionRepository,
+    /// Built from the current device password policy; rebuilt when the policy
+    /// changes so a new rule applies to the very next login. Building one
+    /// costs an Argon2id hash for the unknown-account verifier, so it is
+    /// cached until the rules change.
+    passwords: Mutex<Option<(rumahl_platform_web::PasswordRules, Arc<PasswordService>)>>,
     /// Optional append-only audit trail; never receives secrets.
     audit: Option<Arc<dyn AuditLog>>,
+    /// Administrative policies; None keeps the account defaults.
+    policies: Option<Arc<dyn rumahl_platform_web::PolicyEngine>>,
 }
 impl LocalBrowserSessions {
     pub fn open(path: &Path) -> Result<Self, ServiceError> {
         Ok(Self {
             accounts: SqliteAccountStateRepository::open(path)?,
-            passwords: PasswordAuthenticationService::new(
-                SqlitePasswordCredentialRepository::open(path)?,
-                LocalPasswordBlocklist::default(),
-            )?,
+            credentials_path: path.to_path_buf(),
             sessions: SqliteBrowserSessionRepository::open(path)?,
+            passwords: Mutex::new(None),
             audit: None,
+            policies: None,
         })
     }
 
@@ -143,6 +230,67 @@ impl LocalBrowserSessions {
     pub fn with_audit(mut self, audit: Arc<dyn AuditLog>) -> Self {
         self.audit = Some(audit);
         self
+    }
+
+    /// Resolves password rules and session lifetimes from the policy store.
+    pub fn with_policies(mut self, policies: Arc<dyn rumahl_platform_web::PolicyEngine>) -> Self {
+        self.policies = Some(policies);
+        self
+    }
+
+    /// The authentication service for the current password policy. Building
+    /// one costs one Argon2id hash for the unknown-account verifier, so the
+    /// service is cached until the rules change.
+    fn passwords(&self) -> Result<Arc<PasswordService>, ShellBackendError> {
+        let rules = self
+            .policies
+            .clone()
+            .map_or(rumahl_platform_web::PasswordRules::default(), |engine| {
+                engine.password_rules()
+            });
+        let mut cached = self
+            .passwords
+            .lock()
+            .map_err(|_| ShellBackendError::Unavailable)?;
+        if let Some((current, service)) = cached.as_ref()
+            && *current == rules
+        {
+            return Ok(Arc::clone(service));
+        }
+        let repository = SqlitePasswordCredentialRepository::open(&self.credentials_path)
+            .map_err(|_| ShellBackendError::Unavailable)?;
+        let password_policy = PasswordPolicy::with_character_classes(
+            rules.minimum_characters.min(usize::MAX as u64) as usize,
+            1024,
+            rules.required_character_classes.min(4) as u32,
+        )
+        .map_err(|_| ShellBackendError::Unavailable)?;
+        let attempt_policy = PasswordAttemptPolicy::new(
+            rules.attempt_limit.min(u32::MAX as u64) as u32,
+            rules.lockout_seconds.max(1),
+        )
+        .map_err(|_| ShellBackendError::Unavailable)?;
+        let service = Arc::new(
+            PasswordAuthenticationService::with_policies(
+                repository,
+                LocalPasswordBlocklist::default(),
+                password_policy,
+                attempt_policy,
+            )
+            .map_err(|_| ShellBackendError::Unavailable)?,
+        );
+        *cached = Some((rules, Arc::clone(&service)));
+        Ok(service)
+    }
+
+    /// The session lifetime for one user, from the policy store.
+    fn session_lifetime(&self, user: UserId) -> u64 {
+        self.policies
+            .clone()
+            .map_or(SESSION_SECONDS, |engine| {
+                engine.session_lifetime_seconds(user)
+            })
+            .clamp(60, 2_592_000)
     }
 
     fn record(
@@ -190,17 +338,24 @@ impl BrowserSessions for LocalBrowserSessions {
         username: &str,
         password: String,
     ) -> Result<Zeroizing<String>, ShellBackendError> {
+        self.login_session(username, password)
+            .map(|(token, _)| token)
+    }
+
+    fn login_session(
+        &self,
+        username: &str,
+        password: String,
+    ) -> Result<(Zeroizing<String>, u64), ShellBackendError> {
         let mut password = Zeroizing::new(password);
         let now = UnixTimestamp::now().map_err(|_| ShellBackendError::Unavailable)?;
         let state = self
             .accounts
             .load()
             .map_err(|_| ShellBackendError::Unavailable)?;
+        let passwords = self.passwords()?;
         let proof =
-            match self
-                .passwords
-                .authenticate(&state, username, std::mem::take(&mut *password), now)
-            {
+            match passwords.authenticate(&state, username, std::mem::take(&mut *password), now) {
                 Ok(proof) => proof,
                 Err(error) => {
                     if matches!(error, PasswordAuthenticationError::InvalidCredentials) {
@@ -220,9 +375,10 @@ impl BrowserSessions for LocalBrowserSessions {
                 }
             };
         let user_id = *proof.user_id();
+        let lifetime = self.session_lifetime(user_id);
         let expires = UnixTimestamp::from_seconds(
             now.as_seconds()
-                .checked_add(SESSION_SECONDS)
+                .checked_add(lifetime)
                 .ok_or(ShellBackendError::Unavailable)?,
         );
         self.sessions
@@ -234,7 +390,7 @@ impl BrowserSessions for LocalBrowserSessions {
                     AuditOutcome::Success,
                     None,
                 );
-                token.encode()
+                (token.encode(), lifetime)
             })
             .map_err(|error| match error {
                 BrowserSessionError::InvalidProof => ShellBackendError::Unauthorized,
@@ -255,10 +411,8 @@ impl BrowserSessions for LocalBrowserSessions {
             .find(|account| *account.user_id() == user_id)
             .map(|account| account.username().as_str().to_owned())
             .ok_or(ShellBackendError::Unauthorized)?;
-        match self
-            .passwords
-            .authenticate(&state, &username, std::mem::take(&mut *password), now)
-        {
+        let passwords = self.passwords()?;
+        match passwords.authenticate(&state, &username, std::mem::take(&mut *password), now) {
             Ok(_) => {
                 self.record(
                     AuditActor::User(user_id),
@@ -720,9 +874,16 @@ fn sha256_hex(bytes: &[u8]) -> String {
         .collect()
 }
 
+mod app_config;
+pub mod app_grants;
+mod app_runtime;
 pub mod apps;
+pub mod channel;
+pub mod file_migration;
 pub mod host_files;
 pub mod install;
+pub mod policy_engine;
+pub mod user_homes;
 
 #[cfg(test)]
 mod surface_tests {

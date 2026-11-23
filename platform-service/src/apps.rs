@@ -1,13 +1,17 @@
 //! Installation metadata and explicit launch grants come from the platform snapshot.
 //! Published web roots are immutable, installation-specific directories.
 use rumahl_core::*;
-use rumahl_persistence_sqlite::{SqliteAccountStateRepository, SqliteSnapshotRepository};
+use rumahl_persistence_sqlite::{
+    SqliteAccountRoles, SqliteAccountStateRepository, SqliteSnapshotRepository,
+};
 use rumahl_platform_web::{
-    AppAccessError, AppAsset, AppData, AppDataEntry, AppProvider, AppSettingInfo,
-    AppSettingOptionInfo, BrowserDelivery, CapabilityOutcome, CapabilityResource, CapabilityResult,
-    CatalogApp, ImportedApp, PackageUploadFile, RuntimeState, ShellIdentity,
+    AppAccessError, AppAsset, AppData, AppDataEntry, AppFileAccess, AppFileOutcome, AppGrantInfo,
+    AppGrantState, AppProvider, AppRuntimeEnvironment, AppSettingInfo, AppSettingOptionInfo,
+    AppStorageInfo, BrowserDelivery, CapabilityOutcome, CapabilityResource, CapabilityResult,
+    CatalogApp, GrantIssue, ImportedApp, PackageUploadFile, RuntimeState, ShellIdentity,
 };
 use rustix::fs::{Dir, FileType, Mode, OFlags, fstat, open, openat};
+use std::collections::HashMap;
 use std::fs::File;
 use std::io::Read;
 use std::os::unix::fs::PermissionsExt;
@@ -75,14 +79,59 @@ pub fn authorized_apps(
     Ok(result)
 }
 pub struct PersistentApps {
-    accounts: SqliteAccountStateRepository,
-    platform: SqliteSnapshotRepository,
-    root: PathBuf,
+    pub(crate) accounts: SqliteAccountStateRepository,
+    pub(crate) platform: SqliteSnapshotRepository,
+    pub(crate) root: PathBuf,
     /// Apps data volume root, one directory per app id. `None` disables app-data browsing.
     data_root: Option<PathBuf>,
     /// Runtime adapters for status/start/stop. `None` fails closed.
     runtime: Option<Arc<rumahl_core::RuntimeAdapterRegistry>>,
+    /// Account roles for grant issuer policies. `None` fails consent closed.
+    pub(crate) roles: Option<SqliteAccountRoles>,
+    /// Personal files, so consented app access can act on the user's files.
+    /// `None` fails file access closed.
+    pub(crate) files: Option<Arc<dyn rumahl_core::PersonalFiles>>,
+    /// Session-scoped grants; memory-only by design.
+    pub(crate) session_grants: crate::app_grants::SessionGrantStore,
+    /// Per-app storage quota for the private data directory.
+    storage_quota: u64,
+    /// Persisted manifest setting values; secrets are sealed at rest.
+    pub(crate) settings: Option<Arc<rumahl_persistence_sqlite::SqliteAppSettings>>,
+    /// Durable network-origin consents.
+    pub(crate) network: Option<Arc<rumahl_persistence_sqlite::SqliteNetworkGrants>>,
+    /// Session-only network consents, keyed by session and installation.
+    pub(crate) network_sessions: NetworkSessions,
 }
+
+/// Session-only network approvals: (session, installation) → [(origin, expiry)].
+pub(crate) type NetworkSessions = std::sync::Mutex<
+    std::collections::HashMap<(SessionId, InstallationId), Vec<(String, Option<u64>)>>,
+>;
+
+/// Default per-app storage quota: 256 MiB of private app data.
+pub const DEFAULT_APP_STORAGE_QUOTA: u64 = 256 * 1024 * 1024;
+
+/// Reads `RUMAHL_APP_STORAGE_MIB`; an unset value keeps the default and an
+/// invalid one is a configuration error, never a silent fallback.
+pub fn storage_quota_from_env() -> Result<u64, std::io::Error> {
+    match storage_quota_override() {
+        Some(quota) => Ok(quota),
+        None => Ok(DEFAULT_APP_STORAGE_QUOTA),
+    }
+}
+
+/// An explicit deployment override for the per-app storage quota, in MiB.
+/// Without one the device policy decides.
+pub fn storage_quota_override() -> Option<u64> {
+    let value = std::env::var("RUMAHL_APP_STORAGE_MIB").ok()?;
+    let mib: u64 = value.trim().parse().ok()?;
+    (mib > 0 && mib <= 1024 * 1024).then(|| mib * 1024 * 1024)
+}
+/// Bound for one usage measurement: unlimited walks would let a huge tree
+/// stall a request, so the report stops and says "at least this much".
+const MAX_USAGE_INODES: usize = 10_000;
+const MAX_USAGE_DEPTH: usize = 16;
+
 impl PersistentApps {
     pub fn open(
         accounts: &Path,
@@ -98,7 +147,46 @@ impl PersistentApps {
             root,
             data_root: None,
             runtime: None,
+            roles: None,
+            files: None,
+            session_grants: crate::app_grants::SessionGrantStore::new(),
+            storage_quota: DEFAULT_APP_STORAGE_QUOTA,
+            settings: None,
+            network: None,
+            network_sessions: std::sync::Mutex::new(std::collections::HashMap::new()),
         })
+    }
+
+    /// Attaches the persisted setting values and durable network consents.
+    pub fn with_app_configuration(
+        mut self,
+        settings: Arc<rumahl_persistence_sqlite::SqliteAppSettings>,
+        network: Arc<rumahl_persistence_sqlite::SqliteNetworkGrants>,
+    ) -> Self {
+        self.settings = Some(settings);
+        self.network = Some(network);
+        self
+    }
+
+    /// Attaches the account-role store used to authorize grant issuers.
+    pub fn with_account_roles(mut self, accounts: &Path) -> Result<Self, crate::ServiceError> {
+        self.roles = Some(rumahl_persistence_sqlite::SqliteAccountRoles::open(
+            accounts,
+        )?);
+        Ok(self)
+    }
+
+    /// Attaches the personal-files store so consented app file access can
+    /// read and write the calling user's documents.
+    pub fn with_personal_files(mut self, files: Arc<dyn rumahl_core::PersonalFiles>) -> Self {
+        self.files = Some(files);
+        self
+    }
+
+    /// Overrides the per-app storage quota (bytes).
+    pub fn with_storage_quota(mut self, quota: u64) -> Self {
+        self.storage_quota = quota;
+        self
     }
 
     /// Enables runtime status/start/stop through the registered adapters.
@@ -152,7 +240,7 @@ impl PersistentApps {
         }
     }
     /// Confirms the account can authenticate and the session is live.
-    fn authenticate(&self, identity: ShellIdentity) -> Result<(), AppAccessError> {
+    pub(crate) fn authenticate(&self, identity: ShellIdentity) -> Result<(), AppAccessError> {
         let accounts = self
             .accounts
             .load()
@@ -172,7 +260,7 @@ impl PersistentApps {
             Err(AppAccessError::Denied)
         }
     }
-    fn app(
+    pub(crate) fn app(
         &self,
         identity: ShellIdentity,
         installation: InstallationId,
@@ -352,6 +440,77 @@ impl PersistentApps {
         };
         read_app_data_at(root, app_id, path)
     }
+
+    fn app_storage(&self, app_id: &str) -> Result<AppStorageInfo, AppAccessError> {
+        let Some(root) = self.data_root.as_ref() else {
+            return Err(AppAccessError::Unavailable);
+        };
+        let used = app_storage_usage_at(root, app_id)?;
+        Ok(AppStorageInfo {
+            used_bytes: used,
+            quota_bytes: self.storage_quota,
+        })
+    }
+}
+
+/// Measures the bytes below one app's data directory without following
+/// symlinks. The walk is bounded; a tree larger than the bound reports at
+/// least what was seen rather than stalling the request.
+pub(crate) fn app_storage_usage_at(root: &Path, app_id: &str) -> Result<u64, AppAccessError> {
+    let flags = OFlags::RDONLY | OFlags::CLOEXEC | OFlags::NOFOLLOW | OFlags::DIRECTORY;
+    let root_fd = open(root, flags, Mode::empty()).map_err(|_| AppAccessError::Denied)?;
+    let directory =
+        openat(&root_fd, app_id, flags, Mode::empty()).map_err(|_| AppAccessError::Denied)?;
+    let mut total = 0_u64;
+    let mut seen = 0_usize;
+    fn walk(fd: &rustix::fd::OwnedFd, depth: usize, total: &mut u64, seen: &mut usize) {
+        if depth > MAX_USAGE_DEPTH || *seen > MAX_USAGE_INODES {
+            return;
+        }
+        let Ok(entries) = Dir::read_from(fd) else {
+            return;
+        };
+        for entry in entries {
+            let Ok(entry) = entry else { continue };
+            if *seen > MAX_USAGE_INODES {
+                return;
+            }
+            *seen += 1;
+            let name = entry.file_name().to_string_lossy().into_owned();
+            if name == "." || name == ".." {
+                continue;
+            }
+            match entry.file_type() {
+                FileType::Directory => {
+                    if let Ok(child) = openat(
+                        fd,
+                        name.as_str(),
+                        OFlags::RDONLY | OFlags::CLOEXEC | OFlags::NOFOLLOW | OFlags::DIRECTORY,
+                        Mode::empty(),
+                    ) {
+                        walk(&child, depth + 1, total, seen);
+                    }
+                }
+                FileType::RegularFile => {
+                    let child = openat(
+                        fd,
+                        name.as_str(),
+                        OFlags::RDONLY | OFlags::CLOEXEC | OFlags::NOFOLLOW | OFlags::NONBLOCK,
+                        Mode::empty(),
+                    );
+                    let Ok(child) = child else { continue };
+                    let Ok(stat) = fstat(&child) else { continue };
+                    if FileType::from_raw_mode(stat.st_mode) == FileType::RegularFile {
+                        *total =
+                            total.saturating_add(u64::try_from(stat.st_size.max(0)).unwrap_or(0));
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
+    walk(&directory, 0, &mut total, &mut seen);
+    Ok(total)
 }
 
 fn read_app_data_at(root: &Path, app_id: &str, path: &str) -> Result<AppData, AppAccessError> {
@@ -511,6 +670,61 @@ impl AppProvider for PersistentApps {
             })
             .collect())
     }
+    fn app_settings_values(
+        &self,
+        identity: ShellIdentity,
+        installation: InstallationId,
+    ) -> Result<HashMap<String, serde_json::Value>, AppAccessError> {
+        self.app_settings_values_impl(identity, installation)
+    }
+    fn app_setting_secrets(
+        &self,
+        identity: ShellIdentity,
+        installation: InstallationId,
+    ) -> Result<Vec<String>, AppAccessError> {
+        self.app_setting_secrets_impl(identity, installation)
+    }
+    fn update_app_settings(
+        &self,
+        identity: ShellIdentity,
+        installation: InstallationId,
+        values: HashMap<String, serde_json::Value>,
+    ) -> Result<(), AppAccessError> {
+        self.update_app_settings_impl(identity, installation, values)
+    }
+    fn app_network_origins(
+        &self,
+        identity: ShellIdentity,
+        installation: InstallationId,
+    ) -> Result<Vec<rumahl_platform_web::AppNetworkOrigin>, AppAccessError> {
+        self.app_network_origins_impl(identity, installation)
+    }
+    fn grant_app_network(
+        &self,
+        identity: ShellIdentity,
+        installation: InstallationId,
+        origin: &str,
+        validity: rumahl_platform_web::GrantValidityChoice,
+    ) -> Result<rumahl_platform_web::AppNetworkOrigin, AppAccessError> {
+        self.grant_app_network_impl(identity, installation, origin, validity)
+    }
+    fn revoke_app_network(
+        &self,
+        identity: ShellIdentity,
+        installation: InstallationId,
+        origin: &str,
+    ) -> Result<(), AppAccessError> {
+        self.revoke_app_network_impl(identity, installation, origin)
+    }
+    fn prepare_app_network(
+        &self,
+        identity: ShellIdentity,
+        installation: InstallationId,
+        request: &rumahl_platform_web::AppNetworkRequest,
+    ) -> Result<rumahl_platform_web::PreparedNetworkRequest, rumahl_platform_web::AppNetworkError>
+    {
+        self.prepare_app_network_impl(identity, installation, request)
+    }
     fn data(
         &self,
         identity: ShellIdentity,
@@ -558,8 +772,9 @@ impl AppProvider for PersistentApps {
         self.app(identity, installation)?;
         let state_dir = self.root.parent().ok_or(AppAccessError::Unavailable)?;
         crate::install::uninstall_package_dir(state_dir, &installation)
-            .map(|_| ())
-            .map_err(|_| AppAccessError::Unavailable)
+            .map_err(|_| AppAccessError::Unavailable)?;
+        self.clear_app_configuration(&installation);
+        Ok(())
     }
     fn import_package(
         &self,
@@ -567,6 +782,7 @@ impl AppProvider for PersistentApps {
         files: Vec<PackageUploadFile>,
     ) -> Result<ImportedApp, AppAccessError> {
         let state_dir = self.root.parent().ok_or(AppAccessError::Unavailable)?;
+        let _ = std::fs::write(state_dir.join("last-import-stage"), b"started");
         let staging = state_dir.join("import-staging").join(format!(
             "{}-{}",
             std::process::id(),
@@ -576,8 +792,23 @@ impl AppProvider for PersistentApps {
                 .unwrap_or(0)
         ));
         let result = write_staging(&staging, &files).and_then(|()| {
-            crate::install::install_package_dir(state_dir, &staging)
-                .map_err(|_| AppAccessError::Unavailable)
+            crate::install::install_package_dir(state_dir, &staging).map_err(|error| {
+                // Keep the concrete failure available for local diagnosis; the
+                // API still fails closed with an empty service-unavailable body.
+                let _ = std::fs::write(state_dir.join("last-import-error"), format!("{error:?}"));
+                // A policy denial is a denial, not an outage: the publisher
+                // allowlist refuses this package's publisher.
+                if matches!(
+                    error,
+                    crate::install::InstallError::Import(
+                        rumahl_platform_buildroot::PackageImportError::PublisherNotAllowed
+                    )
+                ) {
+                    AppAccessError::Denied
+                } else {
+                    AppAccessError::Unavailable
+                }
+            })
         });
         let _ = std::fs::remove_dir_all(&staging);
         let info = result?;
@@ -692,19 +923,106 @@ impl AppProvider for PersistentApps {
             Err(_) => Err(AppAccessError::Denied),
         }
     }
+    fn app_grants(
+        &self,
+        identity: ShellIdentity,
+        installation: InstallationId,
+    ) -> Result<AppGrantState, AppAccessError> {
+        self.app_grant_state(identity, installation)
+    }
+    fn issue_app_grant(
+        &self,
+        identity: ShellIdentity,
+        installation: InstallationId,
+        issue: &GrantIssue,
+    ) -> Result<AppGrantInfo, AppAccessError> {
+        PersistentApps::issue_app_grant(self, identity, installation, issue)
+    }
+    fn revoke_app_grant(
+        &self,
+        identity: ShellIdentity,
+        installation: InstallationId,
+        grant_id: &str,
+    ) -> Result<(), AppAccessError> {
+        PersistentApps::revoke_app_grant(self, identity, installation, grant_id)
+    }
+    fn app_file(
+        &self,
+        identity: ShellIdentity,
+        installation: InstallationId,
+        access: &AppFileAccess,
+    ) -> Result<AppFileOutcome, AppAccessError> {
+        self.app_file_access(identity, installation, access)
+    }
+    fn personal_files_usage(
+        &self,
+        identity: ShellIdentity,
+        _installation: InstallationId,
+    ) -> Result<u64, AppAccessError> {
+        self.authenticate(identity)?;
+        let files = self.files.as_ref().ok_or(AppAccessError::Unavailable)?;
+        files
+            .usage(identity.user_id)
+            .map_err(|_| AppAccessError::Unavailable)
+    }
+    fn personal_files_entry(
+        &self,
+        identity: ShellIdentity,
+        _installation: InstallationId,
+        key: &str,
+    ) -> Result<rumahl_core::PersonalFile, AppAccessError> {
+        self.authenticate(identity)?;
+        let files = self.files.as_ref().ok_or(AppAccessError::Unavailable)?;
+        files
+            .entry(identity.user_id, key)
+            .map_err(|_| AppAccessError::Denied)
+    }
+    fn resolve_channel_path(
+        &self,
+        identity: ShellIdentity,
+        installation: InstallationId,
+        path: &str,
+    ) -> Result<String, AppAccessError> {
+        self.resolve_channel_file(identity, installation, path)
+    }
+    fn app_runtime_environment(
+        &self,
+        identity: ShellIdentity,
+        installation: InstallationId,
+    ) -> Result<AppRuntimeEnvironment, AppAccessError> {
+        self.app_runtime_environment(identity, installation)
+    }
+    fn app_storage(
+        &self,
+        identity: ShellIdentity,
+        installation: InstallationId,
+    ) -> Result<AppStorageInfo, AppAccessError> {
+        self.authenticate(identity)?;
+        let app = self.app(identity, installation)?;
+        self.app_storage(app.identity().app_id().as_str())
+    }
+    fn session_ended(&self, session: rumahl_core::SessionId) {
+        self.end_session(session);
+        self.end_network_session(session);
+    }
 }
 
 /// Writes uploaded package files into a fresh owner-only staging directory.
 fn write_staging(dir: &Path, files: &[PackageUploadFile]) -> Result<(), AppAccessError> {
-    std::fs::create_dir_all(dir).map_err(|_| AppAccessError::Unavailable)?;
-    std::fs::set_permissions(dir, std::fs::Permissions::from_mode(0o700))
-        .map_err(|_| AppAccessError::Unavailable)?;
+    let fail = |error: std::io::Error| {
+        if let Some(state_dir) = dir.parent().and_then(Path::parent) {
+            let _ = std::fs::write(state_dir.join("last-import-error"), error.to_string());
+        }
+        AppAccessError::Unavailable
+    };
+    std::fs::create_dir_all(dir).map_err(fail)?;
+    std::fs::set_permissions(dir, std::fs::Permissions::from_mode(0o700)).map_err(fail)?;
     for file in files {
         let target = dir.join(&file.path);
         if let Some(parent) = target.parent() {
-            std::fs::create_dir_all(parent).map_err(|_| AppAccessError::Unavailable)?;
+            std::fs::create_dir_all(parent).map_err(fail)?;
         }
-        std::fs::write(&target, &file.bytes).map_err(|_| AppAccessError::Unavailable)?;
+        std::fs::write(&target, &file.bytes).map_err(fail)?;
     }
     Ok(())
 }
@@ -733,6 +1051,22 @@ mod tests {
         std::fs::write(app.join("notes.txt"), b"hello").unwrap();
         std::fs::write(app.join("docs/readme.md"), b"# readme").unwrap();
         temp
+    }
+
+    #[test]
+    fn measures_app_storage_without_following_symlinks() {
+        let temp = setup();
+        let app = temp.path().join("com.rumahl.notes");
+        // A symlink to a large file outside the app must not count.
+        let outside = temp.path().join("outside.bin");
+        std::fs::write(&outside, vec![0_u8; 4096]).unwrap();
+        symlink(&outside, app.join("docs/escape.bin")).unwrap();
+
+        let used = app_storage_usage_at(temp.path(), "com.rumahl.notes").unwrap();
+
+        assert_eq!(used, 5 + 8);
+        // Unknown installations are not measurements.
+        assert!(app_storage_usage_at(temp.path(), "com.rumahl.unknown").is_err());
     }
 
     #[test]

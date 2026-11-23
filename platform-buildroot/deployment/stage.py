@@ -8,6 +8,9 @@ import shutil
 parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument("--binary", type=Path, required=True)
 parser.add_argument("--supervisor-binary", type=Path)
+parser.add_argument("--host-config-binary", type=Path)
+parser.add_argument("--trust-store", type=Path)
+parser.add_argument("--first-boot-env", type=Path)
 parser.add_argument("--output", type=Path, required=True)
 args = parser.parse_args()
 repo = Path(__file__).resolve().parents[2]
@@ -20,6 +23,12 @@ if not args.binary.is_file():
     parser.error("target platform binary is missing")
 if args.supervisor_binary is not None and not args.supervisor_binary.is_file():
     parser.error("target runtime supervisor binary is missing")
+if args.host_config_binary is not None and not args.host_config_binary.is_file():
+    parser.error("target host config binary is missing")
+if args.trust_store is not None and not args.trust_store.is_file():
+    parser.error("package trust store is missing")
+if args.first_boot_env is not None and not args.first_boot_env.is_file():
+    parser.error("first-boot environment file is missing")
 args.output.mkdir(parents=True, exist_ok=False)
 root = args.output
 
@@ -30,23 +39,39 @@ def copy(source, target):
 
 copy(args.binary, "usr/bin/rumahl-platform-service")
 (root / "usr/bin/rumahl-platform-service").chmod(0o755)
+copy(repo / "platform-buildroot/deployment/rumahl-hosts.sh", "usr/libexec/rumahl-hosts.sh")
+(root / "usr/libexec/rumahl-hosts.sh").chmod(0o755)
+copy(repo / "platform-buildroot/deployment/rumahl-first-boot.sh", "usr/libexec/rumahl-first-boot")
+(root / "usr/libexec/rumahl-first-boot").chmod(0o755)
 supervisor_units = []
 if args.supervisor_binary is not None:
     copy(args.supervisor_binary, "usr/bin/rumahl-runtime-supervisor")
     (root / "usr/bin/rumahl-runtime-supervisor").chmod(0o755)
     supervisor_units = ["rumahl-runtime-supervisor", "rumahl-app-network"]
+host_units = []
+if args.host_config_binary is not None:
+    copy(args.host_config_binary, "usr/bin/rumahl-host-config")
+    (root / "usr/bin/rumahl-host-config").chmod(0o755)
+    host_units = ["rumahl-host-config"]
 for package in ["shell", "ssr"]:
     shutil.copytree(frontend / package / "dist", root / f"usr/share/rumahl/frontend/packages/{package}/dist", ignore=shutil.ignore_patterns("*.map"))
 for module in ["server.js", "renderer-http.js"]:
     copy(frontend / "ssr" / module, f"usr/share/rumahl/frontend/packages/ssr/{module}")
 (root / "usr/share/rumahl/frontend/packages/ssr/package.json").write_text('{"type":"module"}\n')
-for name in ["rumahl-platform", "rumahl-shell", "rumahl-recovery", *supervisor_units]:
+for name in ["rumahl-platform", "rumahl-shell", "rumahl-recovery", "rumahl-hosts", "rumahl-first-boot", *supervisor_units, *host_units]:
     copy(repo / f"platform-buildroot/systemd/{name}.service", f"usr/lib/systemd/system/{name}.service")
     wants = root / "etc/systemd/system/multi-user.target.wants"
     wants.mkdir(parents=True, exist_ok=True)
     (wants / f"{name}.service").symlink_to(f"/usr/lib/systemd/system/{name}.service")
 copy(repo / "platform-buildroot/deployment/platform.env.example", "etc/rumahl/platform.env")
+if args.trust_store is not None:
+    copy(args.trust_store, "etc/rumahl/package-trust-store.json")
+    (root / "etc/rumahl/package-trust-store.json").chmod(0o644)
+if args.first_boot_env is not None:
+    copy(args.first_boot_env, "etc/rumahl/first-boot.env")
+    (root / "etc/rumahl/first-boot.env").chmod(0o600)
 copy(repo / "platform-buildroot/deployment/rumahl.sysusers", "usr/lib/sysusers.d/rumahl.conf")
+copy(repo / "platform-buildroot/deployment/rumahl-tmpfiles.conf", "usr/lib/tmpfiles.d/rumahl.conf")
 copy(repo / "platform-buildroot/nginx/rumahl.conf", "etc/nginx/rumahl.conf")
 copy(repo / "platform-buildroot/nginx/rumahl-proxy.inc", "etc/nginx/rumahl-proxy.inc")
 dropin = root / "etc/systemd/system/nginx.service.d"

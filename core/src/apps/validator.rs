@@ -2,8 +2,8 @@ use std::error::Error;
 use std::fmt;
 
 use crate::{
-    CapabilityId, ContributionId, OidcClientType, RuntimeEntrypointId, RuntimeEntrypointKind,
-    RuntimeKind,
+    CapabilityId, ContributionId, OidcClientType, OsPermissionCatalogError, PermissionScope,
+    RuntimeEntrypointId, RuntimeEntrypointKind, RuntimeKind, os_permission_catalog_validate,
 };
 
 use super::{AppManifest, ContributionDeclaration, RuntimeLifecycle};
@@ -27,6 +27,17 @@ pub enum AppManifestValidationError {
     SearchCapabilityNotProvided {
         contribution: ContributionId,
         capability: CapabilityId,
+    },
+    /// The manifest requested an OS-owned permission the platform does not
+    /// define. Such a request can never be granted.
+    UnknownOsPermission {
+        permission: String,
+    },
+    /// The manifest requested a known OS-owned permission in a scope the
+    /// platform does not honor for it.
+    OsPermissionScopeNotAllowed {
+        permission: String,
+        scope: PermissionScope,
     },
     OidcClientTypeIncompatible {
         runtime: RuntimeKind,
@@ -59,9 +70,35 @@ impl AppManifestValidator {
         self.validate_stream_presentation(manifest)?;
         self.validate_oidc(manifest)?;
         self.validate_surfaces(manifest)?;
+        self.validate_permission_requests(manifest)?;
 
         for contribution in manifest.contributions() {
             self.validate_contribution(manifest, contribution)?;
+        }
+
+        Ok(())
+    }
+
+    /// OS-owned permission ids are a contract: an app can only request what the
+    /// platform catalog defines, in a scope the platform actually honors.
+    /// Third-party permissions in a publisher namespace pass through.
+    fn validate_permission_requests(
+        &self,
+        manifest: &AppManifest,
+    ) -> Result<(), AppManifestValidationError> {
+        for request in manifest.permission_requests() {
+            match os_permission_catalog_validate(request) {
+                Ok(()) => continue,
+                Err(OsPermissionCatalogError::UnknownPermission { permission }) => {
+                    return Err(AppManifestValidationError::UnknownOsPermission { permission });
+                }
+                Err(OsPermissionCatalogError::ScopeNotAllowed { permission, scope }) => {
+                    return Err(AppManifestValidationError::OsPermissionScopeNotAllowed {
+                        permission,
+                        scope,
+                    });
+                }
+            }
         }
 
         Ok(())
@@ -315,6 +352,14 @@ impl fmt::Display for AppManifestValidationError {
                     "search contribution '{contribution}' references capability '{capability}' that the app does not provide"
                 )
             }
+            Self::UnknownOsPermission { permission } => write!(
+                f,
+                "permission '{permission}' is not defined by the OS permission catalog"
+            ),
+            Self::OsPermissionScopeNotAllowed { permission, scope } => write!(
+                f,
+                "permission '{permission}' cannot be requested with scope '{scope:?}'"
+            ),
             Self::OidcClientTypeIncompatible {
                 runtime,
                 client_type,
@@ -360,10 +405,10 @@ mod tests {
     use crate::{
         AppId, AppVersion, CapabilityId, CommandAction, CommandContributionDeclaration,
         ConnectorDeclaration, ConnectorTarget, ContributionId, OidcCallbackPath,
-        OidcClientDeclaration, OidcScope, PackagePath, PublisherId, RuntimeDescriptor,
-        RuntimeEndpointId, RuntimeEntrypoint, RuntimeEntrypointId, SearchContributionDeclaration,
-        StreamPresentation, SurfaceDeclaration, SurfaceIcon, SurfaceKind, SurfacePlacement,
-        SurfaceSize, SurfaceSlot, SurfaceTone,
+        OidcClientDeclaration, OidcScope, PackagePath, PermissionId, PermissionRequest,
+        PermissionScope, PublisherId, RuntimeDescriptor, RuntimeEndpointId, RuntimeEntrypoint,
+        RuntimeEntrypointId, SearchContributionDeclaration, StreamPresentation, SurfaceDeclaration,
+        SurfaceIcon, SurfaceKind, SurfacePlacement, SurfaceSize, SurfaceSlot, SurfaceTone,
     };
 
     fn surface(entrypoint: Option<&str>) -> SurfaceDeclaration {
@@ -406,6 +451,85 @@ mod tests {
         let validator = AppManifestValidator::new();
 
         assert!(validator.validate(&manifest).is_ok());
+    }
+
+    #[test]
+    fn cataloged_files_permissions_validate() {
+        let mut manifest = manifest();
+        manifest
+            .add_permission_request(PermissionRequest::new(
+                PermissionId::parse("rumahl.files.read").unwrap(),
+                PermissionScope::UserSelected,
+                false,
+                Some("Open files the user selected".to_owned()),
+            ))
+            .unwrap();
+        manifest
+            .add_permission_request(PermissionRequest::new(
+                PermissionId::parse("rumahl.files.write").unwrap(),
+                PermissionScope::Explicit,
+                false,
+                Some("Save back to the selected file".to_owned()),
+            ))
+            .unwrap();
+
+        assert!(AppManifestValidator::new().validate(&manifest).is_ok());
+    }
+
+    #[test]
+    fn unknown_files_permission_is_rejected() {
+        let mut manifest = manifest();
+        manifest
+            .add_permission_request(PermissionRequest::new(
+                PermissionId::parse("rumahl.files.delete").unwrap(),
+                PermissionScope::Explicit,
+                false,
+                None,
+            ))
+            .unwrap();
+
+        assert_eq!(
+            AppManifestValidator::new().validate(&manifest),
+            Err(AppManifestValidationError::UnknownOsPermission {
+                permission: "rumahl.files.delete".to_owned()
+            })
+        );
+    }
+
+    #[test]
+    fn files_permission_in_an_unhonored_scope_is_rejected() {
+        let mut manifest = manifest();
+        manifest
+            .add_permission_request(PermissionRequest::new(
+                PermissionId::parse("rumahl.files.read").unwrap(),
+                PermissionScope::UserOwn,
+                true,
+                None,
+            ))
+            .unwrap();
+
+        assert_eq!(
+            AppManifestValidator::new().validate(&manifest),
+            Err(AppManifestValidationError::OsPermissionScopeNotAllowed {
+                permission: "rumahl.files.read".to_owned(),
+                scope: PermissionScope::UserOwn,
+            })
+        );
+    }
+
+    #[test]
+    fn third_party_permissions_are_not_catalog_checked() {
+        let mut manifest = manifest();
+        manifest
+            .add_permission_request(PermissionRequest::new(
+                PermissionId::parse("com.rumahl.notes.export").unwrap(),
+                PermissionScope::UserOwn,
+                false,
+                None,
+            ))
+            .unwrap();
+
+        assert!(AppManifestValidator::new().validate(&manifest).is_ok());
     }
 
     #[test]

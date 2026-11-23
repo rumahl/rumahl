@@ -18,7 +18,14 @@ import {
   type BridgePetActionRegistration,
   type BridgeWeatherWarning
 } from "@rumahl/contracts/bridge";
-import { invokeCapability as requestCapabilityInvocation, launchApp, SafeModeError, type InstalledApp } from "./client";
+import {
+  fetchAppSettings, invokeCapability as requestCapabilityInvocation, launchApp,
+  readAppFileContent, requestAppNetwork, updateAppSettings, writeAppFileContent,
+  NetworkConsentRequiredError, SafeModeError, type InstalledApp
+} from "./client";
+import { AppFilePickerDialog, type FilePickerRequest } from "./FilePickerDialog";
+import { NetworkConsentDialog, type NetworkConsentRequest } from "./NetworkConsentDialog";
+import { decodeBridgeBase64, encodeBridgeBase64 } from "./bridge";
 import { clearWeatherWarnings, publishWeatherWarnings, registerWarningSource } from "./warnings-client";
 import { setLaunching } from "./launching";
 import {
@@ -66,6 +73,10 @@ function AppFrame({ app }: { app: InstalledApp }) {
   const params = useParams();
   const windowLocation = useWindowLocation();
   const frameRef = useRef<HTMLIFrameElement>(null);
+  // One consent dialog at a time; the app's bridge request parks here until
+  // the user picked files or declined.
+  const [filePicker, setFilePicker] = useState<FilePickerRequest | null>(null);
+  const [networkConsent, setNetworkConsent] = useState<NetworkConsentRequest | null>(null);
   const [frame, setFrame] = useState<string | null>(null);
   const [failed, setFailed] = useState(false);
   const [safeMode, setSafeMode] = useState(false);
@@ -209,6 +220,20 @@ function AppFrame({ app }: { app: InstalledApp }) {
       return true;
     },
     ...(live ? {
+      filesRequest: (access) => new Promise((resolve) => {
+        setFilePicker({ access, resolve });
+      }),
+      filesRead: async (key) => {
+        const { name, bytes } = await readAppFileContent(live.request, app, key, new AbortController().signal);
+        const contentBase64 = encodeBridgeBase64(bytes);
+        if (!contentBase64) throw new Error("file too large for the bridge");
+        return { name, size: bytes.length, contentBase64 };
+      },
+      filesWrite: async (key, contentBase64) => {
+        const bytes = decodeBridgeBase64(contentBase64);
+        if (!bytes) throw new Error("invalid file content");
+        return await writeAppFileContent(live.request, app, key, bytes, new AbortController().signal);
+      },
       warningRegister: async () => {
         const source = await registerWarningSource(live.request, app.id, new AbortController().signal);
         return { source };
@@ -220,6 +245,27 @@ function AppFrame({ app }: { app: InstalledApp }) {
       warningClear: async (ids?: string[]) => {
         const cleared = await clearWeatherWarnings(live.request, app.id, ids, new AbortController().signal);
         return { cleared };
+      },
+      settings: async () => {
+        const settings = await fetchAppSettings(live.request, app, new AbortController().signal);
+        return { values: settings.values, secrets: [...settings.secrets] };
+      },
+      setSettings: async (input) => {
+        const settings = await updateAppSettings(live.request, app, input.values, new AbortController().signal);
+        return { values: settings.values, secrets: [...settings.secrets] };
+      },
+      netRequest: async (input) => {
+        const askConsent = (origin: string) => new Promise<boolean>((resolve) => {
+          setNetworkConsent({ origin, resolve });
+        });
+        try {
+          return await requestAppNetwork(live.request, app, input, new AbortController().signal);
+        } catch (error) {
+          if (!(error instanceof NetworkConsentRequiredError)) throw error;
+          const granted = await askConsent(error.origin);
+          if (!granted) throw new Error("the user declined network access", { cause: error });
+          return await requestAppNetwork(live.request, app, input, new AbortController().signal);
+        }
       }
     } : {})
   };
@@ -295,6 +341,28 @@ function AppFrame({ app }: { app: InstalledApp }) {
   query.delete("mode");
   // App navigation is a fragment on the authorized entrypoint, never an asset path.
   url.hash = `/${params["*"] ?? ""}${query.size ? `?${query}` : ""}`;
-  return <iframe ref={frameRef} className="installed-app-frame" sandbox="allow-scripts" referrerPolicy="no-referrer"
-    title={app.title} src={url.href} onLoad={() => { if (!loaded.current && live) postReport(live.request, app.id, "launched"); loaded.current = true; }} onError={() => { cancel.current(); setFrame(null); setFailed(true); if (live) postReport(live.request, app.id, "crashed", app.installationId); }} />;
+  return <>
+    <iframe ref={frameRef} className="installed-app-frame" sandbox="allow-scripts" referrerPolicy="no-referrer"
+      title={app.title} src={url.href} onLoad={() => { if (!loaded.current && live) postReport(live.request, app.id, "launched"); loaded.current = true; }} onError={() => { cancel.current(); setFrame(null); setFailed(true); if (live) postReport(live.request, app.id, "crashed", app.installationId); }} />
+    {filePicker
+      ? <AppFilePickerDialog
+          app={app}
+          request={filePicker}
+          onDone={(result) => {
+            filePicker.resolve(result);
+            setFilePicker(null);
+          }}
+        />
+      : null}
+    {networkConsent
+      ? <NetworkConsentDialog
+          app={app}
+          request={networkConsent}
+          onDone={(granted) => {
+            networkConsent.resolve(granted);
+            setNetworkConsent(null);
+          }}
+        />
+      : null}
+  </>;
 }

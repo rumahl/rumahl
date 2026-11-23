@@ -1,4 +1,5 @@
 mod app;
+mod group_id;
 mod ids;
 mod installation_id;
 mod principal;
@@ -24,6 +25,7 @@ pub use service_id::{ServiceId, ServiceIdError};
 
 pub use user::UserIdentity;
 
+pub use group_id::{GroupId, GroupIdError};
 pub use user_id::{UserId, UserIdError};
 
 pub use session_id::{SessionId, SessionIdError};

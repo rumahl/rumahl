@@ -685,7 +685,9 @@ mod tests {
                         .collect(),
                 }),
                 &config.public_origin,
-                "apps.rumahl.test",
+                &config.allowed_origins,
+                &["apps.rumahl.test".to_owned()],
+                None,
             )
             .unwrap(),
         );
@@ -704,6 +706,8 @@ mod tests {
             workspace: None,
             preferences: None,
             os_mode: Some(Arc::new(TestMode(mode))),
+
+            policies: None,
             host_files: None,
             weather_warnings: Some(warnings.clone()),
             oidc: None,
@@ -712,6 +716,7 @@ mod tests {
             login_slots: Arc::new(tokio::sync::Semaphore::new(2)),
             audit: None,
             state_dir: Some(std::path::PathBuf::from(Path::new("/tmp"))),
+            platform_config: None,
         };
         Fixture {
             app: router(state),

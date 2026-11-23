@@ -43,6 +43,7 @@ async fn preferences_are_session_scoped_csrf_protected_and_revision_checked() {
         login_slots: Arc::new(tokio::sync::Semaphore::new(2)),
         audit: None,
         state_dir: None,
+        platform_config: None,
         events: Arc::new(InMemoryShellEvents::new(8)),
         widgets: Arc::new(NoWidgets),
         streams: None,
@@ -61,6 +62,7 @@ async fn preferences_are_session_scoped_csrf_protected_and_revision_checked() {
         os_mode: Some(Arc::new(
             SqliteOsModeRepository::open(root.join("preferences.sqlite")).unwrap(),
         )),
+        policies: None,
     });
     let endpoint = "/api/v1/shell/preferences?device=00000000-0000-4000-8000-000000000001";
     let request = |token: Option<&str>, origin: Option<&str>, body: Option<serde_json::Value>| {

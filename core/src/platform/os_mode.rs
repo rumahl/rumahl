@@ -106,6 +106,14 @@ impl OsModePolicy {
     pub fn can_publish_test_warnings(&self) -> bool {
         self.mode == OsMode::Developer
     }
+
+    /// The extended platform configuration view is available from
+    /// [`OsMode::Advanced`] upwards, like the other system-internals surfaces.
+    /// The mode never changes what the configuration *does*; this only limits
+    /// who reads it.
+    pub fn can_view_platform_config(&self) -> bool {
+        matches!(self.mode, OsMode::Advanced | OsMode::Developer)
+    }
 }
 
 /// Persisted per-user/per-device exposure mode. Kept separate from the
@@ -225,6 +233,7 @@ mod tests {
         assert!(!policy.can_change_advanced_settings());
         assert!(!policy.can_browse_system_files());
         assert!(!policy.can_install_apps());
+        assert!(!policy.can_view_platform_config());
         assert!(!policy.can_open_terminal());
         assert!(!policy.can_use_ssh());
         assert!(!policy.can_use_web_console());
@@ -237,6 +246,7 @@ mod tests {
         assert!(policy.can_change_advanced_settings());
         assert!(policy.can_browse_system_files());
         assert!(policy.can_install_apps());
+        assert!(policy.can_view_platform_config());
         assert!(!policy.can_open_terminal());
         assert!(!policy.can_use_ssh());
         assert!(!policy.can_use_web_console());
@@ -248,6 +258,7 @@ mod tests {
         let policy = OsMode::Developer.policy();
         assert!(policy.can_change_advanced_settings());
         assert!(policy.can_browse_system_files());
+        assert!(policy.can_view_platform_config());
         assert!(policy.can_open_terminal());
         assert!(policy.can_use_ssh());
         assert!(policy.can_use_web_console());

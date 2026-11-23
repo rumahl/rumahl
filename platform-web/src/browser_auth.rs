@@ -1,5 +1,5 @@
 //! Browser-owned login forms and session cookies, independent of the renderer.
-use crate::server::{credential, secure_headers, valid_origin};
+use crate::server::{authenticate, credential, secure_headers};
 use crate::{GatewayState, ShellBackendError};
 use axum::{
     Router,
@@ -36,6 +36,17 @@ pub trait BrowserSessions: Send + Sync + 'static {
         username: &str,
         password: String,
     ) -> Result<Zeroizing<String>, ShellBackendError>;
+
+    /// Login that also reports the session's lifetime in seconds, so the
+    /// cookie can match the policy-resolved expiry instead of a constant.
+    fn login_session(
+        &self,
+        username: &str,
+        password: String,
+    ) -> Result<(Zeroizing<String>, u64), ShellBackendError> {
+        self.login(username, password)
+            .map(|token| (token, SESSION_SECONDS))
+    }
     /// Re-checks the account password without creating a new session. Used to
     /// gate security-sensitive changes such as the exposure mode.
     fn reauthenticate(&self, user_id: UserId, password: String) -> Result<(), ShellBackendError>;
@@ -148,11 +159,14 @@ async fn login_page(
         _ => return failure(StatusCode::SERVICE_UNAVAILABLE),
     };
     let selected = query.get("user").map(String::as_str);
-    render_page(&headers, false, false, next, &accounts, selected)
+    let addresses = display_addresses(&state.config);
+    render_page(
+        &headers, false, false, next, &accounts, selected, &addresses,
+    )
 }
 
-async fn logout_page(headers: HeaderMap) -> Response {
-    page(&headers, true, false)
+async fn logout_page(State(state): State<Arc<GatewayState>>, headers: HeaderMap) -> Response {
+    page(&headers, true, false, &display_addresses(&state.config))
 }
 
 async fn login(
@@ -160,7 +174,7 @@ async fn login(
     headers: HeaderMap,
     body: Bytes,
 ) -> Response {
-    if !valid_origin(&headers, &state.config.public_origin) {
+    if !state.config.accepts_origin(&headers) {
         return failure(StatusCode::FORBIDDEN);
     }
     let Some(sessions) = &state.browser_sessions else {
@@ -202,13 +216,13 @@ async fn login(
     let sessions = Arc::clone(sessions);
     let result = tokio::task::spawn_blocking(move || {
         let _permit = permit;
-        sessions.login(&username, std::mem::take(&mut *password))
+        sessions.login_session(&username, std::mem::take(&mut *password))
     })
     .await;
     match result {
-        Ok(Ok(token)) => {
+        Ok(Ok((token, lifetime))) => {
             let cookie = Zeroizing::new(format!(
-                "__Host-rumahl_session={}; Path=/; Secure; HttpOnly; SameSite=Lax; Max-Age={SESSION_SECONDS}",
+                "__Host-rumahl_session={}; Path=/; Secure; HttpOnly; SameSite=Lax; Max-Age={lifetime}",
                 token.as_str()
             ));
             let Ok(mut cookie) = HeaderValue::from_str(&cookie) else {
@@ -227,8 +241,15 @@ async fn login(
             response
         }
         Ok(Err(ShellBackendError::Unauthorized)) => {
-            let mut response =
-                render_page(&headers, false, true, next, &[], Some(&selected_username));
+            let mut response = render_page(
+                &headers,
+                false,
+                true,
+                next,
+                &[],
+                Some(&selected_username),
+                &display_addresses(&state.config),
+            );
             *response.status_mut() = StatusCode::UNAUTHORIZED;
             response
         }
@@ -237,13 +258,19 @@ async fn login(
 }
 
 async fn logout(State(state): State<Arc<GatewayState>>, headers: HeaderMap) -> Response {
-    if !valid_origin(&headers, &state.config.public_origin) {
+    if !state.config.accepts_origin(&headers) {
         return failure(StatusCode::FORBIDDEN);
     }
     let Some(sessions) = &state.browser_sessions else {
         return failure(StatusCode::SERVICE_UNAVAILABLE);
     };
     if let Ok(token) = credential(&headers) {
+        // The session's memory-only app grants die with it.
+        if let Ok(identity) = authenticate(&state, &token).await
+            && let Some(apps) = state.apps.as_ref()
+        {
+            apps.session_ended(identity.session_id);
+        }
         let sessions = Arc::clone(sessions);
         if !matches!(
             tokio::task::spawn_blocking(move || sessions.logout(&token)).await,
@@ -268,12 +295,26 @@ fn failure(status: StatusCode) -> Response {
     response
 }
 
-fn page(headers: &HeaderMap, logout: bool, invalid: bool) -> Response {
-    page_with_next(headers, logout, invalid, "/")
+fn page(headers: &HeaderMap, logout: bool, invalid: bool, addresses: &[String]) -> Response {
+    page_with_next(headers, logout, invalid, "/", addresses)
 }
 
-fn page_with_next(headers: &HeaderMap, logout: bool, invalid: bool, next: &str) -> Response {
-    render_page(headers, logout, invalid, next, &[], Some(""))
+fn page_with_next(
+    headers: &HeaderMap,
+    logout: bool,
+    invalid: bool,
+    next: &str,
+    addresses: &[String],
+) -> Response {
+    render_page(headers, logout, invalid, next, &[], Some(""), addresses)
+}
+
+fn display_addresses(config: &crate::server::GatewayConfig) -> Vec<String> {
+    config
+        .allowed_origins
+        .iter()
+        .map(|origin| origin.origin().ascii_serialization())
+        .collect()
 }
 
 fn escape(value: &str) -> String {
@@ -292,6 +333,7 @@ fn render_page(
     next: &str,
     accounts: &[LoginAccount],
     selected: Option<&str>,
+    addresses: &[String],
 ) -> Response {
     let de = headers
         .get("accept-language")
@@ -425,8 +467,25 @@ fn render_page(
     let materials = include_str!("../../frontend/packages/shell/src/shell/materials.css");
     let controls = include_str!("../../frontend/packages/ui/src/components/controls.css");
     let css = include_str!("login.css");
+    let address_heading = if de {
+        "Gerät erreichbar unter"
+    } else {
+        "Device addresses"
+    };
+    let addresses_block = if addresses.is_empty() {
+        String::new()
+    } else {
+        let items = addresses
+            .iter()
+            .map(|address| format!("<li><code>{}</code></li>", escape(address)))
+            .collect::<String>();
+        format!(
+            r#"<section class="login-addresses" aria-label="{address_heading}"><h2>{address_heading}</h2><ul>{items}</ul></section>"#
+        )
+    };
+    let addresses_css = ".login-addresses{margin-top:1.5rem;font-size:.85rem;opacity:.8}.login-addresses h2{font-size:.8rem;font-weight:600;margin:0 0 .35rem}.login-addresses ul{list-style:none;padding:0;margin:0;display:flex;flex-wrap:wrap;gap:.35rem .9rem}.login-addresses code{font-size:.8rem}";
     let html = format!(
-        r#"<!doctype html><html lang="{lang}" class="shell" data-theme="com.rumahl.default" data-scheme="light"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>{title} · rumahl OS</title><link rel="icon" href="/icon.svg" type="image/svg+xml"><link rel="icon" href="/icon-512.png" type="image/png" sizes="512x512"><style>{tokens}{materials}{controls}{css}</style><script src="/login/appearance.js"></script><script src="/os-client.js" defer></script></head><body><header class="lock-clock" aria-hidden="true"><span id="login-date"></span><time id="login-time"></time></header><main><section class="login-profiles" aria-label="{title}">{content}</section></main><footer><span class="brand">rumahl <span>OS</span></span><a href="/recovery">{recovery}</a></footer></body></html>"#
+        r#"<!doctype html><html lang="{lang}" class="shell" data-theme="com.rumahl.default" data-scheme="light"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>{title} · rumahl OS</title><link rel="icon" href="/icon.svg" type="image/svg+xml"><link rel="icon" href="/icon-512.png" type="image/png" sizes="512x512"><style>{tokens}{materials}{controls}{css}{addresses_css}</style><script src="/login/appearance.js"></script><script src="/os-client.js" defer></script></head><body><header class="lock-clock" aria-hidden="true"><span id="login-date"></span><time id="login-time"></time></header><main><section class="login-profiles" aria-label="{title}">{content}</section>{addresses_block}</main><footer><span class="brand">rumahl <span>OS</span></span><a href="/recovery">{recovery}</a></footer></body></html>"#
     );
     let mut response = Response::new(Body::from(html));
     response.headers_mut().insert(
@@ -462,12 +521,14 @@ mod tests {
             "/app/notes",
             &accounts,
             None,
+            &["https://rumahl.local".to_owned()],
         ))
         .await;
         assert!(body.contains("&lt;Alice &amp; Bob&gt;"));
         assert!(!body.contains("<Alice & Bob>"));
         assert!(body.contains("next=%2Fapp%2Fnotes&amp;user=alice"));
         assert!(body.contains("Other user"));
+        assert!(body.contains("https://rumahl.local"));
         assert!(!body.contains("name=\"password\""));
     }
 
@@ -481,6 +542,7 @@ mod tests {
                 "/app/notes",
                 &[],
                 Some("alice"),
+                &["https://rumahl.local".to_owned()],
             ))
             .await;
             assert!(body.contains("name=\"username\" value=\"alice\""));
@@ -494,7 +556,7 @@ mod tests {
 
     #[tokio::test]
     async fn login_uses_shell_tokens_and_shared_controls_before_paint() {
-        let response = page(&HeaderMap::new(), false, false);
+        let response = page(&HeaderMap::new(), false, false, &[]);
         let policy = response.headers()[CONTENT_SECURITY_POLICY]
             .to_str()
             .unwrap();
@@ -547,7 +609,7 @@ mod tests {
     #[test]
     fn auth_forms_preserve_same_origin_for_csrf_validation() {
         for logout in [false, true] {
-            let response = page(&HeaderMap::new(), logout, false);
+            let response = page(&HeaderMap::new(), logout, false, &[]);
             assert_eq!(response.headers()["referrer-policy"], "same-origin");
             assert_eq!(response.headers()["cache-control"], "private, no-store");
         }

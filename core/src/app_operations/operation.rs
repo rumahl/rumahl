@@ -12,7 +12,7 @@ use super::AppOperationId;
 /// On-demand container apps are not activated at install; they start when the
 /// user opens them. Always-on services keep the activation step, and web apps
 /// (browser-backed) keep it too, where the provider activation is a no-op.
-fn activates_at_install(app: &InstalledApp) -> bool {
+pub fn activates_at_install(app: &InstalledApp) -> bool {
     !(app.manifest().runtime().kind() == RuntimeKind::Container
         && app.manifest().lifecycle() == RuntimeLifecycle::OnDemand)
 }

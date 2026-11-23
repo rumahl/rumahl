@@ -1,0 +1,15 @@
+[Unit]
+Description=Generate the rumahl shell host allowlist and device address banner
+After=local-fs.target network-online.target systemd-networkd.service
+Before=nginx.service rumahl-platform.service serial-getty@ttyS0.service
+Wants=network-online.target systemd-networkd.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/libexec/rumahl-hosts.sh
+RuntimeDirectory=nginx rumahl
+RuntimeDirectoryMode=0755
+
+[Install]
+WantedBy=multi-user.target

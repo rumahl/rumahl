@@ -134,6 +134,12 @@ impl AppManifest {
         &self.version
     }
 
+    /// Replaces the declared version; used by app updates, which keep the
+    /// installation identity but move the manifest forward.
+    pub fn set_version(&mut self, version: AppVersion) {
+        self.version = version;
+    }
+
     pub fn display_name(&self) -> &str {
         &self.display_name
     }

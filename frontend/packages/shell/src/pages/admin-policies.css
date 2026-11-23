@@ -1,0 +1,348 @@
+/* Policy and group administration uses the native settings groups. */
+.admin-settings { container: admin-settings / inline-size; }
+
+/* Scope tabs (Device / Groups / Accounts) + the search, one bar up top. */
+.policy-settings__scope {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px 16px;
+  padding: 14px 20px;
+}
+.policy-settings__tabs {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 3px;
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--rumahl-ui-color-text-primary) 6%, transparent);
+}
+.policy-settings__tab {
+  padding: 6px 16px;
+  border: 0;
+  border-radius: 8px;
+  color: var(--rumahl-ui-color-text-muted);
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 620;
+  background: transparent;
+  cursor: pointer;
+  transition: background 0.14s ease, color 0.14s ease;
+}
+.policy-settings__tab:hover:not(.is-selected) {
+  color: var(--rumahl-ui-color-text-primary);
+}
+.policy-settings__tab.is-selected {
+  color: var(--rumahl-ui-color-text-primary);
+  background: var(--rumahl-ui-color-surface-strong, var(--rumahl-ui-color-panel-background));
+  box-shadow: 0 1px 2px rgb(0 0 0 / 18%);
+}
+.policy-settings__tab:focus-visible {
+  outline: 2px solid var(--rumahl-ui-color-accent);
+  outline-offset: -2px;
+}
+.policy-settings__filter {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1 1 160px;
+  min-width: 0;
+  max-width: 260px;
+  margin-left: auto;
+  padding: 6px 12px;
+  border: 1px solid var(--material-line, var(--surface-edge));
+  border-radius: 10px;
+}
+.policy-settings__filter svg {
+  width: 14px;
+  height: 14px;
+  flex: none;
+  color: var(--rumahl-ui-color-text-muted);
+}
+.policy-settings__filter input {
+  flex: 1 1 auto;
+  min-width: 0;
+  color: var(--rumahl-ui-color-text-primary);
+  font: inherit;
+  font-size: 12.5px;
+  background: transparent;
+  border: 0;
+  outline: none;
+}
+.policy-settings__filter input::placeholder {
+  color: var(--rumahl-ui-color-text-muted);
+}
+
+/* The selected group or account sits right under the tabs, as chips. */
+.policy-settings__chips {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 2px 20px 14px;
+}
+.policy-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  max-width: 240px;
+  padding: 6px 14px;
+  overflow: hidden;
+  color: var(--rumahl-ui-color-text-primary);
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  background: color-mix(in srgb, var(--rumahl-ui-color-text-primary) 6%, transparent);
+  border: 1px solid var(--material-line, var(--surface-edge));
+  border-radius: 999px;
+  cursor: pointer;
+  transition: background 0.14s ease, border-color 0.14s ease;
+}
+.policy-chip:hover:not(:disabled):not(.is-selected) {
+  background: color-mix(in srgb, var(--rumahl-ui-color-text-primary) 10%, transparent);
+}
+.policy-chip.is-selected {
+  border-color: color-mix(in srgb, var(--rumahl-ui-color-accent) 55%, transparent);
+  background: color-mix(in srgb, var(--rumahl-ui-color-accent) 14%, transparent);
+}
+.policy-chip:focus-visible {
+  outline: 2px solid var(--rumahl-ui-color-accent);
+  outline-offset: 1px;
+}
+.policy-chip:disabled {
+  cursor: default;
+  opacity: 0.55;
+}
+.policy-chip__avatar {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--rumahl-ui-color-text-primary) 10%, transparent);
+  font-size: 11px;
+}
+.policy-settings__chips-empty {
+  margin: 0;
+  font-size: 12.5px;
+  color: var(--rumahl-ui-color-text-muted);
+}
+.policy-settings__chips-empty a {
+  margin-left: 6px;
+}
+
+/* One line pointing at the machine-wide rules hidden on this tab. */
+.policy-settings__note {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px 14px;
+  margin: 0;
+  padding: 10px 20px;
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--rumahl-ui-color-text-muted);
+}
+.policy-settings__note > button {
+  padding: 0;
+  color: var(--rumahl-ui-color-accent);
+  font: inherit;
+  font-weight: 620;
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.policy-settings__note > button:focus-visible {
+  outline: 2px solid var(--rumahl-ui-color-accent);
+  outline-offset: 2px;
+}
+
+/* One section per policy area. */
+.policy-settings__area + .policy-settings__area {
+  margin-top: 8px;
+}
+.policy-settings__area-title {
+  margin: 10px 20px 2px;
+  color: var(--rumahl-ui-color-text-muted);
+  font-size: 10.5px;
+  font-weight: 620;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+.policy-settings__list { padding: 0; }
+.policy-row + .policy-row {
+  border-top: var(--group-divider, 1px solid var(--rumahl-ui-color-outline));
+}
+
+/* Where a rule's current value comes from: this subject, another scope or
+   the system default. */
+.policy-row__source {
+  display: block;
+  margin-top: 3px;
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+.policy-row__source[data-source="own"] {
+  color: var(--rumahl-ui-color-text-primary);
+  font-weight: 600;
+}
+
+/* Controls sit in the row's visual column; unit labels live inside the field. */
+.policy-row__control {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.policy-row__control > .rumahl-input {
+  width: 150px;
+}
+.policy-unit {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+}
+.policy-unit .rumahl-input {
+  width: 150px;
+  /* Room for the unit label inside the field, whatever the input theme pads. */
+  padding-inline-end: 44px;
+}
+.policy-unit__suffix {
+  position: absolute;
+  inset-inline-end: 12px;
+  pointer-events: none;
+  color: var(--rumahl-ui-color-text-muted);
+  font-size: 11.5px;
+  font-weight: 620;
+}
+
+/* List rules (the publisher allowlist) get the whole row width. */
+.policy-row--wide {
+  flex-wrap: wrap;
+}
+.policy-row--wide .policy-row__control {
+  flex: 1 1 100%;
+  align-items: flex-start;
+}
+.policy-row__list {
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 132px;
+  padding: 8px 12px;
+  color: var(--rumahl-ui-color-text-primary);
+  font: inherit;
+  font-size: 12.5px;
+  background: color-mix(in srgb, var(--rumahl-ui-color-text-primary) 4%, transparent);
+  border: 1px solid var(--material-line, var(--surface-edge));
+  border-radius: 8px;
+  resize: vertical;
+}
+.policy-row__list:focus-visible {
+  border-color: var(--rumahl-ui-color-accent);
+  outline: 2px solid color-mix(in srgb, var(--rumahl-ui-color-accent) 35%, transparent);
+  outline-offset: 1px;
+}
+.policy-row__list::placeholder {
+  color: var(--rumahl-ui-color-text-muted);
+}
+
+/* Group management. */
+.group-settings__toolbar {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 14px;
+}
+.group-settings__row {
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  padding: 18px 20px;
+}
+.group-settings__row + .group-settings__row {
+  border-top: var(--group-divider, 1px solid var(--rumahl-ui-color-outline));
+}
+.group-settings__icon {
+  display: grid;
+  place-items: center;
+  color: var(--rumahl-ui-color-accent);
+}
+.group-settings__icon svg { width: 22px; height: 22px; }
+.group-settings__identity,
+.group-settings__member-identity {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.group-settings__identity strong,
+.group-settings__member-identity strong {
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.4;
+}
+.group-settings__identity small,
+.group-settings__member-identity small {
+  font-size: 12px;
+  color: var(--rumahl-ui-color-text-muted);
+}
+.group-settings__actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.group-settings__empty {
+  margin: 0;
+  padding: 24px 20px;
+}
+.group-settings__form {
+  display: grid;
+  gap: 10px;
+}
+.group-settings__form > label {
+  font-size: 13px;
+  font-weight: 600;
+}
+.group-settings__form > menu {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+  margin: 12px 0 0;
+  padding: 0;
+}
+.group-settings__members {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  max-height: 55dvh;
+  overflow-y: auto;
+}
+.group-settings__members > li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 14px 0;
+}
+.group-settings__members > li + li {
+  border-top: 1px solid var(--rumahl-ui-color-outline);
+}
+.group-settings__members .btn { flex: none; }
+
+@container admin-settings (max-width: 560px) {
+  .policy-settings__scope { padding: 12px 16px; }
+  .policy-settings__filter { margin-left: 0; max-width: none; }
+  .policy-settings__chips { padding-inline: 16px; }
+  .policy-settings__note { padding-inline: 16px; }
+  .policy-row__control { flex-wrap: wrap; justify-content: flex-end; }
+}
+@container admin-settings (max-width: 440px) {
+  .group-settings__row { grid-template-columns: 24px minmax(0, 1fr); padding: 16px; }
+  .group-settings__actions { grid-column: 2; }
+}

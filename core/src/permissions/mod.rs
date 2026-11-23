@@ -1,5 +1,6 @@
 mod authority;
 mod authorization;
+mod catalog;
 mod engine;
 mod grant;
 mod grant_id;
@@ -9,10 +10,17 @@ mod request;
 mod role;
 mod scope;
 mod store;
+mod validity;
 
 pub use authorization::{AuthorizationDecision, AuthorizationDenyReason, AuthorizationRequest};
 
 pub use authority::{GrantAuthority, GrantAuthorityError};
+
+pub use catalog::{
+    FILES_PERMISSION_PREFIX, FILES_READ_PERMISSION, FILES_WRITE_PERMISSION, OsPermission,
+    OsPermissionCatalogError, is_files_permission, os_permission, os_permission_catalog,
+    os_permission_catalog_validate,
+};
 
 pub use engine::AuthorizationEngine;
 
@@ -29,3 +37,5 @@ pub use store::InMemoryGrantStore;
 pub use issuer_policy::{GrantIssuerPolicy, GrantIssuerPolicyError};
 
 pub use role::UserRole;
+
+pub use validity::GrantValidity;

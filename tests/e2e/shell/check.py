@@ -52,7 +52,7 @@ def run():
     with tempfile.TemporaryDirectory(prefix="rumahl-shell-") as temporary, contextlib.ExitStack() as stack:
         root = Path(temporary)
         root.chmod(0o700)
-        for name in ["state", "gateway", "renderer", "nginx"]:
+        for name in ["state", "gateway", "renderer", "nginx", "home"]:
             (root / name).mkdir(mode=0o700)
         log = stack.enter_context((root / "process.log").open("w+"))
         with socket.socket() as listener:
@@ -66,7 +66,7 @@ def run():
         context = ssl.create_default_context(cafile=str(cert))
         blocklist = root / "blocked.txt"
         blocklist.write_text("this password is forbidden\n")
-        env = dict(os.environ, RUMAHL_STATE_DIR=str(root / "state"), RUMAHL_PUBLIC_ORIGIN=origin,
+        env = dict(os.environ, RUMAHL_STATE_DIR=str(root / "state"), RUMAHL_HOME_ROOT=str(root / "home"), RUMAHL_PUBLIC_ORIGIN=origin,
                    RUMAHL_GATEWAY_SOCKET=str(root / "gateway/http.sock"), RUMAHL_GATEWAY_SOCKET_ACCESS="owner",
                    RUMAHL_SSR_SOCKET=str(root / "renderer/ssr.sock"), RUMAHL_SSR_SOCKET_ACCESS="owner",
                    RUMAHL_CLIENT_BUILD=str(REPO / "frontend/packages/shell/dist/build-id.json"),
@@ -104,6 +104,15 @@ def run():
         for old, new in replacements.items():
             site = site.replace(old, new)
         (root / "proxy.inc").write_text((REPO / "platform-buildroot/nginx/rumahl-proxy.inc").read_text())
+        # The image generates this map at boot (rumahl-hosts.sh) and includes it
+        # before rumahl.conf; mirror that so the shipped config validates.
+        (root / "rumahl-hosts.inc").write_text(
+            "map $host $rumahl_shell_host_ok {\n"
+            "    default 0;\n"
+            "    localhost 1;\n"
+            "    127.0.0.1 1;\n"
+            "}\n"
+        )
         config = root / "nginx.conf"
         config.write_text(f'''daemon off;
 master_process off;
@@ -117,6 +126,7 @@ http {{
     fastcgi_temp_path {root}/nginx/fastcgi;
     uwsgi_temp_path {root}/nginx/uwsgi;
     scgi_temp_path {root}/nginx/scgi;
+    include {root}/rumahl-hosts.inc;
     {site}
 }}
 ''')
@@ -206,10 +216,24 @@ http {{
             document = b"personal document\n" * 4096
             assert request("/api/v1/files?parent=root&name=sample.txt&directory=false", "POST", cookie=cookies["alice"], request_origin=origin, binary_body=document)[0] == 204
             documents = json.loads(request("/api/v1/files?parent=root", cookie=cookies["alice"])[2])
-            content_path = "/api/v1/files/content?id=" + documents[0]["id"]
+            sample = next(item for item in documents if item["name"] == "sample.txt")
+            content_path = "/api/v1/files/content?id=" + sample["id"]
             assert request(content_path, cookie=cookies["alice"])[2] == document
             assert request(content_path, cookie=cookies["bob"])[0] == 404
             assert request(content_path, cookie=cookies["alice"])[1]["content-disposition"].startswith("attachment;")
+            # The Files address bar resolves a canonical rumahl path; a host
+            # path or traversal never becomes a file access.
+            resolved_path = "/api/v1/shell/fs/resolve?path=rumahl%3A%2F%2Fhome%2Fsample.txt&device=00000000-0000-4000-8000-000000000001"
+            resolved = json.loads(request(resolved_path, cookie=cookies["alice"])[2])
+            assert resolved["path"] == "/home/alice/sample.txt"
+            assert resolved["uri"] == "rumahl://home/sample.txt"
+            assert resolved["directory"] is False and resolved["writable"] is True
+            assert resolved["id"] == sample["id"]
+            assert resolved["trail"][0]["id"] == sample["id"]
+            # Another account's home is never resolvable from a session.
+            assert request("/api/v1/shell/fs/resolve?path=%2Fhome%2Fbob%2Fsample.txt&device=00000000-0000-4000-8000-000000000001", cookie=cookies["alice"])[0] == 403
+            assert request("/api/v1/shell/fs/resolve?path=rumahl%3A%2F%2Fhome%2F..%2F..%2Fetc&device=00000000-0000-4000-8000-000000000001", cookie=cookies["alice"])[0] == 400
+            assert request("/api/v1/shell/fs/resolve?path=%2Fetc%2Fpasswd&device=00000000-0000-4000-8000-000000000001", cookie=cookies["alice"])[0] == 400
             print("PASS: production document upload limits, download and owner isolation", flush=True)
             preferences_path = "/api/v1/shell/preferences?device=00000000-0000-4000-8000-000000000001"
             settings = json.loads(request(preferences_path, cookie=cookies["alice"])[2])

@@ -193,6 +193,21 @@ async function launchPlatform() {
   }
   throw new Error("Platform socket did not become ready");
 }
+/**
+ * Moves documents from the superseded SQLite personal store into the account
+ * home, once per start (idempotent): existing files are kept, files grants are
+ * remapped and unresolvable ones drop. The platform must be running first so
+ * the account homes are provisioned; the store itself is never modified.
+ */
+async function migrateFiles() {
+  try {
+    const report = await command(binary, ["migrate-files"], { environment: env, capture: true });
+    console.log(`[files] ${report.trim()}`);
+  } catch (error) {
+    console.error(`[files] Store migration failed: ${error.message}`);
+  }
+}
+
 async function provision() {
   const ready = join(state, "account-ready");
   try { await stat(ready); return; } catch (error) { if (error.code !== "ENOENT") throw error; }
@@ -292,6 +307,9 @@ try {
   edge = await startGateway({ repo, runtime, state, cert, key, port, buildId, polling: values.poll });
   env = { ...process.env, RUMAHL_STATE_DIR: join(state, "data"), RUMAHL_PUBLIC_ORIGIN: edge.origin,
     RUMAHL_APP_HOST_SUFFIX: "apps.localhost", RUMAHL_APPS_ROOT: join(state, "data", "apps"),
+    // The home is the source of truth for personal files; in development it
+    // lives in the dev state so no host directory is ever touched.
+    RUMAHL_HOME_ROOT: join(state, "home"),
     RUMAHL_CLIENT_BUILD: buildFile, RUMAHL_PASSWORD_BLOCKLIST: blocklist,
     RUMAHL_GATEWAY_SOCKET: join(runtime, "gateway.sock"), RUMAHL_GATEWAY_SOCKET_ACCESS: "owner",
     RUMAHL_SSR_SOCKET: join(runtime, "ssr.sock"), RUMAHL_SSR_SOCKET_ACCESS: "owner",
@@ -309,6 +327,7 @@ try {
     RUMAHL_SECRET_KEY_OBJECT: join(runtime, "root.ctx") };
   await provision();
   await launchPlatform();
+  await migrateFiles();
   watchRust();
   await writeFile(join(state, "server.json"), JSON.stringify({ origin: edge.origin, certificate: cert, buildId }), { mode: 0o600 });
   console.log(`\nrumahl developer server: ${edge.origin}\nLogin: developer\nPassword: ${join(state, "credentials.json")}\nTLS trust certificate: ${cert}\nReact/CSS: hot reload. Rust: ${values.binary || values["no-watch"] ? "manual binary restart" : "automatic rebuild/restart"}.\nCtrl+C stops the server; accounts and sessions are preserved.\n`);
