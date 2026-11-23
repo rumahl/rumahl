@@ -1,8 +1,8 @@
 import { describe, expect, test } from "vitest";
 import type { ShellRequest } from "../snapshot-client";
-import { fetchStoreDocument, formatCertificateFingerprint, parseStoreIndex, parseStorePackage, storeImageUrl, UntrustedCertificateError } from "./sources";
+import { fetchStoreDocument, fetchStoreIndex, formatCertificateFingerprint, parseGithubSource, parseStoreIndex, parseStorePackage, storeImageUrl, StoreSourceNotFoundError, UntrustedCertificateError, type StoreSource } from "./sources";
 
-const source = { id: "https://store.example/index.json", name: "Example", url: "https://store.example/index.json", enabled: true };
+const source: StoreSource = { id: "https://store.example/index.json", kind: "website", name: "Example", url: "https://store.example/index.json", enabled: true };
 
 describe("store source protocol", () => {
   test("parses and resolves a store index", () => {
@@ -93,3 +93,90 @@ describe("store metadata", () => {
    const legacy = parseStoreIndex({ storeVersion: 1, name: "Example", apps: [app] }, source);
    expect(legacy.apps[0]?.description).toBe("");
  });
+
+describe("github store sources", () => {
+  test("derives the raw index URL from repository specs", () => {
+    expect(parseGithubSource("github:example/apps")).toMatchObject({
+      owner: "example", repo: "apps", ref: "main", path: "",
+      indexUrl: "https://raw.githubusercontent.com/example/apps/main/store.json"
+    });
+    expect(parseGithubSource("github:example/apps@dev/catalog")).toMatchObject({
+      owner: "example", repo: "apps", ref: "dev", path: "catalog",
+      indexUrl: "https://raw.githubusercontent.com/example/apps/dev/catalog/store.json"
+    });
+    expect(parseGithubSource("https://github.com/example/apps")).toMatchObject({ ref: "main", path: "" });
+    expect(parseGithubSource("https://github.com/example/apps/tree/v1/catalog")).toMatchObject({
+      ref: "v1", path: "catalog",
+      indexUrl: "https://raw.githubusercontent.com/example/apps/v1/catalog/store.json"
+    });
+  });
+
+  test("rejects other hosts, incomplete specs and path traversal", () => {
+    expect(parseGithubSource("https://gitlab.com/example/apps")).toBeNull();
+    expect(parseGithubSource("github:onlyowner")).toBeNull();
+    expect(parseGithubSource("github:example/apps@dev/../secret")).toBeNull();
+    expect(parseGithubSource("https://store.example/index.json")).toBeNull();
+  });
+
+  test("honours a development raw base override", () => {
+    const globals = globalThis as { __RUMAHL_GITHUB_RAW_BASE__?: unknown };
+    globals.__RUMAHL_GITHUB_RAW_BASE__ = "https://127.0.0.1:8787/github";
+    try {
+      expect(parseGithubSource("github:example/apps")?.indexUrl)
+        .toBe("https://127.0.0.1:8787/github/example/apps/main/store.json");
+    } finally {
+      delete globals.__RUMAHL_GITHUB_RAW_BASE__;
+    }
+  });
+
+  test("fetches a store index through the bridge", async () => {
+    const github: StoreSource = {
+      id: "https://raw.githubusercontent.com/example/apps/main/store.json", kind: "github",
+      name: "example/apps", url: "https://raw.githubusercontent.com/example/apps/main/store.json", enabled: true
+    };
+    const request = (async () => new Response(JSON.stringify({
+      storeVersion: 1, name: "Example", apps: [
+        { id: "com.example.notes", title: "Notes", version: "1.0.0", packageUrl: "packages/notes.json" }
+      ]
+    }), { status: 200, headers: { "content-type": "application/json" } })) as unknown as ShellRequest;
+    const index = await fetchStoreIndex(request, github, new AbortController().signal);
+    expect(index.apps[0]).toMatchObject({
+      sourceId: github.id,
+      packageUrl: "https://raw.githubusercontent.com/example/apps/main/packages/notes.json"
+    });
+  });
+
+  test("falls back to a single app when the repository has no store.json", async () => {
+    const github: StoreSource = {
+      id: "https://raw.githubusercontent.com/example/apps/main/store.json", kind: "github",
+      name: "example/apps", url: "https://raw.githubusercontent.com/example/apps/main/store.json", enabled: true
+    };
+    const urls: string[] = [];
+    const request = (async (url: string) => {
+      urls.push(String(url));
+      if (String(url).includes("manifest.json"))
+        return new Response(JSON.stringify({
+          formatVersion: 1, publisherId: "com.example",
+          app: { appId: "com.example.notes", version: "2.1.0", displayName: "Notes" }
+        }), { status: 200, headers: { "content-type": "application/json" } });
+      return new Response(JSON.stringify({ storeError: "not-found" }), { status: 404, headers: { "content-type": "application/json" } });
+    }) as unknown as ShellRequest;
+    const index = await fetchStoreIndex(request, github, new AbortController().signal);
+    expect(urls[1]).toContain("/api/v1/shell/store/fetch");
+    expect(decodeURIComponent(urls[1] ?? "")).toContain("https://raw.githubusercontent.com/example/apps/main/manifest.json");
+    expect(index.apps).toEqual([expect.objectContaining({
+      id: "com.example.notes", title: "Notes", version: "2.1.0",
+      packageUrl: "https://raw.githubusercontent.com/example/apps/main/store-package.json"
+    })]);
+    await expect(fetchStoreDocument(request, "https://raw.githubusercontent.com/example/apps/missing.json", new AbortController().signal))
+      .rejects.toBeInstanceOf(StoreSourceNotFoundError);
+  });
+
+  test("keeps website sources without a fallback", async () => {
+    const request = (async () => new Response(JSON.stringify({ storeError: "not-found" }), {
+      status: 404, headers: { "content-type": "application/json" }
+    })) as unknown as ShellRequest;
+    await expect(fetchStoreIndex(request, source, new AbortController().signal))
+      .rejects.toBeInstanceOf(StoreSourceNotFoundError);
+  });
+});
