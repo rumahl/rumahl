@@ -429,6 +429,15 @@ fn certificate_required(info: &CertificateInfo) -> Response {
     response
 }
 
+/// A 404 is forwarded instead of being folded into the generic gateway error:
+/// the shell uses it to fall back from a store index to a single-app repository.
+fn store_not_found() -> Response {
+    let mut response = axum::Json(serde_json::json!({ "storeError": "not-found" })).into_response();
+    *response.status_mut() = StatusCode::NOT_FOUND;
+    secure_headers(&mut response);
+    response
+}
+
 fn store_client(
     pinned: Option<&str>,
     resolved: Option<(&str, SocketAddr)>,
@@ -525,6 +534,7 @@ struct RemoteResponse {
 
 enum RemoteFailure {
     Certificate(CertificateInfo),
+    NotFound,
     Unavailable,
     BadGateway,
     TooLarge,
@@ -533,6 +543,7 @@ enum RemoteFailure {
 fn remote_error(failure: RemoteFailure) -> Response {
     match failure {
         RemoteFailure::Certificate(info) => certificate_required(&info),
+        RemoteFailure::NotFound => store_not_found(),
         RemoteFailure::Unavailable => error(StatusCode::SERVICE_UNAVAILABLE),
         RemoteFailure::BadGateway => error(StatusCode::BAD_GATEWAY),
         RemoteFailure::TooLarge => error(StatusCode::PAYLOAD_TOO_LARGE),
@@ -593,6 +604,9 @@ async fn fetch_remote(
             return Err(RemoteFailure::Unavailable);
         }
     };
+    if response.status() == reqwest::StatusCode::NOT_FOUND {
+        return Err(RemoteFailure::NotFound);
+    }
     if response.status() != reqwest::StatusCode::OK {
         return Err(RemoteFailure::BadGateway);
     }
@@ -761,9 +775,9 @@ async fn trust(
 #[cfg(test)]
 mod tests {
     use super::{
-        allows_private_targets, fingerprint, local_hostname, non_public_ip, parse_fingerprint,
-        remember_certificate, resolve_public_target, source_url, trusted_fingerprint,
-        untrusted_certificate,
+        RemoteFailure, allows_private_targets, fingerprint, local_hostname, non_public_ip,
+        parse_fingerprint, remember_certificate, remote_error, resolve_public_target, source_url,
+        trusted_fingerprint, untrusted_certificate,
     };
     use rustls::pki_types::{CertificateDer, PrivateKeyDer, PrivatePkcs8KeyDer};
     use std::{net::SocketAddr, sync::Arc};
@@ -937,5 +951,16 @@ mod tests {
             trusted_fingerprint(Some(directory.path()), "user-a", "store.example"),
             Some("c".repeat(64))
         );
+    }
+
+    #[tokio::test]
+    async fn forwards_not_found_as_a_typed_store_error() {
+        let response = remote_error(RemoteFailure::NotFound);
+        assert_eq!(response.status(), axum::http::StatusCode::NOT_FOUND);
+        let body = axum::body::to_bytes(response.into_body(), 1024)
+            .await
+            .unwrap();
+        let value: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(value["storeError"], "not-found");
     }
 }

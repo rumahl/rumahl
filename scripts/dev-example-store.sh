@@ -4,6 +4,11 @@
 #   1. pnpm --dir frontend dev
 #   2. scripts/dev-example-store.sh
 #   3. Add https://127.0.0.1:8787/site/store.json as a website source.
+#
+# The output also mirrors the catalog as a GitHub-shaped tree under
+# /github/example/apps/main. To exercise the GitHub source path against it,
+# set this in the shell console and add "github:example/apps" as a source:
+#   globalThis.__RUMAHL_GITHUB_RAW_BASE__ = "https://127.0.0.1:8787/github"
 set -euo pipefail
 repo="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 state="${RUMAHL_DEV_STATE:-$repo/.rumahl-dev}"
