@@ -157,11 +157,65 @@ pub struct AppSettingOptionInfo {
     pub value: String,
     pub label: String,
 }
-/// The manifest-declared settings for one installed app.
+/// The manifest-declared settings for one installed app plus the values the
+/// user has stored. Secrets are represented only by their key: the plaintext
+/// never crosses this boundary.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AppSettingsInfo {
     pub app: CatalogApp,
     pub manifest: Vec<AppSettingInfo>,
+    pub values: HashMap<String, serde_json::Value>,
+    pub secrets: Vec<String>,
+}
+
+/// One brokered HTTP request on an app's behalf. The app supplies the URL,
+/// method, text body and an allow-listed header set; the OS adds a secret
+/// setting as `Authorization` only after the user approved the origin.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AppNetworkRequest {
+    pub url: String,
+    pub method: String,
+    pub headers: Vec<(String, String)>,
+    pub body: Option<Vec<u8>>,
+    /// Setting key whose secret value becomes `Authorization: Bearer …`.
+    pub secret: Option<String>,
+    pub max_bytes: usize,
+}
+
+/// A request after authorization: URL and origin validated, secret attached.
+/// The transport performs the actual network call.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PreparedNetworkRequest {
+    pub url: String,
+    pub method: String,
+    pub headers: Vec<(String, String)>,
+    pub body: Option<Vec<u8>>,
+    pub max_bytes: usize,
+}
+
+/// One origin the user approved for an app installation.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AppNetworkOrigin {
+    /// Exact `scheme://host[:port]`.
+    pub origin: String,
+    /// `durable` or `session`.
+    pub validity: String,
+    pub expires_at: Option<u64>,
+}
+
+/// Why a brokered network request did not run. Consent is a separate outcome
+/// so the shell can ask the user instead of reporting a hard failure.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum AppNetworkError {
+    /// The app did not declare `com.rumahl.os.network`.
+    Denied,
+    /// The installation, session or manifest is unavailable.
+    Unavailable,
+    /// The target is malformed or prohibited (credentials, fragment,
+    /// link-local address, non-HTTP scheme, non-allow-listed header, …).
+    Blocked,
+    /// The user has not approved this exact origin yet.
+    ConsentRequired { origin: String },
 }
 /// One entry of an app's private data directory.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -290,6 +344,69 @@ pub trait AppProvider: Send + Sync + 'static {
         identity: ShellIdentity,
         installation: InstallationId,
     ) -> Result<Vec<AppSettingInfo>, AppAccessError>;
+    /// Stored values by key. Secrets are deliberately absent; use
+    /// `app_setting_secrets` for the configured flags.
+    fn app_settings_values(
+        &self,
+        _identity: ShellIdentity,
+        _installation: InstallationId,
+    ) -> Result<HashMap<String, serde_json::Value>, AppAccessError> {
+        Ok(HashMap::new())
+    }
+    /// Keys of secrets that currently hold a value. Never the values.
+    fn app_setting_secrets(
+        &self,
+        _identity: ShellIdentity,
+        _installation: InstallationId,
+    ) -> Result<Vec<String>, AppAccessError> {
+        Ok(Vec::new())
+    }
+    /// Writes values after validating them against the signed manifest.
+    fn update_app_settings(
+        &self,
+        _identity: ShellIdentity,
+        _installation: InstallationId,
+        _values: HashMap<String, serde_json::Value>,
+    ) -> Result<(), AppAccessError> {
+        Err(AppAccessError::Unavailable)
+    }
+    /// Origins the calling user approved for this installation.
+    fn app_network_origins(
+        &self,
+        _identity: ShellIdentity,
+        _installation: InstallationId,
+    ) -> Result<Vec<AppNetworkOrigin>, AppAccessError> {
+        Err(AppAccessError::Unavailable)
+    }
+    /// Records one consent decision for an exact origin.
+    fn grant_app_network(
+        &self,
+        _identity: ShellIdentity,
+        _installation: InstallationId,
+        _origin: &str,
+        _validity: GrantValidityChoice,
+    ) -> Result<AppNetworkOrigin, AppAccessError> {
+        Err(AppAccessError::Unavailable)
+    }
+    /// Revokes one origin consent.
+    fn revoke_app_network(
+        &self,
+        _identity: ShellIdentity,
+        _installation: InstallationId,
+        _origin: &str,
+    ) -> Result<(), AppAccessError> {
+        Err(AppAccessError::Unavailable)
+    }
+    /// Validates an app network request against the manifest and the user's
+    /// origin consents, and attaches the referenced secret server-side.
+    fn prepare_app_network(
+        &self,
+        _identity: ShellIdentity,
+        _installation: InstallationId,
+        _request: &AppNetworkRequest,
+    ) -> Result<PreparedNetworkRequest, AppNetworkError> {
+        Err(AppNetworkError::Unavailable)
+    }
     /// Read-only listing or contents of an app's private data directory.
     fn data(
         &self,
@@ -702,7 +819,86 @@ impl AppAccess {
             .find(|app| app.id == id && app.installation_id.to_string() == installation)
             .ok_or(AppAccessError::Denied)?;
         let manifest = self.provider.settings(identity, app.installation_id)?;
-        Ok(AppSettingsInfo { app, manifest })
+        let values = self
+            .provider
+            .app_settings_values(identity, app.installation_id)?;
+        let secrets = self
+            .provider
+            .app_setting_secrets(identity, app.installation_id)?;
+        Ok(AppSettingsInfo {
+            app,
+            manifest,
+            values,
+            secrets,
+        })
+    }
+
+    /// Persists manifest-declared setting values for one installation.
+    pub fn update_settings(
+        &self,
+        identity: ShellIdentity,
+        id: &str,
+        installation: &str,
+        values: HashMap<String, serde_json::Value>,
+    ) -> Result<(), AppAccessError> {
+        let app = self.installed(identity, id, installation)?;
+        self.provider
+            .update_app_settings(identity, app.installation_id, values)
+    }
+
+    /// Origins the calling user approved for this app installation.
+    pub fn network_origins(
+        &self,
+        identity: ShellIdentity,
+        id: &str,
+        installation: &str,
+    ) -> Result<Vec<AppNetworkOrigin>, AppAccessError> {
+        let app = self.installed(identity, id, installation)?;
+        self.provider
+            .app_network_origins(identity, app.installation_id)
+    }
+
+    /// Records a user consent for one exact network origin.
+    pub fn grant_network_origin(
+        &self,
+        identity: ShellIdentity,
+        id: &str,
+        installation: &str,
+        origin: &str,
+        validity: GrantValidityChoice,
+    ) -> Result<AppNetworkOrigin, AppAccessError> {
+        let app = self.installed(identity, id, installation)?;
+        self.provider
+            .grant_app_network(identity, app.installation_id, origin, validity)
+    }
+
+    /// Revokes a network origin consent.
+    pub fn revoke_network_origin(
+        &self,
+        identity: ShellIdentity,
+        id: &str,
+        installation: &str,
+        origin: &str,
+    ) -> Result<(), AppAccessError> {
+        let app = self.installed(identity, id, installation)?;
+        self.provider
+            .revoke_app_network(identity, app.installation_id, origin)
+    }
+
+    /// Authorizes one brokered network request. The transport still validates
+    /// the target independently before opening a socket.
+    pub fn prepare_network_request(
+        &self,
+        identity: ShellIdentity,
+        id: &str,
+        installation: &str,
+        request: &AppNetworkRequest,
+    ) -> Result<PreparedNetworkRequest, AppNetworkError> {
+        let app = self
+            .installed(identity, id, installation)
+            .map_err(|_| AppNetworkError::Denied)?;
+        self.provider
+            .prepare_app_network(identity, app.installation_id, request)
     }
     pub fn data(
         &self,

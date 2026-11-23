@@ -4,7 +4,7 @@ import { APP_ID } from "../routing/paths";
 const INSTALLATION = /^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 const LEASE = /^[0-9a-f]{64}$/;
 const SETTING_KEY = /^[a-z0-9._-]{1,64}$/;
-const SETTING_TYPES = ["text", "number", "boolean", "select"] as const;
+const SETTING_TYPES = ["text", "number", "boolean", "secret", "select"] as const;
 export type AppSettingType = (typeof SETTING_TYPES)[number];
 export interface AppSettingOption {
   value: string;
@@ -22,6 +22,8 @@ export interface AppSettings {
   id: string;
   installationId: string;
   manifest: readonly AppSetting[];
+  values: Readonly<Record<string, string | number | boolean>>;
+  secrets: readonly string[];
   extended: null;
 }
 export interface AppDataEntry {
@@ -314,7 +316,168 @@ export function parseAppSettings(value: unknown): AppSettings {
       options,
     };
   });
-  return { id: object.id, installationId: object.installationId, manifest, extended: null };
+  const declared = new Map(manifest.map((setting) => [setting.key, setting]));
+  const rawValues = object.values ?? {};
+  if (typeof rawValues !== "object" || rawValues === null || Array.isArray(rawValues))
+    throw new Error("invalid app setting values");
+  const values: Record<string, string | number | boolean> = {};
+  for (const [key, value] of Object.entries(rawValues)) {
+    const setting = declared.get(key);
+    if (!setting || setting.type === "secret") throw new Error("invalid app setting value");
+    if (setting.type === "boolean") {
+      if (typeof value !== "boolean") throw new Error("invalid app setting value");
+    } else if (setting.type === "number") {
+      if (typeof value !== "number" || !Number.isFinite(value)) throw new Error("invalid app setting value");
+    } else if (typeof value !== "string") {
+      throw new Error("invalid app setting value");
+    }
+    values[key] = value as string | number | boolean;
+  }
+  const rawSecrets = object.secrets ?? [];
+  if (!Array.isArray(rawSecrets) || rawSecrets.length > 64)
+    throw new Error("invalid app setting secrets");
+  const secrets: string[] = [];
+  for (const key of rawSecrets) {
+    const setting = typeof key === "string" ? declared.get(key) : undefined;
+    if (!setting || setting.type !== "secret" || secrets.includes(key as string))
+      throw new Error("invalid app setting secret");
+    secrets.push(key as string);
+  }
+  return { id: object.id, installationId: object.installationId, manifest, values, secrets, extended: null };
+}
+export async function updateAppSettings(
+  request: ShellRequest,
+  app: InstalledApp,
+  values: Readonly<Record<string, string | number | boolean | null>>,
+  signal: AbortSignal
+): Promise<AppSettings> {
+  return parseAppSettings(await payload(await request(
+    `/api/v1/shell/apps/${encodeURIComponent(app.id)}/settings?installationId=${encodeURIComponent(app.installationId)}`,
+    {
+      method: "PUT", cache: "no-store", credentials: "same-origin", signal,
+      headers: { Accept: "application/json", "Content-Type": "application/json" },
+      body: JSON.stringify({ values }),
+    }
+  ), 256 * 1024));
+}
+export interface AppNetworkOrigin {
+  origin: string;
+  validity: "session" | "durable";
+  expiresAt: number | null;
+}
+export class NetworkConsentRequiredError extends Error {
+  constructor(readonly origin: string) {
+    super("network consent required");
+    this.name = "NetworkConsentRequiredError";
+  }
+}
+export class NetworkDeniedError extends Error {
+  constructor(readonly reason: string) {
+    super(reason);
+    this.name = "NetworkDeniedError";
+  }
+}
+export interface AppNetworkRequest {
+  url: string;
+  method?: "GET" | "POST" | "PUT" | "PATCH" | "DELETE" | "HEAD";
+  headers?: Record<string, string>;
+  body?: string;
+  secret?: string;
+  maxBytes?: number;
+}
+export interface AppNetworkResponse {
+  status: number;
+  headers: Record<string, string>;
+  body: string;
+  truncated: boolean;
+}
+function networkError(value: unknown): Error {
+  const object = typeof value === "object" && value !== null ? value as Record<string, unknown> : {};
+  if (object.reason === "approval-required" && typeof object.origin === "string")
+    return new NetworkConsentRequiredError(object.origin);
+  return new NetworkDeniedError(typeof object.reason === "string" ? object.reason : "network-denied");
+}
+export async function requestAppNetwork(
+  request: ShellRequest,
+  app: InstalledApp,
+  input: AppNetworkRequest,
+  signal: AbortSignal
+): Promise<AppNetworkResponse> {
+  const response = await request(
+    `/api/v1/shell/apps/${encodeURIComponent(app.id)}/network/request?installationId=${encodeURIComponent(app.installationId)}`,
+    {
+      method: "POST", cache: "no-store", credentials: "same-origin", signal,
+      headers: { Accept: "application/json", "Content-Type": "application/json" },
+      body: JSON.stringify(input),
+    }
+  );
+  const value = await response.json().catch(() => null);
+  if (!response.ok) throw networkError(value);
+  const object = record(value);
+  if (object.networkVersion !== 1 || typeof object.status !== "number" ||
+      !Number.isInteger(object.status) || object.status < 100 || object.status > 599 ||
+      typeof object.body !== "string" || object.body.length > 3 * 1024 * 1024 ||
+      typeof object.truncated !== "boolean")
+    throw new Error("invalid network response");
+  const headers = record(object.headers ?? {});
+  const parsedHeaders: Record<string, string> = {};
+  for (const [key, entry] of Object.entries(headers)) {
+    if (typeof entry !== "string") throw new Error("invalid network response header");
+    parsedHeaders[key] = entry;
+  }
+  return { status: object.status, headers: parsedHeaders, body: object.body, truncated: object.truncated };
+}
+export async function fetchNetworkOrigins(
+  request: ShellRequest,
+  app: InstalledApp,
+  signal: AbortSignal
+): Promise<readonly AppNetworkOrigin[]> {
+  const value = record(await payload(await request(
+    `/api/v1/shell/apps/${encodeURIComponent(app.id)}/network/consent?installationId=${encodeURIComponent(app.installationId)}`,
+    { cache: "no-store", credentials: "same-origin", headers: { Accept: "application/json" }, signal }
+  ), 64 * 1024));
+  if (!Array.isArray(value.origins) || value.origins.length > 64) throw new Error("invalid network origins");
+  return value.origins.map((entry: unknown) => {
+    const origin = record(entry);
+    if (typeof origin.origin !== "string" || !origin.origin ||
+        (origin.validity !== "session" && origin.validity !== "durable") ||
+        !(origin.expiresAt === null || (typeof origin.expiresAt === "number" && Number.isInteger(origin.expiresAt))))
+      throw new Error("invalid network origin");
+    return { origin: origin.origin, validity: origin.validity, expiresAt: origin.expiresAt } as AppNetworkOrigin;
+  });
+}
+export async function grantNetworkOrigin(
+  request: ShellRequest,
+  app: InstalledApp,
+  origin: string,
+  validity: "session" | "durable",
+  signal: AbortSignal
+): Promise<AppNetworkOrigin> {
+  const value = record(await payload(await request(
+    `/api/v1/shell/apps/${encodeURIComponent(app.id)}/network/consent?installationId=${encodeURIComponent(app.installationId)}`,
+    {
+      method: "PUT", cache: "no-store", credentials: "same-origin", signal,
+      headers: { Accept: "application/json", "Content-Type": "application/json" },
+      body: JSON.stringify({ origin, validity }),
+    }
+  ), 64 * 1024));
+  if (typeof value.origin !== "string" || (value.validity !== "session" && value.validity !== "durable") ||
+      !(value.expiresAt === null || typeof value.expiresAt === "number"))
+    throw new Error("invalid network origin");
+  return { origin: value.origin, validity: value.validity, expiresAt: value.expiresAt };
+}
+export async function revokeNetworkOrigin(
+  request: ShellRequest,
+  app: InstalledApp,
+  origin: string,
+  signal: AbortSignal
+): Promise<void> {
+  const response = await request(
+    `/api/v1/shell/apps/${encodeURIComponent(app.id)}/network/consent?installationId=${encodeURIComponent(app.installationId)}&origin=${encodeURIComponent(origin)}`,
+    { method: "DELETE", cache: "no-store", credentials: "same-origin", signal,
+      headers: { Accept: "application/json" } }
+  );
+  if (!response.ok) throw new Error("network consent could not be revoked");
 }
 export async function fetchAppSettings(request: ShellRequest, app: InstalledApp, signal: AbortSignal): Promise<AppSettings> {
   return parseAppSettings(await payload(await request(

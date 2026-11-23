@@ -25,8 +25,12 @@ import {
   type BridgeAppInfo,
   type BridgeCapabilityResource,
   type BridgeCapabilityResult,
+  type BridgeNetworkRequest,
+  type BridgeNetworkResponse,
   type BridgeNotification,
   type BridgeProviderInvocation,
+  type BridgeSettings,
+  type BridgeSettingsWrite,
   type BridgeRequest,
   type BridgeResponse,
   type BridgeTheme
@@ -36,8 +40,12 @@ export type {
   BridgeAppInfo,
   BridgeCapabilityResource,
   BridgeCapabilityResult,
+  BridgeNetworkRequest,
+  BridgeNetworkResponse,
   BridgeNotification,
   BridgeProviderInvocation,
+  BridgeSettings,
+  BridgeSettingsWrite,
   BridgeTheme
 } from "@rumahl/contracts/bridge";
 
@@ -67,6 +75,12 @@ export interface RumahlBridge {
   notify(input: BridgeNotification): Promise<void>;
   /** Invokes a capability provided by another installed app, on the user's behalf. */
   invokeCapability(capability: string, resource?: BridgeCapabilityResource): Promise<BridgeCapabilityResult>;
+  /** Reads this app's own non-secret settings and configured secret keys. */
+  settings(): Promise<BridgeSettings>;
+  /** Writes this app's own settings; secret values are write-only. */
+  setSettings(input: BridgeSettingsWrite): Promise<BridgeSettings>;
+  /** Performs one HTTP(S) request through the OS to a user-approved origin. */
+  requestNetwork(input: BridgeNetworkRequest): Promise<BridgeNetworkResponse>;
   /** Applies the current OS theme and every change to `handler`. Returns an unsubscribe. */
   watchTheme(handler: (theme: BridgeTheme) => void): () => void;
   /** Registers a handler for a capability this app provides. Returns an unregister. */
@@ -265,6 +279,9 @@ export function connectRumahlBridge(options: ConnectOptions = {}): RumahlBridge 
     notify: async (input) => { await request("os.notification", input); },
     invokeCapability: (capability, resource) =>
       request<BridgeCapabilityResult>("os.capabilities.invoke", resource ? { capability, resource } : { capability }),
+    settings: () => request<BridgeSettings>("os.settings.get"),
+    setSettings: (input) => request<BridgeSettings>("os.settings.set", input),
+    requestNetwork: (input) => request<BridgeNetworkResponse>("os.net.request", input),
     watchTheme: (handler) => {
       const set = listeners.get("os.theme.changed") ?? new Set<BridgeEventHandler>();
       const listener: BridgeEventHandler = (payload) => { if (isBridgeTheme(payload)) handler(payload); };

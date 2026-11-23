@@ -38,18 +38,18 @@ pub use app_operations::{
 };
 
 pub use apps::{
-    AppLifecycle, AppLifecycleError, AppManifest, AppManifestError, AppManifestValidationError,
-    AppManifestValidator, AppSettingDeclaration, AppSettingError, AppSettingKey, AppSettingKind,
-    AppSettingOption, AppUninstallResult, AppVersion, AppVersionError,
-    CommandContributionDeclaration, CommandContributionDeclarationError, ConnectorDeclaration,
-    ConnectorTarget, ConnectorTargetError, ContributionDeclaration, InstalledApp,
-    InstalledAppError, InstalledAppRegistry, InstalledAppRegistryError, MAX_APP_SETTINGS,
-    OidcCallbackPath, OidcCallbackPathError, OidcClientDeclaration, OidcClientDeclarationError,
-    OidcClientType, OidcScope, PlatformDeregistrationReport, PlatformRegistrar,
-    PlatformRegistrarError, PlatformRegistration, PlatformRegistrationError, PreferredStreamSize,
-    RuntimeLifecycle, STREAMING_ENGINE_CAPABILITY, SearchContributionDeclaration,
-    StreamPresentation, StreamPresentationError, SurfaceDeclaration, SurfaceIcon, SurfaceKind,
-    SurfacePlacement, SurfaceSize, SurfaceSlot, SurfaceTone,
+    APP_NETWORK_PERMISSION, AppLifecycle, AppLifecycleError, AppManifest, AppManifestError,
+    AppManifestValidationError, AppManifestValidator, AppSettingDeclaration, AppSettingError,
+    AppSettingKey, AppSettingKind, AppSettingOption, AppUninstallResult, AppVersion,
+    AppVersionError, CommandContributionDeclaration, CommandContributionDeclarationError,
+    ConnectorDeclaration, ConnectorTarget, ConnectorTargetError, ContributionDeclaration,
+    InstalledApp, InstalledAppError, InstalledAppRegistry, InstalledAppRegistryError,
+    MAX_APP_SETTINGS, OidcCallbackPath, OidcCallbackPathError, OidcClientDeclaration,
+    OidcClientDeclarationError, OidcClientType, OidcScope, PlatformDeregistrationReport,
+    PlatformRegistrar, PlatformRegistrarError, PlatformRegistration, PlatformRegistrationError,
+    PreferredStreamSize, RuntimeLifecycle, STREAMING_ENGINE_CAPABILITY,
+    SearchContributionDeclaration, StreamPresentation, StreamPresentationError, SurfaceDeclaration,
+    SurfaceIcon, SurfaceKind, SurfacePlacement, SurfaceSize, SurfaceSlot, SurfaceTone,
 };
 
 pub use context::{CorrelationId, CorrelationIdError, OperationContext};

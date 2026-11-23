@@ -647,9 +647,13 @@ where
                     .map_err(|error| AppOperationRunnerError::DatabaseProvider(Box::new(error)))
             }
             AppOperationResource::RuntimeInstance => {
+                // Web apps have no supervisor runtime. Updating one must not
+                // ask the supervisor to remove or prepare an instance it never
+                // owned; that made every web-app update fail closed.
+                let web = app.manifest().runtime().kind() == rumahl_core::RuntimeKind::Web;
                 // An update replaces the instance: the supervisor refuses to
                 // prepare a second container under the same installation name.
-                if operation.kind() == AppOperationKind::Update {
+                if operation.kind() == AppOperationKind::Update && !web {
                     // The supervisor refuses to remove an active instance, so
                     // an update follows the uninstall order: deactivate first.
                     self.runtime_provider
@@ -697,10 +701,14 @@ where
 
                 Ok(())
             }
-            AppOperationResource::RuntimeActivation => self
-                .runtime_provider
-                .activate_installation(app)
-                .map_err(|error| AppOperationRunnerError::RuntimeProvider(Box::new(error))),
+            AppOperationResource::RuntimeActivation => {
+                if app.manifest().runtime().kind() == rumahl_core::RuntimeKind::Web {
+                    return Ok(());
+                }
+                self.runtime_provider
+                    .activate_installation(app)
+                    .map_err(|error| AppOperationRunnerError::RuntimeProvider(Box::new(error)))
+            }
             AppOperationResource::PlatformSnapshot => self
                 .snapshot_repository
                 .store(&PlatformSnapshot::capture(staged, grant_store))
@@ -722,17 +730,25 @@ where
                 .retain_installation(app.installation_id())
                 .map(|_| ())
                 .map_err(|error| AppOperationRunnerError::DatabaseProvider(Box::new(error))),
-            AppOperationResource::RuntimeInstance => self
-                .runtime_provider
-                .remove_installation(app.installation_id())
-                .map(|_| ())
-                .map_err(|error| AppOperationRunnerError::RuntimeProvider(Box::new(error))),
+            AppOperationResource::RuntimeInstance => {
+                if app.manifest().runtime().kind() == rumahl_core::RuntimeKind::Web {
+                    return Ok(());
+                }
+                self.runtime_provider
+                    .remove_installation(app.installation_id())
+                    .map(|_| ())
+                    .map_err(|error| AppOperationRunnerError::RuntimeProvider(Box::new(error)))
+            }
             AppOperationResource::OidcClient => self.remove_oidc_material(operation, app),
-            AppOperationResource::RuntimeActivation => self
-                .runtime_provider
-                .deactivate_installation(app.installation_id())
-                .map(|_| ())
-                .map_err(|error| AppOperationRunnerError::RuntimeProvider(Box::new(error))),
+            AppOperationResource::RuntimeActivation => {
+                if app.manifest().runtime().kind() == rumahl_core::RuntimeKind::Web {
+                    return Ok(());
+                }
+                self.runtime_provider
+                    .deactivate_installation(app.installation_id())
+                    .map(|_| ())
+                    .map_err(|error| AppOperationRunnerError::RuntimeProvider(Box::new(error)))
+            }
             AppOperationResource::PlatformSnapshot => self
                 .snapshot_repository
                 .store(&PlatformSnapshot::capture(staged_state, staged_grants))
@@ -754,11 +770,15 @@ where
                 .retain_installation(app.installation_id())
                 .map(|_| ())
                 .map_err(|error| AppOperationRunnerError::DatabaseProvider(Box::new(error))),
-            AppOperationResource::RuntimeInstance => self
-                .runtime_provider
-                .remove_installation(app.installation_id())
-                .map(|_| ())
-                .map_err(|error| AppOperationRunnerError::RuntimeProvider(Box::new(error))),
+            AppOperationResource::RuntimeInstance => {
+                if app.manifest().runtime().kind() == rumahl_core::RuntimeKind::Web {
+                    return Ok(());
+                }
+                self.runtime_provider
+                    .remove_installation(app.installation_id())
+                    .map(|_| ())
+                    .map_err(|error| AppOperationRunnerError::RuntimeProvider(Box::new(error)))
+            }
             AppOperationResource::OidcClient => {
                 // An update reuses the installation's OIDC registration, so an
                 // update compensation must not revoke it.
@@ -768,11 +788,15 @@ where
                     self.remove_oidc_material(operation, app)
                 }
             }
-            AppOperationResource::RuntimeActivation => self
-                .runtime_provider
-                .deactivate_installation(app.installation_id())
-                .map(|_| ())
-                .map_err(|error| AppOperationRunnerError::RuntimeProvider(Box::new(error))),
+            AppOperationResource::RuntimeActivation => {
+                if app.manifest().runtime().kind() == rumahl_core::RuntimeKind::Web {
+                    return Ok(());
+                }
+                self.runtime_provider
+                    .deactivate_installation(app.installation_id())
+                    .map(|_| ())
+                    .map_err(|error| AppOperationRunnerError::RuntimeProvider(Box::new(error)))
+            }
             AppOperationResource::PlatformSnapshot => self
                 .snapshot_repository
                 .store(&PlatformSnapshot::capture(staged_state, staged_grants))

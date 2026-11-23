@@ -46,14 +46,16 @@ pub use browser_auth::{BrowserSessions, LoginAccount, SESSION_SECONDS};
 mod apps;
 pub use apps::{
     AppAccess, AppAccessError, AppAsset, AppData, AppDataEntry, AppFileAccess, AppFileAction,
-    AppFileDeny, AppFileOutcome, AppGrantInfo, AppGrantState, AppPermissionRequestInfo,
-    AppProvider, AppRuntimeEnvEntry, AppRuntimeEnvironment, AppSettingInfo, AppSettingOptionInfo,
-    AppSettingsInfo, AppStorageInfo, BrowserDelivery, CapabilityOutcome, CapabilityResource,
-    CapabilityResult, CatalogApp, GrantIssue, GrantValidityChoice, ImportedApp, PackageUploadFile,
+    AppFileDeny, AppFileOutcome, AppGrantInfo, AppGrantState, AppNetworkError, AppNetworkOrigin,
+    AppNetworkRequest, AppPermissionRequestInfo, AppProvider, AppRuntimeEnvEntry,
+    AppRuntimeEnvironment, AppSettingInfo, AppSettingOptionInfo, AppSettingsInfo, AppStorageInfo,
+    BrowserDelivery, CapabilityOutcome, CapabilityResource, CapabilityResult, CatalogApp,
+    GrantIssue, GrantValidityChoice, ImportedApp, PackageUploadFile, PreparedNetworkRequest,
     RuntimeAction, RuntimeState, app_error,
 };
 
 mod app_channel;
+mod app_network;
 pub use app_channel::{
     CHANNEL_PROTOCOL, ChannelAuthenticator, ChannelFiles, ChannelFrame, ChannelTokenStore,
     SocketRuntimeChannel, read_hello, run_connection, serve_channel_listener,

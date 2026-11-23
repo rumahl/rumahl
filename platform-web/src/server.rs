@@ -21,7 +21,7 @@ use hyper::client::conn::http1;
 use hyper::{Request, StatusCode as UpstreamStatus};
 use hyper_util::rt::TokioIo;
 use rand::RngCore;
-use rumahl_core::{BrowserProfileId, UserId};
+use rumahl_core::{BrowserProfileId, InstallationId, MAX_APP_SETTINGS, UserId};
 use rumahl_ui_contracts::{ExtensionContribution, ShellEvent, ShellSnapshot};
 use tokio::net::{UnixListener, UnixStream};
 use tokio::sync::broadcast;
@@ -211,8 +211,14 @@ pub fn router(state: GatewayState) -> Router {
             "/api/v1/shell/apps/{id}/launch",
             post(app_launch).layer(axum::extract::DefaultBodyLimit::max(1024)),
         )
-        .route("/api/v1/shell/apps/{id}/settings", get(app_settings))
+        .route(
+            "/api/v1/shell/apps/{id}/settings",
+            get(app_settings)
+                .put(update_app_settings)
+                .layer(axum::extract::DefaultBodyLimit::max(256 * 1024)),
+        )
         .route("/api/v1/shell/apps/{id}/data", get(app_data))
+        .merge(crate::app_network::routes())
         .route(
             "/api/v1/shell/apps/{id}",
             delete(app_uninstall).layer(axum::extract::DefaultBodyLimit::max(2048)),
@@ -542,38 +548,119 @@ async fn app_settings(
         return error(StatusCode::SERVICE_UNAVAILABLE);
     };
     match tokio::task::spawn_blocking(move || apps.settings(identity, &id, &installation)).await {
-        Ok(Ok(settings)) => {
-            let manifest: Vec<_> = settings
-                .manifest
+        Ok(Ok(settings)) => settings_response(settings),
+        Ok(Err(error)) => crate::app_error(error),
+        Err(_) => error(StatusCode::SERVICE_UNAVAILABLE),
+    }
+}
+
+fn settings_response(settings: crate::AppSettingsInfo) -> Response {
+    let manifest: Vec<_> = settings
+        .manifest
+        .into_iter()
+        .map(|setting| {
+            let options: Vec<_> = setting
+                .options
                 .into_iter()
-                .map(|setting| {
-                    let options: Vec<_> = setting
-                        .options
-                        .into_iter()
-                        .map(|option| {
-                            serde_json::json!({"value": option.value, "label": option.label})
-                        })
-                        .collect();
-                    serde_json::json!({
-                        "key": setting.key,
-                        "title": setting.title,
-                        "description": setting.description,
-                        "type": setting.kind,
-                        "required": setting.required,
-                        "options": options,
-                    })
-                })
+                .map(|option| serde_json::json!({"value": option.value, "label": option.label}))
                 .collect();
-            let mut response = axum::Json(serde_json::json!({
-                "settingsVersion": 1,
-                "id": settings.app.id,
-                "installationId": settings.app.installation_id.to_string(),
-                "manifest": manifest,
-                "extended": serde_json::Value::Null,
-            }))
-            .into_response();
-            secure_headers(&mut response);
-            response
+            serde_json::json!({
+                "key": setting.key,
+                "title": setting.title,
+                "description": setting.description,
+                "type": setting.kind,
+                "required": setting.required,
+                "options": options,
+            })
+        })
+        .collect();
+    let mut response = axum::Json(serde_json::json!({
+        "settingsVersion": 1,
+        "id": settings.app.id,
+        "installationId": settings.app.installation_id.to_string(),
+        "manifest": manifest,
+        "values": settings.values,
+        "secrets": settings.secrets,
+        "extended": serde_json::Value::Null,
+    }))
+    .into_response();
+    secure_headers(&mut response);
+    response
+}
+
+/// Writes manifest-declared setting values. Secrets are accepted write-only
+/// and are never echoed back; the response contains only `configured` flags.
+async fn update_app_settings(
+    State(state): State<Arc<GatewayState>>,
+    UrlPath(id): UrlPath<String>,
+    Query(query): Query<BTreeMap<String, String>>,
+    headers: HeaderMap,
+    body: axum::body::Bytes,
+) -> Response {
+    if !valid_origin(&headers, &state.config.public_origin) {
+        return error(StatusCode::FORBIDDEN);
+    }
+    let identity = match credential(&headers) {
+        Ok(token) => match authenticate(&state, &token).await {
+            Ok(identity) => identity,
+            Err(error) => return backend_error(error),
+        },
+        Err(_) => return error(StatusCode::UNAUTHORIZED),
+    };
+    if query.len() != 1 {
+        return error(StatusCode::BAD_REQUEST);
+    }
+    let Some(installation) = query.get("installationId").cloned() else {
+        return error(StatusCode::BAD_REQUEST);
+    };
+    if InstallationId::parse(&installation).is_err() {
+        return error(StatusCode::BAD_REQUEST);
+    }
+    if headers
+        .get("content-type")
+        .and_then(|value| value.to_str().ok())
+        != Some("application/json")
+    {
+        return error(StatusCode::UNSUPPORTED_MEDIA_TYPE);
+    }
+    let Ok(value) = serde_json::from_slice::<serde_json::Value>(&body) else {
+        return error(StatusCode::BAD_REQUEST);
+    };
+    let Some(object) = value.as_object() else {
+        return error(StatusCode::BAD_REQUEST);
+    };
+    if object.keys().any(|key| key != "values") {
+        return error(StatusCode::BAD_REQUEST);
+    }
+    let Some(values) = object.get("values").and_then(|value| value.as_object()) else {
+        return error(StatusCode::BAD_REQUEST);
+    };
+    if values.len() > MAX_APP_SETTINGS {
+        return error(StatusCode::BAD_REQUEST);
+    }
+    let values: std::collections::HashMap<String, serde_json::Value> = values
+        .iter()
+        .map(|(key, value)| (key.clone(), value.clone()))
+        .collect();
+    let Some(apps) = state.apps.clone() else {
+        return error(StatusCode::SERVICE_UNAVAILABLE);
+    };
+    let id_for_call = id.clone();
+    let installation_for_call = installation.clone();
+    let apps_for_write = apps.clone();
+    match tokio::task::spawn_blocking(move || {
+        apps_for_write.update_settings(identity, &id_for_call, &installation_for_call, values)
+    })
+    .await
+    {
+        Ok(Ok(())) => {
+            match tokio::task::spawn_blocking(move || apps.settings(identity, &id, &installation))
+                .await
+            {
+                Ok(Ok(settings)) => settings_response(settings),
+                Ok(Err(error)) => crate::app_error(error),
+                Err(_) => error(StatusCode::SERVICE_UNAVAILABLE),
+            }
         }
         Ok(Err(error)) => crate::app_error(error),
         Err(_) => error(StatusCode::SERVICE_UNAVAILABLE),

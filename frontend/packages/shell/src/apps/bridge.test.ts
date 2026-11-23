@@ -316,3 +316,64 @@ describe("app files bridge", () => {
     expect(encodeBridgeBase64(new Uint8Array(13 * 1024 * 1024))).toBeNull();
   });
 });
+
+describe("app settings and network bridge", () => {
+  const capabilities = [...BRIDGE_CAPABILITY_LIST, BRIDGE_CAPABILITIES.settings, BRIDGE_CAPABILITIES.network] as const;
+  test("requires the declared settings and network capabilities", async () => {
+    const base = handlers();
+    expect(await handleBridgeRequestAsync(request("s1", "os.settings.get"), base)).toMatchObject({
+      ok: false, error: { code: "denied" }
+    });
+    expect(await handleBridgeRequestAsync(request("n1", "os.net.request", { url: "http://ha.local" }), base)).toMatchObject({
+      ok: false, error: { code: "denied" }
+    });
+  });
+  test("reads and writes the app's own settings", async () => {
+    const settings = vi.fn(async () => ({ values: { url: "http://ha.local" }, secrets: ["token"] }));
+    const setSettings = vi.fn(async (input: { values: Record<string, string | number | boolean | null> }) => ({
+      values: Object.fromEntries(Object.entries(input.values).filter((entry): entry is [string, string | number | boolean] => entry[1] !== null)),
+      secrets: []
+    }));
+    const withSettings = handlers({ capabilities, settings, setSettings });
+    expect(await handleBridgeRequestAsync(request("s2", "os.settings.get"), withSettings)).toMatchObject({
+      ok: true, result: { values: { url: "http://ha.local" }, secrets: ["token"] }
+    });
+    expect(await handleBridgeRequestAsync(request("s3", "os.settings.set", { values: { interval: 5, remember: true } }), withSettings)).toMatchObject({
+      ok: true
+    });
+    expect(setSettings).toHaveBeenCalledWith({ values: { interval: 5, remember: true } });
+  });
+  test("only forwards a well-formed network request", async () => {
+    const netRequest = vi.fn(async () => ({ status: 200, headers: {}, body: "{}", truncated: false }));
+    const withNetwork = handlers({ capabilities, netRequest });
+    expect(await handleBridgeRequestAsync(request("n2", "os.net.request", {
+      url: "http://ha.local:8123/api/states",
+      method: "POST",
+      headers: { Accept: "application/json" },
+      body: "{}",
+      secret: "ha.token",
+      maxBytes: 4096
+    }), withNetwork)).toMatchObject({ ok: true, result: { status: 200 } });
+    expect(netRequest).toHaveBeenCalledWith({
+      url: "http://ha.local:8123/api/states",
+      method: "POST",
+      headers: { Accept: "application/json" },
+      body: "{}",
+      secret: "ha.token",
+      maxBytes: 4096
+    });
+
+    for (const invalid of [
+      { url: "http://ha.local", method: "TRACE" },
+      { url: "", },
+      { url: "http://ha.local", headers: { Authorization: "Bearer x" } },
+      { url: "http://ha.local", secret: "Bad Key" },
+      { url: "http://ha.local", maxBytes: 1 },
+      { url: "http://ha.local", extra: true }
+    ]) {
+      expect(await handleBridgeRequestAsync(request("n3", "os.net.request", invalid), withNetwork)).toMatchObject({
+        ok: false, error: { code: "invalid-params" }
+      });
+    }
+  });
+});

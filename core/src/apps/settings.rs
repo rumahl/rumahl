@@ -85,7 +85,13 @@ pub enum AppSettingKind {
     Text,
     Number,
     Boolean,
-    Select { options: Vec<AppSettingOption> },
+    /// A write-only value the shell stores encrypted and never returns.
+    /// Apps can use it (for example as a network credential) without ever
+    /// reading the plaintext back into the browser.
+    Secret,
+    Select {
+        options: Vec<AppSettingOption>,
+    },
 }
 
 impl AppSettingKind {
@@ -94,6 +100,7 @@ impl AppSettingKind {
             Self::Text => "text",
             Self::Number => "number",
             Self::Boolean => "boolean",
+            Self::Secret => "secret",
             Self::Select { .. } => "select",
         }
     }
@@ -316,6 +323,15 @@ mod tests {
         let setting =
             AppSettingDeclaration::new(key("a"), "A", AppSettingKind::Select { options }).unwrap();
         assert_eq!(setting.kind().as_str(), "select");
+    }
+
+    #[test]
+    fn secret_is_a_write_only_setting_kind() {
+        let setting =
+            AppSettingDeclaration::new(key("token"), "Access token", AppSettingKind::Secret)
+                .unwrap();
+        assert_eq!(setting.kind().as_str(), "secret");
+        assert_eq!(AppSettingKind::Secret.as_str(), "secret");
     }
 
     #[test]

@@ -43,6 +43,10 @@ vi.mock("./client", () => ({
   fetchAppGrantState: vi.fn(async () => ({ ...state.grants, id: "com.rumahl.notes", installationId: "01990000-0000-7000-8000-000000000001" })),
   fetchAppStorage: vi.fn(async () => ({ usedBytes: 2 * 1024 * 1024, quotaBytes: 256 * 1024 * 1024 })),
   revokeAppGrant: vi.fn(async (_request: unknown, _app: unknown, grantId: string) => { state.revoked.push(grantId); }),
+  fetchNetworkOrigins: vi.fn(async () => [
+    { origin: "http://homeassistant.local:8123", validity: "durable", expiresAt: null }
+  ]),
+  revokeNetworkOrigin: vi.fn(async () => undefined),
 }));
 vi.mock("../shell/ShellContext", () => ({ useShell: () => ({ live: { request: () => {} } }) }));
 vi.mock("../preferences/OsMode", () => ({
@@ -77,6 +81,13 @@ test("renders the typed manifest settings with title, description and type in ev
   expect(screen.getByText("appSettings.required")).toBeInTheDocument();
   // The extended section is hidden below advanced mode.
   expect(screen.queryByText("appSettings.extendedTitle")).toBeNull();
+});
+
+test("lists network origins and offers revocation", async () => {
+  renderPage();
+  expect(await screen.findByText("appNetwork.title")).toBeInTheDocument();
+  expect(await screen.findByText("http://homeassistant.local:8123", { exact: false })).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "appNetwork.revoke" })).toBeInTheDocument();
 });
 
 test("shows the extended configuration and app data sections once in advanced mode", async () => {

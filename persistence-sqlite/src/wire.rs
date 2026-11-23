@@ -339,6 +339,7 @@ impl WireSetting {
             AppSettingKind::Text => ("text".to_owned(), Vec::new()),
             AppSettingKind::Number => ("number".to_owned(), Vec::new()),
             AppSettingKind::Boolean => ("boolean".to_owned(), Vec::new()),
+            AppSettingKind::Secret => ("secret".to_owned(), Vec::new()),
             AppSettingKind::Select { options } => (
                 "select".to_owned(),
                 options
@@ -364,7 +365,7 @@ impl WireSetting {
         let key = AppSettingKey::parse(&self.key)
             .map_err(|error| WireSnapshotError::invalid("setting key", error))?;
         let kind = match self.kind.as_str() {
-            "text" | "number" | "boolean" => {
+            "text" | "number" | "boolean" | "secret" => {
                 if !self.options.is_empty() {
                     return Err(WireSnapshotError::invalid(
                         "setting options",
@@ -374,6 +375,7 @@ impl WireSetting {
                 match self.kind.as_str() {
                     "text" => AppSettingKind::Text,
                     "number" => AppSettingKind::Number,
+                    "secret" => AppSettingKind::Secret,
                     _ => AppSettingKind::Boolean,
                 }
             }

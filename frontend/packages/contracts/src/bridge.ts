@@ -40,6 +40,9 @@ export type BridgeMethod =
   | "os.files.request"
   | "os.files.read"
   | "os.files.write"
+  | "os.settings.get"
+  | "os.settings.set"
+  | "os.net.request"
   | "pets.state"
   | "pets.interact"
   | "pets.action.register"
@@ -60,6 +63,9 @@ export const BRIDGE_METHODS: readonly BridgeMethod[] = [
   "os.files.request",
   "os.files.read",
   "os.files.write",
+  "os.settings.get",
+  "os.settings.set",
+  "os.net.request",
   "pets.state",
   "pets.interact",
   "pets.action.register",
@@ -90,7 +96,18 @@ export const BRIDGE_CAPABILITIES = {
    * uses. `os.files.request` is satisfied by either.
    */
   filesRead: "rumahl.files.read",
-  filesWrite: "rumahl.files.write"
+  filesWrite: "rumahl.files.write",
+  /**
+   * Read and write this installation's own manifest settings. The shell never
+   * returns secret values, only whether they are configured.
+   */
+  settings: "com.rumahl.os.settings",
+  /**
+   * Ask the OS to perform an HTTP(S) request to an origin the user explicitly
+   * approved for this installation. Requests are brokered server-side; the
+   * app itself never gains a socket to the target.
+   */
+  network: "com.rumahl.os.network"
 } as const;
 
 /**
@@ -116,6 +133,8 @@ export function capabilityForMethod(method: string): string | null {
   if (method.startsWith("os.warnings.")) return BRIDGE_CAPABILITIES.warnings;
   if (method === "os.files.read") return BRIDGE_CAPABILITIES.filesRead;
   if (method === "os.files.write") return BRIDGE_CAPABILITIES.filesWrite;
+  if (method.startsWith("os.settings.")) return BRIDGE_CAPABILITIES.settings;
+  if (method === "os.net.request") return BRIDGE_CAPABILITIES.network;
   // The picker is not tied to one permission: it is available to apps that
   // declared either filesystem permission. The shell gates it itself.
   if (method === "os.files.request") return BRIDGE_CAPABILITIES.filesRead;
@@ -148,6 +167,43 @@ export interface BridgeTheme {
   accent: string;
   reducedMotion: boolean;
   palette: BridgeThemePalette;
+}
+
+/** A non-secret value an app stores in its own manifest settings. */
+export type BridgeSettingValue = string | number | boolean;
+
+/** The app's own settings. Secret values are represented by key only. */
+export interface BridgeSettings {
+  values: Record<string, BridgeSettingValue>;
+  secrets: string[];
+}
+
+/** One write to the app's own settings. `null` clears a stored value. */
+export interface BridgeSettingsWrite {
+  values: Record<string, BridgeSettingValue | null>;
+}
+
+/** One brokered HTTP(S) request to a user-approved origin. */
+export interface BridgeNetworkRequest {
+  url: string;
+  method?: "GET" | "POST" | "PUT" | "PATCH" | "DELETE" | "HEAD";
+  /** Only a small allow-list is accepted; `Authorization` is never app-supplied. */
+  headers?: Record<string, string>;
+  body?: string;
+  /**
+   * Name of a secret setting whose value the OS attaches as
+   * `Authorization: Bearer …`. The plaintext never enters the app.
+   */
+  secret?: string;
+  /** Response cap in bytes; the OS clamps it. */
+  maxBytes?: number;
+}
+
+export interface BridgeNetworkResponse {
+  status: number;
+  headers: Record<string, string>;
+  body: string;
+  truncated?: boolean;
 }
 
 export interface BridgeNotificationButton {

@@ -71,3 +71,12 @@ pub use personal_files::SqlitePersonalFiles;
 pub use policy_store::{GroupRecord, PolicyStoreError, SqlitePolicyStore};
 mod weather_warnings;
 pub use weather_warnings::SqliteWeatherWarnings;
+
+mod app_settings;
+mod local_field_key;
+mod network_grants;
+pub use app_settings::{
+    AppSettingStoreError, AppSettingWrite, SqliteAppSettings, StoredAppSetting,
+};
+pub use local_field_key::{LocalFieldKeyError, LocalFieldKeyProvider};
+pub use network_grants::{NetworkGrantStoreError, SqliteNetworkGrants, StoredNetworkGrant};

@@ -12,7 +12,10 @@ const settings = {
   manifest: [
     { key: "server.url", title: "Server URL", description: "Backend endpoint", type: "text", required: true, options: [] },
     { key: "mode", title: "Mode", description: null, type: "select", required: false, options: [{ value: "fast", label: "Fast" }] },
+    { key: "ha.token", title: "Access token", description: null, type: "secret", required: false, options: [] },
   ],
+  values: { "server.url": "http://ha.local:8123", mode: "fast" },
+  secrets: ["ha.token"],
   extended: null,
 };
 describe("installed app contracts", () => {
@@ -49,15 +52,20 @@ describe("installed app contracts", () => {
   });
   it("renders only typed manifest settings and rejects malformed declarations", () => {
     const parsed = parseAppSettings(settings);
-    expect(parsed.manifest).toHaveLength(2);
+    expect(parsed.manifest).toHaveLength(3);
     expect(parsed.manifest[0]).toMatchObject({ key: "server.url", type: "text", required: true, options: [] });
     expect(parsed.manifest[1]).toMatchObject({ type: "select", options: [{ value: "fast", label: "Fast" }] });
+    expect(parsed.values).toEqual({ "server.url": "http://ha.local:8123", mode: "fast" });
+    expect(parsed.secrets).toEqual(["ha.token"]);
     expect(parsed.extended).toBeNull();
 
     const cases = [
       { ...settings, settingsVersion: 2 },
       { ...settings, extended: [{ key: "x", value: "y" }] },
       { ...settings, manifest: [{ ...settings.manifest[0], type: "date" }] },
+      { ...settings, values: { "ha.token": "leak" } },
+      { ...settings, secrets: ["server.url"] },
+      { ...settings, values: { "server.url": 5 } },
       { ...settings, manifest: [{ ...settings.manifest[0], key: "Bad Key" }] },
       { ...settings, manifest: [{ ...settings.manifest[0], required: "yes" }] },
       { ...settings, manifest: [settings.manifest[0], settings.manifest[0]] },

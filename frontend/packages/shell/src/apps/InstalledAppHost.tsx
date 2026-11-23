@@ -19,10 +19,12 @@ import {
   type BridgeWeatherWarning
 } from "@rumahl/contracts/bridge";
 import {
-  invokeCapability as requestCapabilityInvocation, launchApp, readAppFileContent, writeAppFileContent,
-  SafeModeError, type InstalledApp
+  fetchAppSettings, invokeCapability as requestCapabilityInvocation, launchApp,
+  readAppFileContent, requestAppNetwork, updateAppSettings, writeAppFileContent,
+  NetworkConsentRequiredError, SafeModeError, type InstalledApp
 } from "./client";
 import { AppFilePickerDialog, type FilePickerRequest } from "./FilePickerDialog";
+import { NetworkConsentDialog, type NetworkConsentRequest } from "./NetworkConsentDialog";
 import { decodeBridgeBase64, encodeBridgeBase64 } from "./bridge";
 import { clearWeatherWarnings, publishWeatherWarnings, registerWarningSource } from "./warnings-client";
 import { setLaunching } from "./launching";
@@ -74,6 +76,7 @@ function AppFrame({ app }: { app: InstalledApp }) {
   // One consent dialog at a time; the app's bridge request parks here until
   // the user picked files or declined.
   const [filePicker, setFilePicker] = useState<FilePickerRequest | null>(null);
+  const [networkConsent, setNetworkConsent] = useState<NetworkConsentRequest | null>(null);
   const [frame, setFrame] = useState<string | null>(null);
   const [failed, setFailed] = useState(false);
   const [safeMode, setSafeMode] = useState(false);
@@ -242,6 +245,27 @@ function AppFrame({ app }: { app: InstalledApp }) {
       warningClear: async (ids?: string[]) => {
         const cleared = await clearWeatherWarnings(live.request, app.id, ids, new AbortController().signal);
         return { cleared };
+      },
+      settings: async () => {
+        const settings = await fetchAppSettings(live.request, app, new AbortController().signal);
+        return { values: settings.values, secrets: [...settings.secrets] };
+      },
+      setSettings: async (input) => {
+        const settings = await updateAppSettings(live.request, app, input.values, new AbortController().signal);
+        return { values: settings.values, secrets: [...settings.secrets] };
+      },
+      netRequest: async (input) => {
+        const askConsent = (origin: string) => new Promise<boolean>((resolve) => {
+          setNetworkConsent({ origin, resolve });
+        });
+        try {
+          return await requestAppNetwork(live.request, app, input, new AbortController().signal);
+        } catch (error) {
+          if (!(error instanceof NetworkConsentRequiredError)) throw error;
+          const granted = await askConsent(error.origin);
+          if (!granted) throw new Error("the user declined network access", { cause: error });
+          return await requestAppNetwork(live.request, app, input, new AbortController().signal);
+        }
       }
     } : {})
   };
@@ -327,6 +351,16 @@ function AppFrame({ app }: { app: InstalledApp }) {
           onDone={(result) => {
             filePicker.resolve(result);
             setFilePicker(null);
+          }}
+        />
+      : null}
+    {networkConsent
+      ? <NetworkConsentDialog
+          app={app}
+          request={networkConsent}
+          onDone={(granted) => {
+            networkConsent.resolve(granted);
+            setNetworkConsent(null);
           }}
         />
       : null}

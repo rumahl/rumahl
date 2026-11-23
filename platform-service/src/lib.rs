@@ -873,6 +873,7 @@ fn sha256_hex(bytes: &[u8]) -> String {
         .collect()
 }
 
+mod app_config;
 pub mod app_grants;
 mod app_runtime;
 pub mod apps;

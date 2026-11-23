@@ -16,6 +16,10 @@ import {
   type BridgeFilesRequestResult,
   type BridgeFilesWriteResult,
   type BridgeMessage,
+  type BridgeNetworkRequest,
+  type BridgeNetworkResponse,
+  type BridgeSettings,
+  type BridgeSettingsWrite,
   type BridgeNotification,
   type BridgePetAction,
   type BridgePetActionRegistration,
@@ -65,6 +69,12 @@ export interface AppBridgeHandlers {
   filesRead?: (key: string) => Promise<BridgeFilesReadResult>;
   /** Writes one granted personal file on the app's behalf. */
   filesWrite?: (key: string, contentBase64: string) => Promise<BridgeFilesWriteResult>;
+  /** Reads the app's own non-secret settings and configured secret keys. */
+  settings?: () => Promise<BridgeSettings>;
+  /** Writes the app's own settings; secret values are write-only. */
+  setSettings?: (input: BridgeSettingsWrite) => Promise<BridgeSettings>;
+  /** Performs a brokered HTTP(S) request to a user-approved origin. */
+  netRequest?: (input: BridgeNetworkRequest) => Promise<BridgeNetworkResponse>;
   /** Registers this installed app as an OS weather-warning source. */
   warningRegister?: () => Promise<BridgeWarningRegistration>;
   /** Publishes or updates warnings; the server re-checks the app capability. */
@@ -232,6 +242,70 @@ function normalizePetActionRegistration(value: unknown): BridgePetActionRegistra
   };
 }
 
+function normalizeSettingsWrite(value: unknown): BridgeSettingsWrite | null {
+  if (typeof value !== "object" || value === null) return null;
+  const record = value as Record<string, unknown>;
+  if (Object.keys(record).some((key) => key !== "values")) return null;
+  if (typeof record.values !== "object" || record.values === null || Array.isArray(record.values)) return null;
+  const entries = Object.entries(record.values);
+  if (entries.length > 64) return null;
+  const values: Record<string, string | number | boolean | null> = {};
+  for (const [key, entry] of entries) {
+    if (!/^[a-z0-9._-]{1,64}$/.test(key)) return null;
+    if (entry === null) { values[key] = null; continue; }
+    if (typeof entry === "string") {
+      if (entry.length > 64 * 1024) return null;
+    } else if (typeof entry === "number") {
+      if (!Number.isFinite(entry)) return null;
+    } else if (typeof entry !== "boolean") {
+      return null;
+    }
+    values[key] = entry;
+  }
+  return { values };
+}
+
+function normalizeNetworkRequest(value: unknown): BridgeNetworkRequest | null {
+  if (typeof value !== "object" || value === null) return null;
+  const record = value as Record<string, unknown>;
+  const allowed = new Set(["url", "method", "headers", "body", "secret", "maxBytes"]);
+  if (Object.keys(record).some((key) => !allowed.has(key))) return null;
+  if (typeof record.url !== "string" || record.url.length === 0 || record.url.length > 4096) return null;
+  const request: BridgeNetworkRequest = { url: record.url };
+  if (record.method !== undefined) {
+    if (typeof record.method !== "string" ||
+        !["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD"].includes(record.method)) return null;
+    request.method = record.method as NonNullable<BridgeNetworkRequest["method"]>;
+  }
+  if (record.headers !== undefined) {
+    if (typeof record.headers !== "object" || record.headers === null || Array.isArray(record.headers)) return null;
+    const entries = Object.entries(record.headers);
+    if (entries.length > 16) return null;
+    const headers: Record<string, string> = {};
+    const allowedHeaders = new Set(["accept", "content-type", "cache-control", "if-none-match", "if-modified-since"]);
+    for (const [name, entry] of entries) {
+      if (!/^[A-Za-z0-9-]{1,128}$/.test(name) || !allowedHeaders.has(name.toLowerCase())) return null;
+      if (typeof entry !== "string" || entry.length > 1024) return null;
+      headers[name] = entry;
+    }
+    request.headers = headers;
+  }
+  if (record.body !== undefined) {
+    if (typeof record.body !== "string" || record.body.length > 256 * 1024) return null;
+    request.body = record.body;
+  }
+  if (record.secret !== undefined) {
+    if (typeof record.secret !== "string" || !/^[a-z0-9._-]{1,64}$/.test(record.secret)) return null;
+    request.secret = record.secret;
+  }
+  if (record.maxBytes !== undefined) {
+    if (typeof record.maxBytes !== "number" || !Number.isInteger(record.maxBytes) ||
+        record.maxBytes < 1024 || record.maxBytes > 2 * 1024 * 1024) return null;
+    request.maxBytes = record.maxBytes;
+  }
+  return request;
+}
+
 /**
  * Handles a request, awaiting capability invocations. Synchronous methods
  * resolve immediately; `os.capabilities.invoke` calls the OS on the user's
@@ -239,6 +313,9 @@ function normalizePetActionRegistration(value: unknown): BridgePetActionRegistra
  */
 const ASYNC_METHODS: ReadonlySet<string> = new Set([
   "os.capabilities.invoke",
+  "os.settings.get",
+  "os.settings.set",
+  "os.net.request",
   "os.warnings.register",
   "os.warnings.publish",
   "os.warnings.test",
@@ -299,6 +376,22 @@ export async function handleBridgeRequestAsync(message: BridgeRequest, handlers:
         const invocation = normalizeCapabilityInvocation(message.params);
         if (!invocation) return respond(false, { error: { code: "invalid-params", message: "a capability id is required" } });
         return respond(true, { result: await handlers.invokeCapability(invocation.capability, invocation.resource) });
+      }
+      case "os.settings.get": {
+        if (!handlers.settings) return respond(false, { error: { code: "denied", message: "settings unavailable" } });
+        return respond(true, { result: await handlers.settings() });
+      }
+      case "os.settings.set": {
+        const write = normalizeSettingsWrite(message.params);
+        if (!write) return respond(false, { error: { code: "invalid-params", message: "invalid settings write" } });
+        if (!handlers.setSettings) return respond(false, { error: { code: "denied", message: "settings unavailable" } });
+        return respond(true, { result: await handlers.setSettings(write) });
+      }
+      case "os.net.request": {
+        const request = normalizeNetworkRequest(message.params);
+        if (!request) return respond(false, { error: { code: "invalid-params", message: "invalid network request" } });
+        if (!handlers.netRequest) return respond(false, { error: { code: "denied", message: "network unavailable" } });
+        return respond(true, { result: await handlers.netRequest(request) });
       }
       case "os.warnings.register": {
         if (!handlers.warningRegister) return respond(false, { error: { code: "denied", message: "weather warnings unavailable" } });

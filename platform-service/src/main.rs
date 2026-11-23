@@ -31,6 +31,11 @@ fn main() {
         .expect("platform runtime could not start");
     if let Err(error) = runtime.block_on(run()) {
         eprintln!("rumahl platform: {error}");
+        let mut source = error.source();
+        while let Some(cause) = source {
+            eprintln!("  caused by: {cause}");
+            source = cause.source();
+        }
         std::process::exit(1);
     }
 }
@@ -238,6 +243,30 @@ async fn run() -> Result<(), ServiceError> {
         Some(data_root) => apps_provider.with_data_root(data_root)?,
         None => apps_provider,
     };
+    // Setting secrets use the TPM key when it is available. Development and
+    // TPM-less hosts get a random 0600 key file under the private state
+    // directory, so no app credential ever lands in SQLite as plaintext.
+    let field_key = match file_key_provider() {
+        Some(provider) => provider,
+        None => {
+            let key_dir = state_dir.join("keys");
+            std::fs::create_dir_all(&key_dir)?;
+            std::fs::set_permissions(&key_dir, std::fs::Permissions::from_mode(0o700))?;
+            Arc::new(
+                rumahl_persistence_sqlite::LocalFieldKeyProvider::open_or_create(
+                    key_dir.join("field.key"),
+                )?,
+            )
+        }
+    };
+    let app_settings = Arc::new(rumahl_persistence_sqlite::SqliteAppSettings::open(
+        state_dir.join("platform.sqlite"),
+        field_key,
+    )?);
+    let app_network = Arc::new(rumahl_persistence_sqlite::SqliteNetworkGrants::open(
+        state_dir.join("platform.sqlite"),
+    )?);
+    let apps_provider = apps_provider.with_app_configuration(app_settings, app_network);
     // Runtime status/start/stop through the supervisor when it is configured;
     // otherwise the runtime API stays fail-closed (503). The same channel
     // registry receives live app channels for background event delivery.

@@ -11,6 +11,7 @@ use rumahl_platform_web::{
     CatalogApp, GrantIssue, ImportedApp, PackageUploadFile, RuntimeState, ShellIdentity,
 };
 use rustix::fs::{Dir, FileType, Mode, OFlags, fstat, open, openat};
+use std::collections::HashMap;
 use std::fs::File;
 use std::io::Read;
 use std::os::unix::fs::PermissionsExt;
@@ -94,7 +95,18 @@ pub struct PersistentApps {
     pub(crate) session_grants: crate::app_grants::SessionGrantStore,
     /// Per-app storage quota for the private data directory.
     storage_quota: u64,
+    /// Persisted manifest setting values; secrets are sealed at rest.
+    pub(crate) settings: Option<Arc<rumahl_persistence_sqlite::SqliteAppSettings>>,
+    /// Durable network-origin consents.
+    pub(crate) network: Option<Arc<rumahl_persistence_sqlite::SqliteNetworkGrants>>,
+    /// Session-only network consents, keyed by session and installation.
+    pub(crate) network_sessions: NetworkSessions,
 }
+
+/// Session-only network approvals: (session, installation) → [(origin, expiry)].
+pub(crate) type NetworkSessions = std::sync::Mutex<
+    std::collections::HashMap<(SessionId, InstallationId), Vec<(String, Option<u64>)>>,
+>;
 
 /// Default per-app storage quota: 256 MiB of private app data.
 pub const DEFAULT_APP_STORAGE_QUOTA: u64 = 256 * 1024 * 1024;
@@ -139,7 +151,21 @@ impl PersistentApps {
             files: None,
             session_grants: crate::app_grants::SessionGrantStore::new(),
             storage_quota: DEFAULT_APP_STORAGE_QUOTA,
+            settings: None,
+            network: None,
+            network_sessions: std::sync::Mutex::new(std::collections::HashMap::new()),
         })
+    }
+
+    /// Attaches the persisted setting values and durable network consents.
+    pub fn with_app_configuration(
+        mut self,
+        settings: Arc<rumahl_persistence_sqlite::SqliteAppSettings>,
+        network: Arc<rumahl_persistence_sqlite::SqliteNetworkGrants>,
+    ) -> Self {
+        self.settings = Some(settings);
+        self.network = Some(network);
+        self
     }
 
     /// Attaches the account-role store used to authorize grant issuers.
@@ -644,6 +670,61 @@ impl AppProvider for PersistentApps {
             })
             .collect())
     }
+    fn app_settings_values(
+        &self,
+        identity: ShellIdentity,
+        installation: InstallationId,
+    ) -> Result<HashMap<String, serde_json::Value>, AppAccessError> {
+        self.app_settings_values_impl(identity, installation)
+    }
+    fn app_setting_secrets(
+        &self,
+        identity: ShellIdentity,
+        installation: InstallationId,
+    ) -> Result<Vec<String>, AppAccessError> {
+        self.app_setting_secrets_impl(identity, installation)
+    }
+    fn update_app_settings(
+        &self,
+        identity: ShellIdentity,
+        installation: InstallationId,
+        values: HashMap<String, serde_json::Value>,
+    ) -> Result<(), AppAccessError> {
+        self.update_app_settings_impl(identity, installation, values)
+    }
+    fn app_network_origins(
+        &self,
+        identity: ShellIdentity,
+        installation: InstallationId,
+    ) -> Result<Vec<rumahl_platform_web::AppNetworkOrigin>, AppAccessError> {
+        self.app_network_origins_impl(identity, installation)
+    }
+    fn grant_app_network(
+        &self,
+        identity: ShellIdentity,
+        installation: InstallationId,
+        origin: &str,
+        validity: rumahl_platform_web::GrantValidityChoice,
+    ) -> Result<rumahl_platform_web::AppNetworkOrigin, AppAccessError> {
+        self.grant_app_network_impl(identity, installation, origin, validity)
+    }
+    fn revoke_app_network(
+        &self,
+        identity: ShellIdentity,
+        installation: InstallationId,
+        origin: &str,
+    ) -> Result<(), AppAccessError> {
+        self.revoke_app_network_impl(identity, installation, origin)
+    }
+    fn prepare_app_network(
+        &self,
+        identity: ShellIdentity,
+        installation: InstallationId,
+        request: &rumahl_platform_web::AppNetworkRequest,
+    ) -> Result<rumahl_platform_web::PreparedNetworkRequest, rumahl_platform_web::AppNetworkError>
+    {
+        self.prepare_app_network_impl(identity, installation, request)
+    }
     fn data(
         &self,
         identity: ShellIdentity,
@@ -691,8 +772,9 @@ impl AppProvider for PersistentApps {
         self.app(identity, installation)?;
         let state_dir = self.root.parent().ok_or(AppAccessError::Unavailable)?;
         crate::install::uninstall_package_dir(state_dir, &installation)
-            .map(|_| ())
-            .map_err(|_| AppAccessError::Unavailable)
+            .map_err(|_| AppAccessError::Unavailable)?;
+        self.clear_app_configuration(&installation);
+        Ok(())
     }
     fn import_package(
         &self,
@@ -917,6 +999,7 @@ impl AppProvider for PersistentApps {
     }
     fn session_ended(&self, session: rumahl_core::SessionId) {
         self.end_session(session);
+        self.end_network_session(session);
     }
 }
 
