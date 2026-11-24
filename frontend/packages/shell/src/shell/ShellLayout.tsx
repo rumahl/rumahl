@@ -62,6 +62,7 @@ import { useSystemMode } from "./system-scheme";
 import { usePrefersReducedMotion } from "./use-reduced-motion";
 import { resolveThemeScheme } from "../preferences/theme-tuning";
 import { useThemeCode } from "./theme-runtime";
+import { useFullAccessThemes } from "../preferences/theme-policy";
 import { SHELL_VERSION } from "../version";
 import { getToasts, installToastApi, setToastAnimations, showToast, ToastStack } from "./toasts";
 import { publishTestWarning, type WeatherWarningLevel } from "../apps/warnings-client";
@@ -265,7 +266,8 @@ export function ShellLayout({ snapshot, live, warningsRevision = 0 }: { snapshot
   const [shellElement, setShellElement] = useState<HTMLDivElement | null>(null);
   const [themeBackground, setThemeBackground] = useState<HTMLDivElement | null>(null);
   const [themeOverlay, setThemeOverlay] = useState<HTMLDivElement | null>(null);
-  useThemeCode(theme, tokens, animations, shellElement, themeBackground, themeOverlay);
+  const fullAccessThemes = useFullAccessThemes(live);
+  useThemeCode(theme, tokens, animations, shellElement, themeBackground, themeOverlay, fullAccessThemes);
   // Transparency is the base layer; glass only works with transparency on.
   const transparencyOff = performanceMode || Number(tokens["material.opacity"]) >= 1 || Number(tokens["material.morphism"]) <= 0;
   const glassEnabled = appearance.glassEnabled !== false && !transparencyOff;

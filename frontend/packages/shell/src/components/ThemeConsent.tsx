@@ -5,6 +5,8 @@ import { useI18n } from "../i18n";
 export interface ThemeConsentProps {
   theme: Theme;
   codeHash: string | null;
+  /** Device policy: false hides the full-access choice. */
+  allowFullAccess?: boolean;
   onCancel: () => void;
   onChoose: (execution: "sandbox" | "trusted") => void;
 }
@@ -13,7 +15,7 @@ export interface ThemeConsentProps {
  * Certificate-style consent for an executable theme. The safe choice is
  * sandboxed; full access is a deliberate, per-theme and per-code decision.
  */
-export function ThemeConsent({ theme, codeHash, onCancel, onChoose }: ThemeConsentProps) {
+export function ThemeConsent({ theme, codeHash, allowFullAccess = true, onCancel, onChoose }: ThemeConsentProps) {
   const { t } = useI18n();
   const runtime = theme.runtime ?? "shell";
   const capabilities = theme.capabilities?.length
@@ -36,12 +38,13 @@ export function ThemeConsent({ theme, codeHash, onCancel, onChoose }: ThemeConse
       </dl>
       <p className="theme-consent__warning">{t("themes.codeWarning")}</p>
       <p className="theme-consent__liability">{t("themes.codeLiability")}</p>
+      {!allowFullAccess ? <p className="theme-consent__liability">{t("themes.fullAccessDisabled")}</p> : null}
       <div className="theme-consent__actions">
         <Button variant="secondary" onClick={onCancel}>{t("themes.cancel")}</Button>
         {runtime !== "shell"
           ? <Button variant="primary" onClick={() => onChoose("sandbox")}>{t("themes.runSandboxed")}</Button>
           : <Button variant="secondary" onClick={() => onChoose("sandbox")}>{t("themes.installWithoutCode")}</Button>}
-        {runtime !== "sandbox"
+        {runtime !== "sandbox" && allowFullAccess
           ? <Button variant="danger" onClick={() => onChoose("trusted")}>{t("themes.allowFullAccess")}</Button>
           : null}
       </div>

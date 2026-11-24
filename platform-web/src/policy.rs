@@ -58,6 +58,12 @@ pub trait PolicyEngine: Send + Sync {
         true
     }
 
+    /// `rumahl.os.allow_full_access_themes` (device-wide): false disables the
+    /// full-access theme option; code themes must run sandboxed.
+    fn full_access_themes_allowed(&self) -> bool {
+        true
+    }
+
     /// `rumahl.home.cross_user_read`: administrators may open other accounts'
     /// homes read-only. The engine answers for the *actor*; the role check
     /// happens beside it, so policy and role both have to allow.
@@ -115,6 +121,9 @@ impl<T: PolicyEngine + ?Sized> PolicyEngine for Arc<T> {
     }
     fn app_uninstall_allowed(&self, user: UserId) -> bool {
         (**self).app_uninstall_allowed(user)
+    }
+    fn full_access_themes_allowed(&self) -> bool {
+        (**self).full_access_themes_allowed()
     }
     fn home_cross_user_read(&self, actor: UserId) -> bool {
         (**self).home_cross_user_read(actor)

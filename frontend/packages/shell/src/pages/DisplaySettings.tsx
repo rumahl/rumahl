@@ -14,6 +14,7 @@ import {
 } from "../preferences/installed-themes";
 import { ThemeConsent } from "../components/ThemeConsent";
 import { useOptionalShell } from "../shell/ShellContext";
+import { useFullAccessThemes } from "../preferences/theme-policy";
 import { reportActivity } from "../apps/recovery-client";
 import { ThemeSafetyError } from "../preferences/theme-safety";
 import type { MessageKey } from "../i18n/locales/en";
@@ -128,6 +129,7 @@ export function DisplaySettings({ section = "appearance" }: { section?: DisplayS
   const effectiveTheme = themes.find((item) => item.id === settings.theme);
   const { tokens, theme: activeTheme } = useTheme();
   const shell = useOptionalShell();
+  const fullAccessAllowed = useFullAccessThemes(shell?.live);
   const installRef = useRef<HTMLInputElement>(null);
   const [installError, setInstallError] = useState<string | null>(null);
   const [pendingTheme, setPendingTheme] = useState<{ scope: "user" | "device"; value: string | null } | null>(null);
@@ -1194,6 +1196,7 @@ export function DisplaySettings({ section = "appearance" }: { section?: DisplayS
       {consent ? <ThemeConsent
         theme={consent.theme}
         codeHash={consent.codeHash}
+        allowFullAccess={fullAccessAllowed}
         onCancel={() => setConsent(null)}
         onChoose={chooseExecution}
       /> : null}

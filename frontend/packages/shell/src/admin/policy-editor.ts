@@ -5,7 +5,7 @@ export interface PolicyResolution { value: AdminPolicyValue; source: string }
 
 /** These enforcement points resolve only device assignments (LocalPolicyEngine). */
 export function devicePolicy(key: string): boolean {
-  return key.startsWith("rumahl.password.") || key === "rumahl.apps.storage_quota_bytes" || key === "rumahl.apps.allowed_publishers";
+  return key.startsWith("rumahl.password.") || key === "rumahl.apps.storage_quota_bytes" || key === "rumahl.apps.allowed_publishers" || key === "rumahl.os.allow_full_access_themes";
 }
 
 export function policyUnit(definition: AdminPolicyDefinition): { factor: number; label: string } {

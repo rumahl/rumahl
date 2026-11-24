@@ -238,6 +238,7 @@ async fn administrators_manage_groups_and_assignments() {
             "rumahl.os.advanced_mode",
             "rumahl.os.allow_store_install",
             "rumahl.os.allow_app_uninstall",
+            "rumahl.os.allow_full_access_themes",
             "rumahl.home.cross_user_read",
             "rumahl.files.quota_bytes",
             "rumahl.files.max_file_bytes",

@@ -38,12 +38,14 @@ export function useThemeCode(
   root: HTMLElement | null,
   background: HTMLElement | null,
   overlay: HTMLElement | null,
+  fullAccessAllowed = true,
 ): void {
   // A stable dependency for the resolved tokens; themes rerun only on real
   // appearance changes, not on every render.
   const tokenKey = JSON.stringify(tokens);
   const runtime = theme.runtime ?? "shell";
-  const trusted = theme.execution === "trusted"
+  const trusted = fullAccessAllowed
+    && theme.execution === "trusted"
     && typeof theme.codeHash === "string"
     && theme.trustedHash === theme.codeHash;
   useEffect(() => {
@@ -85,5 +87,5 @@ export function useThemeCode(
     background.replaceChildren();
     overlay.replaceChildren();
     return undefined;
-  }, [theme, theme.id, theme.code, theme.runtime, theme.execution, theme.codeHash, theme.trustedHash, trusted, runtime, tokens, tokenKey, animations, root, background, overlay]);
+  }, [theme, theme.id, theme.code, theme.runtime, theme.execution, theme.codeHash, theme.trustedHash, trusted, fullAccessAllowed, runtime, tokens, tokenKey, animations, root, background, overlay]);
 }

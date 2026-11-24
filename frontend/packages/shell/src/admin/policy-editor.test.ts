@@ -18,7 +18,7 @@ test("display resolution mirrors user > named membership > device > catalog", ()
   expect(resolvePolicy(definition, "group:b", groups, assignments)).toEqual({ value: 32, source: "group:b" });
 });
 test("device-wide enforcement ignores historical group and user assignments", () => {
-  for (const key of ["rumahl.password.min_length", "rumahl.apps.storage_quota_bytes", "rumahl.apps.allowed_publishers"]) {
+  for (const key of ["rumahl.password.min_length", "rumahl.apps.storage_quota_bytes", "rumahl.apps.allowed_publishers", "rumahl.os.allow_full_access_themes"]) {
     expect(devicePolicy(key)).toBe(true);
     expect(resolvePolicy({ ...definition, key }, "user:user", groups, [{ subject: "user:user", key, value: 1 }, { subject: "group:a", key, value: 2 }]).source).toBe("default");
   }
