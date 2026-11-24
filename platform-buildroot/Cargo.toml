@@ -12,11 +12,11 @@ rumahl-app-packages = { path = "../app-packages" }
 rumahl-core = { path = "../core" }
 rumahl-oidc-provider = { path = "../oidc-provider" }
 rumahl-persistence-sqlite = { path = "../persistence-sqlite" }
+serde_json = "1"
 sha2 = "0.11.0"
 zeroize = "1.9.0"
 
 [dev-dependencies]
 base64 = "0.23.1"
 ed25519-dalek = "2.2.0"
-serde_json = "1"
 tempfile = "3"

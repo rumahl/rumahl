@@ -170,12 +170,12 @@ mod tests {
     use rumahl_core::{
         AppDatabaseDeclaration, AppDatabaseId, AppId, AppLifecycle, AppManifest, AppVersion,
         CapabilityId, CommandAction, CommandContributionDeclaration, ContributionId, EventName,
-        GrantAuthority, GrantIssuerPolicy, InMemoryGrantStore, OidcCallbackPath,
+        GrantAuthority, GrantIssuerPolicy, GrantValidity, InMemoryGrantStore, OidcCallbackPath,
         OidcClientDeclaration, OidcClientType, OidcScope, PLATFORM_SNAPSHOT_VERSION, PackagePath,
         PermissionId, PermissionRequest, PermissionScope, PlatformRecovery, PlatformState,
         PublisherId, ResourceKey, ResourceKind, ResourceNamespace, ResourceRef, RuntimeDescriptor,
-        RuntimeEntrypoint, RuntimeEntrypointId, SearchContributionDeclaration, UserId,
-        UserIdentity, UserRole,
+        RuntimeEntrypoint, RuntimeEntrypointId, SearchContributionDeclaration, UnixTimestamp,
+        UserId, UserIdentity, UserRole,
     };
 
     fn populated_snapshot() -> PlatformSnapshot {
@@ -311,6 +311,88 @@ mod tests {
             .unwrap();
         assert_eq!(oidc.client_type(), OidcClientType::Public);
         assert_eq!(oidc.callback_path().as_str(), "/oidc/callback");
+    }
+
+    #[test]
+    fn grant_expiry_survives_the_wire_roundtrip() {
+        let repository = SqliteSnapshotRepository::open_in_memory().unwrap();
+        repository.store(&populated_snapshot()).unwrap();
+
+        // Rewrite the single grant with an expiry and store it again.
+        let snapshot = repository.load().unwrap().unwrap();
+        let mut state = PlatformState::new();
+        let mut grants = InMemoryGrantStore::new();
+        PlatformRecovery::new()
+            .recover(&snapshot, &mut state, &mut grants)
+            .unwrap();
+        let durable = grants.grants()[0].clone();
+        let issuer = match durable.granted_by() {
+            rumahl_core::Identity::User(user) => *user.id(),
+            _ => panic!("the fixture grant is issued by a user"),
+        };
+        let expires_at = UnixTimestamp::from_seconds(4_102_444_800);
+        let expiring = GrantAuthority::new()
+            .issue_with_validity(
+                &{
+                    let mut policy = GrantIssuerPolicy::new();
+                    policy.set_user_role(issuer, UserRole::User);
+                    policy
+                },
+                durable.granted_by().clone(),
+                durable.subject().clone(),
+                durable.permission().clone(),
+                durable.scope(),
+                durable.resources().to_vec(),
+                GrantValidity::durable_until(expires_at),
+            )
+            .unwrap();
+        let mut store = InMemoryGrantStore::new();
+        store.insert(expiring);
+        repository
+            .store(&PlatformSnapshot::capture(&state, &store))
+            .unwrap();
+
+        let recovered = repository.load().unwrap().unwrap();
+        let mut recovered_state = PlatformState::new();
+        let mut recovered_grants = InMemoryGrantStore::new();
+        PlatformRecovery::new()
+            .recover(&recovered, &mut recovered_state, &mut recovered_grants)
+            .unwrap();
+
+        assert_eq!(recovered_grants.len(), 1);
+        assert_eq!(
+            recovered_grants.grants()[0].validity(),
+            &GrantValidity::durable_until(expires_at)
+        );
+    }
+
+    #[test]
+    fn legacy_grant_payloads_without_expiry_still_load() {
+        let repository = SqliteSnapshotRepository::open_in_memory().unwrap();
+        repository.store(&populated_snapshot()).unwrap();
+
+        // Strip the new optional field from the stored payload: a database
+        // written before expiry existed must keep loading.
+        repository
+            .connection
+            .lock()
+            .unwrap()
+            .execute(
+                "UPDATE platform_snapshot SET payload = json_remove(payload, '$.grants[0].expiresAt')",
+                [],
+            )
+            .unwrap();
+
+        let snapshot = repository.load().unwrap().unwrap();
+        let mut state = PlatformState::new();
+        let mut grants = InMemoryGrantStore::new();
+
+        let report = PlatformRecovery::new()
+            .recover(&snapshot, &mut state, &mut grants)
+            .unwrap();
+
+        assert_eq!(report.grants(), 1);
+        assert_eq!(grants.grants()[0].validity(), &GrantValidity::durable());
     }
 
     #[test]

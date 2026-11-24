@@ -29,3 +29,9 @@ if [ -e "$target/usr/lib/systemd/system/docker.service" ]; then
         ln -sf /usr/lib/systemd/system/docker.socket "$target/etc/systemd/system/sockets.target.wants/docker.socket"
     fi
 fi
+# The host allowlist, TLS IP SANs and address display need the DHCP lease.
+if [ -e "$target/usr/lib/systemd/system/systemd-networkd-wait-online.service" ]; then
+    mkdir -p "$target/etc/systemd/system/network-online.target.wants"
+    ln -sf /usr/lib/systemd/system/systemd-networkd-wait-online.service \
+        "$target/etc/systemd/system/network-online.target.wants/systemd-networkd-wait-online.service"
+fi

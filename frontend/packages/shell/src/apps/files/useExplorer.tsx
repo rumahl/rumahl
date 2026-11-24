@@ -4,7 +4,9 @@ import type { ShellApp } from "../../apps/useShellApps";
 import { AppIcon } from "../../apps/AppTile";
 import type { AppFolder } from "../../preferences/Workspace";
 import { ensureDesktopFolder } from "../../shell/desktop-files";
-import { fetchHostList, hostContentUrl } from "../fsClient";
+import {
+  createHostEntry, fetchHostList, hostContentUrl, removeHostEntry, renameHostEntry, writeHostFile
+} from "../fsClient";
 import { extensionOf, fileAssociation } from "./fileTypes";
 import { freshStore, ROOT, type Item, type Nav } from "./types";
 
@@ -71,7 +73,13 @@ export function useExplorer(request: ShellRequest | null, device: string, advanc
 
   const isStore = nav.place.kind === "store";
   const isDesktopRoot = nav.place.kind === "desktop" && nav.trail.length === 0;
-  const isWritable = isStore || isDesktopRoot;
+  // The user's own home is the only writable host area: installed apps and the
+  // system tree stay read-only for the shell.
+  const isHome = nav.place.kind === "host" && nav.place.area === "home";
+  const isWritable = isStore || isDesktopRoot || isHome;
+  // Moving entries between folders is a personal-store operation; the host
+  // home only renames within a directory.
+  const canMove = isStore || isDesktopRoot;
   const storeParent = nav.trail.at(-1)?.id ?? "root";
 
   const go = useCallback((next: Nav) => {
@@ -94,7 +102,7 @@ export function useExplorer(request: ShellRequest | null, device: string, advanc
   }, [nav, go]);
 
   useEffect(() => {
-    if (nav.place.kind === "host" && !advanced) {
+    if (nav.place.kind === "host" && nav.place.area !== "home" && !advanced) {
       // Demoting out of advanced mode must never leave privileged host entries
       // on screen. Rewind to the personal store root without adding history.
       setEntries([]);
@@ -248,6 +256,34 @@ export function useExplorer(request: ShellRequest | null, device: string, advanc
     return id;
   }, [isStore, storeParent, isDesktopRoot, request, desktopFolderId]);
 
+  /** The user's home, relative to it; `null` in every other place. */
+  const homePath = nav.place.kind === "host" && nav.place.area === "home" ? nav.segments.join("/") : null;
+
+  const mutateHome = useCallback(async (
+    action: { kind: FileOperationKind; name: string; count: number },
+    run: (signal: AbortSignal) => Promise<void>,
+  ): Promise<boolean> => {
+    if (!request || mutationLock.current || !isHome) return false;
+    mutationLock.current = true;
+    setBusy(true);
+    setError(null);
+    setOperation({ ...action, phase: "pending" });
+    const controller = new AbortController();
+    try {
+      await run(controller.signal);
+      setRevision((value) => value + 1);
+      setOperation({ ...action, phase: "complete" });
+      return true;
+    } catch (cause) {
+      setError(mapError(cause));
+      setOperation(null);
+      return false;
+    } finally {
+      setBusy(false);
+      mutationLock.current = false;
+    }
+  }, [request, isHome]);
+
   const mutate = useCallback(async (method: string, query: Record<string, string>, body?: File, kind: FileOperationKind = "rename"): Promise<boolean> => {
     if (!request || mutationLock.current || !isWritable) return false;
     mutationLock.current = true;
@@ -316,6 +352,12 @@ export function useExplorer(request: ShellRequest | null, device: string, advanc
 
   const removeMany = useCallback(async (ids: readonly string[]): Promise<boolean> => {
     if (!request || ids.length === 0 || mutationLock.current || !isWritable) return false;
+    if (isHome) {
+      const action = { kind: "remove" as const, name: entries.find((entry) => entry.key === ids[0])?.name ?? "", count: ids.length };
+      return mutateHome(action, async (signal) => {
+        for (const path of ids) await removeHostEntry(request, path, device, signal);
+      });
+    }
     mutationLock.current = true;
     setBusy(true);
     setError(null);
@@ -360,6 +402,7 @@ export function useExplorer(request: ShellRequest | null, device: string, advanc
     error,
     openError,
     clearOpenError: () => setOpenError(null),
+    reportOpenError: (error: OpenError | null) => setOpenError(error),
     busy,
     operation,
     refreshing,
@@ -377,23 +420,45 @@ export function useExplorer(request: ShellRequest | null, device: string, advanc
     clearError: () => setError(null),
     refresh: () => { setError(null); setOperation(current => current?.phase === "pending" ? current : null); setRevision((value) => value + 1); },
     isWritable,
+    canMove,
     createFolder: async (name: string) => {
+      if (isHome) {
+        return mutateHome({ kind: "createFolder", name, count: 1 }, (signal) =>
+          createHostEntry(request!, homePath ?? "", name, true, device, signal));
+      }
       const parent = await writeParent();
       if (!parent) { setError("unavailable"); return false; }
       return mutate("POST", { parent, name, directory: "true" }, undefined, "createFolder");
     },
     createFile: async (name: string) => {
+      if (isHome) {
+        return mutateHome({ kind: "createFile", name, count: 1 }, (signal) =>
+          createHostEntry(request!, homePath ?? "", name, false, device, signal));
+      }
       const parent = await writeParent();
       if (!parent) { setError("unavailable"); return false; }
       return mutate("POST", { parent, name, directory: "false" }, undefined, "createFile");
     },
     upload: async (file: File) => {
       if (file.size > 16 * 1024 * 1024) return setError("limit");
+      if (isHome) {
+        const target = [homePath, file.name].filter(Boolean).join("/");
+        await mutateHome({ kind: "upload", name: file.name, count: 1 }, async (signal) => {
+          await createHostEntry(request!, homePath ?? "", file.name, false, device, signal);
+          await writeHostFile(request!, target, file, device, signal);
+        });
+        return;
+      }
       const parent = await writeParent();
       if (!parent) return setError("unavailable");
       await mutate("POST", { parent, name: file.name, directory: "false" }, file, "upload");
     },
     rename: async (id: string, name: string) => {
+      if (isHome) {
+        await mutateHome({ kind: "rename", name, count: 1 }, (signal) =>
+          renameHostEntry(request!, id, name, device, signal));
+        return;
+      }
       const parent = await writeParent();
       if (!parent) return setError("unavailable");
       await mutate("PUT", { id, parent, name }, undefined, "rename");
@@ -401,10 +466,14 @@ export function useExplorer(request: ShellRequest | null, device: string, advanc
     remove: (id: string) => removeMany([id]),
     removeMany,
     move: async (id: string, name: string) => {
+      if (!canMove) { setError("unavailable"); return false; }
       const parent = await writeParent();
       if (!parent) { setError("unavailable"); return false; }
       return mutate("PUT", { id, parent, name }, undefined, "move");
     },
-    relocate: (id: string, name: string, parent: string) => mutate("PUT", { id, parent, name }, undefined, "move"),
+    relocate: (id: string, name: string, parent: string) => {
+      if (!canMove) { setError("unavailable"); return false; }
+      return mutate("PUT", { id, parent, name }, undefined, "move");
+    },
   };
 }

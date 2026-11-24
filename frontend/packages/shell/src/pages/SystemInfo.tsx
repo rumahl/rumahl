@@ -3,6 +3,9 @@ import { useTheme } from "@rumahl/ui";
 import { useI18n } from "../i18n";
 import { useShell } from "../shell/ShellContext";
 import { fetchSensors, type Sensors } from "../apps/recovery-client";
+import { requestPlatformConfig, type PlatformConfig } from "../preferences/client";
+import { browserProfile } from "../preferences/storage";
+import { useOsModePolicy } from "../preferences/OsMode";
 import { buildLabel, osName } from "../system-labels";
 
 export function SystemInfo() {
@@ -12,6 +15,10 @@ export function SystemInfo() {
   const { theme } = useTheme();
   const [sensors, setSensors] = useState<Sensors | null>(null);
   const [sensorsError, setSensorsError] = useState(false);
+  // The extended configuration view is the advanced sibling of the host file
+  // browser; the server enforces the same gate.
+  const extended = useOsModePolicy().viewPlatformConfig;
+  const [config, setConfig] = useState<PlatformConfig | null>(null);
   const unavailable = t("settings.system.unavailable");
   useEffect(() => {
     if (!live?.request) return;
@@ -27,6 +34,16 @@ export function SystemInfo() {
     const timer = window.setInterval(load, 15_000);
     return () => { canceled = true; window.clearInterval(timer); };
   }, [live?.request]);
+  useEffect(() => {
+    if (!live?.request || !extended) return;
+    const controller = new AbortController();
+    requestPlatformConfig(live.request, browserProfile().id, controller.signal).then((value) => {
+      setConfig(value);
+    }).catch(() => {
+      setConfig(null);
+    });
+    return () => controller.abort();
+  }, [live?.request, extended]);
   const format = (value: number | null | undefined) => {
     if (!value) return unavailable;
     const date = new Date(value);
@@ -62,6 +79,15 @@ export function SystemInfo() {
       {sensors?.metrics.map((metric) => <InfoRow key={metric.id} label={metric.label} value={`${new Intl.NumberFormat(locale, { maximumFractionDigits: 1 }).format(metric.value)} ${metric.unit}`.trim()} />)}
       {sensorsError ? <InfoRow label={t("settings.system.sensors")} value={unavailable} /> : null}
     </div>
+
+    {extended ? <>
+      <h3 className="section-title">{t("settings.system.config")}</h3>
+      <div className="settings-group">
+        {config && config.entries.length > 0
+          ? config.entries.map((entry) => <InfoRow key={entry.name} label={entry.name} value={entry.value} mono />)
+          : <InfoRow label={t("settings.system.configSource")} value={unavailable} />}
+      </div>
+    </> : null}
   </>;
 }
 

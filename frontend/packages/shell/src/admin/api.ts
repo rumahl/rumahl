@@ -97,3 +97,70 @@ export async function listAdminAudit(limit = 50, offset = 0): Promise<AdminAudit
   const query = new URLSearchParams({ limit: String(limit), offset: String(offset) });
   return (await request<{ events: AdminAuditEntry[] }>(`/api/v1/admin/audit?${query}`)).events;
 }
+
+export type AdminPolicyKind = "boolean" | "number" | "text" | "list";
+export type AdminPolicyValue = boolean | number | string | readonly string[];
+
+export interface AdminPolicyDefinition {
+  key: string;
+  /** Policy area (`rumahl.<area>.<name>`), used to group the editor. */
+  area: string;
+  kind: AdminPolicyKind;
+  default: AdminPolicyValue;
+  minimum: number | null;
+  maximum: number | null;
+  description: string;
+}
+
+export interface AdminPolicyAssignment {
+  subject: string;
+  key: string;
+  value: AdminPolicyValue;
+}
+
+export interface AdminPolicies {
+  policiesVersion: 1;
+  policies: AdminPolicyDefinition[];
+  assignments: AdminPolicyAssignment[];
+}
+
+export interface AdminGroup {
+  id: string;
+  name: string;
+  members: string[];
+}
+
+export async function listAdminPolicies(): Promise<AdminPolicies> {
+  return request<AdminPolicies>("/api/v1/admin/policies");
+}
+
+export async function setAdminPolicy(
+  subject: string,
+  key: string,
+  value: AdminPolicyValue | null
+): Promise<void> {
+  await request("/api/v1/admin/policies", mutation("PUT", { subject, key, value }));
+}
+
+export async function listAdminGroups(): Promise<AdminGroup[]> {
+  return (await request<{ groups: AdminGroup[] }>("/api/v1/admin/groups")).groups;
+}
+
+export async function createAdminGroup(name: string): Promise<AdminGroup> {
+  return request<AdminGroup>("/api/v1/admin/groups", mutation("POST", { name }));
+}
+
+export async function deleteAdminGroup(id: string): Promise<void> {
+  await request(`/api/v1/admin/groups/${encodeURIComponent(id)}`, mutation("DELETE"));
+}
+
+export async function updateAdminGroupMembers(
+  id: string,
+  add: readonly string[],
+  remove: readonly string[]
+): Promise<AdminGroup> {
+  return request<AdminGroup>(
+    `/api/v1/admin/groups/${encodeURIComponent(id)}/members`,
+    mutation("PUT", { add, remove })
+  );
+}

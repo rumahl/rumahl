@@ -17,7 +17,7 @@ use rumahl_core::{
 };
 use rumahl_oidc_provider::{InstalledAppOriginResolver, OidcClientRepository};
 
-use crate::ContainerImageImporter;
+use crate::{ContainerImageImporter, DockerImageReference, StagedImage, StagedImageEnvironment};
 
 #[derive(Debug, Clone)]
 pub struct PackageImporterConfig {
@@ -43,7 +43,14 @@ pub struct PackageImporter<I> {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum PublishedInstall {
     Web(PublishedAssets),
-    Container { images: usize },
+    Container {
+        /// Number of declared container artifacts.
+        images: usize,
+        /// The immutable image reference the runtime resolves for this app.
+        image: DockerImageReference,
+        /// The image's own configuration environment, captured at import.
+        environment: Vec<StagedImageEnvironment>,
+    },
 }
 
 /// A package that was verified, published and (if needed) recovered.
@@ -64,6 +71,9 @@ pub enum PackageImportError {
     UnsupportedRuntime(RuntimeKind),
     MissingWebEntrypoint,
     MissingContainerArtifact,
+    /// The publisher allowlist policy does not include this package's
+    /// publisher.
+    PublisherNotAllowed,
 }
 
 impl PackageImporterConfig {
@@ -127,33 +137,47 @@ impl<I: ContainerImageImporter> PackageImporter<I> {
             }
             RuntimeKind::Container => {
                 let artifacts = container_artifacts(package)?;
+                let mut staged: Option<StagedImage> = None;
                 for artifact in &artifacts {
-                    self.image_importer
+                    let image = self
+                        .image_importer
                         .stage_image(installation_id, package_root, artifact)
                         .map_err(|error| PackageImportError::ImageImport(Box::new(error)))?;
+                    // A container app runs exactly one image; the runtime
+                    // spec refuses more. Report the staged image the runtime
+                    // would resolve to, keeping the artifact count for
+                    // diagnostics.
+                    staged = Some(image);
                 }
+                let staged = staged.expect("container artifacts are non-empty");
                 Ok(PublishedInstall::Container {
                     images: artifacts.len(),
+                    image: staged.reference().clone(),
+                    environment: staged.environment().to_vec(),
                 })
             }
             kind => Err(PackageImportError::UnsupportedRuntime(kind)),
         }
     }
 
-    /// Verifies a package, installs it through the runner and publishes the
-    /// package payload.
+    /// Verifies a package, installs or updates it through the runner and
+    /// publishes the package payload.
     ///
-    /// A container installation normally fails its first runtime step because
-    /// the image reference does not exist yet. When the runner reports an error,
-    /// the matching incomplete operation is located, the package is published
-    /// for its installation id, and startup recovery resumes the operation
-    /// forward. A web package can commit directly and is published afterwards.
+    /// An app id that is already installed is updated in place (newer version
+    /// required), keeping its installation identity, grants and data. A
+    /// container installation or update normally fails its first runtime step
+    /// because the new image reference does not exist yet. When the runner
+    /// reports an error, the matching incomplete operation is located, the
+    /// package is published for its installation id, and startup recovery
+    /// resumes the operation forward. A web package can commit directly and is
+    /// published afterwards.
     pub fn install<J, D, U, R, O, P, S, T>(
         &self,
         runner: &AppOperationRunner<J, D, U, R, O, P, S, T>,
         package_root: &Path,
         state: &mut PlatformState,
         grants: &mut InMemoryGrantStore,
+        allowed_publishers: &[String],
     ) -> Result<InstalledPackage, PackageImportError>
     where
         J: AppOperationRepository,
@@ -169,11 +193,35 @@ impl<I: ContainerImageImporter> PackageImporter<I> {
         let manifest = verified
             .to_app_manifest()
             .map_err(PackageImportError::Manifest)?;
+        // The publisher allowlist is an install policy, not a trust decision:
+        // the signature must verify against the trust store either way, and an
+        // empty allowlist means every trusted publisher.
+        if !allowed_publishers.is_empty()
+            && !allowed_publishers
+                .iter()
+                .any(|publisher| publisher == manifest.publisher_id().as_str())
+        {
+            return Err(PackageImportError::PublisherNotAllowed);
+        }
         let app_id = verified.manifest().app().app_id().clone();
+        let update_from = state
+            .installed_apps()
+            .get_by_app_id(&app_id)
+            .map(|app| *app.installation_id());
 
-        match runner.install(manifest, state, grants) {
-            Ok(result) => {
-                let installation_id = *result.app().installation_id();
+        // An existing installation is updated in place; the lifecycle rejects
+        // versions that do not move forward.
+        let started = match update_from {
+            Some(installation_id) => runner
+                .update(&installation_id, manifest, state, grants)
+                .map(|result| (*result.app().installation_id(), AppOperationKind::Update)),
+            None => runner
+                .install(manifest, state, grants)
+                .map(|result| (*result.app().installation_id(), AppOperationKind::Install)),
+        };
+
+        match started {
+            Ok((installation_id, _kind)) => {
                 let published = self.publish(&installation_id, package_root, &verified)?;
                 Ok(InstalledPackage {
                     installation_id,
@@ -185,7 +233,7 @@ impl<I: ContainerImageImporter> PackageImporter<I> {
                     .journal()
                     .list_incomplete()
                     .map_err(|journal| PackageImportError::Journal(Box::new(journal)))?;
-                let Some(operation) = select_incomplete_install(operations, &app_id) else {
+                let Some(operation) = select_incomplete_operation(operations, &app_id) else {
                     return Err(PackageImportError::Install(Box::new(error)));
                 };
                 let installation_id = *operation.installation_id();
@@ -202,16 +250,18 @@ impl<I: ContainerImageImporter> PackageImporter<I> {
     }
 }
 
-fn select_incomplete_install(
+fn select_incomplete_operation(
     operations: Vec<AppOperation>,
     app_id: &AppId,
 ) -> Option<AppOperation> {
     operations.into_iter().find(|operation| {
-        operation.kind() == AppOperationKind::Install
-            && operation
-                .target_app()
-                .map(|target| target.identity().app_id() == app_id)
-                .unwrap_or(false)
+        matches!(
+            operation.kind(),
+            AppOperationKind::Install | AppOperationKind::Update
+        ) && operation
+            .target_app()
+            .map(|target| target.identity().app_id() == app_id)
+            .unwrap_or(false)
     })
 }
 
@@ -253,6 +303,14 @@ fn require_web_entrypoints(package: &VerifiedPackage) -> Result<(), PackageImpor
         Ok(())
     } else {
         Err(PackageImportError::MissingWebEntrypoint)
+    }
+}
+
+#[cfg(test)]
+fn published_container_environment(published: &PublishedInstall) -> &[StagedImageEnvironment] {
+    match published {
+        PublishedInstall::Container { environment, .. } => environment,
+        PublishedInstall::Web(_) => &[],
     }
 }
 
@@ -319,6 +377,12 @@ impl fmt::Display for PackageImportError {
                     "container package declares no container-artifact entrypoint"
                 )
             }
+            Self::PublisherNotAllowed => {
+                write!(
+                    f,
+                    "the publisher allowlist does not include this package's publisher"
+                )
+            }
         }
     }
 }
@@ -334,7 +398,8 @@ impl Error for PackageImportError {
             Self::Install(error) => Some(error),
             Self::UnsupportedRuntime(_)
             | Self::MissingWebEntrypoint
-            | Self::MissingContainerArtifact => None,
+            | Self::MissingContainerArtifact
+            | Self::PublisherNotAllowed => None,
         }
     }
 }
@@ -380,14 +445,17 @@ mod tests {
             installation_id: &InstallationId,
             _package_root: &Path,
             artifact: &PackagePath,
-        ) -> Result<(), Self::Error> {
+        ) -> Result<StagedImage, Self::Error> {
             let reference =
                 DockerImageReference::parse(format!("sha256:{}", "a".repeat(64))).unwrap();
             StagedDockerImageWriter::new(&self.image_root)
                 .unwrap()
                 .write(installation_id, artifact, &reference)
                 .unwrap();
-            Ok(())
+            Ok(StagedImage::new(
+                reference,
+                vec![StagedImageEnvironment::parse("PATH=/usr/bin:/bin").unwrap()],
+            ))
         }
     }
 
@@ -401,7 +469,7 @@ mod tests {
             _installation_id: &InstallationId,
             _package_root: &Path,
             _artifact: &PackagePath,
-        ) -> Result<(), Self::Error> {
+        ) -> Result<StagedImage, Self::Error> {
             Err(std::io::Error::other("image import disabled"))
         }
     }
@@ -412,6 +480,15 @@ mod tests {
     }
 
     fn build_package(
+        runtime_kind: &str,
+        entrypoints: Value,
+        files: &[(&str, &[u8])],
+    ) -> SignedPackage {
+        build_package_version("1.0.0", runtime_kind, entrypoints, files)
+    }
+
+    fn build_package_version(
+        version: &str,
         runtime_kind: &str,
         entrypoints: Value,
         files: &[(&str, &[u8])],
@@ -441,7 +518,7 @@ mod tests {
             "publisherId": PUBLISHER,
             "app": {
                 "appId": "com.rumahl.notes",
-                "version": "1.0.0",
+                "version": version,
                 "displayName": "Notes",
                 "runtime": { "kind": runtime_kind, "entrypoints": entrypoints },
             },
@@ -562,7 +639,14 @@ mod tests {
             .publish(&installation_id, package.directory.path(), &verified)
             .unwrap();
 
-        assert_eq!(published, PublishedInstall::Container { images: 1 });
+        assert!(matches!(
+            published,
+            PublishedInstall::Container { images: 1, .. }
+        ));
+        assert_eq!(
+            published_container_environment(&published),
+            &[StagedImageEnvironment::parse("PATH=/usr/bin:/bin").unwrap()]
+        );
 
         let resolver = StagedDockerImageResolver::new(
             StagedDockerImageResolverConfig::new(&image_root).unwrap(),
@@ -928,6 +1012,159 @@ mod tests {
         )
     }
 
+    fn container_package_version(version: &str) -> SignedPackage {
+        build_package_version(
+            version,
+            "container",
+            json!([
+                { "id": "service", "kind": "container-artifact", "path": "runtime/server.oci" },
+                { "id": "main", "kind": "endpoint", "endpoint": "web" },
+            ]),
+            &[("runtime/server.oci", b"not-a-real-image")],
+        )
+    }
+
+    #[test]
+    fn updates_an_installed_package_in_place() {
+        let v1 = container_package();
+        let (_trust_dir, trust_store) = trust_store_file(&v1);
+        let asset_root = unique_test_root('a');
+        let image_root = unique_test_root('g');
+        let importer = PackageImporter::new(
+            PackageImporterConfig::new(&trust_store, &asset_root).unwrap(),
+            TestImageImporter {
+                image_root: image_root.clone(),
+            },
+        )
+        .unwrap();
+        let runner = AppOperationRunner::new(
+            MemoryJournal::default(),
+            NoopDatabases,
+            AppRuntimeServices::new(
+                StagingRuntime {
+                    image_root: image_root.clone(),
+                },
+                NoopSecretDelivery,
+            ),
+            NoopOidc,
+            TestOrigin,
+            MemorySnapshot::default(),
+            NoopSecrets,
+        );
+        let mut state = PlatformState::new();
+        let mut grants = InMemoryGrantStore::new();
+
+        let first = importer
+            .install(&runner, v1.directory.path(), &mut state, &mut grants, &[])
+            .unwrap();
+        let installation_id = *first.installation_id();
+        let identity = state.installed_apps().apps()[0].identity().clone();
+        let user = rumahl_core::UserId::new();
+        let mut policy = rumahl_core::GrantIssuerPolicy::new();
+        policy.set_user_role(user, rumahl_core::UserRole::User);
+        grants.insert(
+            rumahl_core::GrantAuthority::new()
+                .issue(
+                    &policy,
+                    rumahl_core::UserIdentity::new(user).into(),
+                    identity.clone().into(),
+                    rumahl_core::PermissionId::parse("rumahl.files.read").unwrap(),
+                    rumahl_core::PermissionScope::Explicit,
+                    vec![rumahl_core::ResourceRef::new(
+                        rumahl_core::ResourceNamespace::parse("rumahl.files").unwrap(),
+                        rumahl_core::ResourceKind::parse("file").unwrap(),
+                        rumahl_core::ResourceKey::parse("document-1").unwrap(),
+                    )],
+                )
+                .unwrap(),
+        );
+
+        // The next version of the same app installs as an update, not a second
+        // installation.
+        let v2 = container_package_version("1.1.0");
+        let updated = importer
+            .install(&runner, v2.directory.path(), &mut state, &mut grants, &[])
+            .unwrap();
+
+        assert_eq!(updated.installation_id(), &installation_id);
+        assert_eq!(state.installed_apps().len(), 1);
+        assert_eq!(
+            state.installed_apps().apps()[0].manifest().version(),
+            &AppVersion::new(1, 1, 0)
+        );
+        assert_eq!(state.installed_apps().apps()[0].identity(), &identity);
+        // Grants survive the update.
+        assert_eq!(grants.len(), 1);
+        assert!(runner.journal().list_incomplete().unwrap().is_empty());
+
+        fs::remove_dir_all(asset_root).unwrap();
+        fs::remove_dir_all(image_root).unwrap();
+    }
+
+    #[test]
+    fn the_publisher_allowlist_decides_which_packages_install() {
+        let package = container_package();
+        let (_trust_dir, trust_store) = trust_store_file(&package);
+        let asset_root = unique_test_root('a');
+        let image_root = unique_test_root('g');
+        let importer = PackageImporter::new(
+            PackageImporterConfig::new(&trust_store, &asset_root).unwrap(),
+            TestImageImporter {
+                image_root: image_root.clone(),
+            },
+        )
+        .unwrap();
+        let runner = AppOperationRunner::new(
+            MemoryJournal::default(),
+            NoopDatabases,
+            AppRuntimeServices::new(
+                StagingRuntime {
+                    image_root: image_root.clone(),
+                },
+                NoopSecretDelivery,
+            ),
+            NoopOidc,
+            TestOrigin,
+            MemorySnapshot::default(),
+            NoopSecrets,
+        );
+        let mut state = PlatformState::new();
+        let mut grants = InMemoryGrantStore::new();
+
+        // An allowlist that does not include this publisher refuses the
+        // install before anything is staged or journaled.
+        let refused = importer.install(
+            &runner,
+            package.directory.path(),
+            &mut state,
+            &mut grants,
+            &["org.example".to_owned()],
+        );
+        assert!(matches!(
+            refused,
+            Err(PackageImportError::PublisherNotAllowed)
+        ));
+        assert_eq!(state.installed_apps().len(), 0);
+        assert!(runner.journal().list_incomplete().unwrap().is_empty());
+
+        // An allowlist that includes the publisher installs normally. (An
+        // empty allowlist meaning "every trusted publisher" is what every
+        // other install test exercises with `&[]`.)
+        importer
+            .install(
+                &runner,
+                package.directory.path(),
+                &mut state,
+                &mut grants,
+                &[PUBLISHER.to_owned()],
+            )
+            .unwrap();
+        assert_eq!(state.installed_apps().len(), 1);
+
+        fs::remove_dir_all(asset_root).unwrap();
+        fs::remove_dir_all(image_root).unwrap();
+    }
+
     #[test]
     fn installs_container_package_after_publishing_image() {
         let package = container_package();
@@ -961,7 +1198,13 @@ mod tests {
         let mut grants = InMemoryGrantStore::new();
 
         let installed = importer
-            .install(&runner, package.directory.path(), &mut state, &mut grants)
+            .install(
+                &runner,
+                package.directory.path(),
+                &mut state,
+                &mut grants,
+                &[],
+            )
             .unwrap();
 
         assert_eq!(state.installed_apps().len(), 1);
@@ -971,7 +1214,7 @@ mod tests {
         );
         assert!(matches!(
             installed.published(),
-            PublishedInstall::Container { images: 1 }
+            PublishedInstall::Container { images: 1, .. }
         ));
         assert!(runner.journal().list_incomplete().unwrap().is_empty());
 

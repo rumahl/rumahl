@@ -1,11 +1,12 @@
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterAll, beforeAll, beforeEach, expect, test, vi } from "vitest";
+import type * as FsClient from "../fsClient";
 
 const state = vi.hoisted(() => ({
   advanced: false,
   apps: [] as { id: string; title: string; path: string; launchable: boolean; system: boolean; kind: "app" }[],
   topbarHost: null as HTMLElement | null,
-  live: { request: vi.fn(async (url: string, init?: RequestInit): Promise<{ ok: boolean; headers?: Headers; json: () => Promise<unknown> }> => { void url; void init; return { ok: true, headers: new Headers(), json: async () => [] }; }) },
+  live: { request: vi.fn(async (url: string, init?: RequestInit): Promise<{ ok: boolean; status?: number; headers?: Headers; json: () => Promise<unknown> }> => { void url; void init; return { ok: true, headers: new Headers(), json: async () => [] }; }) },
   open: vi.fn(),
   fetchHostList: vi.fn(async () => [] as { name: string; directory: boolean; size: number; modified: number }[]),
 }));
@@ -16,7 +17,10 @@ vi.mock("../../preferences/OsMode", () => ({ useOsModePolicy: () => ({ advancedS
 vi.mock("../../preferences/storage", () => ({ browserProfile: () => ({ id: "01990000-0000-7000-8000-000000000001", persistence: "memory" }) }));
 vi.mock("../../preferences/Workspace", () => ({ useWorkspace: () => ({ effective: { folders: [] } }) }));
 vi.mock("../useShellApps", () => ({ useShellApps: () => state.apps }));
-vi.mock("../fsClient", () => ({ fetchHostList: state.fetchHostList, hostContentUrl: () => "/content" }));
+vi.mock("../fsClient", async (importOriginal) => {
+  const actual = await importOriginal<typeof FsClient>();
+  return { ...actual, fetchHostList: state.fetchHostList, hostContentUrl: () => "/content" };
+});
 vi.mock("../../components/ProtectedWindow", () => ({ useAppTopbarHost: () => state.topbarHost }));
 
 import { FilesApp } from "./FilesApp";
@@ -405,17 +409,86 @@ test("reports a non-empty folder separately from a name conflict", async () => {
   expect(await screen.findByText("files.folderNotEmpty")).toBeInTheDocument();
 });
 
-test("marks the current breadcrumb and keeps the root crumb intact", async () => {
+test("shows the canonical rumahl path and follows navigation", async () => {
   listing([{ id: "folder-1", name: "Projects", directory: true, size: 0 }]);
   render(<FilesApp />);
-  const nav = screen.getByRole("navigation", { name: "files.path" });
-  const root = within(nav).getByRole("button", { name: "files.root" });
-  expect(root).toHaveClass("files-crumbs__root");
-  expect(root).toHaveAttribute("aria-current", "page");
+  const address = screen.getByRole("textbox", { name: "files.address" });
+  expect(address).toHaveValue("rumahl://home");
 
   fireEvent.doubleClick(await screen.findByText("Projects"));
-  await waitFor(() => expect(within(nav).getByRole("button", { name: "Projects" })).toHaveAttribute("aria-current", "page"));
-  expect(root).not.toHaveAttribute("aria-current");
+  await waitFor(() => expect(address).toHaveValue("rumahl://home/Projects"));
+});
+
+test("opens a typed rumahl folder and file through the service", async () => {
+  state.advanced = true;
+  const seen: string[] = [];
+  state.live.request.mockImplementation(async (url: string) => {
+    seen.push(String(url));
+    if (String(url).startsWith("/api/v1/shell/fs/resolve?")) {
+      const target = new URL(String(url), "https://localhost").searchParams.get("path") ?? "";
+      const file = target.endsWith("/notes.txt");
+      return {
+        ok: true,
+        json: async () => file
+          ? {
+              fsVersion: 1, path: "/home/alice/Documents/notes.txt", uri: "rumahl://home/Documents/notes.txt",
+              area: "home", relative: "Documents/notes.txt", name: "notes.txt", directory: false, writable: true,
+              id: "file-id", trail: [
+                { id: "documents-id", name: "Documents", directory: true },
+                { id: "file-id", name: "notes.txt", directory: false }
+              ]
+            }
+          : {
+              fsVersion: 1, path: "/home/alice/Documents", uri: "rumahl://home/Documents",
+              area: "home", relative: "Documents", name: "Documents", directory: true, writable: true,
+              id: "documents-id", trail: [{ id: "documents-id", name: "Documents", directory: true }]
+            }
+      };
+    }
+    return { ok: true, headers: new Headers({ "x-total-count": "0" }), json: async () => [] };
+  });
+  render(<FilesApp />);
+  // Advanced mode shows the Windows-style crumbs; the edit toggle opens the
+  // raw address input.
+  fireEvent.click(screen.getByRole("button", { name: "files.editPath" }));
+  const address = screen.getByRole("textbox", { name: "files.address" });
+
+  fireEvent.change(address, { target: { value: "/home/alice/Documents" } });
+  fireEvent.submit(address.closest("form")!);
+  // The internal path lands in the one personal store view, addressed by the
+  // stable id of the folder; the bar returns to crumbs with that folder as
+  // the current page.
+  await waitFor(() => expect(seen.some((url) => url.startsWith("/api/v1/files?parent=documents-id"))).toBe(true));
+  await waitFor(() => expect(screen.getByRole("button", { name: "Documents" })).toHaveAttribute("aria-current", "page"));
+
+  fireEvent.click(screen.getByRole("button", { name: "files.editPath" }));
+  const typed = screen.getByRole("textbox", { name: "files.address" });
+  fireEvent.change(typed, { target: { value: "rumahl://home/Documents/notes.txt" } });
+  fireEvent.submit(typed.closest("form")!);
+  await waitFor(() => expect(state.open).toHaveBeenCalledTimes(1));
+  const opened = state.open.mock.calls[0]![0] as string;
+  expect(opened).toContain("/app/editor?");
+  expect(opened).toContain("id=file-id");
+  expect(opened).not.toContain("source=host");
+});
+
+test("rejects invalid and forbidden paths without guessing", async () => {
+  state.live.request.mockImplementation(async (url: string) => {
+    if (String(url).startsWith("/api/v1/shell/fs/resolve?")) return { ok: false, status: 403, json: async () => ({}) };
+    return { ok: true, headers: new Headers(), json: async () => [] };
+  });
+  render(<FilesApp />);
+  const address = screen.getByRole("textbox", { name: "files.address" });
+
+  fireEvent.change(address, { target: { value: "rumahl://apps" } });
+  fireEvent.submit(address.closest("form")!);
+  expect(await screen.findByText("files.pathDenied")).toBeInTheDocument();
+
+  // An arbitrary host path is not part of the rumahl namespace and never
+  // reaches the service.
+  fireEvent.change(address, { target: { value: "/etc/passwd" } });
+  fireEvent.submit(address.closest("form")!);
+  expect(await screen.findByText("files.pathInvalid")).toBeInTheDocument();
 });
 
 test("clears the search from the button and with Escape", async () => {
@@ -437,4 +510,44 @@ test("clears the search from the button and with Escape", async () => {
   fireEvent.keyDown(input, { key: "Escape" });
   expect(input).toHaveValue("");
   expect(await screen.findByText("photo.png")).toBeInTheDocument();
+});
+
+test("advanced mode shows a Windows-style crumb path", async () => {
+  state.advanced = true;
+  listing([{ id: "folder-1", name: "Projects", directory: true, size: 0 }]);
+  render(<FilesApp />);
+  const bar = () => document.querySelector(".files-path") as HTMLElement;
+  // The root crumb is the current page until a folder is opened.
+  const root = within(bar()).getByRole("button", { name: "files.root" });
+  expect(root).toHaveAttribute("aria-current", "page");
+  fireEvent.doubleClick(await screen.findByText("Projects"));
+  // One crumb per folder; the last is the current page.
+  const projects = await within(bar()).findByRole("button", { name: "Projects" });
+  expect(projects).toHaveAttribute("aria-current", "page");
+  expect(root).not.toHaveAttribute("aria-current");
+
+  // Navigating a crumb rewinds the trail.
+  fireEvent.click(root);
+  await waitFor(() => expect(within(bar()).queryByRole("button", { name: "Projects" })).toBeNull());
+});
+
+test("crumb chevrons open the subfolders of that folder", async () => {
+  state.advanced = true;
+  listing([{ id: "folder-1", name: "Projects", directory: true, size: 0 }]);
+  render(<FilesApp />);
+  const bar = () => document.querySelector(".files-path") as HTMLElement;
+  const chevrons = await within(bar()).findAllByRole("button", { name: "files.subfolders" });
+  // The root crumb's chevron lists the root's folders from the store.
+  fireEvent.click(chevrons[0]!);
+  const menu = await screen.findByRole("menu", { name: "files.subfoldersLabel" });
+  expect(within(menu).getByRole("menuitem", { name: "Projects" })).toBeInTheDocument();
+  fireEvent.click(within(menu).getByRole("menuitem", { name: "Projects" }));
+  await waitFor(() => expect(within(bar()).getByRole("button", { name: "Projects" })).toHaveAttribute("aria-current", "page"));
+});
+
+test("guided mode keeps the plain address input", async () => {
+  listing([{ id: "folder-1", name: "Projects", directory: true, size: 0 }]);
+  render(<FilesApp />);
+  expect(screen.getByRole("textbox", { name: "files.address" })).toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: "files.editPath" })).toBeNull();
 });

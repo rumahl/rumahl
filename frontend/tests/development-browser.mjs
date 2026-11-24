@@ -284,9 +284,11 @@ try {
   await files.getByRole("button", { name: "New folder", exact: true }).click();
   const folderName = files.locator(".files-rename");
   await folderName.waitFor();
-  await folderName.fill("Documents");
+  // Accounts start with the standard home folders (Desktop, Documents, ...),
+  // so the test folder needs a name outside that set.
+  await folderName.fill("Projects");
   await folderName.press("Enter");
-  await files.locator("[data-file-key]", { hasText: "Documents" }).dblclick();
+  await files.locator("[data-file-key]", { hasText: "Projects" }).dblclick();
   await files.getByLabel("Upload file").setInputFiles({ name: "hello.txt", mimeType: "text/plain", buffer: Buffer.from("workspace upload") });
   await files.getByText("hello.txt", { exact: true }).waitFor();
   // Download the uploaded file through the explicit context-menu action.

@@ -7,7 +7,7 @@
 use crate::{
     GatewayState, ShellBackendError,
     preferences::{error, profile, user},
-    server::{secure_headers, valid_origin},
+    server::secure_headers,
 };
 use axum::{
     Router,
@@ -86,7 +86,7 @@ async fn save(
     headers: HeaderMap,
     body: Bytes,
 ) -> Response {
-    if !valid_origin(&headers, &state.config.public_origin) {
+    if !state.config.accepts_origin(&headers) {
         return error(StatusCode::FORBIDDEN);
     }
     let user = match user(&state, &headers).await {
@@ -138,6 +138,18 @@ async fn save(
     } else {
         return error(StatusCode::BAD_REQUEST);
     };
+
+    // A policy can close advanced mode entirely; that must not be
+    // bypassable with a password, so it is checked before anything else.
+    if let Some(mode) = mode
+        && matches!(mode, OsMode::Advanced | OsMode::Developer)
+        && !state
+            .policies
+            .clone()
+            .is_none_or(|policies| policies.advanced_mode_allowed(user))
+    {
+        return error(StatusCode::FORBIDDEN);
+    }
 
     // Raising the mode requires re-authentication; anything else must not carry a password.
     let raising = matches!(mode, Some(OsMode::Advanced) | Some(OsMode::Developer));

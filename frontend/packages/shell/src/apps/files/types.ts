@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 
-export type HostArea = "apps" | "system";
+export type HostArea = "apps" | "system" | "home";
 export type Place = { kind: "store" } | { kind: "host"; area: HostArea } | { kind: "desktop" };
 
 export interface StoreCrumb {
@@ -39,8 +39,9 @@ export const freshStore = (): Nav => ({ place: { kind: "store" }, trail: [ROOT],
 export const freshHost = (area: HostArea): Nav => ({ place: { kind: "host", area }, trail: [ROOT], segments: [] });
 export const freshDesktop = (): Nav => ({ place: { kind: "desktop" }, trail: [], segments: [] });
 
-export function placeLabelKey(place: Place): "files.root" | "files.applications" | "files.system" | "files.desktop" {
+export function placeLabelKey(place: Place): "files.root" | "files.applications" | "files.system" | "files.home" | "files.desktop" {
   if (place.kind === "store") return "files.root";
   if (place.kind === "desktop") return "files.desktop";
-  return place.area === "apps" ? "files.applications" : "files.system";
+  if (place.area === "apps") return "files.applications";
+  return place.area === "home" ? "files.home" : "files.system";
 }

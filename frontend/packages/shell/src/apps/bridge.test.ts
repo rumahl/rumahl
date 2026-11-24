@@ -1,6 +1,13 @@
 import { describe, expect, test, vi } from "vitest";
 import { BRIDGE_CAPABILITIES, BRIDGE_CAPABILITY_LIST, parseBridgeMessage, RUMAHL_BRIDGE } from "@rumahl/contracts/bridge";
-import { handleBridgeRequest, handleBridgeRequestAsync, type AppBridgeHandlers } from "./bridge";
+import { decodeBridgeBase64, encodeBridgeBase64, handleBridgeRequest, handleBridgeRequestAsync, type AppBridgeHandlers } from "./bridge";
+
+const FILE_APP_CAPABILITIES = [
+  ...BRIDGE_CAPABILITY_LIST,
+  BRIDGE_CAPABILITIES.filesRead,
+  BRIDGE_CAPABILITIES.filesWrite
+] as const;
+const FILE_KEY = "0123456789abcdef0123456789abcdef";
 
 function handlers(overrides: Partial<AppBridgeHandlers> = {}): AppBridgeHandlers {
   return {
@@ -244,5 +251,129 @@ describe("bridge request handling", () => {
     const invokeCapability = vi.fn(async () => { throw new Error("boom"); });
     expect(await handleBridgeRequestAsync(request("13", "os.capabilities.invoke", { capability: "rumahl.files.preview" }), handlers({ invokeCapability })))
       .toMatchObject({ ok: false, error: { code: "failed" } });
+  });
+});
+
+describe("app files bridge", () => {
+  test("the picker accepts apps that declared either files permission", async () => {
+    const filesRequest = vi.fn(async () => ({ files: [{ id: FILE_KEY, name: "notes.txt", size: 3 }] }));
+    for (const capabilities of [[BRIDGE_CAPABILITIES.filesRead], [BRIDGE_CAPABILITIES.filesWrite]] as const) {
+      const response = await handleBridgeRequestAsync(request("f1", "os.files.request", { access: "read" }), handlers({ capabilities: [...capabilities], filesRequest }));
+      expect(response).toMatchObject({ ok: true, result: { files: [{ id: FILE_KEY }] } });
+    }
+    expect(await handleBridgeRequestAsync(request("f2", "os.files.request", { access: "save" }), handlers({ capabilities: [...FILE_APP_CAPABILITIES], filesRequest })))
+      .toMatchObject({ ok: false, error: { code: "invalid-params" } });
+    expect(await handleBridgeRequestAsync(request("f3", "os.files.request", { access: "read" }), handlers({ capabilities: [] })))
+      .toMatchObject({ ok: false, error: { code: "denied" } });
+    expect(await handleBridgeRequestAsync(request("f4", "os.files.request", { access: "read" }), handlers({ capabilities: [...FILE_APP_CAPABILITIES] })))
+      .toMatchObject({ ok: false, error: { code: "denied" } });
+  });
+
+  test("a declined picker resolves as a denial, never as empty access", async () => {
+    const filesRequest = vi.fn(async () => null);
+    const response = await handleBridgeRequestAsync(request("f5", "os.files.request", { access: "write" }), handlers({ capabilities: [...FILE_APP_CAPABILITIES], filesRequest }));
+    expect(response).toMatchObject({ ok: false, error: { code: "denied" } });
+  });
+
+  test("file reads and writes require their own permission", async () => {
+    const filesRead = vi.fn(async () => ({ name: "notes.txt", size: 3, contentBase64: "aGVs" }));
+    const filesWrite = vi.fn(async () => ({ name: "notes.txt", size: 5 }));
+    const read = request("f6", "os.files.read", { key: FILE_KEY });
+    const write = request("f7", "os.files.write", { key: FILE_KEY, contentBase64: "aGVsbG8=" });
+    expect(await handleBridgeRequestAsync(read, handlers({ capabilities: [...FILE_APP_CAPABILITIES], filesRead, filesWrite })))
+      .toMatchObject({ ok: true, result: { name: "notes.txt", contentBase64: "aGVs" } });
+    expect(await handleBridgeRequestAsync(write, handlers({ capabilities: [...FILE_APP_CAPABILITIES], filesRead, filesWrite })))
+      .toMatchObject({ ok: true, result: { name: "notes.txt", size: 5 } });
+    // Declaring read only does not unlock write, and vice versa.
+    expect(await handleBridgeRequestAsync(write, handlers({ capabilities: [...BRIDGE_CAPABILITY_LIST, BRIDGE_CAPABILITIES.filesRead], filesWrite })))
+      .toMatchObject({ ok: false, error: { code: "denied" } });
+    expect(await handleBridgeRequestAsync(read, handlers({ capabilities: [...BRIDGE_CAPABILITY_LIST, BRIDGE_CAPABILITIES.filesWrite], filesRead })))
+      .toMatchObject({ ok: false, error: { code: "denied" } });
+  });
+
+  test("file keys and contents are validated before any call", async () => {
+    const filesRead = vi.fn(async () => ({ name: "x", size: 0, contentBase64: "" }));
+    const filesWrite = vi.fn(async () => ({ name: "x", size: 0 }));
+    for (const params of [{ key: "../etc/passwd" }, { key: "" }, { key: FILE_KEY, extra: 1 }, "junk"]) {
+      expect(await handleBridgeRequestAsync(request("f8", "os.files.read", params), handlers({ capabilities: [...FILE_APP_CAPABILITIES], filesRead })))
+        .toMatchObject({ ok: false, error: { code: "invalid-params" } });
+    }
+    expect(filesRead).not.toHaveBeenCalled();
+    for (const params of [{ key: FILE_KEY }, { key: FILE_KEY, contentBase64: "not base64!" }, { key: FILE_KEY, contentBase64: "a".repeat(16 * 1024 * 1024 + 8) }]) {
+      expect(await handleBridgeRequestAsync(request("f9", "os.files.write", params), handlers({ capabilities: [...FILE_APP_CAPABILITIES], filesWrite })))
+        .toMatchObject({ ok: false, error: { code: "invalid-params" } });
+    }
+    expect(filesWrite).not.toHaveBeenCalled();
+  });
+
+  test("bridge base64 roundtrips bounded content", () => {
+    const bytes = new Uint8Array([104, 101, 108, 108, 111]);
+    const encoded = encodeBridgeBase64(bytes);
+    expect(encoded).toBe("aGVsbG8=");
+    expect(decodeBridgeBase64(encoded!)).toEqual(bytes);
+    expect(decodeBridgeBase64("!!!")).toBeNull();
+    expect(decodeBridgeBase64("a".repeat(16 * 1024 * 1024 * 2))).toBeNull();
+    expect(encodeBridgeBase64(new Uint8Array(13 * 1024 * 1024))).toBeNull();
+  });
+});
+
+describe("app settings and network bridge", () => {
+  const capabilities = [...BRIDGE_CAPABILITY_LIST, BRIDGE_CAPABILITIES.settings, BRIDGE_CAPABILITIES.network] as const;
+  test("requires the declared settings and network capabilities", async () => {
+    const base = handlers();
+    expect(await handleBridgeRequestAsync(request("s1", "os.settings.get"), base)).toMatchObject({
+      ok: false, error: { code: "denied" }
+    });
+    expect(await handleBridgeRequestAsync(request("n1", "os.net.request", { url: "http://ha.local" }), base)).toMatchObject({
+      ok: false, error: { code: "denied" }
+    });
+  });
+  test("reads and writes the app's own settings", async () => {
+    const settings = vi.fn(async () => ({ values: { url: "http://ha.local" }, secrets: ["token"] }));
+    const setSettings = vi.fn(async (input: { values: Record<string, string | number | boolean | null> }) => ({
+      values: Object.fromEntries(Object.entries(input.values).filter((entry): entry is [string, string | number | boolean] => entry[1] !== null)),
+      secrets: []
+    }));
+    const withSettings = handlers({ capabilities, settings, setSettings });
+    expect(await handleBridgeRequestAsync(request("s2", "os.settings.get"), withSettings)).toMatchObject({
+      ok: true, result: { values: { url: "http://ha.local" }, secrets: ["token"] }
+    });
+    expect(await handleBridgeRequestAsync(request("s3", "os.settings.set", { values: { interval: 5, remember: true } }), withSettings)).toMatchObject({
+      ok: true
+    });
+    expect(setSettings).toHaveBeenCalledWith({ values: { interval: 5, remember: true } });
+  });
+  test("only forwards a well-formed network request", async () => {
+    const netRequest = vi.fn(async () => ({ status: 200, headers: {}, body: "{}", truncated: false }));
+    const withNetwork = handlers({ capabilities, netRequest });
+    expect(await handleBridgeRequestAsync(request("n2", "os.net.request", {
+      url: "http://ha.local:8123/api/states",
+      method: "POST",
+      headers: { Accept: "application/json" },
+      body: "{}",
+      secret: "ha.token",
+      maxBytes: 4096
+    }), withNetwork)).toMatchObject({ ok: true, result: { status: 200 } });
+    expect(netRequest).toHaveBeenCalledWith({
+      url: "http://ha.local:8123/api/states",
+      method: "POST",
+      headers: { Accept: "application/json" },
+      body: "{}",
+      secret: "ha.token",
+      maxBytes: 4096
+    });
+
+    for (const invalid of [
+      { url: "http://ha.local", method: "TRACE" },
+      { url: "", },
+      { url: "http://ha.local", headers: { Authorization: "Bearer x" } },
+      { url: "http://ha.local", secret: "Bad Key" },
+      { url: "http://ha.local", maxBytes: 1 },
+      { url: "http://ha.local", extra: true }
+    ]) {
+      expect(await handleBridgeRequestAsync(request("n3", "os.net.request", invalid), withNetwork)).toMatchObject({
+        ok: false, error: { code: "invalid-params" }
+      });
+    }
   });
 });

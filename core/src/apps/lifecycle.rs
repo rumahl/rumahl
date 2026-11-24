@@ -22,6 +22,27 @@ pub struct AppUninstallResult {
     revoked_grants: Vec<PermissionGrant>,
 }
 
+#[derive(Debug, Clone)]
+pub struct AppUpdateResult {
+    app: InstalledApp,
+    previous: InstalledApp,
+    deregistration: PlatformDeregistrationReport,
+}
+
+impl AppUpdateResult {
+    pub fn app(&self) -> &InstalledApp {
+        &self.app
+    }
+
+    pub fn previous(&self) -> &InstalledApp {
+        &self.previous
+    }
+
+    pub fn deregistration(&self) -> &PlatformDeregistrationReport {
+        &self.deregistration
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum AppLifecycleError {
     InvalidApp(InstalledAppError),
@@ -29,6 +50,8 @@ pub enum AppLifecycleError {
     InstalledAppConflict(InstalledAppRegistryError),
     PlatformRegistrationConflict(PlatformRegistrarError),
     InstallationNotFound,
+    /// An update must move forward; reinstalling the same version is not one.
+    VersionNotNewer,
 }
 
 impl AppLifecycle {
@@ -115,6 +138,60 @@ impl AppLifecycle {
         Ok(app)
     }
 
+    /// Replaces the manifest of an existing installation with a newer version.
+    ///
+    /// The installation keeps its identity, so grants, databases, OIDC
+    /// registration and the private data directory survive an update. Only the
+    /// derived platform registration is rebuilt from the new manifest, and it
+    /// happens atomically: a conflict leaves the previous installation intact.
+    pub fn update(
+        &self,
+        installation_id: &InstallationId,
+        manifest: AppManifest,
+        state: &mut PlatformState,
+    ) -> Result<AppUpdateResult, AppLifecycleError> {
+        let previous = state
+            .installed_apps()
+            .get_by_installation_id(installation_id)
+            .cloned()
+            .ok_or(AppLifecycleError::InstallationNotFound)?;
+        if manifest.version() <= previous.manifest().version() {
+            return Err(AppLifecycleError::VersionNotNewer);
+        }
+        let app = InstalledApp::restore(previous.identity().clone(), manifest, &self.validator)
+            .map_err(AppLifecycleError::InvalidApp)?;
+        let registration = PlatformRegistration::prepare(&app)
+            .map_err(AppLifecycleError::RegistrationPreparationFailed)?;
+
+        let mut staged = state.clone();
+        let deregistration = self.registrar.apply_deregistration(&previous, &mut staged);
+        staged
+            .installed_apps_mut()
+            .remove(installation_id)
+            .ok_or(AppLifecycleError::InstallationNotFound)?;
+        staged
+            .installed_apps()
+            .can_register(&app)
+            .map_err(AppLifecycleError::InstalledAppConflict)?;
+        self.registrar
+            .can_register(&registration, &staged)
+            .map_err(AppLifecycleError::PlatformRegistrationConflict)?;
+        staged
+            .installed_apps_mut()
+            .register(app.clone())
+            .map_err(AppLifecycleError::InstalledAppConflict)?;
+        self.registrar
+            .apply_registration(&registration, &mut staged)
+            .map_err(AppLifecycleError::PlatformRegistrationConflict)?;
+
+        *state = staged;
+        Ok(AppUpdateResult {
+            app,
+            previous,
+            deregistration,
+        })
+    }
+
     pub fn uninstall(
         &self,
         installation_id: &InstallationId,
@@ -196,6 +273,13 @@ impl fmt::Display for AppLifecycleError {
             Self::InstallationNotFound => {
                 write!(f, "app installation was not found")
             }
+
+            Self::VersionNotNewer => {
+                write!(
+                    f,
+                    "an app update must install a newer version than the current one"
+                )
+            }
         }
     }
 }
@@ -211,6 +295,8 @@ impl Error for AppLifecycleError {
 
             Self::PlatformRegistrationConflict(error) => Some(error),
 
+            Self::VersionNotNewer => None,
+
             Self::InstallationNotFound => None,
         }
     }
@@ -223,8 +309,8 @@ mod tests {
     use crate::{
         AppDatabaseDeclaration, AppDatabaseId, AppId, AppVersion, CapabilityId, CommandAction,
         CommandContributionDeclaration, Contribution, ContributionId, ContributionKind, EventName,
-        PermissionId, PermissionScope, PublisherId, SearchContributionDeclaration, UserId,
-        UserIdentity,
+        PermissionId, PermissionScope, PublisherId, ResourceKey, ResourceKind, ResourceNamespace,
+        ResourceRef, SearchContributionDeclaration, UserId, UserIdentity,
     };
 
     fn web_runtime() -> crate::RuntimeDescriptor {
@@ -287,6 +373,118 @@ mod tests {
             .unwrap();
 
         manifest
+    }
+
+    #[test]
+    fn updates_to_a_newer_version_keeping_identity_grants_and_data() {
+        let lifecycle = AppLifecycle::new();
+        let mut state = PlatformState::new();
+        let app = lifecycle.install(manifest(), &mut state).unwrap();
+        let installation_id = *app.installation_id();
+        let mut grants = InMemoryGrantStore::new();
+        grants.insert(
+            PermissionGrant::new(
+                app.identity().clone().into(),
+                PermissionId::parse("rumahl.files.read").unwrap(),
+                PermissionScope::Explicit,
+                vec![ResourceRef::new(
+                    ResourceNamespace::parse("rumahl.files").unwrap(),
+                    ResourceKind::parse("file").unwrap(),
+                    ResourceKey::parse("document-1").unwrap(),
+                )],
+                UserIdentity::new(UserId::new()).into(),
+            )
+            .unwrap(),
+        );
+
+        let mut next = manifest();
+        next.set_version(AppVersion::new(1, 1, 0));
+        next.add_contribution(
+            CommandContributionDeclaration::new(
+                ContributionId::parse("com.rumahl.notes.export").unwrap(),
+                "Export Notes",
+                CommandAction::open_app(AppId::parse("com.rumahl.notes").unwrap()),
+            )
+            .unwrap()
+            .into(),
+        )
+        .unwrap();
+
+        let result = lifecycle
+            .update(&installation_id, next, &mut state)
+            .unwrap();
+
+        assert_eq!(result.app().installation_id(), &installation_id);
+        assert_eq!(
+            *result.previous().manifest().version(),
+            AppVersion::new(1, 0, 0)
+        );
+        assert_eq!(state.installed_apps().len(), 1);
+        assert_eq!(
+            *state.installed_apps().apps()[0].manifest().version(),
+            AppVersion::new(1, 1, 0)
+        );
+        // The new command is registered, the old ones survive, data bindings
+        // and grants are untouched.
+        assert_eq!(state.command_registry().len(), 2);
+        assert_eq!(state.contribution_registry().len(), 3);
+        assert_eq!(state.database_registry().len(), 1);
+        assert_eq!(grants.len(), 1);
+        assert_eq!(state.installed_apps().apps()[0].identity(), app.identity());
+    }
+
+    #[test]
+    fn updates_require_a_newer_version_and_the_same_publisher() {
+        let lifecycle = AppLifecycle::new();
+        let mut state = PlatformState::new();
+        let app = lifecycle.install(manifest(), &mut state).unwrap();
+        let installation_id = *app.installation_id();
+
+        // Same version.
+        assert_eq!(
+            lifecycle
+                .update(&installation_id, manifest(), &mut state)
+                .unwrap_err(),
+            AppLifecycleError::VersionNotNewer
+        );
+        // Older version.
+        let mut older = manifest();
+        older.set_version(AppVersion::new(0, 9, 0));
+        assert_eq!(
+            lifecycle
+                .update(&installation_id, older, &mut state)
+                .unwrap_err(),
+            AppLifecycleError::VersionNotNewer
+        );
+        // Different publisher.
+        let mut foreign = AppManifest::new(
+            AppId::parse("com.rumahl.notes").unwrap(),
+            PublisherId::parse("com.example").unwrap(),
+            AppVersion::new(2, 0, 0),
+            "Notes",
+            web_runtime(),
+        )
+        .unwrap();
+        foreign.set_version(AppVersion::new(2, 0, 0));
+        assert!(matches!(
+            lifecycle.update(&installation_id, foreign, &mut state),
+            Err(AppLifecycleError::InvalidApp(
+                InstalledAppError::PublisherIdMismatch
+            ))
+        ));
+        // Unknown installation.
+        assert_eq!(
+            lifecycle
+                .update(&InstallationId::new(), manifest(), &mut state)
+                .unwrap_err(),
+            AppLifecycleError::InstallationNotFound
+        );
+        // Nothing changed on any failed attempt.
+        assert_eq!(state.installed_apps().len(), 1);
+        assert_eq!(
+            *state.installed_apps().apps()[0].manifest().version(),
+            AppVersion::new(1, 0, 0)
+        );
     }
 
     #[test]

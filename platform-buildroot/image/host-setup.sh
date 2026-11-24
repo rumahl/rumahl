@@ -14,7 +14,7 @@ pnpm_version=11.19.0
 apt_packages=(
   build-essential git cpio unzip rsync bc file wget curl patch gettext
   pkg-config gawk diffutils python3 perl gzip bzip2 tar sed
-  libncurses-dev libelf-dev libssl-dev acl attr
+  libncurses-dev libelf-dev libssl-dev acl attr ccache
   qemu-system-x86 qemu-utils swtpm swtpm-tools
 )
 

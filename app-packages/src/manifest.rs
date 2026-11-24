@@ -516,13 +516,14 @@ fn parse_setting(raw: RawSetting) -> Result<AppSettingDeclaration, PackageManife
     let key = AppSettingKey::parse(&raw.key).map_err(|_| PackageManifestError::InvalidSetting)?;
 
     let kind = match raw.kind.as_str() {
-        "text" | "number" | "boolean" => {
+        "text" | "number" | "boolean" | "secret" => {
             if !raw.options.is_empty() {
                 return Err(PackageManifestError::InvalidSetting);
             }
             match raw.kind.as_str() {
                 "text" => AppSettingKind::Text,
                 "number" => AppSettingKind::Number,
+                "secret" => AppSettingKind::Secret,
                 _ => AppSettingKind::Boolean,
             }
         }
@@ -790,10 +791,10 @@ mod tests {
     #[test]
     fn parses_typed_settings_into_the_app_manifest() {
         let bytes = manifest_with_settings(
-            r#"[{"key":"server.url","title":"Server URL","description":"Backend endpoint","type":"text","required":true},{"key":"mode","title":"Mode","type":"select","options":[{"value":"fast","label":"Fast"},{"value":"safe","label":"Safe"}]},{"key":"retries","title":"Retries","type":"number"},{"key":"enabled","title":"Enabled","type":"boolean"}]"#,
+            r#"[{"key":"server.url","title":"Server URL","description":"Backend endpoint","type":"text","required":true},{"key":"mode","title":"Mode","type":"select","options":[{"value":"fast","label":"Fast"},{"value":"safe","label":"Safe"}]},{"key":"retries","title":"Retries","type":"number"},{"key":"enabled","title":"Enabled","type":"boolean"},{"key":"server.token","title":"Access token","type":"secret","required":true}]"#,
         );
         let manifest = PackageManifest::from_bytes(bytes.as_bytes()).unwrap();
-        assert_eq!(manifest.app().settings().len(), 4);
+        assert_eq!(manifest.app().settings().len(), 5);
 
         let app = manifest.to_app_manifest().unwrap();
         let settings = app.settings();
@@ -804,6 +805,8 @@ mod tests {
         assert_eq!(settings[1].kind().as_str(), "select");
         assert_eq!(settings[2].kind().as_str(), "number");
         assert_eq!(settings[3].kind().as_str(), "boolean");
+        assert_eq!(settings[4].kind().as_str(), "secret");
+        assert!(settings[4].is_required());
     }
 
     #[test]

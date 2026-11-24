@@ -37,6 +37,12 @@ export type BridgeMethod =
   | "os.warnings.publish"
   | "os.warnings.test"
   | "os.warnings.clear"
+  | "os.files.request"
+  | "os.files.read"
+  | "os.files.write"
+  | "os.settings.get"
+  | "os.settings.set"
+  | "os.net.request"
   | "pets.state"
   | "pets.interact"
   | "pets.action.register"
@@ -54,6 +60,12 @@ export const BRIDGE_METHODS: readonly BridgeMethod[] = [
   "os.warnings.publish",
   "os.warnings.test",
   "os.warnings.clear",
+  "os.files.request",
+  "os.files.read",
+  "os.files.write",
+  "os.settings.get",
+  "os.settings.set",
+  "os.net.request",
   "pets.state",
   "pets.interact",
   "pets.action.register",
@@ -76,7 +88,26 @@ export const BRIDGE_CAPABILITIES = {
   /** Explicit opt-in for urgent, non-auto-dismissing emergency notifications. */
   emergency: "com.rumahl.os.emergency",
   /** Register as an OS weather-warning source and publish/clear warnings. */
-  warnings: "com.rumahl.os.warnings"
+  warnings: "com.rumahl.os.warnings",
+  /**
+   * Filesystem permissions are OS-owned manifest permissions, not free-form
+   * capability ids: the picker, read and write methods map onto the catalog
+   * entries the platform defines, so an app must declare exactly the one it
+   * uses. `os.files.request` is satisfied by either.
+   */
+  filesRead: "rumahl.files.read",
+  filesWrite: "rumahl.files.write",
+  /**
+   * Read and write this installation's own manifest settings. The shell never
+   * returns secret values, only whether they are configured.
+   */
+  settings: "com.rumahl.os.settings",
+  /**
+   * Ask the OS to perform an HTTP(S) request to an origin the user explicitly
+   * approved for this installation. Requests are brokered server-side; the
+   * app itself never gains a socket to the target.
+   */
+  network: "com.rumahl.os.network"
 } as const;
 
 /**
@@ -100,6 +131,13 @@ export function capabilityForMethod(method: string): string | null {
   if (method.startsWith("os.window.")) return BRIDGE_CAPABILITIES.window;
   if (method === "os.capabilities.invoke") return BRIDGE_CAPABILITIES.capabilities;
   if (method.startsWith("os.warnings.")) return BRIDGE_CAPABILITIES.warnings;
+  if (method === "os.files.read") return BRIDGE_CAPABILITIES.filesRead;
+  if (method === "os.files.write") return BRIDGE_CAPABILITIES.filesWrite;
+  if (method.startsWith("os.settings.")) return BRIDGE_CAPABILITIES.settings;
+  if (method === "os.net.request") return BRIDGE_CAPABILITIES.network;
+  // The picker is not tied to one permission: it is available to apps that
+  // declared either filesystem permission. The shell gates it itself.
+  if (method === "os.files.request") return BRIDGE_CAPABILITIES.filesRead;
   if (method.startsWith("pets.")) return BRIDGE_CAPABILITIES.pets;
   return null;
 }
@@ -129,6 +167,43 @@ export interface BridgeTheme {
   accent: string;
   reducedMotion: boolean;
   palette: BridgeThemePalette;
+}
+
+/** A non-secret value an app stores in its own manifest settings. */
+export type BridgeSettingValue = string | number | boolean;
+
+/** The app's own settings. Secret values are represented by key only. */
+export interface BridgeSettings {
+  values: Record<string, BridgeSettingValue>;
+  secrets: string[];
+}
+
+/** One write to the app's own settings. `null` clears a stored value. */
+export interface BridgeSettingsWrite {
+  values: Record<string, BridgeSettingValue | null>;
+}
+
+/** One brokered HTTP(S) request to a user-approved origin. */
+export interface BridgeNetworkRequest {
+  url: string;
+  method?: "GET" | "POST" | "PUT" | "PATCH" | "DELETE" | "HEAD";
+  /** Only a small allow-list is accepted; `Authorization` is never app-supplied. */
+  headers?: Record<string, string>;
+  body?: string;
+  /**
+   * Name of a secret setting whose value the OS attaches as
+   * `Authorization: Bearer …`. The plaintext never enters the app.
+   */
+  secret?: string;
+  /** Response cap in bytes; the OS clamps it. */
+  maxBytes?: number;
+}
+
+export interface BridgeNetworkResponse {
+  status: number;
+  headers: Record<string, string>;
+  body: string;
+  truncated?: boolean;
 }
 
 export interface BridgeNotificationButton {
@@ -278,6 +353,46 @@ export interface BridgePetInteraction {
   source?: string;
 }
 
+
+/** Which filesystem permission an app wants to exercise through the picker. */
+export type BridgeFilesAccess = "read" | "write";
+
+/** Params for `os.files.request`. */
+export interface BridgeFilesRequestParams {
+  access: BridgeFilesAccess;
+}
+
+/** One personal file the user picked for the app. */
+export interface BridgeFilesFile {
+  /** Personal-file id; only ever learned from the user's own picker choice. */
+  id: string;
+  name: string;
+  size: number;
+}
+
+/** Result of `os.files.request` once the user granted access. */
+export interface BridgeFilesRequestResult {
+  files: BridgeFilesFile[];
+}
+
+/** Result of `os.files.read`: the file's content, base64-encoded. */
+export interface BridgeFilesReadResult {
+  name: string;
+  size: number;
+  contentBase64: string;
+}
+
+/** Params for `os.files.write`. */
+export interface BridgeFilesWriteParams {
+  key: string;
+  contentBase64: string;
+}
+
+/** Result of `os.files.write`. */
+export interface BridgeFilesWriteResult {
+  name: string;
+  size: number;
+}
 
 /** A resource a capability is invoked against. */
 export interface BridgeCapabilityResource {

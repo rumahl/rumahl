@@ -55,7 +55,28 @@ pub(super) fn initialize(connection: &Connection) -> rusqlite::Result<()> {
          );
 
          CREATE INDEX IF NOT EXISTS session_credential_session_id
-         ON session_credential(session_id);",
+         ON session_credential(session_id);
+
+         CREATE TABLE IF NOT EXISTS account_group (
+             group_id TEXT PRIMARY KEY,
+             name TEXT NOT NULL UNIQUE COLLATE NOCASE
+         );
+
+         CREATE TABLE IF NOT EXISTS account_group_member (
+             group_id TEXT NOT NULL REFERENCES account_group(group_id) ON DELETE CASCADE,
+             user_id TEXT NOT NULL REFERENCES local_account(user_id) ON DELETE CASCADE,
+             PRIMARY KEY (group_id, user_id)
+         );
+
+         CREATE INDEX IF NOT EXISTS account_group_member_user_id
+         ON account_group_member(user_id);
+
+         CREATE TABLE IF NOT EXISTS policy_assignment (
+             subject TEXT NOT NULL,
+             key TEXT NOT NULL,
+             value TEXT NOT NULL,
+             PRIMARY KEY (subject, key)
+         );",
     )?;
     migrate_account_roles(connection)
 }

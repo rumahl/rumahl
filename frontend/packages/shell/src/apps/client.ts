@@ -4,7 +4,7 @@ import { APP_ID } from "../routing/paths";
 const INSTALLATION = /^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 const LEASE = /^[0-9a-f]{64}$/;
 const SETTING_KEY = /^[a-z0-9._-]{1,64}$/;
-const SETTING_TYPES = ["text", "number", "boolean", "select"] as const;
+const SETTING_TYPES = ["text", "number", "boolean", "secret", "select"] as const;
 export type AppSettingType = (typeof SETTING_TYPES)[number];
 export interface AppSettingOption {
   value: string;
@@ -22,6 +22,8 @@ export interface AppSettings {
   id: string;
   installationId: string;
   manifest: readonly AppSetting[];
+  values: Readonly<Record<string, string | number | boolean>>;
+  secrets: readonly string[];
   extended: null;
 }
 export interface AppDataEntry {
@@ -314,7 +316,168 @@ export function parseAppSettings(value: unknown): AppSettings {
       options,
     };
   });
-  return { id: object.id, installationId: object.installationId, manifest, extended: null };
+  const declared = new Map(manifest.map((setting) => [setting.key, setting]));
+  const rawValues = object.values ?? {};
+  if (typeof rawValues !== "object" || rawValues === null || Array.isArray(rawValues))
+    throw new Error("invalid app setting values");
+  const values: Record<string, string | number | boolean> = {};
+  for (const [key, value] of Object.entries(rawValues)) {
+    const setting = declared.get(key);
+    if (!setting || setting.type === "secret") throw new Error("invalid app setting value");
+    if (setting.type === "boolean") {
+      if (typeof value !== "boolean") throw new Error("invalid app setting value");
+    } else if (setting.type === "number") {
+      if (typeof value !== "number" || !Number.isFinite(value)) throw new Error("invalid app setting value");
+    } else if (typeof value !== "string") {
+      throw new Error("invalid app setting value");
+    }
+    values[key] = value as string | number | boolean;
+  }
+  const rawSecrets = object.secrets ?? [];
+  if (!Array.isArray(rawSecrets) || rawSecrets.length > 64)
+    throw new Error("invalid app setting secrets");
+  const secrets: string[] = [];
+  for (const key of rawSecrets) {
+    const setting = typeof key === "string" ? declared.get(key) : undefined;
+    if (!setting || setting.type !== "secret" || secrets.includes(key as string))
+      throw new Error("invalid app setting secret");
+    secrets.push(key as string);
+  }
+  return { id: object.id, installationId: object.installationId, manifest, values, secrets, extended: null };
+}
+export async function updateAppSettings(
+  request: ShellRequest,
+  app: InstalledApp,
+  values: Readonly<Record<string, string | number | boolean | null>>,
+  signal: AbortSignal
+): Promise<AppSettings> {
+  return parseAppSettings(await payload(await request(
+    `/api/v1/shell/apps/${encodeURIComponent(app.id)}/settings?installationId=${encodeURIComponent(app.installationId)}`,
+    {
+      method: "PUT", cache: "no-store", credentials: "same-origin", signal,
+      headers: { Accept: "application/json", "Content-Type": "application/json" },
+      body: JSON.stringify({ values }),
+    }
+  ), 256 * 1024));
+}
+export interface AppNetworkOrigin {
+  origin: string;
+  validity: "session" | "durable";
+  expiresAt: number | null;
+}
+export class NetworkConsentRequiredError extends Error {
+  constructor(readonly origin: string) {
+    super("network consent required");
+    this.name = "NetworkConsentRequiredError";
+  }
+}
+export class NetworkDeniedError extends Error {
+  constructor(readonly reason: string) {
+    super(reason);
+    this.name = "NetworkDeniedError";
+  }
+}
+export interface AppNetworkRequest {
+  url: string;
+  method?: "GET" | "POST" | "PUT" | "PATCH" | "DELETE" | "HEAD";
+  headers?: Record<string, string>;
+  body?: string;
+  secret?: string;
+  maxBytes?: number;
+}
+export interface AppNetworkResponse {
+  status: number;
+  headers: Record<string, string>;
+  body: string;
+  truncated: boolean;
+}
+function networkError(value: unknown): Error {
+  const object = typeof value === "object" && value !== null ? value as Record<string, unknown> : {};
+  if (object.reason === "approval-required" && typeof object.origin === "string")
+    return new NetworkConsentRequiredError(object.origin);
+  return new NetworkDeniedError(typeof object.reason === "string" ? object.reason : "network-denied");
+}
+export async function requestAppNetwork(
+  request: ShellRequest,
+  app: InstalledApp,
+  input: AppNetworkRequest,
+  signal: AbortSignal
+): Promise<AppNetworkResponse> {
+  const response = await request(
+    `/api/v1/shell/apps/${encodeURIComponent(app.id)}/network/request?installationId=${encodeURIComponent(app.installationId)}`,
+    {
+      method: "POST", cache: "no-store", credentials: "same-origin", signal,
+      headers: { Accept: "application/json", "Content-Type": "application/json" },
+      body: JSON.stringify(input),
+    }
+  );
+  const value = await response.json().catch(() => null);
+  if (!response.ok) throw networkError(value);
+  const object = record(value);
+  if (object.networkVersion !== 1 || typeof object.status !== "number" ||
+      !Number.isInteger(object.status) || object.status < 100 || object.status > 599 ||
+      typeof object.body !== "string" || object.body.length > 3 * 1024 * 1024 ||
+      typeof object.truncated !== "boolean")
+    throw new Error("invalid network response");
+  const headers = record(object.headers ?? {});
+  const parsedHeaders: Record<string, string> = {};
+  for (const [key, entry] of Object.entries(headers)) {
+    if (typeof entry !== "string") throw new Error("invalid network response header");
+    parsedHeaders[key] = entry;
+  }
+  return { status: object.status, headers: parsedHeaders, body: object.body, truncated: object.truncated };
+}
+export async function fetchNetworkOrigins(
+  request: ShellRequest,
+  app: InstalledApp,
+  signal: AbortSignal
+): Promise<readonly AppNetworkOrigin[]> {
+  const value = record(await payload(await request(
+    `/api/v1/shell/apps/${encodeURIComponent(app.id)}/network/consent?installationId=${encodeURIComponent(app.installationId)}`,
+    { cache: "no-store", credentials: "same-origin", headers: { Accept: "application/json" }, signal }
+  ), 64 * 1024));
+  if (!Array.isArray(value.origins) || value.origins.length > 64) throw new Error("invalid network origins");
+  return value.origins.map((entry: unknown) => {
+    const origin = record(entry);
+    if (typeof origin.origin !== "string" || !origin.origin ||
+        (origin.validity !== "session" && origin.validity !== "durable") ||
+        !(origin.expiresAt === null || (typeof origin.expiresAt === "number" && Number.isInteger(origin.expiresAt))))
+      throw new Error("invalid network origin");
+    return { origin: origin.origin, validity: origin.validity, expiresAt: origin.expiresAt } as AppNetworkOrigin;
+  });
+}
+export async function grantNetworkOrigin(
+  request: ShellRequest,
+  app: InstalledApp,
+  origin: string,
+  validity: "session" | "durable",
+  signal: AbortSignal
+): Promise<AppNetworkOrigin> {
+  const value = record(await payload(await request(
+    `/api/v1/shell/apps/${encodeURIComponent(app.id)}/network/consent?installationId=${encodeURIComponent(app.installationId)}`,
+    {
+      method: "PUT", cache: "no-store", credentials: "same-origin", signal,
+      headers: { Accept: "application/json", "Content-Type": "application/json" },
+      body: JSON.stringify({ origin, validity }),
+    }
+  ), 64 * 1024));
+  if (typeof value.origin !== "string" || (value.validity !== "session" && value.validity !== "durable") ||
+      !(value.expiresAt === null || typeof value.expiresAt === "number"))
+    throw new Error("invalid network origin");
+  return { origin: value.origin, validity: value.validity, expiresAt: value.expiresAt };
+}
+export async function revokeNetworkOrigin(
+  request: ShellRequest,
+  app: InstalledApp,
+  origin: string,
+  signal: AbortSignal
+): Promise<void> {
+  const response = await request(
+    `/api/v1/shell/apps/${encodeURIComponent(app.id)}/network/consent?installationId=${encodeURIComponent(app.installationId)}&origin=${encodeURIComponent(origin)}`,
+    { method: "DELETE", cache: "no-store", credentials: "same-origin", signal,
+      headers: { Accept: "application/json" } }
+  );
+  if (!response.ok) throw new Error("network consent could not be revoked");
 }
 export async function fetchAppSettings(request: ShellRequest, app: InstalledApp, signal: AbortSignal): Promise<AppSettings> {
   return parseAppSettings(await payload(await request(
@@ -349,6 +512,197 @@ export function parseAppData(value: unknown): AppData {
     return { kind: "file", path: object.path, size: object.size, contentType: object.contentType, text: object.text };
   }
   throw new Error("invalid app data kind");
+}
+export interface AppImageEntry { name: string; value: string }
+export interface AppImageEnvironment {
+  runtime: "web" | "native" | "container";
+  image: string | null;
+  entries: AppImageEntry[];
+}
+export function parseAppImageEnvironment(value: unknown, app: AppRuntimeTarget): AppImageEnvironment {
+  const object = record(value);
+  if (typeof object.id !== "string" || typeof object.installationId !== "string" ||
+      object.id !== app.id || object.installationId !== app.installationId ||
+      (object.runtime !== "web" && object.runtime !== "native" && object.runtime !== "container") ||
+      (object.image !== null && typeof object.image !== "string") ||
+      (object.image !== null && object.image.length > 512) || !Array.isArray(object.entries))
+    throw new Error("invalid app image environment");
+  const entries: AppImageEntry[] = [];
+  for (const entry of object.entries) {
+    const item = record(entry);
+    if (entries.length >= 64 || typeof item.name !== "string" || typeof item.value !== "string" ||
+        !/^[A-Za-z0-9_.-]{1,128}$/.test(item.name) || item.value.length > 512)
+      throw new Error("invalid app image environment entry");
+    entries.push({ name: item.name, value: item.value });
+  }
+  return { runtime: object.runtime, image: object.image, entries };
+}
+export async function fetchAppImageEnvironment(request: ShellRequest, app: AppRuntimeTarget, device: string, signal: AbortSignal): Promise<AppImageEnvironment> {
+  const query = new URLSearchParams({ installationId: app.installationId, device });
+  return parseAppImageEnvironment(await payload(await request(
+    `/api/v1/shell/apps/${encodeURIComponent(app.id)}/image?${query.toString()}`,
+    { cache: "no-store", credentials: "same-origin", headers: { Accept: "application/json" }, signal }
+  ), 16 * 1024), app);
+}
+/** One manifest permission request, for the consent view. */
+export interface AppPermissionRequestInfo {
+  permission: string;
+  scope: string;
+  required: boolean;
+  reason?: string;
+}
+/** One active grant issued by the calling user. */
+export interface AppGrantInfo {
+  id: string;
+  permission: string;
+  scope: string;
+  resources: string[];
+  validity: "session" | "durable";
+  expiresAt: number | null;
+}
+export interface AppGrantState {
+  requests: AppPermissionRequestInfo[];
+  grants: AppGrantInfo[];
+}
+export function parseAppGrantState(value: unknown, app: AppRuntimeTarget): AppGrantState {
+  const object = record(value);
+  if (object.id !== app.id || object.installationId !== app.installationId ||
+      !Array.isArray(object.requests) || !Array.isArray(object.grants))
+    throw new Error("invalid app grant state");
+  const requests: AppPermissionRequestInfo[] = [];
+  for (const entry of object.requests) {
+    const item = record(entry);
+    if (requests.length >= 64 || typeof item.permission !== "string" || item.permission.length > 255 ||
+        typeof item.scope !== "string" || item.scope.length > 32 || typeof item.required !== "boolean" ||
+        (item.reason !== undefined && typeof item.reason !== "string") || (item.reason as string).length > 512)
+      throw new Error("invalid app permission request");
+    requests.push({
+      permission: item.permission, scope: item.scope, required: item.required,
+      ...(item.reason === undefined ? {} : { reason: item.reason })
+    });
+  }
+  const grants: AppGrantInfo[] = [];
+  for (const entry of object.grants) {
+    const item = record(entry);
+    if (grants.length >= 64 || typeof item.id !== "string" || !/^[0-9a-f-]{36}$/.test(item.id) ||
+        typeof item.permission !== "string" || item.permission.length > 255 ||
+        typeof item.scope !== "string" || item.scope.length > 32 ||
+        (item.validity !== "session" && item.validity !== "durable") ||
+        (item.expiresAt !== null && typeof item.expiresAt !== "number") ||
+        !Array.isArray(item.resources) || item.resources.length > 64 ||
+        item.resources.some((resource: unknown) => typeof resource !== "string" || resource.length > 320))
+      throw new Error("invalid app grant");
+    grants.push({
+      id: item.id, permission: item.permission, scope: item.scope, resources: item.resources,
+      validity: item.validity, expiresAt: item.expiresAt
+    });
+  }
+  return { requests, grants };
+}
+export async function fetchAppGrantState(request: ShellRequest, app: AppRuntimeTarget, signal: AbortSignal): Promise<AppGrantState> {
+  return parseAppGrantState(await payload(await request(
+    `/api/v1/shell/apps/${encodeURIComponent(app.id)}/grants?installationId=${encodeURIComponent(app.installationId)}`,
+    { cache: "no-store", credentials: "same-origin", headers: { Accept: "application/json" }, signal }
+  ), 4096), app);
+}
+export interface GrantIssueInput {
+  permission: "rumahl.files.read" | "rumahl.files.write";
+  resources: string[];
+  validity: "session" | "durable";
+  /** Seconds from now; only valid with `durable`. */
+  expiresInSeconds?: number;
+  /** Required for a durable `rumahl.files.write` consent. */
+  password?: string;
+}
+export async function issueAppGrant(request: ShellRequest, app: AppRuntimeTarget, issue: GrantIssueInput, signal: AbortSignal): Promise<AppGrantInfo> {
+  const body: Record<string, unknown> = {
+    permission: issue.permission,
+    resources: issue.resources,
+    validity: issue.validity,
+    ...(issue.expiresInSeconds === undefined ? {} : { expiresIn: issue.expiresInSeconds }),
+    ...(issue.password === undefined ? {} : { password: issue.password })
+  };
+  return parseAppGrant(await payload(await request(
+    `/api/v1/shell/apps/${encodeURIComponent(app.id)}/grants?installationId=${encodeURIComponent(app.installationId)}`,
+    { method: "PUT", cache: "no-store", credentials: "same-origin", signal,
+      headers: { Accept: "application/json", "Content-Type": "application/json" },
+      body: JSON.stringify(body) }
+  ), 4096), app);
+}
+function parseAppGrant(value: unknown, app: AppRuntimeTarget): AppGrantInfo {
+  const object = record(value);
+  if (object.id !== app.id || object.installationId !== app.installationId ||
+      typeof object.grantId !== "string" || !/^[0-9a-f-]{36}$/.test(object.grantId) ||
+      typeof object.permission !== "string" || (object.validity !== "session" && object.validity !== "durable") ||
+      !Array.isArray(object.resources) || object.resources.length > 64 ||
+      object.resources.some((resource: unknown) => typeof resource !== "string" || resource.length > 320))
+    throw new Error("invalid app grant");
+  return {
+    id: object.grantId, permission: object.permission, scope: "explicit",
+    resources: object.resources, validity: object.validity, expiresAt: null
+  };
+}
+export async function revokeAppGrant(request: ShellRequest, app: AppRuntimeTarget, grantId: string, signal: AbortSignal): Promise<void> {
+  if (!/^[0-9a-f-]{36}$/.test(grantId)) throw new Error("invalid grant id");
+  const response = await request(
+    `/api/v1/shell/apps/${encodeURIComponent(app.id)}/grants/${encodeURIComponent(grantId)}?installationId=${encodeURIComponent(app.installationId)}`,
+    { method: "DELETE", cache: "no-store", credentials: "same-origin", signal,
+      headers: { Accept: "application/json" } }
+  );
+  if (!response.ok && response.status !== 204) throw new Error(response.status === 403 ? "denied" : "unavailable");
+}
+export interface AppStorage {
+  usedBytes: number;
+  quotaBytes: number;
+}
+export function parseAppStorage(value: unknown, app: AppRuntimeTarget): AppStorage {
+  const object = record(value);
+  if (object.id !== app.id || object.installationId !== app.installationId ||
+      typeof object.usedBytes !== "number" || !Number.isSafeInteger(object.usedBytes) || object.usedBytes < 0 ||
+      typeof object.quotaBytes !== "number" || !Number.isSafeInteger(object.quotaBytes) || object.quotaBytes <= 0 ||
+      object.usedBytes > object.quotaBytes * 1024)
+    throw new Error("invalid app storage");
+  return { usedBytes: object.usedBytes, quotaBytes: object.quotaBytes };
+}
+export async function fetchAppStorage(request: ShellRequest, app: AppRuntimeTarget, device: string, signal: AbortSignal): Promise<AppStorage> {
+  const query = new URLSearchParams({ installationId: app.installationId, device });
+  return parseAppStorage(await payload(await request(
+    `/api/v1/shell/apps/${encodeURIComponent(app.id)}/storage?${query.toString()}`,
+    { cache: "no-store", credentials: "same-origin", headers: { Accept: "application/json" }, signal }
+  ), 4096), app);
+}
+/** Reads one personal file through the app's grants. */
+export async function readAppFileContent(request: ShellRequest, app: AppRuntimeTarget, key: string, signal: AbortSignal): Promise<{ name: string; bytes: Uint8Array }> {
+  const response = await request(
+    `/api/v1/shell/apps/${encodeURIComponent(app.id)}/files/content?installationId=${encodeURIComponent(app.installationId)}&key=${encodeURIComponent(key)}`,
+    { cache: "no-store", credentials: "same-origin", signal, headers: { Accept: "application/octet-stream" } }
+  );
+  if (!response.ok) throw new Error(response.status === 403 ? "denied" : "unavailable");
+  const buffer = new Uint8Array(await response.arrayBuffer());
+  if (buffer.length > 16 * 1024 * 1024) throw new Error("unavailable");
+  const name = dispositionFilename(response.headers.get("content-disposition")) ?? "file";
+  return { name, bytes: buffer };
+}
+/** Writes one personal file through the app's grants. */
+export async function writeAppFileContent(
+  request: ShellRequest, app: AppRuntimeTarget, key: string, bytes: Uint8Array, signal: AbortSignal
+): Promise<{ name: string; size: number }> {
+  const response = await request(
+    `/api/v1/shell/apps/${encodeURIComponent(app.id)}/files/content?installationId=${encodeURIComponent(app.installationId)}&key=${encodeURIComponent(key)}`,
+    { method: "PUT", cache: "no-store", credentials: "same-origin", signal,
+      headers: { Accept: "application/json", "Content-Type": "application/octet-stream" },
+      body: new Blob([bytes as BlobPart]) }
+  );
+  if (!response.ok) throw new Error(response.status === 403 ? "denied" : "unavailable");
+  const object = record(await payload(response, 4096));
+  if (object.outcome !== "allowed" || typeof object.name !== "string" || typeof object.size !== "number")
+    throw new Error("invalid app file write");
+  return { name: object.name, size: object.size };
+}
+function dispositionFilename(disposition: string | null): string | null {
+  if (!disposition) return null;
+  const match = /filename="((?:[^"\\]|\\.)*)"/.exec(disposition);
+  return match?.[1] ?? null;
 }
 export async function fetchAppData(request: ShellRequest, app: InstalledApp, path: string, device: string, signal: AbortSignal): Promise<AppData> {
   const query = new URLSearchParams({ installationId: app.installationId, device, path });

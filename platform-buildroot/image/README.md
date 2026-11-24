@@ -1,5 +1,33 @@
 # Buildroot browser milestone
 
+## One-command acceptance
+
+On a fresh Ubuntu 24.04 host, three commands take a clean clone to a fully
+checked QEMU appliance:
+
+```sh
+# 1. host prerequisites (root for apt; also prints the hosts-entry line)
+sudo platform-buildroot/image/host-setup.sh
+
+# 2. once per host: resolve the QEMU origin locally
+echo '127.0.0.1 rumahl.home.arpa' | sudo tee -a /etc/hosts
+
+# 3. build, boot and check — unattended end to end
+platform-buildroot/image/acceptance.sh
+```
+
+`acceptance.sh` runs the whole pipeline: preflight (tools, ≥ 20 GiB free
+disk, hosts entry, free port 8443), image build with host ccache
+(`ccache.fragment`, reuse makes rebuilds minutes instead of hours), dev seed
+provisioning (alice/bob accounts, development CA, ext4 data disk), an
+unattended QEMU boot, the HTTPS acceptance checks from
+`tests/e2e/hardware/check.py`, and a clean VM shutdown. Everything reusable
+lands under `buildroot/acceptance/` (Buildroot output, seed, data disk,
+`acceptance.out` report, `qemu.log`). Useful flags: `--skip-build` after a
+code change that only touches staged assets, `--fresh` to reprovision the
+seed, `--tpm` to exercise the sealed secret store, `--keep-vm` to keep the
+appliance up for manual poking afterwards.
+
 This is a new, small `BR2_EXTERNAL` tree, informed by the prototype rather than
 copied from it. The first target is QEMU x86-64. It uses the Buildroot-maintained
 QEMU kernel configuration and hash files, systemd, Node with ICU and nginx.
@@ -32,7 +60,10 @@ platform-buildroot/image/build.sh
 ```
 
 It defaults to `<repo>/buildroot/{buildroot-<version>,output,artifacts}` and
-accepts `--source`, `--output`, `--artifacts`, `--download` and `--jobs`. The
+accepts `--source`, `--output`, `--artifacts`, `--download`, `--jobs`,
+`--defconfig`, `--trust-store`, `--first-boot-env` and `--config-fragment`
+(repeatable; `image/ccache.fragment` enables the Buildroot host ccache, its
+directory defaults to `~/.cache/buildroot`). The
 manual steps, and the variables they export, are:
 
 Use a Linux build host with the [Buildroot host prerequisites](https://buildroot.org/downloads/manual/manual.html#requirement-mandatory).
@@ -78,6 +109,55 @@ groups. nginx's `www-data` user belongs only to `rumahl-web`, while only the
 platform and renderer share `rumahl-ssr`. The platform has no Docker membership.
 TLS is configured by the HTTPS edge; the renderer cannot access account SQLite.
 
+## Real x86-64 hardware (UEFI)
+
+`rumahl_x86_64_uefi_defconfig` builds a GPT disk image with an EFI system
+partition, a read-only `rumahl-root` ext4 partition and an empty
+`rumahl-data` partition. GRUB loads the kernel from the ESP; the data partition
+is mounted at `/var` and provides `/home` and `/apps` bind mounts.
+
+```sh
+platform-buildroot/image/build.sh \
+  --defconfig rumahl_x86_64_uefi_defconfig \
+  --output <repo>/buildroot/uefi-output \
+  --artifacts <repo>/buildroot/uefi-artifacts \
+  --trust-store <package-trust-store.json> \
+  --first-boot-env <first-boot.env>   # omit on a real device
+```
+
+Flash the whole disk image (this **erases** the target device):
+
+```sh
+sudo dd if=<repo>/buildroot/uefi-output/images/rumahl-disk.img \
+  of=/dev/sdX bs=4M conv=fsync status=progress
+```
+
+For a QEMU/OVMF check before using hardware (add `--tpm` to start swtpm and
+exercise the sealed secret-store key):
+
+```sh
+platform-buildroot/image/boot-uefi.sh --output <repo>/buildroot/uefi-output --tpm
+```
+
+On a real device the first boot runs an interactive console setup on
+`/dev/console` (HDMI or serial) and asks for the admin account, display name,
+hostname and password. It creates the device CA, an initial TLS certificate and
+the first local account. If a TPM 2.0 device is present it seals a random
+32-byte secret-store key and persists it at handle `0x81000001` (no PCR policy
+yet). The host-config broker then adds the current IP SANs. If
+`first-boot.env` was baked in, the setup runs unattended; `FIRST_BOOT_WIFI_*`
+adds an iwd profile.
+
+Avahi publishes `rumahl.local` over mDNS; clients need mDNS support. Wi-Fi is
+managed by iwd (`iwctl`, and an optional first-boot profile).
+
+The data partition is a fixed 8 GiB image. Grow it after flashing when the
+device has more space (`parted`/`growpart` plus `resize2fs`).
+
+Still open for this target: PCR/measured-boot binding of the TPM key,
+Secure Boot signing, installer media, A/B updates and rollback, and physical
+hardware acceptance.
+
 ## Provision the persistent disk
 
 Create a private seed directory representing `/var`:
@@ -117,6 +197,11 @@ secret store fails closed until it is provisioned. Container app installation
 needs the running Docker engine, the `rumahl-app-network` unit and the
 `rumahl-runtime-supervisor` service; the platform service never talks to
 Docker directly.
+
+Dynamic app ports are allocated at runtime and persisted on the data disk.
+To reach an installed app from the host in the development VM, forward the port
+shown in its frame URL with `boot.sh --app-port N` (repeatable). Real hardware
+needs no forwarding because the app listens on the device itself.
 
 The data disk also carries the stable `/home` and `/apps` trees; the image binds
 them to those paths at boot. The system state stays under `/var/lib/rumahl` and

@@ -27,7 +27,7 @@ use rumahl_persistence_sqlite::{
 };
 use rumahl_platform_buildroot::{
     PackageImportError, PackageImporter, PackageImporterConfig, PackageImporterConfigError,
-    Tpm2Authorization, Tpm2SealedKey, Tpm2UnsealKeyProvider, UnixAppRuntimeProvider,
+    Tpm2Authorization, Tpm2Object, Tpm2SealedKey, Tpm2UnsealKeyProvider, UnixAppRuntimeProvider,
     UnixAppRuntimeProviderConfig, UnixAppRuntimeProviderError, UnixDockerImageImporter,
     UnixDockerImageImporterConfig, UnixRuntimeSecretDelivery, UnixRuntimeSecretDeliveryConfig,
 };
@@ -36,20 +36,134 @@ use rumahl_platform_buildroot::{
 /// apps have no external runtime and are accepted as a no-op.
 struct PlatformRuntimeProvider {
     supervisor: UnixAppRuntimeProvider,
+    storage: Option<(PathBuf, QuotaSource)>,
+    channel: Option<std::sync::Arc<crate::channel::ChannelTokens>>,
+}
+
+/// Where the per-app storage quota comes from: a fixed deployment value or a
+/// live policy the administrator can change while the platform runs.
+enum QuotaSource {
+    Fixed(u64),
+    Live(std::sync::Arc<dyn Fn() -> u64 + Send + Sync>),
+}
+
+impl QuotaSource {
+    fn resolve(&self) -> u64 {
+        match self {
+            Self::Fixed(quota) => *quota,
+            Self::Live(resolve) => resolve(),
+        }
+    }
 }
 
 #[derive(Debug)]
 pub enum PlatformRuntimeError {
     Supervisor(UnixAppRuntimeProviderError),
+    /// The app's private data has reached its quota; the OS refuses to start
+    /// it rather than letting it grow without bound.
+    QuotaExceeded,
+    /// The app's private data directory cannot be prepared for the container.
+    AppData(std::io::Error),
+}
+
+impl fmt::Display for PlatformRuntimeError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Supervisor(error) => write!(f, "runtime supervisor failed: {error}"),
+            Self::QuotaExceeded => write!(f, "the app's storage quota is exhausted"),
+            Self::AppData(error) => write!(f, "app data directory is unavailable: {error}"),
+        }
+    }
+}
+
+impl Error for PlatformRuntimeError {
+    fn source(&self) -> Option<&(dyn Error + 'static)> {
+        match self {
+            Self::Supervisor(error) => Some(error),
+            Self::QuotaExceeded => None,
+            Self::AppData(error) => Some(error),
+        }
+    }
 }
 
 impl PlatformRuntimeProvider {
     fn new(supervisor: UnixAppRuntimeProvider) -> Self {
-        Self { supervisor }
+        Self {
+            supervisor,
+            storage: None,
+            channel: None,
+        }
+    }
+
+    /// Enforces a fixed per-app storage quota before a container app starts.
+    fn with_storage_quota(mut self, root: PathBuf, quota: u64) -> Self {
+        self.storage = Some((root, QuotaSource::Fixed(quota)));
+        self
+    }
+
+    /// Enforces a live per-app storage quota, resolved before every start so a
+    /// policy change applies without a platform restart.
+    fn with_storage_quota_resolver(
+        mut self,
+        root: PathBuf,
+        resolve: std::sync::Arc<dyn Fn() -> u64 + Send + Sync>,
+    ) -> Self {
+        self.storage = Some((root, QuotaSource::Live(resolve)));
+        self
+    }
+
+    /// Publishes the per-installation channel token into the app's data
+    /// directory before the container starts.
+    fn with_channel(mut self, channel: std::sync::Arc<crate::channel::ChannelTokens>) -> Self {
+        self.channel = Some(channel);
+        self
+    }
+
+    /// Creates the private data directory (traversable by the supervisor's
+    /// group) and hands the app its channel descriptor. The supervisor mounts
+    /// the directory at `/data`, so both steps must happen before prepare.
+    fn prepare_app_storage(&self, app: &InstalledApp) -> Result<(), PlatformRuntimeError> {
+        let Some((root, _)) = self.storage.as_ref() else {
+            return Ok(());
+        };
+        let identity = app.identity();
+        let directory = root.join(identity.app_id().as_str());
+        crate::channel::create_private_directory(&directory, 0o750)
+            .map_err(PlatformRuntimeError::AppData)?;
+        if let Some(channel) = self.channel.as_ref() {
+            let installation = *identity.installation_id();
+            match channel.issue(installation) {
+                Ok(token) => {
+                    if let Err(error) =
+                        crate::channel::publish_app_material(&directory, installation, &token)
+                    {
+                        // The app still starts; without material the channel
+                        // stays closed instead of becoming unauthenticated.
+                        eprintln!("rumahl platform: app channel material unavailable: {error}");
+                    }
+                }
+                Err(error) => {
+                    eprintln!("rumahl platform: app channel token unavailable: {error}");
+                }
+            }
+        }
+        Ok(())
     }
 
     fn is_web(app: &InstalledApp) -> bool {
         app.manifest().runtime().kind() == RuntimeKind::Web
+    }
+
+    fn within_quota(&self, app: &InstalledApp) -> Result<(), PlatformRuntimeError> {
+        let Some((root, quota)) = self.storage.as_ref() else {
+            return Ok(());
+        };
+        let quota = quota.resolve();
+        match crate::apps::app_storage_usage_at(root, app.identity().app_id().as_str()) {
+            // A missing directory is empty, not over quota.
+            Ok(used) if used >= quota => Err(PlatformRuntimeError::QuotaExceeded),
+            _ => Ok(()),
+        }
     }
 }
 
@@ -60,6 +174,8 @@ impl AppRuntimeProvider for PlatformRuntimeProvider {
         if Self::is_web(app) {
             return Ok(());
         }
+        self.within_quota(app)?;
+        self.prepare_app_storage(app)?;
         self.supervisor
             .prepare_installation(app)
             .map_err(PlatformRuntimeError::Supervisor)
@@ -96,9 +212,14 @@ impl AppRuntimeProvider for PlatformRuntimeProvider {
         &self,
         installation_id: &rumahl_core::InstallationId,
     ) -> Result<bool, Self::Error> {
-        self.supervisor
+        let removed = self
+            .supervisor
             .remove_installation(installation_id)
-            .map_err(PlatformRuntimeError::Supervisor)
+            .map_err(PlatformRuntimeError::Supervisor)?;
+        if let Some(channel) = self.channel.as_ref() {
+            channel.revoke(installation_id);
+        }
+        Ok(removed)
     }
 }
 
@@ -164,7 +285,7 @@ struct InstallConfig {
     trust_store: PathBuf,
     tpm_executable: PathBuf,
     secret_key_id: SecretEncryptionKeyId,
-    secret_key_object: PathBuf,
+    secret_key_object: Tpm2Object,
     secret_key_policy_session: Option<PathBuf>,
     app_host_suffix: String,
 }
@@ -185,11 +306,63 @@ impl InstallConfig {
             trust_store: required_path("RUMAHL_PACKAGE_TRUST_STORE")?,
             tpm_executable: required_path("RUMAHL_TPM2_EXECUTABLE")?,
             secret_key_id,
-            secret_key_object: required_path("RUMAHL_SECRET_KEY_OBJECT")?,
+            secret_key_object: Tpm2Object::parse(&required("RUMAHL_SECRET_KEY_OBJECT")?)
+                .map_err(|_| InstallError::InvalidEnv("RUMAHL_SECRET_KEY_OBJECT"))?,
             secret_key_policy_session,
             app_host_suffix: app_host_suffix()?,
         })
     }
+}
+
+/// The runtime provider with app storage wiring: container apps get their
+/// private data directory mounted, and the per-app quota is enforced before an
+/// app starts.
+fn runtime_provider(
+    config: &InstallConfig,
+    state_dir: &Path,
+) -> Result<PlatformRuntimeProvider, InstallError> {
+    let mut provider_config =
+        UnixAppRuntimeProviderConfig::new(&config.control_socket, config.runtime_uid)
+            .map_err(InstallError::provider)?;
+    let data_root = crate::apps_data_root();
+    if let Some(root) = data_root.as_ref() {
+        provider_config = provider_config
+            .with_data_root(root)
+            .map_err(InstallError::provider)?;
+    }
+    let mut provider = PlatformRuntimeProvider::new(UnixAppRuntimeProvider::new(provider_config));
+    if let Some(root) = data_root {
+        // An explicit deployment override caps the machine; otherwise the
+        // device policy decides, resolved live before every app start.
+        match crate::apps::storage_quota_override() {
+            Some(quota) => {
+                provider = provider.with_storage_quota(root, quota);
+            }
+            None => {
+                let engine = crate::policy_engine::LocalPolicyEngine::open(
+                    &state_dir.join("accounts.sqlite"),
+                )
+                .map_err(|error| {
+                    InstallError::provider(std::io::Error::other(format!(
+                        "policy engine unavailable: {error}"
+                    )))
+                })?;
+                let engine = std::sync::Arc::new(engine);
+                provider = provider.with_storage_quota_resolver(
+                    root,
+                    std::sync::Arc::new(move || {
+                        rumahl_platform_web::PolicyEngine::app_storage_quota(engine.as_ref())
+                    }),
+                );
+            }
+        }
+    }
+    // The channel is independent of app storage: a container without `/data`
+    // simply has nowhere to receive its descriptor and stays disconnected.
+    provider = provider.with_channel(std::sync::Arc::new(
+        crate::channel::ChannelTokens::in_state(state_dir),
+    ));
+    Ok(provider)
 }
 
 /// Builds the runtime adapter registry for the serve path when the supervisor
@@ -197,11 +370,10 @@ impl InstallConfig {
 /// runtime control API answers 503 instead of assuming a runtime exists.
 pub fn runtime_adapters_from_env(
     channels: &std::sync::Arc<rumahl_core::RuntimeChannelRegistry>,
+    state_dir: &Path,
 ) -> Option<std::sync::Arc<rumahl_core::RuntimeAdapterRegistry>> {
     let config = InstallConfig::from_env().ok()?;
-    let provider = std::sync::Arc::new(PlatformRuntimeProvider::new(UnixAppRuntimeProvider::new(
-        UnixAppRuntimeProviderConfig::new(&config.control_socket, config.runtime_uid).ok()?,
-    )));
+    let provider = std::sync::Arc::new(runtime_provider(&config, state_dir).ok()?);
     let mut registry = rumahl_core::RuntimeAdapterRegistry::new();
     registry
         .register(Box::new(
@@ -267,10 +439,7 @@ fn uninstall_with(
         .map_err(InstallError::provider)?;
     let oidc_repository =
         SqliteOidcClientRepository::open(&platform).map_err(InstallError::provider)?;
-    let runtime_provider = PlatformRuntimeProvider::new(UnixAppRuntimeProvider::new(
-        UnixAppRuntimeProviderConfig::new(&config.control_socket, config.runtime_uid)
-            .map_err(InstallError::provider)?,
-    ));
+    let runtime_provider = runtime_provider(config, state_dir)?;
     let secret_delivery = UnixRuntimeSecretDelivery::new(
         UnixRuntimeSecretDeliveryConfig::new(&config.secret_socket, config.runtime_uid)
             .map_err(InstallError::provider)?,
@@ -320,6 +489,7 @@ fn uninstall_with(
         .join("app-assets")
         .join(installation_id.to_string());
     let _ = std::fs::remove_dir_all(assets);
+    crate::app_runtime::remove_runtime_record(state_dir, installation_id);
     if let Some(apps_root) = crate::apps_data_root() {
         let _ = std::fs::remove_dir_all(apps_root.join(&info.app_id));
     }
@@ -340,10 +510,7 @@ fn install_with(
         .map_err(InstallError::provider)?;
     let oidc_repository =
         SqliteOidcClientRepository::open(&platform).map_err(InstallError::provider)?;
-    let runtime_provider = PlatformRuntimeProvider::new(UnixAppRuntimeProvider::new(
-        UnixAppRuntimeProviderConfig::new(&config.control_socket, config.runtime_uid)
-            .map_err(InstallError::provider)?,
-    ));
+    let runtime_provider = runtime_provider(config, state_dir)?;
     let secret_delivery = UnixRuntimeSecretDelivery::new(
         UnixRuntimeSecretDeliveryConfig::new(&config.secret_socket, config.runtime_uid)
             .map_err(InstallError::provider)?,
@@ -384,18 +551,44 @@ fn install_with(
     )
     .map_err(InstallError::Importer)?;
 
+    // The publisher allowlist is a device policy; an empty list keeps every
+    // trusted publisher installable.
+    let allowed_engine = crate::policy_engine::LocalPolicyEngine::open(
+        &state_dir.join("accounts.sqlite"),
+    )
+    .map_err(|error| {
+        InstallError::provider(std::io::Error::other(format!(
+            "policy engine unavailable: {error}"
+        )))
+    })?;
+    let allowed_publishers = rumahl_platform_web::PolicyEngine::allowed_publishers(&allowed_engine);
     let installed = importer
-        .install(&runner, package_dir, &mut state, &mut grants)
+        .install(
+            &runner,
+            package_dir,
+            &mut state,
+            &mut grants,
+            &allowed_publishers,
+        )
         .map_err(InstallError::Import)?;
 
     // Public metadata of the freshly installed app, read from the trusted snapshot.
     let info = installed_info(&platform, installed.installation_id())?;
 
+    // Record what the supervisor captured about the staged image, so the
+    // extended configuration view can report it. Container packages only;
+    // a failed record write means a broken state directory and surfaces.
+    crate::app_runtime::write_runtime_record(
+        state_dir,
+        installed.installation_id(),
+        installed.published(),
+    )?;
+
     // Give the app its own directory under the apps volume, owner-only.
     if let Some(apps_root) = crate::apps_data_root() {
         let directory = apps_root.join(&info.app_id);
         std::fs::create_dir_all(&directory)?;
-        std::fs::set_permissions(&directory, std::fs::Permissions::from_mode(0o700))?;
+        std::fs::set_permissions(&directory, std::fs::Permissions::from_mode(0o750))?;
     }
 
     // Access is granted, not an install side effect: every existing account gets
@@ -448,6 +641,17 @@ fn install_with(
             let issuer: Identity = UserIdentity::new(*account.user_id()).into();
             let subject: Identity = UserIdentity::new(*account.user_id()).into();
             for (permission, scope, resources) in &targets {
+                // An update reuses the installation's grants: only missing
+                // ones are issued, so repeated imports cannot pile duplicates.
+                let exists = grants.grants().iter().any(|grant| {
+                    grant.subject() == &subject
+                        && grant.permission() == permission
+                        && grant.scope() == *scope
+                        && grant.resources() == resources.as_slice()
+                });
+                if exists {
+                    continue;
+                }
                 let grant = GrantAuthority::new()
                     .issue(
                         &policy,
@@ -471,7 +675,7 @@ fn install_with(
     }
 
     println!(
-        "Installed {} ({:?}).",
+        "Installed or updated {} ({:?}).",
         installed.installation_id(),
         installed.published()
     );
@@ -513,7 +717,7 @@ fn secret_key_provider(config: &InstallConfig) -> Result<Tpm2UnsealKeyProvider, 
     };
     let sealed_key = Tpm2SealedKey::new(
         config.secret_key_id.clone(),
-        &config.secret_key_object,
+        config.secret_key_object.clone(),
         authorization,
     )
     .map_err(InstallError::provider)?;
@@ -582,22 +786,6 @@ impl fmt::Display for InstallationHostOriginError {
 
 impl Error for InstallationHostOriginError {}
 
-impl fmt::Display for PlatformRuntimeError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::Supervisor(error) => write!(f, "runtime supervisor operation failed: {error}"),
-        }
-    }
-}
-
-impl Error for PlatformRuntimeError {
-    fn source(&self) -> Option<&(dyn Error + 'static)> {
-        match self {
-            Self::Supervisor(error) => Some(error),
-        }
-    }
-}
-
 impl From<io::Error> for InstallError {
     fn from(error: io::Error) -> Self {
         Self::Io(error)
@@ -647,8 +835,9 @@ mod tests {
     };
     use rumahl_platform_buildroot::{
         DockerImageReference, DockerImageTarget, RuntimeControlTarget, RuntimeControlTargetOutcome,
-        RuntimeInstallationSpec, StagedDockerImageWriter, UnixDockerImageServer,
-        UnixDockerImageServerConfig, UnixRuntimeControlServer, UnixRuntimeControlServerConfig,
+        RuntimeInstallationSpec, StagedDockerImageWriter, StagedImage, StagedImageEnvironment,
+        UnixDockerImageServer, UnixDockerImageServerConfig, UnixRuntimeControlServer,
+        UnixRuntimeControlServerConfig,
     };
     use serde_json::json;
 
@@ -724,6 +913,63 @@ mod tests {
     }
 
     #[test]
+    fn prepares_the_data_directory_and_channel_material_before_start() {
+        use rumahl_platform_web::ChannelAuthenticator;
+        use std::os::unix::fs::PermissionsExt;
+
+        let temp = tempfile::tempdir().unwrap();
+        let apps = temp.path().join("apps");
+        let state = temp.path().join("state");
+        std::fs::create_dir(&apps).unwrap();
+        std::fs::create_dir(&state).unwrap();
+        let provider = PlatformRuntimeProvider::new(UnixAppRuntimeProvider::new(
+            UnixAppRuntimeProviderConfig::new("/run/rumahl/control.sock", 0).unwrap(),
+        ))
+        .with_storage_quota(apps.clone(), u64::MAX)
+        .with_channel(std::sync::Arc::new(
+            crate::channel::ChannelTokens::in_state(&state),
+        ));
+        let app = container_app();
+        let app_id = app.identity().app_id().as_str().to_owned();
+        let installation = *app.identity().installation_id();
+
+        provider.prepare_app_storage(&app).unwrap();
+
+        let directory = apps.join(&app_id);
+        assert_eq!(
+            std::fs::metadata(&directory).unwrap().permissions().mode() & 0o777,
+            0o750
+        );
+        let material = std::fs::read_to_string(directory.join(".rumahl/channel.json")).unwrap();
+        let value: serde_json::Value = serde_json::from_str(&material).unwrap();
+        assert_eq!(value["protocol"], crate::channel::CHANNEL_PROTOCOL);
+        assert_eq!(value["installationId"], installation.to_string());
+        assert_eq!(value["socket"], crate::channel::CONTAINER_SOCKET);
+        // The same token the listener will accept, and it is never world-readable.
+        let auth = crate::channel::ChannelTokens::in_state(&state);
+        assert_eq!(
+            auth.authenticate(&installation.to_string(), value["token"].as_str().unwrap()),
+            Some(installation)
+        );
+        assert_eq!(
+            std::fs::metadata(directory.join(".rumahl/channel.json"))
+                .unwrap()
+                .permissions()
+                .mode()
+                & 0o777,
+            0o600
+        );
+        // A repeated prepare reuses the token instead of rotating it under a
+        // running app.
+        provider.prepare_app_storage(&app).unwrap();
+        let again: serde_json::Value = serde_json::from_str(
+            &std::fs::read_to_string(directory.join(".rumahl/channel.json")).unwrap(),
+        )
+        .unwrap();
+        assert_eq!(again["token"], value["token"]);
+    }
+
+    #[test]
     fn validates_host_suffixes() {
         assert!(InstallationHostOriginResolver::new("apps.rumahl.home.arpa").is_ok());
         assert!(matches!(
@@ -756,6 +1002,28 @@ mod tests {
             origin,
             format!("https://{}.apps.rumahl.test", app.installation_id())
         );
+    }
+
+    #[test]
+    fn refuses_to_start_an_app_whose_data_is_over_quota() {
+        let storage = tempfile::tempdir().unwrap();
+        let app = container_app();
+        let data = storage.path().join(app.identity().app_id().as_str());
+        std::fs::create_dir_all(&data).unwrap();
+        std::fs::write(data.join("big.bin"), vec![0_u8; 64]).unwrap();
+        let config = UnixAppRuntimeProviderConfig::new("/run/rumahl/control.sock", 0).unwrap();
+        let provider = PlatformRuntimeProvider::new(UnixAppRuntimeProvider::new(config))
+            .with_storage_quota(storage.path().to_path_buf(), 16);
+
+        let error = provider.prepare_installation(&app).unwrap_err();
+
+        assert!(matches!(error, PlatformRuntimeError::QuotaExceeded));
+        // Web apps own no container storage and are never blocked by it.
+        let web = PlatformRuntimeProvider::new(UnixAppRuntimeProvider::new(
+            UnixAppRuntimeProviderConfig::new("/run/rumahl/control.sock", 0).unwrap(),
+        ))
+        .with_storage_quota(storage.path().to_path_buf(), 16);
+        assert!(web.prepare_installation(&installed_app()).is_ok());
     }
 
     #[test]
@@ -816,7 +1084,7 @@ mod tests {
             trust_store: trust_store_path,
             tpm_executable: PathBuf::from("/usr/bin/tpm2_unseal"),
             secret_key_id: SecretEncryptionKeyId::parse("root-1").unwrap(),
-            secret_key_object: state.path().join("root-1.ctx"),
+            secret_key_object: state.path().join("root-1.ctx").into(),
             secret_key_policy_session: None,
             app_host_suffix: "apps.rumahl.test".to_owned(),
         };
@@ -911,7 +1179,7 @@ mod tests {
             trust_store: trust_store_path,
             tpm_executable: PathBuf::from("/usr/bin/tpm2_unseal"),
             secret_key_id: SecretEncryptionKeyId::parse("root-1").unwrap(),
-            secret_key_object: state.path().join("root-1.ctx"),
+            secret_key_object: state.path().join("root-1.ctx").into(),
             secret_key_policy_session: None,
             app_host_suffix: "apps.rumahl.test".to_owned(),
         };
@@ -1033,7 +1301,7 @@ mod tests {
             installation_id: &rumahl_core::InstallationId,
             artifact: &PackagePath,
             archive: &[u8],
-        ) -> Result<(), Self::Error> {
+        ) -> Result<StagedImage, Self::Error> {
             if archive.is_empty() {
                 return Err(std::io::Error::other("empty archive"));
             }
@@ -1047,7 +1315,13 @@ mod tests {
                 .unwrap()
                 .write(installation_id, artifact, &reference)
                 .unwrap();
-            Ok(())
+            Ok(StagedImage::new(
+                reference,
+                vec![
+                    StagedImageEnvironment::parse("PATH=/usr/bin:/bin").unwrap(),
+                    StagedImageEnvironment::parse("RUMAHL_SEALED_SECRET=hidden").unwrap(),
+                ],
+            ))
         }
     }
 
@@ -1156,7 +1430,7 @@ mod tests {
             trust_store: trust_store_path,
             tpm_executable: PathBuf::from("/usr/bin/tpm2_unseal"),
             secret_key_id: SecretEncryptionKeyId::parse("root-1").unwrap(),
-            secret_key_object: state.path().join("root-1.ctx"),
+            secret_key_object: state.path().join("root-1.ctx").into(),
             secret_key_policy_session: None,
             app_host_suffix: "apps.rumahl.test".to_owned(),
         };
@@ -1175,6 +1449,65 @@ mod tests {
         assert_eq!(
             imported.lock().unwrap().as_slice(),
             &[(installation_id.to_string(), "runtime/server.oci".to_owned())]
+        );
+
+        // The supervisor's captured image metadata is recorded next to the
+        // app state, with the credential-sounding entry still stored raw —
+        // the display filter runs at read time, not at capture time.
+        let record = crate::app_runtime::read_runtime_record(state.path(), installation_id)
+            .expect("container install records its image metadata");
+        assert_eq!(record.image, format!("sha256:{}", "a".repeat(64)));
+        assert_eq!(
+            record.environment,
+            vec![
+                ("PATH".to_owned(), "/usr/bin:/bin".to_owned()),
+                ("RUMAHL_SEALED_SECRET".to_owned(), "hidden".to_owned()),
+            ]
+        );
+
+        // A newer package for the same app id updates the installation in
+        // place: same identity, one app, and the image record follows.
+        let upgrade = tempfile::tempdir().unwrap();
+        fs::create_dir_all(upgrade.path().join("runtime")).unwrap();
+        fs::write(
+            upgrade.path().join("runtime/server.oci"),
+            b"not-a-real-image",
+        )
+        .unwrap();
+        let mut upgraded = template.clone();
+        upgraded["app"]["version"] = json!("1.1.0");
+        let manifest =
+            PackageManifest::from_bytes(&serde_json::to_vec(&upgraded).unwrap()).unwrap();
+        generated
+            .key_store()
+            .signer()
+            .unwrap()
+            .sign(upgrade.path(), &manifest)
+            .unwrap();
+
+        install_with(&config, state.path(), upgrade.path()).unwrap();
+
+        let snapshot = SqliteSnapshotRepository::open(state.path().join("platform.sqlite"))
+            .unwrap()
+            .load()
+            .unwrap()
+            .unwrap();
+        assert_eq!(snapshot.installed_apps().len(), 1);
+        assert_eq!(
+            snapshot.installed_apps()[0]
+                .manifest()
+                .version()
+                .to_string(),
+            "1.1.0"
+        );
+        assert_eq!(
+            snapshot.installed_apps()[0].installation_id(),
+            installation_id
+        );
+        assert_eq!(imported.lock().unwrap().len(), 2);
+        assert!(
+            crate::app_runtime::read_runtime_record(state.path(), installation_id).is_some(),
+            "the update refreshes the recorded image metadata"
         );
     }
 }

@@ -1,5 +1,5 @@
 import { useI18n } from "../../i18n";
-import { Breadcrumb } from "./Breadcrumb";
+import { PathBar, type PathCrumb, type PathOption } from "./PathBar";
 import {
   ArrowLeftIcon,
   ArrowRightIcon,
@@ -16,6 +16,12 @@ import { ViewSwitch } from "./ViewSwitch";
 
 export interface TopbarProps {
   nav: Nav;
+  /** Canonical rumahl path of the current folder. */
+  addressPath: string;
+  /** Crumbs from the area root to the current folder. */
+  crumbs: readonly PathCrumb[];
+  /** Advanced mode shows the Windows-style crumbs; guided keeps the input. */
+  advanced: boolean;
   compact: boolean;
   writable: boolean;
   canBack: boolean;
@@ -26,6 +32,9 @@ export interface TopbarProps {
   view: "grid" | "list";
   search: string;
   onNavigate: (next: Nav) => void;
+  onAddress: (input: string) => void;
+  onNavigateCrumb: (index: number) => void;
+  onCrumbOptions: (index: number) => Promise<readonly PathOption[]>;
   onBack: () => void;
   onForward: () => void;
   onUp: () => void;
@@ -53,7 +62,15 @@ export function Topbar(props: TopbarProps) {
       </div>
       <div className="files-topbar__path">
         <FolderIcon className="files-topbar__path-icon" />
-        <Breadcrumb nav={props.nav} onNavigate={props.onNavigate} />
+        <PathBar
+          path={props.addressPath}
+          crumbs={props.crumbs}
+          advanced={props.advanced}
+          busy={props.busy}
+          onNavigate={props.onNavigateCrumb}
+          onOptions={props.onCrumbOptions}
+          onSubmit={props.onAddress}
+        />
       </div>
       <span className="files-topbar__spacer" />
       {props.writable

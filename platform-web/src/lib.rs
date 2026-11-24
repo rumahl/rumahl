@@ -2,7 +2,10 @@
 //! deployment concerns; this crate never binds a public TCP listener.
 
 mod admin;
-pub use admin::{AdminAuditEntry, AdminError, AdminSession, AdminUser, Administration};
+pub use admin::{
+    AdminAuditEntry, AdminError, AdminGroup, AdminPolicyAssignment, AdminSession, AdminUser,
+    Administration,
+};
 
 mod backend;
 mod events;
@@ -42,25 +45,35 @@ pub use browser_auth::{BrowserSessions, LoginAccount, SESSION_SECONDS};
 
 mod apps;
 pub use apps::{
-    AppAccess, AppAccessError, AppAsset, AppData, AppDataEntry, AppProvider, AppSettingInfo,
-    AppSettingOptionInfo, AppSettingsInfo, BrowserDelivery, CapabilityOutcome, CapabilityResource,
-    CapabilityResult, CatalogApp, ImportedApp, PackageUploadFile, RuntimeAction, RuntimeState,
-    app_error,
+    AppAccess, AppAccessError, AppAsset, AppData, AppDataEntry, AppFileAccess, AppFileAction,
+    AppFileDeny, AppFileOutcome, AppGrantInfo, AppGrantState, AppNetworkError, AppNetworkOrigin,
+    AppNetworkRequest, AppPermissionRequestInfo, AppPortProvider, AppProvider, AppRuntimeEnvEntry,
+    AppRuntimeEnvironment, AppSettingInfo, AppSettingOptionInfo, AppSettingsInfo, AppStorageInfo,
+    BrowserDelivery, CapabilityOutcome, CapabilityResource, CapabilityResult, CatalogApp,
+    GrantIssue, GrantValidityChoice, ImportedApp, PackageUploadFile, PreparedNetworkRequest,
+    RuntimeAction, RuntimeState, app_error,
 };
 
 mod app_channel;
+mod app_network;
 pub use app_channel::{
-    CHANNEL_PROTOCOL, ChannelAuthenticator, ChannelFrame, ChannelTokenStore, SocketRuntimeChannel,
-    read_hello, run_connection, serve_channel_listener,
+    CHANNEL_PROTOCOL, ChannelAuthenticator, ChannelFiles, ChannelFrame, ChannelTokenStore,
+    SocketRuntimeChannel, read_hello, run_connection, serve_channel_listener,
 };
 
 mod preferences;
 
 mod host_files;
 pub use host_files::{HostArea, HostEntry, HostError, HostFiles};
+mod policy;
+pub use policy::{PasswordRules, PolicyEngine};
 
 mod os_mode;
 
+mod app_grants;
+mod app_runtime;
+mod platform_config;
+pub use platform_config::{PlatformConfig, PlatformConfigEntry, is_display_safe_name};
 mod files;
 mod weather_warnings;
 mod workspace;

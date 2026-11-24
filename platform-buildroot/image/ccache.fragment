@@ -1,0 +1,7 @@
+# Buildroot host ccache for repeated builds of the same pinned tree.
+#
+# Applied through build.sh --config-fragment (see image/acceptance.sh and the
+# OS image CI workflow). The ccache directory keeps Buildroot's default
+# (BR2_CACHE_DIR under $HOME/.cache/buildroot), so local hosts and CI runners
+# cache it at the same well-known path.
+BR2_CCACHE=y

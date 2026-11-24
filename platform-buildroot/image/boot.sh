@@ -10,6 +10,7 @@ repo="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 output="${RUMAHL_BUILDROOT_OUTPUT:-$repo/buildroot/output}"
 data="${RUMAHL_DATA_IMAGE:-$repo/buildroot/rumahl-data.ext4}"
 seed=""
+app_ports=""
 
 usage() {
   cat >&2 <<'EOF'
@@ -23,6 +24,8 @@ Options:
   --seed DIR     seed directory used to create --data if it does not exist
                  (default: none; an existing data disk is always reused)
   --tpm          start swtpm and attach a TPM 2.0 device (requires swtpm)
+  --app-port N   forward a dynamically allocated app port to the host
+                 (repeatable; the port is shown in the app frame URL)
   -h, --help     show this help
 EOF
 }
@@ -38,6 +41,7 @@ while [ "$#" -gt 0 ]; do
     --data) data="$2"; shift 2 ;;
     --seed) seed="$2"; shift 2 ;;
     --tpm) tpm=1; shift ;;
+    --app-port) app_ports="${app_ports:+$app_ports,}$2"; shift 2 ;;
     -h|--help) usage; exit 0 ;;
     *) usage; die "unknown option: $1" ;;
   esac
@@ -80,4 +84,5 @@ if [ "${tpm:-0}" = "1" ]; then
 fi
 
 [ "${tpm:-0}" = "1" ] || echo "==> Attach a TPM with --tpm to exercise the sealed secret store"
+export RUMAHL_QEMU_APP_PORTS="${app_ports:-${RUMAHL_QEMU_APP_PORTS:-}}"
 "$repo/platform-buildroot/image/run-qemu.sh" "$output" "$data"

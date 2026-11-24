@@ -11,7 +11,10 @@ use rumahl_core::{InstallationId, PackagePath};
 
 use crate::docker_image_importer::MAX_ARCHIVE_BYTES;
 use crate::runtime_secrets::peer_uid;
-use crate::{ContainerImageImporter, DockerImageTarget};
+use crate::{
+    ContainerImageImporter, DockerImageReference, DockerImageTarget, StagedImage,
+    StagedImageEnvironment,
+};
 
 pub(crate) const PROTOCOL_MAGIC: &[u8; 4] = b"DPI1";
 pub(crate) const OP_IMPORT: u8 = 1;
@@ -23,6 +26,8 @@ const MAX_STRING_FIELD: usize = 1024;
 const OWNER_ONLY_SOCKET_MODE: u32 = 0o600;
 const OWNER_GROUP_SOCKET_MODE: u32 = 0o660;
 const DEFAULT_TIMEOUT: Duration = Duration::from_secs(120);
+/// Upper bound for the import result payload (reference plus environment).
+const MAX_IMPORT_RESULT_BYTES: usize = 16 * 1024;
 
 #[derive(Debug, Clone)]
 pub struct UnixDockerImageImporterConfig {
@@ -207,7 +212,7 @@ impl UnixDockerImageImporter {
         &self.config
     }
 
-    fn exchange(&self, fields: [&[u8]; 3]) -> Result<(), UnixDockerImageImporterError> {
+    fn exchange(&self, fields: [&[u8]; 3]) -> Result<StagedImage, UnixDockerImageImporterError> {
         let mut stream = UnixStream::connect(&self.config.socket_path)
             .map_err(UnixDockerImageImporterError::Connect)?;
         stream
@@ -251,10 +256,34 @@ impl UnixDockerImageImporter {
             return Err(UnixDockerImageImporterError::InvalidResponse);
         }
         match response[4] {
-            STATUS_OK => Ok(()),
-            STATUS_REJECTED => Err(UnixDockerImageImporterError::Rejected),
-            _ => Err(UnixDockerImageImporterError::InvalidResponse),
+            STATUS_OK => {}
+            STATUS_REJECTED => return Err(UnixDockerImageImporterError::Rejected),
+            _ => return Err(UnixDockerImageImporterError::InvalidResponse),
         }
+
+        // A successful import is followed by the captured image metadata: the
+        // immutable reference and the image's environment, line-oriented and
+        // bounded. Anything short, oversized or unparsable is a protocol
+        // violation, not a degraded result.
+        let mut length_bytes = [0_u8; 4];
+        stream
+            .read_exact(&mut length_bytes)
+            .map_err(UnixDockerImageImporterError::Read)?;
+        let length = u32::from_be_bytes(length_bytes) as usize;
+        if length == 0 || length > MAX_IMPORT_RESULT_BYTES {
+            return Err(UnixDockerImageImporterError::InvalidResponse);
+        }
+        let mut payload = vec![0_u8; length];
+        stream
+            .read_exact(&mut payload)
+            .map_err(UnixDockerImageImporterError::Read)?;
+        let trailing = stream
+            .read(&mut [0_u8; 1])
+            .map_err(UnixDockerImageImporterError::Read)?;
+        if trailing != 0 {
+            return Err(UnixDockerImageImporterError::InvalidResponse);
+        }
+        parse_import_result(&payload).ok_or(UnixDockerImageImporterError::InvalidResponse)
     }
 }
 
@@ -266,7 +295,7 @@ impl ContainerImageImporter for UnixDockerImageImporter {
         installation_id: &InstallationId,
         package_root: &Path,
         artifact: &PackagePath,
-    ) -> Result<(), Self::Error> {
+    ) -> Result<StagedImage, Self::Error> {
         let path = package_root.join(artifact.as_str());
         let metadata = fs::symlink_metadata(&path)
             .map_err(|_| UnixDockerImageImporterError::ArtifactNotRegular)?;
@@ -360,8 +389,9 @@ where
             &request.artifact,
             &request.archive,
         ) {
-            Ok(()) => {
-                write_status(&mut stream, STATUS_OK).map_err(UnixDockerImageServerError::Write)
+            Ok(staged) => {
+                write_status(&mut stream, STATUS_OK).map_err(UnixDockerImageServerError::Write)?;
+                write_import_result(&mut stream, &staged).map_err(UnixDockerImageServerError::Write)
             }
             Err(_) => {
                 write_status(&mut stream, STATUS_REJECTED)
@@ -439,6 +469,45 @@ fn write_status(stream: &mut UnixStream, status: u8) -> io::Result<()> {
         PROTOCOL_MAGIC[3],
         status,
     ])
+}
+
+/// Serializes the captured image metadata: the reference on the first line,
+/// then one `NAME=VALUE` line per environment entry. Line-oriented like the
+/// staged image record, so no JSON dependency rides on the protocol.
+fn import_result_payload(staged: &StagedImage) -> Vec<u8> {
+    let mut payload = Vec::new();
+    payload.extend_from_slice(staged.reference().as_str().as_bytes());
+    payload.push(b'\n');
+    for entry in staged.environment() {
+        payload.extend_from_slice(entry.name.as_bytes());
+        payload.push(b'=');
+        payload.extend_from_slice(entry.value.as_bytes());
+        payload.push(b'\n');
+    }
+    payload
+}
+
+fn write_import_result(stream: &mut UnixStream, staged: &StagedImage) -> io::Result<()> {
+    let payload = import_result_payload(staged);
+    let length = u32::try_from(payload.len()).unwrap_or(u32::MAX);
+    stream.write_all(&length.to_be_bytes())?;
+    stream.write_all(&payload)
+}
+
+/// Parses what [`write_import_result`] sent. The reference must be a valid
+/// immutable image reference; the environment may be empty, never malformed.
+fn parse_import_result(payload: &[u8]) -> Option<StagedImage> {
+    let text = std::str::from_utf8(payload).ok()?;
+    let mut lines = text.lines();
+    let reference = DockerImageReference::parse(lines.next()?).ok()?;
+    let mut environment = Vec::new();
+    for line in lines {
+        if environment.len() >= crate::docker_image_importer::MAX_IMAGE_ENV_ENTRIES {
+            return None;
+        }
+        environment.push(StagedImageEnvironment::parse(line)?);
+    }
+    Some(StagedImage::new(reference, environment))
 }
 
 impl fmt::Display for UnixDockerImageImporterConfigError {
@@ -585,13 +654,13 @@ mod tests {
             installation_id: &InstallationId,
             artifact: &PackagePath,
             archive: &[u8],
-        ) -> Result<(), Self::Error> {
+        ) -> Result<StagedImage, Self::Error> {
             self.requests.lock().unwrap().push((
                 *installation_id,
                 artifact.as_str().to_owned(),
                 archive.to_vec(),
             ));
-            Ok(())
+            Ok(staged_image())
         }
     }
 
@@ -605,9 +674,20 @@ mod tests {
             _installation_id: &InstallationId,
             _artifact: &PackagePath,
             _archive: &[u8],
-        ) -> Result<(), Self::Error> {
+        ) -> Result<StagedImage, Self::Error> {
             Err(io::Error::other("image import failed"))
         }
+    }
+
+    fn staged_image() -> StagedImage {
+        let reference = DockerImageReference::parse(format!("sha256:{}", "a".repeat(64))).unwrap();
+        StagedImage::new(
+            reference,
+            vec![
+                StagedImageEnvironment::parse("PATH=/usr/bin:/bin").unwrap(),
+                StagedImageEnvironment::parse("RUMAHL_APP_MODE=batch").unwrap(),
+            ],
+        )
     }
 
     fn write_artifact(root: &Path, contents: &[u8]) -> (PathBuf, PackagePath) {
@@ -634,10 +714,23 @@ mod tests {
         let importer = UnixDockerImageImporter::new(
             UnixDockerImageImporterConfig::new(&socket_path, current_uid()).unwrap(),
         );
-        importer
+        let staged = importer
             .stage_image(&installation_id, &package, &artifact)
             .unwrap();
         worker.join().unwrap().unwrap();
+
+        // The captured image metadata crosses the socket with the import.
+        assert_eq!(
+            staged.reference().as_str(),
+            &format!("sha256:{}", "a".repeat(64))
+        );
+        assert_eq!(
+            staged.environment(),
+            vec![
+                StagedImageEnvironment::parse("PATH=/usr/bin:/bin").unwrap(),
+                StagedImageEnvironment::parse("RUMAHL_APP_MODE=batch").unwrap(),
+            ]
+        );
 
         let requests = target.requests.lock().unwrap();
         assert_eq!(requests.len(), 1);

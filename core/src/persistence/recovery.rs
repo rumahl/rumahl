@@ -3,8 +3,8 @@ use std::error::Error;
 use std::fmt;
 
 use crate::{
-    AppLifecycle, AppLifecycleError, GrantId, Identity, InMemoryGrantStore, PermissionGrant,
-    PlatformState,
+    AppLifecycle, AppLifecycleError, GrantId, GrantValidity, Identity, InMemoryGrantStore,
+    PermissionGrant, PlatformState, UnixTimestamp,
 };
 
 use super::{PLATFORM_SNAPSHOT_VERSION, PlatformSnapshot};
@@ -34,11 +34,33 @@ impl PlatformRecovery {
         Self::default()
     }
 
+    /// Recovers with the current clock; expired grants fall away, so storage
+    /// never keeps consent the engine already refuses.
     pub fn recover(
         &self,
         snapshot: &PlatformSnapshot,
         state: &mut PlatformState,
         grant_store: &mut InMemoryGrantStore,
+    ) -> Result<PlatformRecoveryReport, PlatformRecoveryError> {
+        match UnixTimestamp::now() {
+            Ok(now) => self.recover_at(snapshot, state, grant_store, now),
+            // Without a trustworthy clock nothing expires: the engine still
+            // denies expired grants per call.
+            Err(_) => self.recover_at(
+                snapshot,
+                state,
+                grant_store,
+                UnixTimestamp::from_seconds(u64::MAX),
+            ),
+        }
+    }
+
+    pub fn recover_at(
+        &self,
+        snapshot: &PlatformSnapshot,
+        state: &mut PlatformState,
+        grant_store: &mut InMemoryGrantStore,
+        now: UnixTimestamp,
     ) -> Result<PlatformRecoveryReport, PlatformRecoveryError> {
         if snapshot.version() != PLATFORM_SNAPSHOT_VERSION {
             return Err(PlatformRecoveryError::UnsupportedVersion {
@@ -62,6 +84,12 @@ impl PlatformRecovery {
 
             if !grant_ids.insert(*grant.id()) {
                 return Err(PlatformRecoveryError::DuplicateGrantId(*grant.id()));
+            }
+
+            // An expired durable grant is consent that no longer exists.
+            if matches!(grant.validity(), GrantValidity::Durable { expires_at: Some(expires_at) } if now >= *expires_at)
+            {
+                continue;
             }
 
             Self::validate_grant(grant, &recovered)?;
@@ -166,6 +194,56 @@ mod tests {
         PublisherId, ResourceKey, ResourceKind, ResourceNamespace, ResourceRef, RuntimeDescriptor,
         RuntimeEntrypoint, RuntimeEntrypointId, UserId, UserIdentity,
     };
+
+    #[test]
+    fn expired_grants_fall_away_at_recovery() {
+        let lifecycle = AppLifecycle::new();
+        let mut live = PlatformState::new();
+        let app = lifecycle
+            .install(manifest("com.rumahl.notes", "rumahl.notes.open"), &mut live)
+            .unwrap();
+        let expires_at = UnixTimestamp::from_seconds(1_000);
+        let expiring = PermissionGrantSnapshot::new_with_validity(
+            GrantId::new(),
+            app.identity().clone().into(),
+            PermissionId::parse("rumahl.files.read").unwrap(),
+            PermissionScope::Explicit,
+            vec![ResourceRef::new(
+                ResourceNamespace::parse("rumahl.files").unwrap(),
+                ResourceKind::parse("file").unwrap(),
+                ResourceKey::parse("document-1").unwrap(),
+            )],
+            UserIdentity::new(UserId::new()).into(),
+            GrantValidity::durable_until(expires_at),
+        )
+        .unwrap();
+        let snapshot = PlatformSnapshot::new(
+            PLATFORM_SNAPSHOT_VERSION,
+            vec![InstalledAppSnapshot::capture(&app)],
+            vec![expiring],
+        );
+        let mut state = PlatformState::new();
+        let mut grants = InMemoryGrantStore::new();
+
+        // Before the expiry the grant recovers; at it, the grant is gone.
+        PlatformRecovery::new()
+            .recover_at(
+                &snapshot,
+                &mut state,
+                &mut grants,
+                UnixTimestamp::from_seconds(999),
+            )
+            .unwrap();
+        assert_eq!(grants.len(), 1);
+        let mut state = PlatformState::new();
+        let mut grants = InMemoryGrantStore::new();
+        let report = PlatformRecovery::new()
+            .recover_at(&snapshot, &mut state, &mut grants, expires_at)
+            .unwrap();
+        assert_eq!(report.grants(), 0);
+        assert!(grants.is_empty());
+        assert_eq!(report.installed_apps(), 1);
+    }
 
     fn manifest(app_id: &str, capability_id: &str) -> AppManifest {
         let mut runtime = RuntimeDescriptor::web();

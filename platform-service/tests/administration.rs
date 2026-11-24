@@ -22,7 +22,11 @@ fn app(root: &Path) -> Router {
     let accounts = root.join("accounts.sqlite");
     let audit: Arc<dyn AuditLog> =
         Arc::new(SqliteAuditLog::open(root.join("audit.sqlite")).unwrap());
-    let admin = Arc::new(LocalAdministration::open(&accounts, Some(audit.clone())).unwrap());
+    let admin = Arc::new(
+        LocalAdministration::open(&accounts, Some(audit.clone()))
+            .unwrap()
+            .with_home_root(root.join("home")),
+    );
     router(GatewayState {
         host_files: None,
         weather_warnings: None,
@@ -34,12 +38,15 @@ fn app(root: &Path) -> Router {
         login_slots: Arc::new(tokio::sync::Semaphore::new(2)),
         audit: Some(audit),
         state_dir: None,
+        platform_config: None,
         events: Arc::new(InMemoryShellEvents::new(8)),
         widgets: Arc::new(NoWidgets),
         streams: None,
         apps: None,
         preferences: None,
         os_mode: None,
+
+        policies: None,
         workspace: None,
         files: None,
         oidc: None,
@@ -170,6 +177,10 @@ async fn administrators_manage_users_roles_sessions_and_audit() {
     assert_eq!(status, StatusCode::OK);
     let charlie_id = charlie["id"].as_str().unwrap().to_owned();
     assert_eq!(charlie["role"], "user");
+    // A new account comes with a complete home directory.
+    let home = root.join("home/charlie");
+    assert!(home.join("Documents").is_dir());
+    assert!(home.join("Desktop").is_dir());
 
     let (status, bob_user) = call(&app, "PATCH", "/api/v1/admin/users", Some(&alice), None).await;
     assert_eq!(status, StatusCode::METHOD_NOT_ALLOWED);

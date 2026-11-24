@@ -30,7 +30,7 @@ export function StoreSettings() {
     <div className="settings-group">
       {sources.length === 0 ? <div className="setting"><div className="copy"><strong>{t("storeSources.empty")}</strong><p>{t("storeSources.emptyHelp")}</p></div></div> : null}
       {sources.map((source) => <div className="setting store-source-row" key={source.id}>
-        <div className="copy"><strong>{source.name}</strong><p>{source.url}</p></div>
+        <div className="copy"><strong>{source.name}</strong><p>{source.kind === "github" ? "GitHub · " : ""}{source.url}</p></div>
         <div className="visual store-source-actions">
           <input type="checkbox" role="switch" aria-label={t("storeSources.enabled", { name: source.name })} checked={source.enabled} onChange={(event) => setEnabled(source.id, event.target.checked)} />
           <Button onClick={() => remove(source.id)}>{t("storeSources.remove")}</Button>
@@ -45,7 +45,7 @@ export function StoreSettings() {
       </div>
       <div className="setting store-source-form">
         <div className="copy"><strong>{t("storeSources.url")}</strong><p>{t("storeSources.urlHelp")}</p></div>
-        <div className="visual"><input type="url" value={url} onChange={(event) => setUrl(event.target.value)} placeholder="https://store.example/index.json" aria-label={t("storeSources.url")} /></div>
+        <div className="visual"><input type="text" value={url} onChange={(event) => setUrl(event.target.value)} placeholder={t("storeSources.urlPlaceholder")} aria-label={t("storeSources.url")} /></div>
       </div>
       {error ? <p className="store-source-error" role="alert">{error}</p> : null}
       <div className="setting"><div className="copy" /><div className="visual"><Button variant="primary" onClick={addSource} disabled={!url.trim()}>{t("storeSources.add")}</Button></div></div>

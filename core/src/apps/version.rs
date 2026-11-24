@@ -8,6 +8,19 @@ pub struct AppVersion {
     patch: u64,
 }
 
+/// Versions order semantically: major, then minor, then patch.
+impl Ord for AppVersion {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        (self.major, self.minor, self.patch).cmp(&(other.major, other.minor, other.patch))
+    }
+}
+
+impl PartialOrd for AppVersion {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum AppVersionError {
     InvalidFormat,

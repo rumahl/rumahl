@@ -7,7 +7,20 @@ const state = vi.hoisted(() => ({
 }));
 
 vi.mock("../../shell/desktop-files", () => ({ ensureDesktopFolder: state.ensureDesktopFolder }));
-vi.mock("../fsClient", () => ({ fetchHostList: vi.fn(async () => []), hostContentUrl: () => "/content" }));
+const fs = vi.hoisted(() => ({
+  createHostEntry: vi.fn(async () => {}),
+  removeHostEntry: vi.fn(async () => {}),
+  renameHostEntry: vi.fn(async () => {}),
+  writeHostFile: vi.fn(async () => {})
+}));
+vi.mock("../fsClient", () => ({
+  fetchHostList: vi.fn(async () => []),
+  hostContentUrl: () => "/content",
+  createHostEntry: fs.createHostEntry,
+  removeHostEntry: fs.removeHostEntry,
+  renameHostEntry: fs.renameHostEntry,
+  writeHostFile: fs.writeHostFile
+}));
 
 import { useExplorer } from "./useExplorer";
 import { freshDesktop, freshHost } from "./types";
@@ -18,6 +31,10 @@ const file = (id: string, name: string) => ({ id, name, directory: false, size: 
 beforeEach(() => {
   state.ensureDesktopFolder.mockClear();
   state.request.mockReset();
+  fs.createHostEntry.mockClear();
+  fs.removeHostEntry.mockClear();
+  fs.renameHostEntry.mockClear();
+  fs.writeHostFile.mockClear();
 });
 
 test("refreshes the desktop listing without clearing it or showing the loader", async () => {
@@ -182,4 +199,41 @@ test("read-only host views cannot mutate even through direct hook calls", async 
   await act(async () => { await result.current.removeMany(["one"]); await result.current.relocate("one", "notes.txt", "target"); });
   expect(state.request).not.toHaveBeenCalled();
   expect(result.current.operation).toBeNull();
+});
+
+test("the home area is writable while apps and system stay read-only", async () => {
+  state.request.mockImplementation(async () => ({ ok: true, json: async () => [] }));
+  // Host areas only exist from advanced mode upwards; the hook enforces it.
+  const { result } = renderHook(() => useExplorer(state.request as unknown as ShellRequest, "device", true));
+
+  act(() => result.current.navigate(freshHost("home")));
+  await waitFor(() => expect(result.current.isWritable).toBe(true));
+  // Cross-folder moves are a personal-store feature, not a host-home one.
+  expect(result.current.canMove).toBe(false);
+  await act(async () => { await result.current.createFolder("Projects"); });
+  expect(fs.createHostEntry).toHaveBeenCalledWith(
+    expect.anything(), "", "Projects", true, "device", expect.anything()
+  );
+
+  act(() => result.current.navigate(freshHost("apps")));
+  await waitFor(() => expect(result.current.isWritable).toBe(false));
+  act(() => result.current.navigate(freshHost("system")));
+  await waitFor(() => expect(result.current.isWritable).toBe(false));
+});
+
+test("home uploads create the file before writing its content", async () => {
+  state.request.mockImplementation(async () => ({ ok: true, json: async () => [] }));
+  const { result } = renderHook(() => useExplorer(state.request as unknown as ShellRequest, "device", true));
+  act(() => result.current.navigate(freshHost("home")));
+  await waitFor(() => expect(result.current.isWritable).toBe(true));
+  const file = new File([new Uint8Array([1, 2, 3])], "note.txt", { type: "text/plain" });
+
+  await act(async () => { await result.current.upload(file); });
+
+  expect(fs.createHostEntry).toHaveBeenCalledWith(
+    expect.anything(), "", "note.txt", false, "device", expect.anything()
+  );
+  expect(fs.writeHostFile).toHaveBeenCalledWith(
+    expect.anything(), "note.txt", file, "device", expect.anything()
+  );
 });
