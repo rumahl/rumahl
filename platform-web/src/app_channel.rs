@@ -16,7 +16,7 @@ use std::time::Duration;
 use crate::{
     AppAccessError, AppFileAccess, AppFileAction, AppFileDeny, AppFileOutcome, ShellIdentity,
 };
-use rand::RngCore;
+use rand::Rng;
 use rumahl_core::{
     AuditAction, AuditLog, AuditOutcome, InstallationId, RuntimeCapabilityExecution,
     RuntimeCapabilityResult, RuntimeChannel, RuntimeChannelError, RuntimeChannelRegistry,

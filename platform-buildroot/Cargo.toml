@@ -18,5 +18,5 @@ zeroize = "1.9.0"
 
 [dev-dependencies]
 base64 = "0.23.1"
-ed25519-dalek = "2.2.0"
+ed25519-dalek = "3.0.0"
 tempfile = "3"

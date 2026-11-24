@@ -11,7 +11,7 @@ use hyper::body::Bytes;
 use hyper::client::conn::http1;
 use hyper::{Method, Request, StatusCode};
 use hyper_util::rt::TokioIo;
-use rand::RngCore;
+use rand::Rng;
 use rumahl_core::{SessionId, UserId};
 use tokio::net::UnixStream;
 use zeroize::Zeroizing;
