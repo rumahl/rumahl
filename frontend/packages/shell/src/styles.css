@@ -1429,3 +1429,106 @@ html[data-settings-transition] .settings-content { view-transition-name: setting
   z-index: 125;
   overflow: hidden;
 }
+
+/* Sandboxed theme documents: opaque origin, sized by their host layer. */
+.theme-sandbox-frame {
+  display: block;
+  width: 100%;
+  height: 100%;
+  border: 0;
+  background: transparent;
+  pointer-events: none;
+}
+
+.theme-security-notice {
+  margin: 0 0 18px;
+  padding: 10px 12px;
+  border: 1px solid var(--rumahl-ui-color-border, rgba(255, 255, 255, 0.16));
+  border-radius: 10px;
+  color: var(--rumahl-ui-color-text-muted, #a9a49a);
+  font-size: 0.82rem;
+  line-height: 1.45;
+}
+
+.theme-card__badge {
+  display: inline-flex;
+  align-items: center;
+  width: fit-content;
+  margin-top: 3px;
+  padding: 2px 7px;
+  border: 1px solid var(--rumahl-ui-color-border, rgba(255, 255, 255, 0.16));
+  border-radius: 999px;
+  color: var(--rumahl-ui-color-text-muted, #a9a49a);
+  font-size: 0.66rem;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+}
+
+.theme-card__badge--danger {
+  border-color: color-mix(in srgb, var(--rumahl-ui-color-danger, #e5484d) 55%, transparent);
+  color: var(--rumahl-ui-color-danger, #e5484d);
+}
+
+.theme-consent {
+  display: grid;
+  gap: 14px;
+  max-width: 560px;
+}
+
+.theme-consent dl {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+}
+
+.theme-consent dl > div {
+  display: grid;
+  grid-template-columns: minmax(120px, 0.4fr) 1fr;
+  gap: 12px;
+  align-items: baseline;
+}
+
+.theme-consent dt {
+  color: var(--rumahl-ui-color-text-muted, #a9a49a);
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.theme-consent dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+  font-size: 0.85rem;
+}
+
+.theme-consent code {
+  font-size: 0.72rem;
+  overflow-wrap: anywhere;
+}
+
+.theme-consent__warning,
+.theme-consent__liability {
+  margin: 0;
+  padding: 10px 12px;
+  border-radius: 9px;
+  font-size: 0.84rem;
+  line-height: 1.45;
+}
+
+.theme-consent__warning {
+  border: 1px solid color-mix(in srgb, var(--rumahl-ui-color-danger, #e5484d) 45%, transparent);
+  color: var(--rumahl-ui-color-danger, #e5484d);
+}
+
+.theme-consent__liability {
+  border: 1px solid var(--rumahl-ui-color-border, rgba(255, 255, 255, 0.16));
+  color: var(--rumahl-ui-color-text-muted, #a9a49a);
+}
+
+.theme-consent__actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}

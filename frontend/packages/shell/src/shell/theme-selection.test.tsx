@@ -1,6 +1,6 @@
 import "../test/popover";
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
-import { beforeAll, describe, expect, test, vi } from "vitest";
+import { beforeEach, describe, expect, test, vi } from "vitest";
 import { WCAG, contrastRatio } from "@rumahl/ui/color";
 import { paletteTokens } from "@rumahl/ui/palette";
 import { getTheme } from "@rumahl/ui/sdk";
@@ -12,7 +12,7 @@ import { demoSnapshot } from "../demo/snapshot";
 const hallowsTheme = loadThemePackage("hallows");
 const classicTheme = loadThemePackage("classic");
 
-beforeAll(() => {
+beforeEach(() => {
   for (const theme of [classicTheme, hallowsTheme]) {
     installTheme({ ...theme, tokens: theme.tokens, parameters: theme.parameters, variants: theme.variants,
       modes: theme.modes, css: theme.css, code: theme.code, slots: theme.slots,
@@ -82,7 +82,9 @@ describe("theme selection", () => {
     render(<App snapshot={demoSnapshot} initialLocation="/settings/display/appearance" />);
     const hallows = await screen.findByRole("button", { name: "Hallows" });
     fireEvent.click(hallows);
-    expect(hallows).toHaveAttribute("aria-pressed", "true");
+    // Executable themes require an explicit execution decision before they run.
+    fireEvent.click(await screen.findByRole("button", { name: "Allow full system access" }));
+    await waitFor(() => expect(hallows).toHaveAttribute("aria-pressed", "true"));
     expect(document.querySelector(".shell")).toHaveAttribute("data-theme", "com.rumahl.hallows");
     expect(document.querySelector(".shell")).toHaveAttribute("data-scheme", "dark");
     expect(document.documentElement.style.getPropertyValue("--rumahl-ui-color-accent")).toBe("#c81d1d");

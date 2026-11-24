@@ -3,10 +3,12 @@ import { resolveVariants, type VariantSelection } from "./variants";
 import {
   normalizeParameter,
   normalizeThemeBase,
+  normalizeThemeRuntime,
   themes,
   type AppearanceMode,
   type Theme,
   type ThemeParameter,
+  type ThemeRuntime,
 } from "./themes";
 import { sanitizeSlots, type SlotName, type SlotTemplate } from "./slots";
 import { sanitizeIconPack, type IconPackInput } from "./icon-pack";
@@ -44,10 +46,25 @@ export interface ThemeInput {
    * undeclared capability is rejected by the safety engine.
    */
   capabilities?: readonly string[] | undefined;
-  /** Custom code (module source). Only trusted/signed themes are executed. */
+  /** Custom code (module source). Sandboxed by default when the theme supports it. */
   code?: string | undefined;
+  /** Execution support for the code module. Legacy code themes default to shell. */
+  runtime?: ThemeRuntime | undefined;
   /** Optional real preview image (data URI or bundled asset). */
   preview?: string | undefined;
+}
+
+/**
+ * API a theme receives when it runs in the sandboxed layer. It can draw inside
+ * its own document only; it has no access to the shell DOM, cookies or APIs.
+ */
+export interface ThemeSandboxApi {
+  root: HTMLElement;
+  layer: "background" | "overlay";
+  state: {
+    tokens: Tokens;
+    animations: boolean;
+  };
 }
 
 /** Merges partial tokens/variants over the rumahl defaults into a full theme. */
@@ -70,7 +87,9 @@ export function defineTheme(input: ThemeInput): Theme {
     ...(typeof input.schemaVersion === "number" ? { schemaVersion: input.schemaVersion } : {}),
     ...(input.base ? { base } : {}),
     ...(input.capabilities?.length ? { capabilities: input.capabilities.slice(0, 32) } : {}),
-    ...(input.code ? { code: input.code.slice(0, 500_000) } : {}),
+    ...(input.code
+      ? { code: input.code.slice(0, 500_000), runtime: normalizeThemeRuntime(input.runtime) }
+      : {}),
     ...(typeof input.preview === "string" && input.preview.length < 4_000_000 ? { preview: input.preview } : {}),
     ...(input.css ? { css: input.css.slice(0, 200_000) } : {}),
   };

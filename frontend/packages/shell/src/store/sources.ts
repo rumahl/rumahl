@@ -199,6 +199,8 @@ export interface StoreAppEntry {
   featured: boolean;
   /** Human-readable permissions declared by the source metadata. */
   permissions: readonly string[];
+  /** Source metadata asks for broad/full system access; show a liability notice. */
+  fullAccess: boolean;
 }
 
 export interface ParsedStoreIndex {
@@ -296,7 +298,8 @@ export function parseStoreIndex(value: unknown, source: StoreSource): ParsedStor
       rating,
       downloads,
       featured: app.featured === true,
-      permissions
+      permissions,
+      fullAccess: app.fullAccess === true
     };
   });
   return { name, apps };
@@ -436,7 +439,8 @@ async function fetchSingleAppIndex(request: ShellRequest, source: StoreSource, s
       rating: null,
       downloads: null,
       featured: false,
-      permissions: []
+      permissions: [],
+      fullAccess: false
     }]
   };
 }

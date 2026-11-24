@@ -7,7 +7,7 @@ import {
   type ThemeInput
 } from "@rumahl/ui/sdk";
 import { themes, type Theme } from "@rumahl/ui/themes";
-import { ThemeSafetyError, validateTheme } from "./theme-safety";
+import { ThemeSafetyError, validateTheme, type SafetyReport } from "./theme-safety";
 
 /**
  * Custom theme installer.
@@ -47,33 +47,160 @@ function write(items: unknown[]): void {
   }
 }
 
+/**
+ * Hash used for code-change detection. Browsers use SHA-256 via WebCrypto;
+ * the deterministic fallback only exists for test environments without it.
+ */
+export function fallbackCodeHash(code: string): string {
+  let hash = 0x811c9dc5;
+  for (let index = 0; index < code.length; index += 1) {
+    hash ^= code.charCodeAt(index);
+    hash = Math.imul(hash, 0x01000193) >>> 0;
+  }
+  return `fnv1a-${hash.toString(16).padStart(8, "0")}`;
+}
+
+export async function themeCodeHash(code: string): Promise<string> {
+  const subtle = globalThis.crypto?.subtle;
+  if (!subtle) return fallbackCodeHash(code);
+  const digest = await subtle.digest("SHA-256", new TextEncoder().encode(code));
+  return [...new Uint8Array(digest)]
+    .map((byte) => byte.toString(16).padStart(2, "0"))
+    .join("");
+}
+
+function originOf(record: Record<string, unknown>): "store" | "manual" {
+  return record.origin === "store" ? "store" : "manual";
+}
+
+/** Registers one persisted record with its local execution decision. */
+function registerRecord(raw: unknown): Theme | null {
+  try {
+    const record = raw as Record<string, unknown>;
+    if (!validateTheme(raw).ok) return null;
+    const defined = defineTheme(raw as ThemeInput);
+    const codeHash = typeof record.codeHash === "string" ? record.codeHash : undefined;
+    const trustedHash = typeof record.trustedHash === "string" ? record.trustedHash : undefined;
+    const execution = defined.code
+      ? record.execution === "trusted" && codeHash && trustedHash === codeHash
+        ? "trusted" as const
+        : "sandbox" as const
+      : undefined;
+    return registerTheme({
+      ...defined,
+      origin: originOf(record),
+      ...(execution ? { execution } : {}),
+      ...(codeHash ? { codeHash } : {}),
+      ...(trustedHash ? { trustedHash } : {}),
+    });
+  } catch {
+    return null;
+  }
+}
+
 /** Registers every installed theme; call once before the first render. */
 export function loadInstalledThemes(): void {
   for (const raw of read()) {
-    try {
-      if (!validateTheme(raw).ok) continue;
-      const origin = (raw as { origin?: string }).origin === "store" ? "store" : "manual";
-      installedIds.add(registerTheme({ ...defineTheme(raw as ThemeInput), origin }).id);
-    } catch {
-      /* skip invalid entries */
-    }
+    const theme = registerRecord(raw);
+    if (theme) installedIds.add(theme.id);
   }
   notify();
 }
 
+export interface ThemeInstallOptions {
+  /** Sandbox is the default; trusted is only valid with a matching code hash. */
+  execution?: "sandbox" | "trusted" | undefined;
+  codeHash?: string | undefined;
+}
+
 /** Installs a theme from its JSON data (safety-checked, registered + persisted). */
-export function installTheme(data: unknown, origin: "store" | "manual" = "manual"): Theme {
+export function installTheme(
+  data: unknown,
+  origin: "store" | "manual" = "manual",
+  options: ThemeInstallOptions = {}
+): Theme {
   const report = validateTheme(data);
   if (!report.ok) throw new ThemeSafetyError(report);
-  const theme = registerTheme({ ...defineTheme(data as ThemeInput), origin });
+  const defined = defineTheme(data as ThemeInput);
+  const codeHash = defined.code ? options.codeHash : undefined;
+  const execution = defined.code
+    ? options.execution === "trusted" && codeHash
+      ? "trusted" as const
+      : "sandbox" as const
+    : undefined;
+  const trustedHash = execution === "trusted" ? codeHash : undefined;
+  const theme = registerTheme({
+    ...defined,
+    origin,
+    ...(execution ? { execution } : {}),
+    ...(codeHash ? { codeHash } : {}),
+    ...(trustedHash ? { trustedHash } : {}),
+  });
   const items = read().filter(
     (item) => (item as { id?: string }).id !== theme.id
   );
-  items.push({ ...(data as Record<string, unknown>), origin });
+  items.push({
+    ...(data as Record<string, unknown>),
+    origin,
+    ...(execution ? { execution } : {}),
+    ...(codeHash ? { codeHash } : {}),
+    ...(trustedHash ? { trustedHash } : {}),
+  });
   write(items);
   installedIds.add(theme.id);
   notify();
   return theme;
+}
+
+/** True when the installed code matches the explicitly trusted hash. */
+export function isThemeTrusted(theme: Theme): boolean {
+  return theme.execution === "trusted"
+    && typeof theme.codeHash === "string"
+    && theme.trustedHash === theme.codeHash;
+}
+
+/**
+ * Marks the installed code as trusted for full shell access. The hash is
+ * recomputed from the current code if the caller does not pass one, so a
+ * theme update invalidates the consent until the user trusts the new code.
+ */
+export async function trustTheme(id: string, codeHash?: string): Promise<void> {
+  const items = read();
+  const index = items.findIndex((item) => (item as { id?: string }).id === id);
+  if (index < 0) throw new Error("theme not installed");
+  const record = items[index] as Record<string, unknown>;
+  const defined = defineTheme(record as unknown as ThemeInput);
+  if (!defined.code) return;
+  const hash = codeHash
+    ?? (typeof record.codeHash === "string" ? record.codeHash : undefined)
+    ?? await themeCodeHash(defined.code);
+  const trusted = { ...defined, origin: originOf(record), execution: "trusted" as const, codeHash: hash, trustedHash: hash };
+  items[index] = { ...record, execution: "trusted", codeHash: hash, trustedHash: hash };
+  write(items);
+  registerTheme(trusted);
+  notify();
+}
+
+/** Revokes full shell access; the theme keeps its CSS and installed code. */
+export function revokeThemeTrust(id: string): void {
+  const items = read();
+  const index = items.findIndex((item) => (item as { id?: string }).id === id);
+  if (index < 0) return;
+  const record = items[index] as Record<string, unknown>;
+  const defined = defineTheme(record as unknown as ThemeInput);
+  if (!defined.code) return;
+  const codeHash = typeof record.codeHash === "string" ? record.codeHash : undefined;
+  const next: Record<string, unknown> = { ...record, execution: "sandbox" };
+  delete next.trustedHash;
+  items[index] = next;
+  write(items);
+  registerTheme({
+    ...defined,
+    origin: originOf(record),
+    execution: "sandbox",
+    ...(codeHash ? { codeHash } : {}),
+  });
+  notify();
 }
 
 /** Reads a ZIP archive (stored or deflated entries) into a file map. */
@@ -156,8 +283,19 @@ async function readThemePackage(buffer: ArrayBuffer): Promise<unknown> {
   return { ...manifest, css: inline(manifest.css, ".css"), code: inline(manifest.code, ".js") };
 }
 
-/** Installs a theme from a picked `.json` or `.zip` package. */
-export async function installThemeFile(file: File): Promise<Theme> {
+export interface PreparedThemeInstall {
+  data: unknown;
+  theme: Theme;
+  report: SafetyReport;
+  /** SHA-256 of the code (or a test fallback when WebCrypto is unavailable). */
+  codeHash: string | null;
+}
+
+/**
+ * Reads and validates a theme package without installing it, so the UI can ask
+ * how executable code should run before anything is persisted.
+ */
+export async function prepareThemeFile(file: File): Promise<PreparedThemeInstall> {
   const head = new Uint8Array(await file.slice(0, 4).arrayBuffer());
   const zip = head[0] === 0x50 && head[1] === 0x4b;
   let data: unknown;
@@ -167,7 +305,23 @@ export async function installThemeFile(file: File): Promise<Theme> {
     if (error instanceof Error && error.message === "invalid-theme") throw error;
     throw new Error("invalid-theme", { cause: error });
   }
-  return installTheme(data);
+  const report = validateTheme(data);
+  if (!report.ok) throw new ThemeSafetyError(report);
+  const theme = defineTheme(data as ThemeInput);
+  const codeHash = theme.code ? await themeCodeHash(theme.code) : null;
+  return { data, theme, report, codeHash };
+}
+
+/** Installs a theme from a picked `.json` or `.zip` package. */
+export async function installThemeFile(
+  file: File,
+  options: ThemeInstallOptions = {}
+): Promise<Theme> {
+  const prepared = await prepareThemeFile(file);
+  return installTheme(prepared.data, "manual", {
+    execution: options.execution ?? "sandbox",
+    ...(prepared.codeHash ? { codeHash: prepared.codeHash } : {}),
+  });
 }
 
 /** Removes an installed theme; built-in themes cannot be uninstalled. */
@@ -178,13 +332,8 @@ export function uninstallTheme(id: string): void {
   installedIds.clear();
   resetThemes();
   for (const raw of items) {
-    try {
-      if (!validateTheme(raw).ok) continue;
-      const origin = (raw as { origin?: string }).origin === "store" ? "store" : "manual";
-      installedIds.add(registerTheme({ ...defineTheme(raw as ThemeInput), origin }).id);
-    } catch {
-      /* skip invalid entries */
-    }
+    const theme = registerRecord(raw);
+    if (theme) installedIds.add(theme.id);
   }
   notify();
 }
@@ -202,10 +351,11 @@ export function exportThemePackage(theme: Theme): string {
       variants: theme.variants,
       tokens: theme.tokens,
       parameters: theme.parameters,
+      ...(theme.capabilities?.length ? { capabilities: theme.capabilities } : {}),
       ...(theme.preview ? { preview: theme.preview } : {}),
       ...(theme.icons && Object.keys(theme.icons).length ? { icons: theme.icons } : {}),
       ...(theme.css ? { css: theme.css } : {}),
-      ...(theme.code ? { code: theme.code } : {})
+      ...(theme.code ? { code: theme.code, ...(theme.runtime ? { runtime: theme.runtime } : {}) } : {})
     },
     null,
     2

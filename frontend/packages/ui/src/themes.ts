@@ -79,6 +79,22 @@ export function normalizeThemeBase(value: unknown): ThemeBase | undefined {
   return undefined;
 }
 
+/**
+ * How a theme's executable code can run.
+ *
+ * - `sandbox` draws inside an isolated layer and cannot reach the shell.
+ * - `shell` uses the legacy full-access module API.
+ * - `both` supports the sandbox layer API and the legacy API.
+ *
+ * Legacy code themes that do not declare a runtime are treated as `shell`, so
+ * they need an explicit full-access consent before their code is executed.
+ */
+export type ThemeRuntime = "sandbox" | "shell" | "both";
+
+export function normalizeThemeRuntime(value: unknown): ThemeRuntime {
+  return value === "sandbox" || value === "both" ? value : "shell";
+}
+
 export interface Theme {
   id: string;
   name: string;
@@ -114,6 +130,14 @@ export interface Theme {
   capabilities?: readonly string[] | undefined;
   /** Custom code (module source) the shell applies for a trusted theme. */
   code?: string | undefined;
+  /** Execution support declared by a code theme. */
+  runtime?: ThemeRuntime | undefined;
+  /** Local execution choice for an installed code theme (never from a package). */
+  execution?: "sandbox" | "trusted" | undefined;
+  /** Hash of the installed code, used for consent and update detection. */
+  codeHash?: string | undefined;
+  /** Hash the user explicitly trusted; trusted only while it matches codeHash. */
+  trustedHash?: string | undefined;
   /** Optional real preview image (data URI or bundled asset). */
   preview?: string | undefined;
   /** Where the theme came from; installed packages set this on registration. */
@@ -367,6 +391,9 @@ export interface ThemePackageManifest {
   icons?: unknown;
   material?: "solid" | undefined;
   base?: ThemeBase | "rumahl" | "clean" | undefined;
+  /** Execution support for an optional code module. */
+  runtime?: ThemeRuntime | undefined;
+  capabilities?: readonly string[] | undefined;
 }
 
 /**
@@ -389,8 +416,9 @@ export function themeFromPackage(manifest: ThemePackageManifest, css?: string, c
     ...(manifest.icons ? { icons: sanitizeIconPack(manifest.icons) } : {}),
     ...(manifest.material ? { material: manifest.material } : {}),
     ...(base === "iris" && !manifest.base ? {} : { base }),
+    ...(manifest.capabilities?.length ? { capabilities: manifest.capabilities.slice(0, 32) } : {}),
     ...(css ? { css } : {}),
-    ...(code ? { code } : {}),
+    ...(code ? { code, runtime: normalizeThemeRuntime(manifest.runtime) } : {}),
     ...(manifest.preview ? { preview: manifest.preview } : {}),
   };
 }

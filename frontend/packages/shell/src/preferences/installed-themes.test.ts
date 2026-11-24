@@ -1,6 +1,16 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, test } from "vitest";
-import { exportThemePackage, installTheme, installThemeFile, isInstalledTheme, uninstallTheme } from "./installed-themes";
+import {
+  exportThemePackage,
+  installTheme,
+  installThemeFile,
+  isInstalledTheme,
+  isThemeTrusted,
+  revokeThemeTrust,
+  themeCodeHash,
+  trustTheme,
+  uninstallTheme
+} from "./installed-themes";
 import { getTheme, listThemes } from "@rumahl/ui/sdk";
 
 /** Minimal stored-entry ZIP writer for the package import test. */
@@ -128,5 +138,38 @@ describe("theme packages", () => {
   test("rejects a ZIP without theme.json", async () => {
     const file = new File([buildZip({ "readme.txt": "nothing" })], "empty.zip", { type: "application/zip" });
     await expect(installThemeFile(file)).rejects.toThrow("invalid-theme");
+  });
+
+  test("keeps full-access code inactive until trusted and revokes that consent", async () => {
+    const code = "export default function activate() { return () => {}; }";
+    const data = {
+      id: "com.example.trusted",
+      name: "Trusted",
+      code,
+      runtime: "shell",
+      tokens: {
+        "color.accent": "#ff5f5f",
+        "color.on.accent": "#111111",
+        "color.canvas.background": "#020101",
+        "color.text.primary": "#ffffff",
+        "color.surface": "#ffffff1a",
+        "color.surface.strong": "#111111",
+        "color.panel.background": "#111111"
+      },
+      modes: ["dark"]
+    };
+    const theme = installTheme(data, "manual");
+    expect(theme.execution).toBe("sandbox");
+    expect(isThemeTrusted(theme)).toBe(false);
+    const hash = await themeCodeHash(code);
+    await trustTheme(theme.id, hash);
+    const trusted = getTheme(theme.id);
+    expect(trusted?.execution).toBe("trusted");
+    expect(trusted && isThemeTrusted(trusted)).toBe(true);
+    revokeThemeTrust(theme.id);
+    const revoked = getTheme(theme.id);
+    expect(revoked?.execution).toBe("sandbox");
+    expect(revoked && isThemeTrusted(revoked)).toBe(false);
+    uninstallTheme(theme.id);
   });
 });
