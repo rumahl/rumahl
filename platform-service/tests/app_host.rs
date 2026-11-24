@@ -174,24 +174,31 @@ async fn catalog_and_launch_require_session_origin_and_current_installation() {
                 PersistentApps::open(&accounts, &platform, dir.path().join("app-assets")).unwrap(),
             ),
             &config.public_origin,
-            "apps.rumahl.test",
+            &config.allowed_origins,
+            &["apps.rumahl.test".to_owned()],
+            None,
         )
         .unwrap(),
     );
     let app = router(GatewayState {
         host_files: None,
+        weather_warnings: None,
         config,
         backend: shell_backend(&accounts, &platform, "test", "en").unwrap(),
         browser_sessions: Some(sessions.clone()),
+        admin: None,
         login_slots: Arc::new(tokio::sync::Semaphore::new(2)),
         audit: None,
         state_dir: None,
+        platform_config: None,
         events: Arc::new(InMemoryShellEvents::new(8)),
         widgets: Arc::new(NoWidgets),
         streams: None,
         apps: Some(apps.clone()),
         preferences: None,
         os_mode: None,
+
+        policies: None,
         workspace: None,
         files: None,
         oidc: None,
@@ -258,6 +265,7 @@ async fn catalog_and_launch_require_session_origin_and_current_installation() {
             )
             .header("content-type", "application/json")
             .header("origin", "https://rumahl.test")
+            .header("host", "rumahl.test")
             .body(Body::from(body.clone()))
             .unwrap()
     };

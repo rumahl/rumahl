@@ -21,19 +21,24 @@ fn app(root: &Path) -> Router {
     let accounts = root.join("accounts.sqlite");
     router(GatewayState {
         host_files: None,
+        weather_warnings: None,
         config: GatewayConfig::new("https://rumahl.test", root.join("ssr.sock")).unwrap(),
         backend: shell_backend(&accounts, &root.join("platform.sqlite"), "build-test", "de")
             .unwrap(),
         browser_sessions: Some(Arc::new(LocalBrowserSessions::open(&accounts).unwrap())),
+        admin: None,
         login_slots: Arc::new(tokio::sync::Semaphore::new(2)),
         audit: None,
         state_dir: None,
+        platform_config: None,
         events: Arc::new(InMemoryShellEvents::new(8)),
         widgets: Arc::new(NoWidgets),
         streams: None,
         apps: None,
         preferences: None,
         os_mode: None,
+
+        policies: None,
         workspace: None,
         files: None,
         oidc: None,

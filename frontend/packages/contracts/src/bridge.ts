@@ -32,7 +32,21 @@ export type BridgeMethod =
   | "os.window.close"
   | "os.window.minimize"
   | "os.window.focus"
-  | "os.capabilities.invoke";
+  | "os.capabilities.invoke"
+  | "os.warnings.register"
+  | "os.warnings.publish"
+  | "os.warnings.test"
+  | "os.warnings.clear"
+  | "os.files.request"
+  | "os.files.read"
+  | "os.files.write"
+  | "os.settings.get"
+  | "os.settings.set"
+  | "os.net.request"
+  | "pets.state"
+  | "pets.interact"
+  | "pets.action.register"
+  | "pets.action.unregister";
 
 export const BRIDGE_METHODS: readonly BridgeMethod[] = [
   "os.info",
@@ -41,7 +55,21 @@ export const BRIDGE_METHODS: readonly BridgeMethod[] = [
   "os.window.close",
   "os.window.minimize",
   "os.window.focus",
-  "os.capabilities.invoke"
+  "os.capabilities.invoke",
+  "os.warnings.register",
+  "os.warnings.publish",
+  "os.warnings.test",
+  "os.warnings.clear",
+  "os.files.request",
+  "os.files.read",
+  "os.files.write",
+  "os.settings.get",
+  "os.settings.set",
+  "os.net.request",
+  "pets.state",
+  "pets.interact",
+  "pets.action.register",
+  "pets.action.unregister"
 ];
 
 /**
@@ -54,11 +82,46 @@ export const BRIDGE_CAPABILITIES = {
   theme: "com.rumahl.os.theme",
   notification: "com.rumahl.os.notification",
   window: "com.rumahl.os.window",
-  capabilities: "com.rumahl.os.capabilities"
+  capabilities: "com.rumahl.os.capabilities",
+  /** Lets an app read the active pet, trigger interactions and add menu actions. */
+  pets: "com.rumahl.pets.interact",
+  /** Explicit opt-in for urgent, non-auto-dismissing emergency notifications. */
+  emergency: "com.rumahl.os.emergency",
+  /** Register as an OS weather-warning source and publish/clear warnings. */
+  warnings: "com.rumahl.os.warnings",
+  /**
+   * Filesystem permissions are OS-owned manifest permissions, not free-form
+   * capability ids: the picker, read and write methods map onto the catalog
+   * entries the platform defines, so an app must declare exactly the one it
+   * uses. `os.files.request` is satisfied by either.
+   */
+  filesRead: "rumahl.files.read",
+  filesWrite: "rumahl.files.write",
+  /**
+   * Read and write this installation's own manifest settings. The shell never
+   * returns secret values, only whether they are configured.
+   */
+  settings: "com.rumahl.os.settings",
+  /**
+   * Ask the OS to perform an HTTP(S) request to an origin the user explicitly
+   * approved for this installation. Requests are brokered server-side; the
+   * app itself never gains a socket to the target.
+   */
+  network: "com.rumahl.os.network"
 } as const;
 
-/** The full baseline capability set (used when a catalog omits capabilities). */
-export const BRIDGE_CAPABILITY_LIST: readonly string[] = Object.values(BRIDGE_CAPABILITIES);
+/**
+ * Baseline capabilities for catalogs that predate explicit capability lists.
+ * The pet interface is deliberately absent: it must be declared by the app and
+ * is never granted by a missing/legacy capability list.
+ */
+export const BRIDGE_CAPABILITY_LIST: readonly string[] = [
+  BRIDGE_CAPABILITIES.info,
+  BRIDGE_CAPABILITIES.theme,
+  BRIDGE_CAPABILITIES.notification,
+  BRIDGE_CAPABILITIES.window,
+  BRIDGE_CAPABILITIES.capabilities
+];
 
 /** Maps a bridge method to the capability it requires, or `null` when unknown. */
 export function capabilityForMethod(method: string): string | null {
@@ -67,11 +130,20 @@ export function capabilityForMethod(method: string): string | null {
   if (method === "os.notification") return BRIDGE_CAPABILITIES.notification;
   if (method.startsWith("os.window.")) return BRIDGE_CAPABILITIES.window;
   if (method === "os.capabilities.invoke") return BRIDGE_CAPABILITIES.capabilities;
+  if (method.startsWith("os.warnings.")) return BRIDGE_CAPABILITIES.warnings;
+  if (method === "os.files.read") return BRIDGE_CAPABILITIES.filesRead;
+  if (method === "os.files.write") return BRIDGE_CAPABILITIES.filesWrite;
+  if (method.startsWith("os.settings.")) return BRIDGE_CAPABILITIES.settings;
+  if (method === "os.net.request") return BRIDGE_CAPABILITIES.network;
+  // The picker is not tied to one permission: it is available to apps that
+  // declared either filesystem permission. The shell gates it itself.
+  if (method === "os.files.request") return BRIDGE_CAPABILITIES.filesRead;
+  if (method.startsWith("pets.")) return BRIDGE_CAPABILITIES.pets;
   return null;
 }
 
 export type BridgeScheme = "light" | "dark";
-export type BridgeToastVariant = "success" | "warning" | "info" | "error";
+export type BridgeToastVariant = "success" | "warning" | "info" | "error" | "loading";
 
 export interface BridgeAppInfo {
   app: { id: string; title: string; version: string };
@@ -97,10 +169,229 @@ export interface BridgeTheme {
   palette: BridgeThemePalette;
 }
 
+/** A non-secret value an app stores in its own manifest settings. */
+export type BridgeSettingValue = string | number | boolean;
+
+/** The app's own settings. Secret values are represented by key only. */
+export interface BridgeSettings {
+  values: Record<string, BridgeSettingValue>;
+  secrets: string[];
+}
+
+/** One write to the app's own settings. `null` clears a stored value. */
+export interface BridgeSettingsWrite {
+  values: Record<string, BridgeSettingValue | null>;
+}
+
+/** One brokered HTTP(S) request to a user-approved origin. */
+export interface BridgeNetworkRequest {
+  url: string;
+  method?: "GET" | "POST" | "PUT" | "PATCH" | "DELETE" | "HEAD";
+  /** Only a small allow-list is accepted; `Authorization` is never app-supplied. */
+  headers?: Record<string, string>;
+  body?: string;
+  /**
+   * Name of a secret setting whose value the OS attaches as
+   * `Authorization: Bearer …`. The plaintext never enters the app.
+   */
+  secret?: string;
+  /** Response cap in bytes; the OS clamps it. */
+  maxBytes?: number;
+}
+
+export interface BridgeNetworkResponse {
+  status: number;
+  headers: Record<string, string>;
+  body: string;
+  truncated?: boolean;
+}
+
+export interface BridgeNotificationButton {
+  /** Stable id sent back to the app when the user activates it. */
+  id: string;
+  label: string;
+}
+
 export interface BridgeNotification {
   title?: string;
   message: string;
+  /** Secondary copy, rendered as the description line. */
+  description?: string;
   variant?: BridgeToastVariant;
+  /** HTTPS or data:image URL; rendered as the app notification image. */
+  image?: string;
+  meta?: string;
+  /** 0..1 progress bar for uploads/background jobs. */
+  progress?: number;
+  /** Milliseconds; omitted uses the OS defaults. `null` keeps it persistent. */
+  duration?: number | null;
+  buttons?: BridgeNotificationButton[];
+  /** Requires the separate `com.rumahl.os.emergency` capability. */
+  emergency?: boolean;
+}
+
+/** Bridge event sent to the source app when a notification button is clicked. */
+export const BRIDGE_NOTIFICATION_ACTION_TOPIC = "os.notification.action" as const;
+
+/** Warning levels understood by the OS warning service. */
+export const BRIDGE_WARNING_LEVELS = ["info", "warning", "critical", "emergency"] as const;
+export type BridgeWarningLevel = (typeof BRIDGE_WARNING_LEVELS)[number];
+
+/**
+ * One warning published to the OS. The OS owns display, expiry and history;
+ * the app only supplies bounded data. `expires` is an epoch millisecond value
+ * in the future (at most seven days for regular warnings, one hour for tests).
+ */
+export interface BridgeWeatherWarning {
+  /** Stable id within the source; republishing the same id updates the warning. */
+  id: string;
+  level: BridgeWarningLevel;
+  headline: string;
+  description?: string;
+  region?: string;
+  event?: string;
+  severity?: string;
+  sender?: string;
+  instruction?: string;
+  area?: string;
+  /** Epoch milliseconds; defaults to the publish time. */
+  effective?: number;
+  /** Epoch milliseconds; required and always in the future. */
+  expires: number;
+  /** Clearly marked test warning. Forced by `os.warnings.test`. */
+  test?: boolean;
+}
+
+/** Source identity returned after registration. */
+export interface BridgeWarningSource {
+  id: string;
+  name: string;
+  registeredAt: number;
+}
+
+export interface BridgeWarningRegistration {
+  source: BridgeWarningSource;
+}
+
+export interface BridgeWarningPublishResult {
+  accepted: number;
+}
+
+export interface BridgeWarningClearResult {
+  cleared: number;
+}
+
+export interface BridgeNotificationAction {
+  notificationId: string;
+  actionId: string;
+}
+/** Public state of the active pet. Appearances remain shell-owned. */
+export interface BridgePetState {
+  id: string;
+  name: string;
+  quiet: boolean;
+  render: "2d" | "3d";
+  temperament: "calm" | "balanced" | "playful";
+  mood: "content" | "curious" | "cozy" | "playful" | "sleepy" | "hungry" | "lonely" | "sleeping";
+  vitality: number;
+  hunger: number;
+  bond: number;
+  sleeping: boolean;
+}
+
+/** Built-in pet interactions an app may trigger through `pets.interact`. */
+export const BRIDGE_PET_ACTIONS = [
+  "pet",
+  "play",
+  "feed",
+  "nap",
+  "dance",
+  "talk",
+  "bath",
+  "boop",
+  "spin",
+  "stretch",
+  "sing",
+  "peek",
+  "meditate"
+] as const;
+export type BridgePetAction = (typeof BRIDGE_PET_ACTIONS)[number];
+
+/** Icon ids allowed for an app-contributed pet menu action. */
+export const BRIDGE_PET_ICONS = [
+  "spark",
+  "heart",
+  "bolt",
+  "star",
+  "leaf",
+  "music",
+  "chat",
+  "moon",
+  "cookie",
+  "wave",
+  "orbit",
+  "pulse"
+] as const;
+export type BridgePetIcon = (typeof BRIDGE_PET_ICONS)[number];
+
+/** Metadata an app registers for an extra pet menu action. */
+export interface BridgePetActionRegistration {
+  id: string;
+  label: string;
+  icon?: BridgePetIcon;
+}
+
+/** Bridge event sent to an app when its registered pet action is clicked. */
+export const BRIDGE_PET_ACTION_TOPIC = "pets.action.triggered" as const;
+
+/** Bridge event broadcast whenever the companion reacts. */
+export const BRIDGE_PET_INTERACTION_TOPIC = "pets.interaction" as const;
+
+export interface BridgePetInteraction {
+  action: string;
+  petId: string;
+  source?: string;
+}
+
+
+/** Which filesystem permission an app wants to exercise through the picker. */
+export type BridgeFilesAccess = "read" | "write";
+
+/** Params for `os.files.request`. */
+export interface BridgeFilesRequestParams {
+  access: BridgeFilesAccess;
+}
+
+/** One personal file the user picked for the app. */
+export interface BridgeFilesFile {
+  /** Personal-file id; only ever learned from the user's own picker choice. */
+  id: string;
+  name: string;
+  size: number;
+}
+
+/** Result of `os.files.request` once the user granted access. */
+export interface BridgeFilesRequestResult {
+  files: BridgeFilesFile[];
+}
+
+/** Result of `os.files.read`: the file's content, base64-encoded. */
+export interface BridgeFilesReadResult {
+  name: string;
+  size: number;
+  contentBase64: string;
+}
+
+/** Params for `os.files.write`. */
+export interface BridgeFilesWriteParams {
+  key: string;
+  contentBase64: string;
+}
+
+/** Result of `os.files.write`. */
+export interface BridgeFilesWriteResult {
+  name: string;
+  size: number;
 }
 
 /** A resource a capability is invoked against. */

@@ -36,19 +36,30 @@ export function useShellApps(options: { includeDisabled?: boolean } = {}): reado
   // Until the authorized catalog is fetched, render the server snapshot's apps
   // so the desktop/launcher are complete on the first paint.
   const installed = catalog.status === "ready" ? catalog.apps : catalog.preview;
-  return useMemo(() => ([
-    ...firstPartyApps.map((app): ShellApp => ({
-      id: app.id, title: t(app.title), path: appPath(app.id), launchable: true, system: true, kind: "app",
-      ...(app.settingsPath ? { settingsPath: app.settingsPath } : {})
-    })),
-    { id: "settings", title: t("nav.settings"), path: "/settings", launchable: true, system: true, kind: "settings" as const },
-    ...installed
-      .filter((app) => !firstPartyApps.some((system) => system.id === app.id))
-      .map((app): ShellApp => ({
-        id: app.id, title: app.title, path: appPath(app.id), launchable: app.launchable, system: false, kind: "app",
-        ...(app.installationId ? { installationId: app.installationId } : {}),
-        ...(app.runtime ? { runtime: app.runtime } : {}),
-        managePath: `/settings/apps/${encodeURIComponent(app.id)}`
-      }))
-  ]).filter((app) => options.includeDisabled || !disabled.includes(app.id)), [t, installed, disabled, options.includeDisabled]);
+  return useMemo(() => {
+    const apps: ShellApp[] = [
+      ...firstPartyApps.map((app): ShellApp => ({
+        id: app.id, title: t(app.title), path: appPath(app.id), launchable: true, system: true, kind: "app",
+        ...(app.settingsPath ? { settingsPath: app.settingsPath } : {})
+      })),
+      { id: "settings", title: t("nav.settings"), path: "/settings", launchable: true, system: true, kind: "settings" as const },
+      ...installed
+        .filter((app) => !firstPartyApps.some((system) => system.id === app.id))
+        .map((app): ShellApp => ({
+          id: app.id, title: app.title, path: appPath(app.id), launchable: app.launchable, system: false, kind: "app",
+          ...(app.installationId ? { installationId: app.installationId } : {}),
+          ...(app.runtime ? { runtime: app.runtime } : {}),
+          managePath: `/settings/apps/${encodeURIComponent(app.id)}`
+        }))
+    ].filter((app) => options.includeDisabled || !disabled.includes(app.id));
+    // Two installed apps may legitimately share a title. A short origin suffix
+    // keeps them distinguishable everywhere the shell renders app names.
+    const counts = new Map<string, number>();
+    for (const app of apps) counts.set(app.title, (counts.get(app.title) ?? 0) + 1);
+    return apps.map((app) => {
+      if ((counts.get(app.title) ?? 0) < 2 || app.system) return app;
+      const origin = app.id.split(".").slice(0, -1).at(-1) ?? app.id;
+      return { ...app, title: `${app.title} · ${origin}` };
+    });
+  }, [t, installed, disabled, options.includeDisabled]);
 }

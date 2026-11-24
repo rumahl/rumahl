@@ -11,18 +11,20 @@ create_data="$repo/platform-buildroot/image/create-data.py"
 seed=""
 data=""
 host="rumahl.home.arpa"
+hosts=""
 app_suffix="apps.rumahl.home.arpa"
 alice_password="${RUMAHL_DEV_ALICE_PASSWORD:-rumahl-Dev-Alice-2026!}"
 bob_password="${RUMAHL_DEV_BOB_PASSWORD:-rumahl-Dev-Bob-2026!}"
 
 usage() {
   cat >&2 <<'EOF'
-usage: dev-provision.sh --seed DIR --data FILE [--host NAME] [--app-suffix SUFFIX]
+usage: dev-provision.sh --seed DIR --data FILE [--hosts LIST] [--host NAME] [--app-suffix SUFFIX]
 
   --seed DIR         seed directory representing the device /var
   --data FILE        ext4 data image to create (must not exist)
-  --host NAME        shell host name for the certificate (default: rumahl.home.arpa)
-  --app-suffix SUFFIX app host wildcard suffix (default: apps.rumahl.home.arpa)
+  --hosts LIST       comma-separated shell host names for the certificate
+  --host NAME        additional single shell host name (default: rumahl.home.arpa)
+  --app-suffix SUFFIX app host wildcard suffix for a single host
 
 Passwords come from RUMAHL_DEV_ALICE_PASSWORD and RUMAHL_DEV_BOB_PASSWORD.
 EOF
@@ -32,6 +34,7 @@ while [ "$#" -gt 0 ]; do
   case "$1" in
     --seed) seed="$2"; shift 2 ;;
     --data) data="$2"; shift 2 ;;
+    --hosts) hosts="$2"; shift 2 ;;
     --host) host="$2"; shift 2 ;;
     --app-suffix) app_suffix="$2"; shift 2 ;;
     -h|--help) usage; exit 0 ;;
@@ -73,9 +76,26 @@ provision() {
 provision alice Alice "$alice_password"
 provision bob Bob "$bob_password"
 
-"$dev_ca" --output "$tls" --host "$host" --app-suffix "$app_suffix"
+if [ -n "$hosts" ]; then
+  "$dev_ca" --output "$tls" --hosts "$hosts"
+else
+  "$dev_ca" --output "$tls" --host "$host" --app-suffix "$app_suffix"
+fi
+
+# The device-local CA signs the IP-SAN certificate at boot; it must not live in
+# the directory nginx serves.
+ca_dir="$seed/lib/rumahl-ca"
+mkdir -p "$ca_dir"
+chmod 700 "$ca_dir"
+mv "$tls/ca.pem" "$ca_dir/ca.pem"
+mv "$tls/ca-key.pem" "$ca_dir/ca-key.pem"
+chmod 600 "$ca_dir/ca-key.pem"
 
 python3 "$create_data" --seed "$seed" --output "$data"
+
+# The QEMU image ships the first-boot unit; a pre-provisioned seed must skip it.
+touch "$state/.provisioned"
+chmod 600 "$state/.provisioned"
 
 cat > "$seed/credentials.txt" <<CRED
 alice  $alice_password

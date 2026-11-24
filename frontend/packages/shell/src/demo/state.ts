@@ -1,7 +1,7 @@
 import type { InstalledApp } from "../apps/client";
 import type { OsModeSettings, Preferences } from "../preferences/client";
 import type { Workspace } from "../preferences/Workspace";
-import { defaultLook } from "../preferences/appearance-presets";
+import { emptyAppearance } from "../preferences/Workspace";
 
 /** Stable demo account id (UUID-shaped, never used for real authentication). */
 export const DEMO_OWNER_ID = "01990000-0000-7000-8000-000000000001";
@@ -106,7 +106,8 @@ function seedWorkspace(): Workspace {
     ],
     desktop: { order: [], hidden: [], widgets: true },
     launcherView: null,
-    appearance: { ...defaultLook, tokens: { ...defaultLook.tokens } }
+    appearance: { ...emptyAppearance },
+    fullscreenChrome: { hideTopbar: true, hideDock: true, dockClearance: false }
   };
 }
 

@@ -1,0 +1,20 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Calculator</title>
+<style>*{box-sizing:border-box}body{margin:0;min-height:100vh;font:15px/1.55 system-ui,-apple-system,"Segoe UI",sans-serif;color:#e8eef0;background:radial-gradient(circle at 15% 10%,#24444d,#101719 60%);padding:2rem}main{max-width:760px;margin:auto}h1{font:600 2rem/1.1 Georgia,serif;margin:.2rem 0 .3rem}p.lead{color:#a9b7ba;margin:0 0 1.4rem}section{background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.13);border-radius:16px;padding:1.1rem;margin-bottom:1rem}input,textarea,button,select{font:inherit}input,textarea,select{width:100%;padding:.7rem .8rem;border:1px solid rgba(255,255,255,.18);border-radius:10px;background:rgba(0,0,0,.22);color:inherit}textarea{min-height:120px;resize:vertical}button{padding:.62rem .9rem;border:0;border-radius:10px;background:#5cc8a0;color:#061310;font-weight:750;cursor:pointer}button.secondary{background:rgba(255,255,255,.13);color:inherit}button.danger{background:#d56b62;color:#fff}.row{display:flex;gap:.6rem;flex-wrap:wrap}.row>*{flex:1 1 130px}.list{display:grid;gap:.5rem;margin-top:.8rem}.item{display:flex;align-items:center;justify-content:space-between;gap:.7rem;padding:.65rem .75rem;border-radius:10px;background:rgba(0,0,0,.2)}.item.done span{opacity:.5;text-decoration:line-through}.muted{color:#a9b7ba;font-size:.9rem}.stat{font:700 2.4rem/1 Georgia,serif;color:#8fe3c1}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:.7rem}.card{padding:.85rem;border-radius:12px;background:rgba(0,0,0,.2)}small{color:#9fb0b3}a{color:#8fe3c1}</style>
+<body>
+<main>
+<header><h1>Calculator</h1><p class="lead">A keyboard-friendly four-function calculator.</p></header>
+<section><input id="display" readonly value="0" style="font:700 2rem/1.2 Georgia,serif;text-align:right"><div class="grid" style="margin-top:.8rem" id="keys"></div></section><p class="muted">Keys: 0-9, + - * /, Enter =, Backspace.</p>
+</main>
+<script>const display=document.querySelector('#display');let current='0',previous=null,operator=null,reset=false;
+function show(){display.value=current;}
+function press(key){if(/[0-9]/.test(key)){current=reset||current==='0'?key:current+key;reset=false;}else if(key==='.'&&!current.includes('.')){current+='.';}else if(['+','-','*','/'].includes(key)){if(operator&&!reset)calculate();previous=Number(current);operator=key;reset=true;}else if(key==='='||key==='Enter'){if(operator){calculate();operator=null;previous=null;}}else if(key==='C'){current='0';previous=null;operator=null;reset=false;}else if(key==='Backspace'){current=current.length>1?current.slice(0,-1):'0';}show();}
+function calculate(){const value=Number(current);if(previous===null)return;const result=operator==='+'?previous+value:operator==='-'?previous-value:operator==='*'?previous*value:value===0?NaN:previous/value;current=Number.isFinite(result)?String(Number(result.toPrecision(12))):'Error';reset=true;show();}
+[['7','8','9','/'],['4','5','6','*'],['1','2','3','-'],['0','.','=','+'],['C']].flat().forEach(key=>{const button=document.createElement('button');button.textContent=key;button.className=key==='C'?'danger':'';button.onclick=()=>press(key);document.querySelector('#keys').append(button);});
+document.addEventListener('keydown',event=>{if(/^[0-9.]$/.test(event.key)||['+','-','*','/','Enter','Backspace'].includes(event.key)){if(event.key==='Enter')event.preventDefault();press(event.key);}if(event.key.toLowerCase()==='c')press('C');});
+show();</script>
+</body>
+</html>

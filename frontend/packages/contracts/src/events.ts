@@ -3,7 +3,8 @@ export const SHELL_EVENT_VERSION = 1 as const;
 export type ShellEventV1 =
   | { eventVersion: 1; kind: "snapshot_changed"; revision: string }
   | { eventVersion: 1; kind: "session_revoked" }
-  | { eventVersion: 1; kind: "system_lifecycle"; state: "restarting" | "shutting-down" };
+  | { eventVersion: 1; kind: "system_lifecycle"; state: "restarting" | "shutting-down" }
+  | { eventVersion: 1; kind: "warnings_changed" };
 
 const REVISION = /^[A-Za-z0-9._-]{1,128}$/;
 
@@ -22,6 +23,9 @@ export function parseShellEvent(data: string): ShellEventV1 {
   }
   if (value.kind === "system_lifecycle" && Object.keys(value).length === 3 &&
       (value.state === "restarting" || value.state === "shutting-down")) {
+    return value as ShellEventV1;
+  }
+  if (value.kind === "warnings_changed" && Object.keys(value).length === 2) {
     return value as ShellEventV1;
   }
   throw new Error("invalid shell event");

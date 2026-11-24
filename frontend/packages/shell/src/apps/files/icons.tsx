@@ -1,4 +1,12 @@
 import type { PropsWithChildren } from "react";
+import folderEmpty from "./folder-icons/folder.svg?raw";
+import folderSingle from "./folder-icons/folder-single-file.svg?raw";
+import folderMultiple from "./folder-icons/folder-multiple-file.svg?raw";
+import folderMore from "./folder-icons/folder-more-file.svg?raw";
+import desktopArtwork from "./folder-icons/desktop.svg";
+import fileArtwork from "./folder-icons/file.svg";
+import textFileArtwork from "./folder-icons/text-file.svg";
+import { defaultAssociations, extensionOf } from "./fileTypes";
 
 function Icon({ className, children }: PropsWithChildren<{ className?: string | undefined }>) {
   return <svg className={className} viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">{children}</svg>;
@@ -7,12 +15,20 @@ function Icon({ className, children }: PropsWithChildren<{ className?: string | 
 export function FolderIcon({ className }: { className?: string | undefined }) {
   return <Icon className={className}><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" /></Icon>;
 }
-export function FolderArtwork({ className }: { className?: string | undefined }) {
-  return <svg className={className} viewBox="0 0 270.93333 270.93333" fill="none" aria-hidden="true">
-    <path d="m 57.325183,31.871957 c -21.191354,0 -38.251412,17.060573 -38.251412,38.25193 v 92.252253 c 0,21.19135 17.060058,38.25193 38.251412,38.25193 H 215.82248 c 21.19136,0 38.25141,-17.06058 38.25141,-38.25193 V 110.34831 C 253.97499,89.295927 237.20871,72.367947 216.36612,72.284477 h -56.15988 c -12.26852,0 -22.22464,-9.54921 -22.87147,-21.650875 v 0.296623 c 0,-0.12013 -0.001,-0.240079 -0.004,-0.359668 -0.0117,-0.229728 -0.0199,-0.460439 -0.0248,-0.691947 -0.51331,-9.563101 -7.9883,-17.216316 -17.47283,-18.006653 z" fill="currentColor" fillOpacity=".76" />
-    <rect x="19.186193" y="72.25396" width="234.99998" height="168.7558" ry="38.136852" fill="currentColor" fillOpacity=".96" />
-  </svg>;
+/** Folder artwork reflects how many items are inside without exposing file names. */
+export function FolderArtwork({ className, count }: { className?: string | undefined; count?: number | null | undefined }) {
+  const source = count == null || count === 0 ? folderEmpty : count === 1 ? folderSingle : count <= 3 ? folderMultiple : folderMore;
+  return <span className={`folder-artwork${className ? ` ${className}` : ""}`} aria-hidden="true" dangerouslySetInnerHTML={{ __html: source }} />;
 }
+export function DesktopArtwork({ className }: { className?: string | undefined }) {
+  return <img className={className} src={desktopArtwork} alt="" aria-hidden="true" draggable={false} />;
+}
+
+export function FileArtwork({ name, className }: { name: string; className?: string | undefined }) {
+  const text = defaultAssociations[extensionOf(name)] === "text";
+  return <img className={className} src={text ? textFileArtwork : fileArtwork} alt="" aria-hidden="true" draggable={false} />;
+}
+
 export function FileIcon({ className }: { className?: string | undefined }) {
   return <Icon className={className}><path d="M6 3h8l4 4v14H6z" /><path d="M14 3v4h4" /></Icon>;
 }
@@ -57,6 +73,10 @@ export function OpenIcon({ className }: { className?: string | undefined }) {
 }
 export function DownloadIcon({ className }: { className?: string | undefined }) {
   return <Icon className={className}><path d="M12 4v12" /><path d="m7 11 5 5 5-5" /><path d="M5 20h14" /></Icon>;
+}
+/** Overflow trigger for the per-item touch/keyboard action menu. */
+export function MoreIcon({ className }: { className?: string | undefined }) {
+  return <Icon className={className}><path d="M5 12h.01" /><path d="M12 12h.01" /><path d="M19 12h.01" /></Icon>;
 }
 
 export function AlertIcon({ className }: { className?: string | undefined }) {

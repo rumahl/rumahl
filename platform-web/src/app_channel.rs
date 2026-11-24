@@ -6,17 +6,21 @@
 //! even while it has no window open. Frames are JSON lines, versioned by
 //! `rumahl.channel.v1`.
 use std::collections::HashMap;
-use std::io::{BufRead, BufReader, Write};
+use std::io::{BufRead, BufReader, Read, Write};
 use std::os::unix::net::UnixListener;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::mpsc;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
+use crate::{
+    AppAccessError, AppFileAccess, AppFileAction, AppFileDeny, AppFileOutcome, ShellIdentity,
+};
 use rand::RngCore;
 use rumahl_core::{
-    InstallationId, RuntimeCapabilityExecution, RuntimeCapabilityResult, RuntimeChannel,
-    RuntimeChannelError, RuntimeChannelRegistry, RuntimeEvent,
+    AuditAction, AuditLog, AuditOutcome, InstallationId, RuntimeCapabilityExecution,
+    RuntimeCapabilityResult, RuntimeChannel, RuntimeChannelError, RuntimeChannelRegistry,
+    RuntimeEvent, SessionId, UserId,
 };
 use serde::{Deserialize, Serialize};
 
@@ -59,6 +63,62 @@ pub enum ChannelFrame {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         result: Option<String>,
     },
+    /// A user-scoped file access request from the running app, bound to the
+    /// capability invocation the user made. The OS authorizes it with that
+    /// invocation's user and session — never with the app's own claim.
+    #[serde(rename_all = "camelCase")]
+    FileRequest {
+        id: String,
+        invocation: String,
+        action: String,
+        /// Personal-file id; exactly one of `key` and `path` is set.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        key: Option<String>,
+        /// Internal path (`/home/<user>/...` or `rumahl://home/...`). The OS
+        /// resolves it with the invocation's identity, then authorizes the
+        /// resolved id exactly like a key request.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        path: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        content_base64: Option<String>,
+    },
+    /// The OS's answer to a file request.
+    #[serde(rename_all = "camelCase")]
+    FileResponse {
+        id: String,
+        ok: bool,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        name: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        content_base64: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        size: Option<u64>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        error: Option<String>,
+    },
+}
+
+/// Executes one file request for a channel app, authorized with the user and
+/// session of the capability invocation that is still in flight.
+pub trait ChannelFiles: Send + Sync {
+    fn access(
+        &self,
+        identity: ShellIdentity,
+        installation: InstallationId,
+        access: &AppFileAccess,
+    ) -> Result<AppFileOutcome, AppAccessError>;
+
+    /// Resolves an internal path to the invocation user's personal-file id.
+    /// Implementations must only accept the caller's own home and fail closed;
+    /// the grant on the returned id still decides the access.
+    fn resolve(
+        &self,
+        _identity: ShellIdentity,
+        _installation: InstallationId,
+        _path: &str,
+    ) -> Result<String, AppAccessError> {
+        Err(AppAccessError::Denied)
+    }
 }
 
 impl ChannelFrame {
@@ -121,6 +181,9 @@ impl ChannelAuthenticator for ChannelTokenStore {
 pub struct Connection<W: Write + Send> {
     writer: Mutex<W>,
     pending: Mutex<HashMap<String, mpsc::Sender<Result<String, ()>>>>,
+    /// Who is behind each in-flight capability invocation. This is the only
+    /// identity an app may use for user-scoped work.
+    invocations: Mutex<HashMap<String, (UserId, SessionId)>>,
     sequence: AtomicU64,
 }
 
@@ -129,8 +192,22 @@ impl<W: Write + Send> Connection<W> {
         Self {
             writer: Mutex::new(writer),
             pending: Mutex::new(HashMap::new()),
+            invocations: Mutex::new(HashMap::new()),
             sequence: AtomicU64::new(0),
         }
+    }
+
+    /// Sends a frame the OS initiates outside a capability result.
+    pub(crate) fn respond(&self, frame: &ChannelFrame) -> Result<(), RuntimeChannelError> {
+        self.write_frame(frame)
+    }
+
+    /// The identity of the user whose invocation is still in flight.
+    fn invocation_identity(&self, invocation: &str) -> Option<(UserId, SessionId)> {
+        self.invocations
+            .lock()
+            .ok()
+            .and_then(|invocations| invocations.get(invocation).copied())
     }
 
     fn write_frame(&self, frame: &ChannelFrame) -> Result<(), RuntimeChannelError> {
@@ -153,6 +230,7 @@ impl<W: Write + Send> Connection<W> {
             .lock()
             .ok()
             .and_then(|mut pending| pending.remove(&id));
+        self.forget_invocation(&id);
         if let Some(waiter) = waiter {
             let _ = waiter.send(if ok {
                 Ok(result.unwrap_or_default())
@@ -182,6 +260,11 @@ impl<W: Write + Send> Connection<W> {
             .lock()
             .map_err(|_| RuntimeChannelError::Unavailable)?
             .insert(id.clone(), sender);
+        if let Some(identity) = execution.identity()
+            && let Ok(mut invocations) = self.invocations.lock()
+        {
+            invocations.insert(id.clone(), identity);
+        }
         let frame = ChannelFrame::Capability {
             id: id.clone(),
             capability: execution.capability.clone(),
@@ -191,6 +274,7 @@ impl<W: Write + Send> Connection<W> {
             if let Ok(mut pending) = self.pending.lock() {
                 pending.remove(&id);
             }
+            self.forget_invocation(&id);
             return Err(error);
         }
         match receiver.recv_timeout(EXECUTE_TIMEOUT) {
@@ -200,8 +284,15 @@ impl<W: Write + Send> Connection<W> {
                 if let Ok(mut pending) = self.pending.lock() {
                     pending.remove(&id);
                 }
+                self.forget_invocation(&id);
                 Err(RuntimeChannelError::Unavailable)
             }
+        }
+    }
+
+    fn forget_invocation(&self, id: &str) {
+        if let Ok(mut invocations) = self.invocations.lock() {
+            invocations.remove(id);
         }
     }
 }
@@ -239,14 +330,42 @@ impl<W: Write + Send> RuntimeChannel for SocketRuntimeChannel<W> {
     }
 }
 
+/// Largest hello line accepted from an app.
+const MAX_HELLO_BYTES: usize = 4096;
+/// Largest single frame line accepted. File content is base64 of at most
+/// 12 MiB, so this stays comfortably above a full file response.
+const MAX_FRAME_BYTES: usize = 18 * 1024 * 1024;
+/// Concurrent channel connections. Every connection holds a thread, so a
+/// misbehaving local client must not be able to exhaust the process.
+const MAX_CONNECTIONS: usize = 64;
+
+/// Reads one newline-terminated line without letting the peer grow the buffer
+/// past `limit`. A peer that sends more is refused instead of buffered.
+fn read_bounded_line<R: BufRead + ?Sized>(
+    reader: &mut R,
+    limit: usize,
+) -> std::io::Result<Option<String>> {
+    let mut line = String::new();
+    let read = Read::take(&mut *reader, limit as u64 + 1).read_line(&mut line)?;
+    if read == 0 {
+        return Ok(None);
+    }
+    if line.len() > limit && !line.ends_with('\n') {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidData,
+            "channel frame exceeds the line limit",
+        ));
+    }
+    Ok(Some(line))
+}
+
 /// Reads the first frame of a connection and returns the authenticated
 /// installation. Returns `None` for a missing/invalid `hello`.
 pub fn read_hello(
     reader: &mut impl BufRead,
     authenticator: &dyn ChannelAuthenticator,
 ) -> Option<InstallationId> {
-    let mut line = String::new();
-    reader.read_line(&mut line).ok()?;
+    let line = read_bounded_line(reader, MAX_HELLO_BYTES).ok()??;
     let ChannelFrame::Hello {
         protocol,
         installation_id,
@@ -267,11 +386,128 @@ pub fn read_hello(
 /// channel for the installation, keeps it registered while the peer stays
 /// connected, and unregisters it on disconnect. Call this on a dedicated thread
 /// per connection.
+/// Decoded bytes an app may write through one channel request; base64 grows
+/// the JSON line by a third, so this stays below the file API's 16 MiB.
+const MAX_CHANNEL_FILE_BYTES: usize = 12 * 1024 * 1024;
+
+fn encode_file_content(bytes: &[u8]) -> Option<String> {
+    (bytes.len() <= MAX_CHANNEL_FILE_BYTES).then(|| {
+        use base64::Engine;
+        base64::engine::general_purpose::STANDARD.encode(bytes)
+    })
+}
+
+fn decode_file_content(encoded: &str) -> Option<Vec<u8>> {
+    use base64::Engine;
+    let decoded = base64::engine::general_purpose::STANDARD
+        .decode(encoded)
+        .ok()?;
+    (decoded.len() <= MAX_CHANNEL_FILE_BYTES).then_some(decoded)
+}
+
+/// Answers one file request with the invocation's identity. Anything the app
+/// cannot prove — an unknown invocation, a malformed frame, no executor or a
+/// denial from the grants — becomes an error frame, never data.
+#[allow(clippy::too_many_arguments)]
+fn handle_file_request<W: Write + Send>(
+    connection: &Connection<W>,
+    installation: InstallationId,
+    id: String,
+    invocation: String,
+    action: String,
+    key: Option<String>,
+    path: Option<String>,
+    content_base64: Option<String>,
+    files: Option<&dyn ChannelFiles>,
+) -> ChannelFrame {
+    let deny = |error: &str| ChannelFrame::FileResponse {
+        id: id.clone(),
+        ok: false,
+        name: None,
+        content_base64: None,
+        size: None,
+        error: Some(error.to_owned()),
+    };
+    let Some((user, session)) = connection.invocation_identity(&invocation) else {
+        return deny("no-invocation");
+    };
+    let Some(files) = files else {
+        return deny("unavailable");
+    };
+    let identity = ShellIdentity {
+        user_id: user,
+        session_id: session,
+    };
+    let key = match (key, path) {
+        (Some(key), None) => key,
+        (None, Some(path)) => match files.resolve(identity, installation, &path) {
+            Ok(key) => key,
+            Err(AppAccessError::Denied) => return deny("denied"),
+            Err(AppAccessError::Unavailable) => return deny("unavailable"),
+        },
+        _ => return deny("invalid"),
+    };
+    if key.is_empty() || key.len() > 255 {
+        return deny("invalid");
+    }
+    let access = match action.as_str() {
+        "read" => AppFileAccess {
+            action: AppFileAction::Read,
+            key,
+        },
+        "write" => {
+            let Some(encoded) = content_base64 else {
+                return deny("invalid");
+            };
+            let Some(bytes) = decode_file_content(&encoded) else {
+                return deny("invalid");
+            };
+            AppFileAccess {
+                action: AppFileAction::Write { bytes },
+                key,
+            }
+        }
+        _ => return deny("invalid"),
+    };
+    match files.access(identity, installation, &access) {
+        Ok(AppFileOutcome::Content { name, bytes }) => match encode_file_content(&bytes) {
+            Some(content_base64) => ChannelFrame::FileResponse {
+                id,
+                ok: true,
+                name: Some(name),
+                content_base64: Some(content_base64),
+                size: Some(bytes.len() as u64),
+                error: None,
+            },
+            None => deny("too-large"),
+        },
+        Ok(AppFileOutcome::Allowed { name, size }) => ChannelFrame::FileResponse {
+            id,
+            ok: true,
+            name: Some(name),
+            content_base64: None,
+            size: Some(size),
+            error: None,
+        },
+        Ok(AppFileOutcome::Missing) => deny("missing"),
+        Ok(AppFileOutcome::Denied(reason)) => deny(match reason {
+            AppFileDeny::NoGrant => "no-grant",
+            AppFileDeny::ApprovalRequired => "approval-required",
+            AppFileDeny::OutsideScope => "outside-scope",
+            AppFileDeny::QuotaExceeded => "quota",
+        }),
+        Err(AppAccessError::Denied) => deny("denied"),
+        Err(AppAccessError::Unavailable) => deny("unavailable"),
+    }
+}
+
 pub fn run_connection<R, W>(
     mut reader: R,
     writer: W,
     registry: Arc<RuntimeChannelRegistry>,
     authenticator: Arc<dyn ChannelAuthenticator>,
+    files: Option<Arc<dyn ChannelFiles>>,
+    audit: Option<Arc<dyn AuditLog>>,
 ) -> std::io::Result<()>
 where
     R: BufRead,
@@ -287,16 +523,58 @@ where
     if !registry.register(installation, channel) {
         return Ok(());
     }
-    // Dispatch result frames until the app disconnects (0 bytes) or errors.
-    let mut line = String::new();
-    loop {
-        line.clear();
-        match reader.read_line(&mut line) {
-            Ok(0) | Err(_) => break,
-            Ok(_) => {}
-        }
+    // Dispatch result frames until the app disconnects (0 bytes), sends an
+    // oversized line or errors.
+    while let Some(line) = read_bounded_line(&mut reader, MAX_FRAME_BYTES)
+        .ok()
+        .flatten()
+    {
         if let Some(frame) = ChannelFrame::decode(line.trim()) {
-            connection.resolve(frame);
+            match frame {
+                ChannelFrame::FileRequest {
+                    id,
+                    invocation,
+                    action,
+                    key,
+                    path,
+                    content_base64,
+                } => {
+                    let target = format!(
+                        "{installation}:{action}:{}",
+                        key.as_deref().or(path.as_deref()).unwrap_or("")
+                    );
+                    let response = handle_file_request(
+                        &connection,
+                        installation,
+                        id,
+                        invocation,
+                        action,
+                        key,
+                        path,
+                        content_base64,
+                        files.as_deref(),
+                    );
+                    if let Some(audit) = audit.as_ref() {
+                        let outcome = match &response {
+                            ChannelFrame::FileResponse { ok: true, .. } => AuditOutcome::Success,
+                            _ => AuditOutcome::Failure,
+                        };
+                        if let Ok(event) = rumahl_core::NewAuditEvent::new(
+                            rumahl_core::UnixTimestamp::now()
+                                .unwrap_or_else(|_| rumahl_core::UnixTimestamp::from_seconds(0)),
+                            rumahl_core::AuditActor::App(installation.to_string()),
+                            AuditAction::AppFileAccess,
+                            outcome,
+                        )
+                        .with_target(target)
+                        {
+                            let _ = audit.record(event);
+                        }
+                    }
+                    let _ = connection.respond(&response);
+                }
+                frame => connection.resolve(frame),
+            }
         }
     }
     connection.disconnect();
@@ -310,17 +588,30 @@ pub fn serve_channel_listener(
     listener: UnixListener,
     registry: Arc<RuntimeChannelRegistry>,
     authenticator: Arc<dyn ChannelAuthenticator>,
+    files: Option<Arc<dyn ChannelFiles>>,
+    audit: Option<Arc<dyn AuditLog>>,
 ) {
+    let live = Arc::new(AtomicU64::new(0));
     for stream in listener.incoming() {
         let Ok(stream) = stream else { continue };
+        if live.fetch_add(1, Ordering::AcqRel) as usize >= MAX_CONNECTIONS {
+            live.fetch_sub(1, Ordering::AcqRel);
+            // Dropping the stream closes it without reading an unbounded hello.
+            continue;
+        }
         let Ok(writer) = stream.try_clone() else {
+            live.fetch_sub(1, Ordering::AcqRel);
             continue;
         };
         let reader = BufReader::new(stream);
         let registry = Arc::clone(&registry);
         let authenticator = Arc::clone(&authenticator);
+        let files = files.clone();
+        let audit = audit.clone();
+        let live = Arc::clone(&live);
         std::thread::spawn(move || {
-            let _ = run_connection(reader, writer, registry, authenticator);
+            let _ = run_connection(reader, writer, registry, authenticator, files, audit);
+            live.fetch_sub(1, Ordering::AcqRel);
         });
     }
 }
@@ -449,11 +740,299 @@ mod tests {
             .execute(&RuntimeCapabilityExecution {
                 capability: "rumahl.search.query".into(),
                 resource: None,
+                user: None,
+                session: None,
             })
             .unwrap();
         assert_eq!(outcome.payload(), "{\"answer\":42}");
         app.join().unwrap();
         resolver.join().unwrap();
+    }
+
+    #[test]
+    fn file_requests_use_the_invocations_identity_and_fail_closed() {
+        use rumahl_core::SessionId;
+        use rumahl_core::UserId;
+        use std::io::BufReader;
+        use std::os::unix::net::UnixStream;
+        use std::sync::Mutex;
+        use std::thread;
+        use std::time::Duration;
+
+        #[derive(Default)]
+        struct RecordingFiles {
+            seen: Mutex<Vec<(ShellIdentity, InstallationId, AppFileAccess)>>,
+            paths: Mutex<Vec<String>>,
+        }
+
+        impl ChannelFiles for RecordingFiles {
+            fn access(
+                &self,
+                identity: ShellIdentity,
+                installation: InstallationId,
+                access: &AppFileAccess,
+            ) -> Result<AppFileOutcome, AppAccessError> {
+                self.seen
+                    .lock()
+                    .unwrap()
+                    .push((identity, installation, access.clone()));
+                Ok(AppFileOutcome::Content {
+                    name: "notes.txt".into(),
+                    bytes: b"hello".to_vec(),
+                })
+            }
+
+            fn resolve(
+                &self,
+                _identity: ShellIdentity,
+                _installation: InstallationId,
+                path: &str,
+            ) -> Result<String, AppAccessError> {
+                self.paths.lock().unwrap().push(path.to_owned());
+                if path == "/home/alice/Documents/notes.txt" {
+                    Ok("path-resolved".into())
+                } else {
+                    Err(AppAccessError::Denied)
+                }
+            }
+        }
+
+        let (server, mut client) = UnixStream::pair().unwrap();
+        let reader = BufReader::new(server.try_clone().unwrap());
+        let registry = Arc::new(RuntimeChannelRegistry::new());
+        let authenticator: Arc<dyn ChannelAuthenticator> = Arc::new(FakeAuthenticator);
+        let files = Arc::new(RecordingFiles::default());
+        let files_dyn: Arc<dyn ChannelFiles> = files.clone();
+        let registry_for_connection = Arc::clone(&registry);
+        let installation = installation();
+        let handle = thread::spawn(move || {
+            run_connection(
+                reader,
+                server,
+                registry_for_connection,
+                authenticator,
+                Some(files_dyn),
+                None,
+            )
+            .unwrap()
+        });
+        client
+            .write_all(
+                format!(
+                    "{}\n",
+                    ChannelFrame::Hello {
+                        protocol: CHANNEL_PROTOCOL.into(),
+                        installation_id: installation.to_string(),
+                        token: "valid-token".into(),
+                    }
+                    .encode()
+                    .unwrap()
+                )
+                .as_bytes(),
+            )
+            .unwrap();
+        client.flush().unwrap();
+        let mut waited = 0;
+        while !registry.is_registered(&installation) && waited < 200 {
+            thread::sleep(Duration::from_millis(5));
+            waited += 1;
+        }
+        assert!(registry.is_registered(&installation));
+
+        // The OS invokes a capability for a user; the app learns the invocation id.
+        let user = UserId::new();
+        let session = SessionId::new();
+        let execution = RuntimeCapabilityExecution {
+            capability: "rumahl.notes.save".into(),
+            resource: None,
+            user: Some(user),
+            session: Some(session),
+        };
+        let invoker = {
+            let registry = Arc::clone(&registry);
+            thread::spawn(move || registry.execute(&installation, &execution))
+        };
+        let line = {
+            let mut line = String::new();
+            BufReader::new(client.try_clone().unwrap())
+                .read_line(&mut line)
+                .unwrap();
+            line
+        };
+        let Some(ChannelFrame::Capability { id: invocation, .. }) =
+            ChannelFrame::decode(line.trim())
+        else {
+            panic!("expected a capability frame");
+        };
+
+        // A file request bound to the invocation runs with the invoker's identity.
+        client
+            .write_all(
+                format!(
+                    "{}\n",
+                    ChannelFrame::FileRequest {
+                        id: "1".into(),
+                        invocation: invocation.clone(),
+                        action: "read".into(),
+                        key: Some("0123456789abcdef0123456789abcdef".into()),
+                        path: None,
+                        content_base64: None,
+                    }
+                    .encode()
+                    .unwrap()
+                )
+                .as_bytes(),
+            )
+            .unwrap();
+        client.flush().unwrap();
+        let mut response = String::new();
+        BufReader::new(client.try_clone().unwrap())
+            .read_line(&mut response)
+            .unwrap();
+        let Some(ChannelFrame::FileResponse {
+            ok,
+            content_base64,
+            size,
+            ..
+        }) = ChannelFrame::decode(response.trim())
+        else {
+            panic!("expected a file response");
+        };
+        assert!(ok);
+        assert_eq!(size, Some(5));
+        assert_eq!(content_base64.as_deref(), Some("aGVsbG8="));
+        {
+            let seen = files.seen.lock().unwrap();
+            assert_eq!(seen.len(), 1);
+            assert_eq!(
+                seen[0].0,
+                ShellIdentity {
+                    user_id: user,
+                    session_id: session
+                }
+            );
+            assert_eq!(seen[0].1, installation);
+            assert_eq!(seen[0].2.key, "0123456789abcdef0123456789abcdef");
+        }
+
+        // An unknown invocation is refused before any executor runs.
+        client
+            .write_all(
+                format!(
+                    "{}\n",
+                    ChannelFrame::FileRequest {
+                        id: "2".into(),
+                        invocation: "not-an-invocation".into(),
+                        action: "read".into(),
+                        key: Some("0123456789abcdef0123456789abcdef".into()),
+                        path: None,
+                        content_base64: None,
+                    }
+                    .encode()
+                    .unwrap()
+                )
+                .as_bytes(),
+            )
+            .unwrap();
+        client.flush().unwrap();
+        let mut denied = String::new();
+        BufReader::new(client.try_clone().unwrap())
+            .read_line(&mut denied)
+            .unwrap();
+        assert!(matches!(
+            ChannelFrame::decode(denied.trim()),
+            Some(ChannelFrame::FileResponse { ok: false, error: Some(error), .. }) if error == "no-invocation"
+        ));
+        assert_eq!(files.seen.lock().unwrap().len(), 1);
+
+        // A path request resolves with the invocation's identity, then runs
+        // through the same consent check on the resolved id.
+        client
+            .write_all(
+                format!(
+                    "{}\n",
+                    ChannelFrame::FileRequest {
+                        id: "3".into(),
+                        invocation: invocation.clone(),
+                        action: "read".into(),
+                        key: None,
+                        path: Some("/home/alice/Documents/notes.txt".into()),
+                        content_base64: None,
+                    }
+                    .encode()
+                    .unwrap()
+                )
+                .as_bytes(),
+            )
+            .unwrap();
+        client.flush().unwrap();
+        let mut resolved = String::new();
+        BufReader::new(client.try_clone().unwrap())
+            .read_line(&mut resolved)
+            .unwrap();
+        assert!(matches!(
+            ChannelFrame::decode(resolved.trim()),
+            Some(ChannelFrame::FileResponse { ok: true, .. })
+        ));
+        assert_eq!(
+            files.seen.lock().unwrap().last().unwrap().2.key,
+            "path-resolved"
+        );
+        assert_eq!(
+            files.paths.lock().unwrap().as_slice(),
+            ["/home/alice/Documents/notes.txt"]
+        );
+
+        // A path outside the caller's home is denied before the executor runs.
+        client
+            .write_all(
+                format!(
+                    "{}\n",
+                    ChannelFrame::FileRequest {
+                        id: "4".into(),
+                        invocation: invocation.clone(),
+                        action: "read".into(),
+                        key: None,
+                        path: Some("/home/bob/Documents/notes.txt".into()),
+                        content_base64: None,
+                    }
+                    .encode()
+                    .unwrap()
+                )
+                .as_bytes(),
+            )
+            .unwrap();
+        client.flush().unwrap();
+        let mut foreign = String::new();
+        BufReader::new(client.try_clone().unwrap())
+            .read_line(&mut foreign)
+            .unwrap();
+        assert!(matches!(
+            ChannelFrame::decode(foreign.trim()),
+            Some(ChannelFrame::FileResponse { ok: false, error: Some(error), .. }) if error == "denied"
+        ));
+        assert_eq!(files.seen.lock().unwrap().len(), 2);
+
+        // Finishing the invocation forgets its identity.
+        client
+            .write_all(
+                format!(
+                    "{}\n",
+                    ChannelFrame::CapabilityResult {
+                        id: invocation,
+                        ok: true,
+                        result: None,
+                    }
+                    .encode()
+                    .unwrap()
+                )
+                .as_bytes(),
+            )
+            .unwrap();
+        client.flush().unwrap();
+        invoker.join().unwrap().unwrap();
+        drop(client);
+        handle.join().unwrap();
     }
 
     #[test]
@@ -490,6 +1069,24 @@ mod tests {
     }
 
     #[test]
+    fn bounded_reads_refuse_oversized_lines() {
+        // A peer cannot grow a frame buffer without bound: the read stops one
+        // byte past the limit and reports invalid data.
+        let mut reader = Cursor::new(vec![b'x'; MAX_HELLO_BYTES + 10]);
+        assert!(read_bounded_line(&mut reader, MAX_HELLO_BYTES).is_err());
+
+        // A line that exactly fills the limit is still a valid frame.
+        let mut reader = Cursor::new(format!("{}\n", "y".repeat(MAX_HELLO_BYTES - 1)).into_bytes());
+        let line = read_bounded_line(&mut reader, MAX_HELLO_BYTES)
+            .unwrap()
+            .unwrap();
+        assert_eq!(line.len(), MAX_HELLO_BYTES);
+
+        let mut reader = Cursor::new(vec![b'{'; MAX_HELLO_BYTES + 10]);
+        assert_eq!(read_hello(&mut reader, &FakeAuthenticator), None);
+    }
+
+    #[test]
     fn runs_a_connection_registers_and_unregisters() {
         use std::io::BufReader;
         use std::os::unix::net::UnixStream;
@@ -504,7 +1101,7 @@ mod tests {
         let authenticator: Arc<dyn ChannelAuthenticator> = Arc::new(FakeAuthenticator);
         let server_registry = Arc::clone(&registry);
         let handle = thread::spawn(move || {
-            run_connection(reader, server, server_registry, authenticator).unwrap()
+            run_connection(reader, server, server_registry, authenticator, None, None).unwrap()
         });
 
         let installation = installation();

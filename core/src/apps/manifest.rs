@@ -9,7 +9,7 @@ use crate::{
 use super::settings::{self, AppSettingDeclaration};
 use super::{
     AppVersion, ConnectorDeclaration, ContributionDeclaration, OidcClientDeclaration,
-    StreamPresentation,
+    StreamPresentation, SurfaceDeclaration,
 };
 
 /// When an app's runtime runs. Orthogonal to `RuntimeKind`.
@@ -50,6 +50,7 @@ pub struct AppManifest {
     permission_requests: Vec<PermissionRequest>,
     provided_capabilities: Vec<CapabilityId>,
     contributions: Vec<ContributionDeclaration>,
+    surfaces: Vec<SurfaceDeclaration>,
     event_subscriptions: Vec<EventName>,
     databases: Vec<AppDatabaseDeclaration>,
     settings: Vec<AppSettingDeclaration>,
@@ -65,6 +66,8 @@ pub enum AppManifestError {
     DuplicatePermissionRequest,
     DuplicateProvidedCapability,
     DuplicateContribution,
+    DuplicateSurface,
+    TooManySurfaces,
     DuplicateEventSubscription,
     DuplicateDatabaseDeclaration,
     TooManyDatabaseDeclarations,
@@ -77,6 +80,8 @@ pub enum AppManifestError {
 
 impl AppManifest {
     pub const MAX_DATABASES: usize = 8;
+
+    pub const MAX_SURFACES: usize = 4;
 
     pub fn new(
         app_id: AppId,
@@ -107,6 +112,7 @@ impl AppManifest {
             permission_requests: Vec::new(),
             provided_capabilities: Vec::new(),
             contributions: Vec::new(),
+            surfaces: Vec::new(),
             event_subscriptions: Vec::new(),
             databases: Vec::new(),
             settings: Vec::new(),
@@ -126,6 +132,12 @@ impl AppManifest {
 
     pub fn version(&self) -> &AppVersion {
         &self.version
+    }
+
+    /// Replaces the declared version; used by app updates, which keep the
+    /// installation identity but move the manifest forward.
+    pub fn set_version(&mut self, version: AppVersion) {
+        self.version = version;
     }
 
     pub fn display_name(&self) -> &str {
@@ -205,6 +217,25 @@ impl AppManifest {
 
     pub fn contributions(&self) -> &[ContributionDeclaration] {
         &self.contributions
+    }
+
+    pub fn add_surface(&mut self, surface: SurfaceDeclaration) -> Result<(), AppManifestError> {
+        if self
+            .surfaces
+            .iter()
+            .any(|existing| existing.id() == surface.id())
+        {
+            return Err(AppManifestError::DuplicateSurface);
+        }
+        if self.surfaces.len() >= Self::MAX_SURFACES {
+            return Err(AppManifestError::TooManySurfaces);
+        }
+        self.surfaces.push(surface);
+        Ok(())
+    }
+
+    pub fn surfaces(&self) -> &[SurfaceDeclaration] {
+        &self.surfaces
     }
 
     pub fn add_event_subscription(&mut self, event: EventName) -> Result<(), AppManifestError> {
@@ -361,6 +392,18 @@ impl fmt::Display for AppManifestError {
                     "app manifest cannot declare the same contribution id more than once"
                 )
             }
+
+            Self::DuplicateSurface => {
+                write!(
+                    f,
+                    "app manifest cannot declare the same surface id more than once"
+                )
+            }
+            Self::TooManySurfaces => write!(
+                f,
+                "app manifest cannot declare more than {} surfaces",
+                AppManifest::MAX_SURFACES
+            ),
 
             Self::DuplicateEventSubscription => {
                 write!(

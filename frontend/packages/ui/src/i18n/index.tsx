@@ -44,7 +44,8 @@ function createI18n(locale: SupportedLocale): I18n {
   return {
     locale,
     t: (key, parameters) => {
-      const message = messages[key];
+      const message = messages[key] ?? english[key];
+      if (!message) return key;
       const template =
         typeof message === "string"
           ? message

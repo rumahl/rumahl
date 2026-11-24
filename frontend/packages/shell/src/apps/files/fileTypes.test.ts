@@ -23,7 +23,14 @@ test("associates a file with a program by extension", () => {
   expect(fileAssociation("photo.PNG")?.id).toBe("image");
   expect(fileAssociation("clip.mp4")?.id).toBe("media");
   expect(fileAssociation("manual.pdf")?.id).toBe("pdf");
-  expect(fileAssociation("notes.txt")?.installed).toBe(false);
+  expect(fileAssociation("notes.txt")?.installed).toBe(true);
+  expect(fileAssociation("notes.txt")?.appPath).toBe("/app/editor");
+  expect(fileAssociation("README.md")?.id).toBe("text");
+  expect(fileAssociation("config.yaml")?.id).toBe("text");
+  expect(fileAssociation("main.tsx")?.id).toBe("text");
+  expect(fileAssociation("Makefile")?.id).toBe("text");
+  expect(fileAssociation(".gitignore")?.id).toBe("text");
+  expect(fileAssociation(".env")?.id).toBe("text");
   expect(fileAssociation("unknown.xyz")).toBeUndefined();
 });
 

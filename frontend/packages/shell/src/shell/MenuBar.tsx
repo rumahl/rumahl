@@ -4,7 +4,9 @@ import { RumahlMark } from "../components/RumahlMark";
 import { DesktopIcon, GridIcon, SearchIcon, SlidersIcon } from "../icons";
 import { useI18n } from "../i18n";
 import { useShellPreferences } from "../preferences/ShellPreferences";
+import { useWorkspace } from "../preferences/Workspace";
 import { useShell } from "./ShellContext";
+import { useTopbarActions } from "./TopbarActions";
 import { useDeviceViewport } from "./device";
 import { useClock } from "./clock";
 import { ControlCenter } from "./ControlCenter";
@@ -12,15 +14,17 @@ import { openMobileTour } from "./MobileTutorial";
 import { MenuDropdown } from "./MenuDropdown";
 import { featureReady, useFeatures } from "../features/ShellFeatures";
 import { flushSessionSnapshot } from "./session-snapshot";
+import { WeatherWarnings } from "./WeatherWarnings";
 
-type MenuId = "system" | "go" | "view" | "window" | "user";
+type MenuId = "system" | "go" | "view" | "window";
 
-export function MenuBar() {
-  const { snapshot, state, dispatch, open, mode, setMode } = useShell();
+export function MenuBar({ warningsRevision = 0 }: { warningsRevision?: number }) {
+  const { snapshot, state, dispatch, open, mode, setMode, live } = useShell();
   const location = useLocation();
   const viewport = useDeviceViewport();
   const features = useFeatures();
   const preferences = useShellPreferences();
+  const workspace = useWorkspace();
   const { t, locale } = useI18n();
   const now = useClock(1000);
   const [openMenu, setOpenMenu] = useState<MenuId | null>(null);
@@ -39,11 +43,13 @@ export function MenuBar() {
   // "An app is fullscreen": a launcher app is open, or a window is maximized.
   // The island tucks upward so the window can use the space; a slim sliver
   // remains at the top edge and reveals the full bar on approach.
-  const appFullscreen = mode === "launcher" || mode === "mobile"
+  const appFullscreen = !state.appSwitcherOpen && (mode === "launcher" || mode === "mobile"
     ? !atHome && state.windows.some((item) => !item.minimized)
-    : state.windows.some((item) => !item.minimized && (item.fullscreen || item.placement === "maximized"));
+    : state.windows.some((item) => !item.minimized && (item.fullscreen || item.placement === "maximized")));
+  const hideTopbar = (workspace.userWorkspace?.fullscreenChrome ?? workspace.effective.fullscreenChrome).hideTopbar;
+  const autoHide = appFullscreen && hideTopbar;
   useEffect(() => {
-    if (!appFullscreen) { setTopRevealed(false); return; }
+    if (!autoHide) { setTopRevealed(false); return; }
     const reveal = () => { if (hideTop.current) window.clearTimeout(hideTop.current); setTopRevealed(true); };
     const scheduleHide = () => {
       if (hideTop.current) window.clearTimeout(hideTop.current);
@@ -73,7 +79,7 @@ export function MenuBar() {
       window.removeEventListener("touchmove", onTouchMove);
       if (hideTop.current) window.clearTimeout(hideTop.current);
     };
-  }, [appFullscreen]);
+  }, [autoHide]);
   useEffect(() => {
     if (!openMenu && !controlOpen) return;
     const onPointerDown = (event: PointerEvent) => {
@@ -98,12 +104,15 @@ export function MenuBar() {
   const close = () => setOpenMenu(null);
   const act = (run: () => void) => () => { close(); run(); };
   const windows = [...state.windows].sort((left, right) => left.id.localeCompare(right.id));
+  // macOS-style: the focused app contributes its quick actions next to the
+  // logo. An app without actions, an installed (iframe) app or no focused
+  // window leaves the logo alone in its round island.
+  const quickActions = useTopbarActions(state.focusedWindowId);
   const protection = snapshot.systemStatus.protection === "active" ? t("status.protection.value") : t("status.protection.attention");
   // Live clock after mount; falls back to the snapshot time for the first paint.
   const time = now ?? new Date(snapshot.systemStatus.observedAtUnixMs);
 
   const topRevealedNow = topRevealed || openMenu !== null || controlOpen;
-  const autoHide = appFullscreen;
 
   function menu(id: MenuId, label: ReactNode, entries: ReactNode) {
     const expanded = openMenu === id;
@@ -116,39 +125,45 @@ export function MenuBar() {
   }
 
   return <header ref={bar} className={`menubar topbar${autoHide ? " is-auto-hide" : ""}${autoHide && topRevealedNow ? " is-revealed" : ""}`}>
-    <div className="topbar__island topbar__island--left">
+    <div className="topbar__island topbar__island--left" data-quick={quickActions.length > 0 ? "" : undefined}>
       <nav className="menubar__menus" aria-label={t("menubar.label")}>
         {menu("system", <span className="menubar__brand brand" aria-label="rumahl OS"><RumahlMark /><span className="menubar__wordmark" aria-hidden="true">rumahl</span></span>, <>
           <p className="menubar__about">{t("menubar.about")}<small>{snapshot.shellBuildId.slice(0, 8)}</small></p>
           <div className="menubar__separator" role="separator" />
           <button role="menuitem" type="button" onClick={act(() => open("/settings"))}>{t("nav.settings")}</button>
           <div className="menubar__separator" role="separator" />
-          <button role="menuitem" type="submit" form="rumahl-sign-out" disabled={!featureReady(features["session.signOut"])} title={!featureReady(features["session.signOut"]) ? t("features.demoUnavailable") : undefined}>{t("session.signOut")}</button>
-        </>)}
-        {menu("go", t("menubar.go"), <>
+          <p className="menubar__section">{t("menubar.go")}</p>
           <button role="menuitem" type="button" onClick={act(() => open("/"))}>{t("nav.home")}</button>
           <button role="menuitem" type="button" disabled={!featureReady(features.activity)} title={!featureReady(features.activity) ? t("features.demoUnavailable") : undefined} onClick={act(() => open("/activity"))}>{t("nav.activity")}</button>
-          <button role="menuitem" type="button" onClick={act(() => open("/settings"))}>{t("nav.settings")}</button>
-        </>)}
-        {menu("view", t("menubar.view"), <>
+          <div className="menubar__separator" role="separator" />
+          <p className="menubar__section">{t("menubar.view")}</p>
           <button role="menuitemradio" aria-checked={mode === "desktop"} type="button" onClick={act(() => setMode("desktop"))}>{t("mode.desktop")}</button>
           <button role="menuitemradio" aria-checked={mode === "launcher"} type="button" onClick={act(() => setMode("launcher"))}>{t("mode.launcher")}</button>
-          <div className="menubar__separator" role="separator" />
           <button role="menuitem" type="button" onClick={act(() => dispatch({ type: "toggle-command-palette" }))}>{t("menubar.spotlight")}</button>
           <button role="menuitem" type="button" onClick={act(() => { dispatch({ type: "minimize-all" }); open("/"); })}>{t("desktop.menu.show")}</button>
-        </>)}
-        {menu("window", t("menubar.window"), <>
-          <button role="menuitem" type="button" disabled={windows.length === 0} onClick={act(() => dispatch({ type: "minimize-all" }))}>{t("menubar.minimizeAll")}</button>
           <div className="menubar__separator" role="separator" />
-          {windows.length === 0
-            ? <p className="menubar__empty">{t("menubar.noWindows")}</p>
-            : windows.map((item) => <button role="menuitem" type="button" key={item.id}
-                onClick={act(() => { dispatch({ type: "focus-window", id: item.id }); open(item.location ?? "/"); })}>{item.title}</button>)}
+          <p className="menubar__section">{t("menubar.window")}</p>
+          <button role="menuitem" type="button" disabled={windows.length === 0} onClick={act(() => dispatch({ type: "minimize-all" }))}>{t("menubar.minimizeAll")}</button>
+          {windows.map((item) => <button role="menuitem" type="button" key={item.id}
+              onClick={act(() => { dispatch({ type: "focus-window", id: item.id }); open(item.location ?? "/"); })}>{item.title}</button>)}
+          <div className="menubar__separator" role="separator" />
+          <button role="menuitem" type="submit" form="rumahl-sign-out" disabled={!featureReady(features["session.signOut"])} title={!featureReady(features["session.signOut"]) ? t("features.demoUnavailable") : undefined}>{t("session.signOut")}</button>
         </>)}
+        {quickActions.map((action) => (
+          <button
+            key={action.id}
+            className="menubar__item menubar__quick"
+            type="button"
+            disabled={action.disabled === true}
+            title={action.title}
+            onClick={action.onSelect}
+          >{action.label}</button>
+        ))}
       </nav>
     </div>
 
     <div className="topbar__island topbar__island--right">
+      <WeatherWarnings live={live} revision={warningsRevision} />
       <button className="topbar__button menubar__spotlight" type="button" aria-label={t("search.system")} title={t("menubar.spotlight")}
         aria-expanded={state.commandPaletteOpen} onClick={() => dispatch({ type: "toggle-command-palette" })}><SearchIcon /></button>
       <div className="topbar__anchor" ref={(element) => { anchors.current.control = element; }}>
@@ -165,17 +180,11 @@ export function MenuBar() {
           disabled={!preferences.ready || preferences.saving} onClick={() => setMode("launcher")}><GridIcon /></button>
       </div>
       <time className="menubar__clock" dateTime={time.toISOString()}>{formatter.format(time)}</time>
-      <div className="menubar__menu" ref={(element) => { anchors.current.user = element; }}>
-        <button className="menubar__item menubar__user" type="button" aria-haspopup="menu" aria-expanded={openMenu === "user"}
-          aria-label={t("profile.open")} onClick={() => setOpenMenu(openMenu === "user" ? null : "user")}>
+      <div className="menubar__menu">
+        <button className="menubar__item menubar__user" type="button"
+          aria-label={t("profile.open")} title={t("profile.open")} onClick={act(() => open("/settings/account"))}>
           {snapshot.user.displayName.slice(0, 1).toUpperCase()}
         </button>
-        <MenuDropdown anchor={{ current: anchors.current.user ?? null }} open={openMenu === "user"} align="right" className="menubar__dropdown menubar__dropdown--right">
-          <p className="menubar__about">{t("menubar.signedInAs", { name: snapshot.user.displayName })}</p>
-          <div className="menubar__separator" role="separator" />
-          <button role="menuitem" type="button" onClick={act(() => open("/settings"))}>{t("nav.settings")}</button>
-          <button role="menuitem" type="submit" form="rumahl-sign-out" disabled={!featureReady(features["session.signOut"])} title={!featureReady(features["session.signOut"]) ? t("features.demoUnavailable") : undefined}>{t("session.signOut")}</button>
-        </MenuDropdown>
       </div>
     </div>
     <form action="/logout" id="rumahl-sign-out" method="post" hidden onSubmit={(event) => {

@@ -25,7 +25,7 @@ BR2_LINUX_KERNEL_CONFIG_FRAGMENT_FILES="$(BR2_EXTERNAL_RUMAHL_PATH)/board/qemu/x
 BR2_LINUX_KERNEL_NEEDS_HOST_LIBELF=y
 BR2_TARGET_ROOTFS_EXT2=y
 BR2_TARGET_ROOTFS_EXT2_4=y
-BR2_TARGET_ROOTFS_EXT2_SIZE="512M"
+BR2_TARGET_ROOTFS_EXT2_SIZE="1024M"
 # BR2_TARGET_ROOTFS_TAR is not set
 # The SSR shell renders localized numbers, plurals and relative times with the
 # standard Intl API. Node must therefore be built with ICU (system-icu), which
@@ -42,6 +42,7 @@ BR2_PACKAGE_NGINX_HTTP_REWRITE_MODULE=y
 BR2_PACKAGE_NGINX_HTTP_LIMIT_REQ_MODULE=y
 BR2_PACKAGE_CA_CERTIFICATES=y
 BR2_PACKAGE_E2FSPROGS=y
+BR2_PACKAGE_IPROUTE2=y
 # The runtime supervisor hosts app containers through the Docker engine and
 # reads TPM-sealed platform keys through the tpm2-tools CLI.
 BR2_PACKAGE_DOCKER_ENGINE=y
@@ -49,6 +50,8 @@ BR2_PACKAGE_DOCKER_ENGINE=y
 # app-network unit invoke the separate Docker CLI.
 BR2_PACKAGE_DOCKER_CLI=y
 BR2_PACKAGE_TPM2_TOOLS=y
+# rumahl-host-config signs the device certificate with the openssl CLI.
+BR2_PACKAGE_LIBOPENSSL_BIN=y
 BR2_PACKAGE_RUMAHL_SHELL=y
 BR2_ROOTFS_OVERLAY="$(BR2_EXTERNAL_RUMAHL_PATH)/board/qemu/overlay"
 BR2_ROOTFS_POST_BUILD_SCRIPT="$(BR2_EXTERNAL_RUMAHL_PATH)/board/qemu/post-build.sh"

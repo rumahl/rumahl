@@ -31,6 +31,11 @@ fn main() {
         .expect("platform runtime could not start");
     if let Err(error) = runtime.block_on(run()) {
         eprintln!("rumahl platform: {error}");
+        let mut source = error.source();
+        while let Some(cause) = source {
+            eprintln!("  caused by: {cause}");
+            source = cause.source();
+        }
         std::process::exit(1);
     }
 }
@@ -48,6 +53,72 @@ fn private_directory(path: &std::path::Path) -> Result<(), ServiceError> {
     Ok(())
 }
 
+/// Device addresses published by rumahl-hosts.service. The platform sandbox
+/// blocks netlink, so interface enumeration is only a fallback for hosts that
+/// do not run that service.
+fn configured_device_ips() -> Vec<std::net::IpAddr> {
+    let path = env::var("RUMAHL_DEVICE_IPS_FILE").unwrap_or_else(|_| "/run/rumahl/ips".to_owned());
+    match std::fs::read_to_string(path) {
+        Ok(value) => value
+            .lines()
+            .map(str::trim)
+            .filter(|line| !line.is_empty())
+            .filter_map(|line| line.parse().ok())
+            .collect(),
+        Err(_) => local_unicast_addresses(),
+    }
+}
+
+/// Current non-loopback unicast IPv4/IPv6 addresses of this device.
+fn local_unicast_addresses() -> Vec<std::net::IpAddr> {
+    use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
+
+    let mut addresses = Vec::new();
+    let mut list: *mut libc::ifaddrs = std::ptr::null_mut();
+    // Safety: getifaddrs fills a NULL-terminated list owned by libc, which
+    // freeifaddrs releases exactly once below.
+    if unsafe { libc::getifaddrs(&mut list) } != 0 {
+        return addresses;
+    }
+    let mut current = list;
+    while !current.is_null() {
+        let entry = unsafe { &*current };
+        let address = entry.ifa_addr;
+        if !address.is_null() {
+            match unsafe { (*address).sa_family } as i32 {
+                libc::AF_INET => {
+                    let raw = unsafe { &*(address as *const libc::sockaddr_in) };
+                    let ip = Ipv4Addr::from(u32::from_be(raw.sin_addr.s_addr));
+                    if !ip.is_loopback() && !ip.is_unspecified() && !ip.is_link_local() {
+                        addresses.push(IpAddr::V4(ip));
+                    }
+                }
+                libc::AF_INET6 => {
+                    let raw = unsafe { &*(address as *const libc::sockaddr_in6) };
+                    let ip = Ipv6Addr::from(raw.sin6_addr.s6_addr);
+                    let link_local = ip
+                        .segments()
+                        .first()
+                        .is_some_and(|segment| segment & 0xffc0 == 0xfe80);
+                    if !ip.is_loopback()
+                        && !ip.is_unspecified()
+                        && !link_local
+                        && ip.to_ipv4_mapped().is_none()
+                    {
+                        addresses.push(IpAddr::V6(ip));
+                    }
+                }
+                _ => {}
+            }
+        }
+        current = entry.ifa_next;
+    }
+    unsafe { libc::freeifaddrs(list) };
+    addresses.sort();
+    addresses.dedup();
+    addresses
+}
+
 /// Builds the field-encryption key provider from the TPM environment, if set.
 /// A deployment without TPM stores file content as plaintext.
 fn optional_key_provider() -> Option<Arc<dyn rumahl_persistence_sqlite::FieldKeyProvider>> {
@@ -56,7 +127,9 @@ fn optional_key_provider() -> Option<Arc<dyn rumahl_persistence_sqlite::FieldKey
         env::var("RUMAHL_SECRET_KEY_ID").ok()?,
     )
     .ok()?;
-    let object = PathBuf::from(env::var("RUMAHL_SECRET_KEY_OBJECT").ok()?);
+    let object =
+        rumahl_platform_buildroot::Tpm2Object::parse(&env::var("RUMAHL_SECRET_KEY_OBJECT").ok()?)
+            .ok()?;
     let authorization = match env::var("RUMAHL_SECRET_KEY_POLICY_SESSION") {
         Ok(value) if !value.is_empty() => {
             rumahl_platform_buildroot::Tpm2Authorization::PolicySession(PathBuf::from(value))
@@ -69,6 +142,17 @@ fn optional_key_provider() -> Option<Arc<dyn rumahl_persistence_sqlite::FieldKey
     rumahl_platform_buildroot::Tpm2UnsealKeyProvider::new(executable, key_id, [sealed])
         .ok()
         .map(|provider| Arc::new(provider) as Arc<dyn rumahl_persistence_sqlite::FieldKeyProvider>)
+}
+
+/// The key provider for file content: the TPM provider unless the deployment
+/// explicitly disabled file encryption. Serving and migration share it, so a
+/// migration always seals exactly like the running platform.
+fn file_key_provider() -> Option<Arc<dyn rumahl_persistence_sqlite::FieldKeyProvider>> {
+    if env::var("RUMAHL_FILE_ENCRYPTION").as_deref() == Ok("off") {
+        None
+    } else {
+        optional_key_provider()
+    }
 }
 
 async fn run() -> Result<(), ServiceError> {
@@ -87,6 +171,7 @@ async fn run() -> Result<(), ServiceError> {
         state_dir.join("platform.sqlite"),
         state_dir.join("preferences.sqlite"),
         state_dir.join("files.sqlite"),
+        state_dir.join("files-index.sqlite"),
     ] {
         rumahl_persistence_sqlite::verify_schema(&database).map_err(|error| {
             std::io::Error::other(format!("database schema check failed: {error}"))
@@ -132,6 +217,29 @@ async fn run() -> Result<(), ServiceError> {
         install::install_package(&state_dir, std::path::Path::new(&args[1]))?;
         return Ok(());
     }
+    if args.first().map(String::as_str) == Some("migrate-files") {
+        if args.len() != 1 {
+            return Err(std::io::Error::other("usage: migrate-files").into());
+        }
+        let home_root = rumahl_platform_service::user_homes::home_root();
+        let report = rumahl_platform_service::file_migration::migrate_files(
+            &state_dir,
+            &home_root,
+            file_key_provider(),
+        )
+        .map_err(|error| std::io::Error::other(error.to_string()))?;
+        println!(
+            "Files migrated: {} accounts ({} without a home), {} files, {} folders created, {} existing entries kept, {} grants remapped, {} grants dropped.",
+            report.accounts,
+            report.skipped,
+            report.files,
+            report.directories,
+            report.existing,
+            report.grants_remapped,
+            report.grants_dropped
+        );
+        return Ok(());
+    }
     if args.first().map(String::as_str) == Some("backup") {
         if args.len() != 2 {
             return Err(std::io::Error::other("usage: backup DESTINATION_DIR").into());
@@ -151,35 +259,171 @@ async fn run() -> Result<(), ServiceError> {
         .ok_or_else(|| std::io::Error::other("client build ID missing"))?;
     let locale = env::var("RUMAHL_LOCALE").unwrap_or_else(|_| "en".into());
     let platform = state_dir.join("platform.sqlite");
-    let config = GatewayConfig::new(
-        &required("RUMAHL_PUBLIC_ORIGIN")?,
-        required("RUMAHL_SSR_SOCKET")?,
-    )
-    .map_err(|_| std::io::Error::other("invalid gateway configuration"))?;
-    let authority = config.public_origin.as_str()[8..].to_owned();
-    let app_suffix = env::var("RUMAHL_APP_HOST_SUFFIX")
-        .unwrap_or_else(|_| format!("apps.{}", config.public_origin.host_str().unwrap()));
+    let primary_origin = required("RUMAHL_PUBLIC_ORIGIN")?;
+    let mut config = GatewayConfig::new(&primary_origin, required("RUMAHL_SSR_SOCKET")?)
+        .map_err(|_| std::io::Error::other("invalid gateway configuration"))?;
+    let primary_host = config
+        .public_origin
+        .host_str()
+        .unwrap_or_default()
+        .to_owned();
+    let port_suffix = config
+        .public_origin
+        .port()
+        .map(|port| format!(":{port}"))
+        .unwrap_or_default();
+    // RUMAHL_PUBLIC_HOSTS is a comma-separated allowlist of shell host names.
+    // The token IP expands to the device's current unicast addresses, which are
+    // always accepted so a device stays reachable when local name resolution
+    // is unavailable.
+    let mut host_names: Vec<String> = env::var("RUMAHL_PUBLIC_HOSTS")
+        .ok()
+        .map(|value| {
+            value
+                .split(',')
+                .map(str::trim)
+                .filter(|entry| !entry.is_empty() && !entry.eq_ignore_ascii_case("ip"))
+                .map(str::to_owned)
+                .collect()
+        })
+        .unwrap_or_default();
+    if host_names.is_empty() {
+        host_names.push(primary_host.clone());
+    }
+    let device_ips = configured_device_ips();
+    let mut allowed_origins: Vec<String> = host_names
+        .iter()
+        .map(|host| format!("https://{host}{port_suffix}"))
+        .collect();
+    allowed_origins.extend(device_ips.iter().map(|ip| match ip {
+        std::net::IpAddr::V6(_) => format!("https://[{ip}]{port_suffix}"),
+        std::net::IpAddr::V4(_) => format!("https://{ip}{port_suffix}"),
+    }));
+    config
+        .add_allowed_origins(allowed_origins)
+        .map_err(|_| std::io::Error::other("invalid public host configuration"))?;
+    let allowed_authorities: Vec<String> = config
+        .allowed_origins
+        .iter()
+        .map(|origin| origin.as_str()[8..].trim_end_matches('/').to_owned())
+        .collect();
+    // App hosts use per-host suffixes. RUMAHL_APP_HOST_SUFFIX keeps a single
+    // explicit suffix for the primary host for backwards compatibility.
+    let mut app_suffixes: Vec<String> = Vec::new();
+    if let Ok(explicit) = env::var("RUMAHL_APP_HOST_SUFFIX")
+        && !explicit.is_empty()
+    {
+        app_suffixes.push(explicit);
+    }
+    for host in &host_names {
+        let suffix = format!("apps.{host}");
+        if !app_suffixes.contains(&suffix) {
+            app_suffixes.push(suffix);
+        }
+    }
     let app_root = state_dir.join("app-assets");
-    let apps_provider = apps::PersistentApps::open(&accounts, &platform, app_root)?;
+    // The home is the source of truth for user files: the shell's Files app and
+    // consented app access both see the account's real documents. The SQLite
+    // store remains only as the rollback for the `migrate-files` upgrade.
+    let home_root = rumahl_platform_service::user_homes::home_root();
+    let files_index = state_dir.join("files-index.sqlite");
+    let personal_files: std::sync::Arc<dyn rumahl_core::PersonalFiles> = {
+        match file_key_provider() {
+            Some(provider) => Arc::new(
+                rumahl_persistence_sqlite::HomePersonalFiles::open_encrypted(
+                    &home_root,
+                    &accounts,
+                    &files_index,
+                    provider,
+                )?,
+            ),
+            None => {
+                eprintln!(
+                    "rumahl platform: file content encryption disabled (no TPM key configured)"
+                );
+                Arc::new(rumahl_persistence_sqlite::HomePersonalFiles::open(
+                    &home_root,
+                    &accounts,
+                    &files_index,
+                )?)
+            }
+        }
+    };
+    // Administrative policies resolve from the identity store on every check.
+    let policies: Arc<dyn rumahl_platform_web::PolicyEngine> =
+        Arc::new(rumahl_platform_service::policy_engine::LocalPolicyEngine::open(&accounts)?);
+    let apps_provider = apps::PersistentApps::open(&accounts, &platform, app_root)?
+        .with_account_roles(&accounts)?
+        .with_personal_files(personal_files.clone())
+        // The displayed budget follows the same precedence as the enforced
+        // one: an explicit deployment override, then the device policy.
+        .with_storage_quota(match apps::storage_quota_override() {
+            Some(quota) => quota,
+            None => policies.app_storage_quota(),
+        });
     let apps_provider = match apps_data_root() {
         Some(data_root) => apps_provider.with_data_root(data_root)?,
         None => apps_provider,
     };
+    // Setting secrets use the TPM key when it is available. Development and
+    // TPM-less hosts get a random 0600 key file under the private state
+    // directory, so no app credential ever lands in SQLite as plaintext.
+    let field_key = match file_key_provider() {
+        Some(provider) => provider,
+        None => {
+            let key_dir = state_dir.join("keys");
+            std::fs::create_dir_all(&key_dir)?;
+            std::fs::set_permissions(&key_dir, std::fs::Permissions::from_mode(0o700))?;
+            Arc::new(
+                rumahl_persistence_sqlite::LocalFieldKeyProvider::open_or_create(
+                    key_dir.join("field.key"),
+                )?,
+            )
+        }
+    };
+    let app_settings = Arc::new(rumahl_persistence_sqlite::SqliteAppSettings::open(
+        state_dir.join("platform.sqlite"),
+        field_key,
+    )?);
+    let app_network = Arc::new(rumahl_persistence_sqlite::SqliteNetworkGrants::open(
+        state_dir.join("platform.sqlite"),
+    )?);
+    let apps_provider = apps_provider.with_app_configuration(app_settings, app_network);
     // Runtime status/start/stop through the supervisor when it is configured;
     // otherwise the runtime API stays fail-closed (503). The same channel
     // registry receives live app channels for background event delivery.
     let runtime_channels = Arc::new(rumahl_core::RuntimeChannelRegistry::new());
-    let apps_provider = match install::runtime_adapters_from_env(&runtime_channels) {
+    let apps_provider = match install::runtime_adapters_from_env(&runtime_channels, &state_dir) {
         Some(adapters) => apps_provider.with_runtime_adapters(adapters),
         None => apps_provider,
+    };
+    let app_ports: Option<Arc<dyn rumahl_platform_web::AppPortProvider>> = match (
+        env::var("RUMAHL_HOST_CONFIG_SOCKET"),
+        env::var("RUMAHL_APP_PORTS_FILE"),
+    ) {
+        (Ok(socket), Ok(ports_file)) => {
+            let socket = PathBuf::from(socket);
+            let ports_file = PathBuf::from(ports_file);
+            if socket.is_absolute() && ports_file.is_absolute() {
+                Some(Arc::new(
+                    rumahl_platform_service::app_ports::BrokerAppPorts::new(socket, ports_file),
+                ))
+            } else {
+                None
+            }
+        }
+        _ => None,
     };
     let apps = Arc::new(
         rumahl_platform_web::AppAccess::new(
             Arc::new(apps_provider),
             &config.public_origin,
-            &app_suffix,
+            &config.allowed_origins,
+            &app_suffixes,
+            app_ports,
         )
-        .map_err(|_| std::io::Error::other("invalid app host configuration"))?,
+        .map_err(|_| std::io::Error::other("invalid app host configuration"))?
+        .with_policies(policies.clone()),
     );
     let events = Arc::new(InMemoryShellEvents::new(128));
     // Kept for the shutdown signal: the OS tells every client when it stops.
@@ -194,6 +438,35 @@ async fn run() -> Result<(), ServiceError> {
     let audit: Arc<dyn rumahl_core::AuditLog> = Arc::new(
         rumahl_persistence_sqlite::SqliteAuditLog::open(state_dir.join("audit.sqlite"))?,
     );
+    let home_root = rumahl_platform_service::user_homes::home_root();
+    let administration = Arc::new(
+        rumahl_platform_service::LocalAdministration::open(&accounts, Some(audit.clone()))?
+            .with_home_root(home_root.clone()),
+    );
+    // Heal missing homes for existing accounts (best effort, never fatal).
+    match rumahl_platform_service::user_homes::ensure_account_homes(&accounts, &home_root) {
+        Ok(ensured) => eprintln!("rumahl platform: {ensured} account home(s) available"),
+        Err(error) => eprintln!("rumahl platform: account homes unavailable: {error}"),
+    }
+    // App containers reach the OS over this socket; the supervisor mounts it
+    // and the token descriptor lives in each app's private data directory.
+    match rumahl_platform_service::channel::start(
+        rumahl_platform_service::channel::ChannelListener {
+            socket: rumahl_platform_service::channel::socket_path(&state_dir),
+            registry: Arc::clone(&runtime_channels),
+            tokens: Arc::new(rumahl_platform_service::channel::ChannelTokens::in_state(
+                &state_dir,
+            )),
+            files: Some(apps.clone() as Arc<dyn rumahl_platform_web::ChannelFiles>),
+            audit: Some(audit.clone()),
+        },
+    ) {
+        Ok(path) => eprintln!(
+            "rumahl platform: app channel listening on {}",
+            path.display()
+        ),
+        Err(error) => eprintln!("rumahl platform: app channel unavailable: {error}"),
+    }
     record_os_event(
         audit.as_ref(),
         rumahl_core::AuditAction::SystemStarted,
@@ -209,35 +482,17 @@ async fn run() -> Result<(), ServiceError> {
         config,
         backend: shell_backend(&accounts, &platform, build_id, &locale)?,
         browser_sessions: Some(Arc::new(
-            LocalBrowserSessions::open(&accounts)?.with_audit(audit.clone()),
+            LocalBrowserSessions::open(&accounts)?
+                .with_audit(audit.clone())
+                .with_policies(policies.clone()),
         )),
+        admin: Some(administration),
         login_slots: Arc::new(tokio::sync::Semaphore::new(2)),
         events: events.clone(),
         widgets: Arc::new(NoWidgets),
         streams: None,
         apps: Some(apps.clone()),
-        files: Some(
-            match if env::var("RUMAHL_FILE_ENCRYPTION").as_deref() == Ok("off") {
-                None
-            } else {
-                optional_key_provider()
-            } {
-                Some(provider) => Arc::new(
-                    rumahl_persistence_sqlite::SqlitePersonalFiles::open_encrypted(
-                        state_dir.join("files.sqlite"),
-                        provider,
-                    )?,
-                ),
-                None => {
-                    eprintln!(
-                        "rumahl platform: file content encryption disabled (no TPM key configured)"
-                    );
-                    Arc::new(rumahl_persistence_sqlite::SqlitePersonalFiles::open(
-                        state_dir.join("files.sqlite"),
-                    )?)
-                }
-            },
-        ),
+        files: Some(personal_files),
         workspace: Some(Arc::new(
             rumahl_persistence_sqlite::SqliteShellPreferences::open(
                 state_dir.join("preferences.sqlite"),
@@ -254,12 +509,21 @@ async fn run() -> Result<(), ServiceError> {
             )?),
             audit.clone(),
         ))),
+        policies: Some(policies),
         host_files: Some(Arc::new(
-            rumahl_platform_service::host_files::LocalHostFiles::from_environment(),
+            rumahl_platform_service::host_files::LocalHostFiles::from_environment(&accounts),
+        )),
+        weather_warnings: Some(Arc::new(
+            rumahl_persistence_sqlite::SqliteWeatherWarnings::open(
+                state_dir.join("platform.sqlite"),
+            )?,
         )),
         oidc: None,
         audit: Some(audit.clone()),
         state_dir: Some(state_dir.clone()),
+        platform_config: Some(Arc::new(
+            rumahl_platform_web::PlatformConfig::from_environment(),
+        )),
     };
     // Serve every built-in theme stylesheet so the account theme renders on the
     // first paint without a flash of the default theme.
@@ -274,7 +538,7 @@ async fn run() -> Result<(), ServiceError> {
         );
     }
     let app = app.layer(middleware::from_fn(move |request: Request, next: Next| {
-        let authority = authority.clone();
+        let allowed_authorities = allowed_authorities.clone();
         let apps = apps.clone();
         async move {
             let host = request
@@ -314,7 +578,7 @@ async fn run() -> Result<(), ServiceError> {
                     ),
                 };
             }
-            if host != authority.trim_end_matches('/') {
+            if !allowed_authorities.iter().any(|allowed| allowed == &host) {
                 let mut response = Response::new(Body::empty());
                 *response.status_mut() = StatusCode::MISDIRECTED_REQUEST;
                 return response;

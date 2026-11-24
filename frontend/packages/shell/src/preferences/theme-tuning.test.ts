@@ -1,9 +1,14 @@
-import { classicTheme } from "@rumahl/ui/themes";
+import { themeFromPackage } from "@rumahl/ui/themes";
+import { loadThemePackage } from "../test/theme-packages";
+
+const classicTheme = loadThemePackage("classic");
+import { readFileSync } from "node:fs";
 import { paletteTokens } from "@rumahl/ui/palette";
 import { applyThemeTuning } from "./theme-tuning";
 import wallpaperUrl from "../assets/monstera.jpg";
 import { describe, expect, test } from "vitest";
 import { defaultTheme } from "@rumahl/ui";
+import { defineTheme } from "@rumahl/ui/sdk";
 import { applyTuning, enableGlass, wallpaperSeed } from "./theme-tuning";
 import { emptyAppearance, parseAppearance } from "./Workspace";
 
@@ -26,6 +31,33 @@ test("automatic colour survives parsing and follows wallpaper changes", () => {
     seed: "#0078ff",
   });
   expect(manual["color.accent"]).toBe("#0078ff");
+});
+
+test("paletteTuning false keeps a Ground theme's authored scheme tokens", () => {
+  const fixed = defineTheme({
+    id: "com.test.fixed",
+    name: "Fixed",
+    base: "ground",
+    modes: ["light", "dark"],
+    paletteTuning: false,
+    tokens: {
+      "color.panel.background": "#fafafa",
+      "color.canvas.background": "#ffffff",
+      "color.text.primary": "#111111",
+      "color.accent": "#ff5500"
+    }
+  });
+  const tuned = applyThemeTuning(fixed, { ...emptyAppearance, mode: null }, "dark");
+  expect(tuned["color.panel.background"]).toBe("#fafafa");
+  expect(tuned["color.canvas.background"]).toBe("#ffffff");
+  expect(tuned["color.text.primary"]).toBe("#111111");
+
+  const automatic = applyThemeTuning(
+    { ...fixed, paletteTuning: true },
+    { ...emptyAppearance, mode: null },
+    "dark"
+  );
+  expect(automatic["color.panel.background"]).not.toBe("#fafafa");
 });
 
 test("auto mode follows the system dark palette for glass themes", () => {
@@ -106,4 +138,25 @@ describe("glass colour preferences", () => {
     const parsed = parseAppearance({ ...emptyAppearance, glassTint: "red; display:none" });
     expect(parsed.glassTint).toBeUndefined();
   });
+});
+
+
+const packageFile = (name: string) => readFileSync(`${process.cwd()}/../../../examples/themes/hallows/${name}`, "utf8");
+const hallowsTheme = themeFromPackage(
+  JSON.parse(packageFile("theme.json")),
+  packageFile("styles.css"),
+  packageFile("code.js")
+);
+
+test("a locked art direction ignores colour tuning but keeps effect switches", () => {
+  const tuned = applyThemeTuning(hallowsTheme, {
+    ...emptyAppearance,
+    seed: "#00ff00",
+    autoColor: false,
+    mode: "light",
+    tokens: { "color.accent": "#00ff00", "color.canvas.background": "#00ff00", "effect.blood": "0" }
+  });
+  expect(tuned["color.accent"]).toBe("#c81d1d");
+  expect(tuned["color.canvas.background"]).toBe("#020101");
+  expect(tuned["effect.blood"]).toBe("0");
 });

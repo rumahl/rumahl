@@ -37,12 +37,15 @@ async fn raising_the_mode_requires_reauthentication() {
 
     let app = router(GatewayState {
         host_files: None,
+        weather_warnings: None,
         config: GatewayConfig::new("https://rumahl.test", root.join("ssr.sock")).unwrap(),
         backend: shell_backend(&accounts, &root.join("platform.sqlite"), "test", "en").unwrap(),
         browser_sessions: Some(sessions.clone()),
+        admin: None,
         login_slots: Arc::new(tokio::sync::Semaphore::new(2)),
         audit: None,
         state_dir: None,
+        platform_config: None,
         events: Arc::new(InMemoryShellEvents::new(8)),
         widgets: Arc::new(NoWidgets),
         streams: None,
@@ -58,6 +61,7 @@ async fn raising_the_mode_requires_reauthentication() {
         os_mode: Some(Arc::new(
             SqliteOsModeRepository::open(root.join("preferences.sqlite")).unwrap(),
         )),
+        policies: None,
     });
 
     let endpoint = "/api/v1/shell/os-mode?device=00000000-0000-4000-8000-000000000001";

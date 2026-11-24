@@ -10,7 +10,7 @@ use axum::{
     response::Response,
 };
 use rand::RngCore;
-use rumahl_core::{AppId, InstallationId, PackagePath};
+use rumahl_core::{AppId, InstallationId, PackagePath, SessionId};
 use url::Url;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -30,6 +30,117 @@ pub struct CatalogApp {
     /// External services this app ships a connector bundle for.
     pub connectors: Vec<String>,
 }
+/// One permission an app's manifest requests, typed for the shell's consent view.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AppPermissionRequestInfo {
+    pub permission: String,
+    /// `user-selected`, `explicit`, `user-own`, `app-private`, `family-shared`
+    /// or `system`.
+    pub scope: String,
+    pub required: bool,
+    pub reason: Option<String>,
+}
+/// A live grant: what the app may do, on which resources, for how long.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AppGrantInfo {
+    pub id: String,
+    pub permission: String,
+    pub scope: String,
+    pub resources: Vec<String>,
+    /// `durable` (persisted, optionally with an expiry) or `session`
+    /// (dies with the consenting browser session).
+    pub validity: String,
+    /// Unix seconds; `None` means "until revoked".
+    pub expires_at: Option<u64>,
+}
+/// The consent state of one installed app as the calling user sees it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AppGrantState {
+    pub requests: Vec<AppPermissionRequestInfo>,
+    pub grants: Vec<AppGrantInfo>,
+}
+/// Storage accounting for one installed app's private data directory.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct AppStorageInfo {
+    pub used_bytes: u64,
+    /// The configured per-app quota; a write that would exceed it is refused
+    /// by whichever OS component owns that write path.
+    pub quota_bytes: u64,
+}
+/// The recorded runtime environment of an installed app, display-safe.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AppRuntimeEnvironment {
+    /// `web`, `container` or `native`.
+    pub runtime: String,
+    /// The immutable image reference of a container install; `None` when
+    /// nothing was recorded (web/native apps, or an install from before the
+    /// record existed).
+    pub image: Option<String>,
+    /// The image's own environment, without entries whose names could carry
+    /// a credential.
+    pub entries: Vec<AppRuntimeEnvEntry>,
+}
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AppRuntimeEnvEntry {
+    pub name: String,
+    pub value: String,
+}
+/// A user's consent decision, as submitted by the shell.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct GrantIssue {
+    pub permission: String,
+    /// Personal-file resource keys the consent covers. Filesystem consent is
+    /// always explicit: it names exactly what the app may touch.
+    pub resources: Vec<String>,
+    pub validity: GrantValidityChoice,
+}
+/// How long a consented grant stays usable.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum GrantValidityChoice {
+    /// Bound to the calling user's current browser session.
+    Session,
+    /// Persisted; `expires_in` bounds it in seconds, `None` keeps it until
+    /// the user revokes it.
+    Durable { expires_in: Option<u64> },
+}
+/// One app file access request, authorized per call.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AppFileAccess {
+    pub action: AppFileAction,
+    /// Personal-file id of the calling user.
+    pub key: String,
+}
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum AppFileAction {
+    Read,
+    Write { bytes: Vec<u8> },
+}
+/// The outcome of an app file access request.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum AppFileOutcome {
+    /// The grant covered this file; `name` is the stored file name.
+    Allowed { name: String, size: u64 },
+    /// The grant covered this file and the content was read.
+    Content { name: String, bytes: Vec<u8> },
+    /// No file with this id exists in the calling user's personal files.
+    Missing,
+    /// The authorization engine said no, with the reason the shell needs to
+    /// decide between prompting for consent and reporting a hard denial.
+    Denied(AppFileDeny),
+}
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AppFileDeny {
+    /// The app never asked for this permission; there is nothing to consent to.
+    NoGrant,
+    /// The app asked for this permission in its manifest but no grant covers
+    /// the file yet — the shell should ask the user for consent.
+    ApprovalRequired,
+    /// A grant exists, but this specific file is outside its scope.
+    OutsideScope,
+    /// The account's personal-files budget is exhausted. Consent cannot change
+    /// this; the shell reports it instead of asking for consent.
+    QuotaExceeded,
+}
 /// One rendered setting declared by an app manifest, typed for the shell.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AppSettingInfo {
@@ -46,11 +157,65 @@ pub struct AppSettingOptionInfo {
     pub value: String,
     pub label: String,
 }
-/// The manifest-declared settings for one installed app.
+/// The manifest-declared settings for one installed app plus the values the
+/// user has stored. Secrets are represented only by their key: the plaintext
+/// never crosses this boundary.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AppSettingsInfo {
     pub app: CatalogApp,
     pub manifest: Vec<AppSettingInfo>,
+    pub values: HashMap<String, serde_json::Value>,
+    pub secrets: Vec<String>,
+}
+
+/// One brokered HTTP request on an app's behalf. The app supplies the URL,
+/// method, text body and an allow-listed header set; the OS adds a secret
+/// setting as `Authorization` only after the user approved the origin.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AppNetworkRequest {
+    pub url: String,
+    pub method: String,
+    pub headers: Vec<(String, String)>,
+    pub body: Option<Vec<u8>>,
+    /// Setting key whose secret value becomes `Authorization: Bearer …`.
+    pub secret: Option<String>,
+    pub max_bytes: usize,
+}
+
+/// A request after authorization: URL and origin validated, secret attached.
+/// The transport performs the actual network call.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PreparedNetworkRequest {
+    pub url: String,
+    pub method: String,
+    pub headers: Vec<(String, String)>,
+    pub body: Option<Vec<u8>>,
+    pub max_bytes: usize,
+}
+
+/// One origin the user approved for an app installation.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AppNetworkOrigin {
+    /// Exact `scheme://host[:port]`.
+    pub origin: String,
+    /// `durable` or `session`.
+    pub validity: String,
+    pub expires_at: Option<u64>,
+}
+
+/// Why a brokered network request did not run. Consent is a separate outcome
+/// so the shell can ask the user instead of reporting a hard failure.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum AppNetworkError {
+    /// The app did not declare `com.rumahl.os.network`.
+    Denied,
+    /// The installation, session or manifest is unavailable.
+    Unavailable,
+    /// The target is malformed or prohibited (credentials, fragment,
+    /// link-local address, non-HTTP scheme, non-allow-listed header, …).
+    Blocked,
+    /// The user has not approved this exact origin yet.
+    ConsentRequired { origin: String },
 }
 /// One entry of an app's private data directory.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -157,6 +322,16 @@ pub trait AppProvider: Send + Sync + 'static {
         identity: ShellIdentity,
         installation: InstallationId,
     ) -> Result<String, AppAccessError>;
+    /// Resolves a Tier B surface declaration to its signed web entrypoint.
+    /// Fails closed when the app has no such surface or it is data-only.
+    fn surface_entrypoint(
+        &self,
+        _identity: ShellIdentity,
+        _installation: InstallationId,
+        _surface: &str,
+    ) -> Result<String, AppAccessError> {
+        Err(AppAccessError::Denied)
+    }
     fn asset(
         &self,
         identity: ShellIdentity,
@@ -169,6 +344,69 @@ pub trait AppProvider: Send + Sync + 'static {
         identity: ShellIdentity,
         installation: InstallationId,
     ) -> Result<Vec<AppSettingInfo>, AppAccessError>;
+    /// Stored values by key. Secrets are deliberately absent; use
+    /// `app_setting_secrets` for the configured flags.
+    fn app_settings_values(
+        &self,
+        _identity: ShellIdentity,
+        _installation: InstallationId,
+    ) -> Result<HashMap<String, serde_json::Value>, AppAccessError> {
+        Ok(HashMap::new())
+    }
+    /// Keys of secrets that currently hold a value. Never the values.
+    fn app_setting_secrets(
+        &self,
+        _identity: ShellIdentity,
+        _installation: InstallationId,
+    ) -> Result<Vec<String>, AppAccessError> {
+        Ok(Vec::new())
+    }
+    /// Writes values after validating them against the signed manifest.
+    fn update_app_settings(
+        &self,
+        _identity: ShellIdentity,
+        _installation: InstallationId,
+        _values: HashMap<String, serde_json::Value>,
+    ) -> Result<(), AppAccessError> {
+        Err(AppAccessError::Unavailable)
+    }
+    /// Origins the calling user approved for this installation.
+    fn app_network_origins(
+        &self,
+        _identity: ShellIdentity,
+        _installation: InstallationId,
+    ) -> Result<Vec<AppNetworkOrigin>, AppAccessError> {
+        Err(AppAccessError::Unavailable)
+    }
+    /// Records one consent decision for an exact origin.
+    fn grant_app_network(
+        &self,
+        _identity: ShellIdentity,
+        _installation: InstallationId,
+        _origin: &str,
+        _validity: GrantValidityChoice,
+    ) -> Result<AppNetworkOrigin, AppAccessError> {
+        Err(AppAccessError::Unavailable)
+    }
+    /// Revokes one origin consent.
+    fn revoke_app_network(
+        &self,
+        _identity: ShellIdentity,
+        _installation: InstallationId,
+        _origin: &str,
+    ) -> Result<(), AppAccessError> {
+        Err(AppAccessError::Unavailable)
+    }
+    /// Validates an app network request against the manifest and the user's
+    /// origin consents, and attaches the referenced secret server-side.
+    fn prepare_app_network(
+        &self,
+        _identity: ShellIdentity,
+        _installation: InstallationId,
+        _request: &AppNetworkRequest,
+    ) -> Result<PreparedNetworkRequest, AppNetworkError> {
+        Err(AppNetworkError::Unavailable)
+    }
     /// Read-only listing or contents of an app's private data directory.
     fn data(
         &self,
@@ -176,6 +414,17 @@ pub trait AppProvider: Send + Sync + 'static {
         installation: InstallationId,
         path: &str,
     ) -> Result<AppData, AppAccessError>;
+    /// Resolves an internal path (`/home/<caller>/...` or `rumahl://home/...`)
+    /// to the caller's personal-store id for channel file access. Only the
+    /// caller's own home is addressable; grants still apply to the id.
+    fn resolve_channel_path(
+        &self,
+        _identity: ShellIdentity,
+        _installation: InstallationId,
+        _path: &str,
+    ) -> Result<String, AppAccessError> {
+        Err(AppAccessError::Denied)
+    }
     /// Runtime activation state. Fails closed when no runtime control is wired.
     fn runtime_status(
         &self,
@@ -227,73 +476,438 @@ pub trait AppProvider: Send + Sync + 'static {
     ) -> Result<CapabilityResult, AppAccessError> {
         Err(AppAccessError::Unavailable)
     }
+    /// The consent state of one installed app for the calling user: what the
+    /// manifest requests and which grants currently apply.
+    fn app_grants(
+        &self,
+        _identity: ShellIdentity,
+        _installation: InstallationId,
+    ) -> Result<AppGrantState, AppAccessError> {
+        Err(AppAccessError::Unavailable)
+    }
+    /// Issues a grant from an explicit user consent. The provider validates
+    /// the request against the app's manifest and the OS permission catalog,
+    /// binds session grants to the calling session and persists durable
+    /// grants in the platform snapshot. Fails closed when no grant store is
+    /// wired.
+    fn issue_app_grant(
+        &self,
+        _identity: ShellIdentity,
+        _installation: InstallationId,
+        _issue: &GrantIssue,
+    ) -> Result<AppGrantInfo, AppAccessError> {
+        Err(AppAccessError::Unavailable)
+    }
+    /// Revokes a grant the calling user issued. Fails closed when no grant
+    /// store is wired.
+    fn revoke_app_grant(
+        &self,
+        _identity: ShellIdentity,
+        _installation: InstallationId,
+        _grant_id: &str,
+    ) -> Result<(), AppAccessError> {
+        Err(AppAccessError::Unavailable)
+    }
+    /// Reads or writes one personal file of the calling user on an app's
+    /// behalf, authorized per call against the app's grants. Fails closed
+    /// when no personal-files store is wired.
+    fn app_file(
+        &self,
+        _identity: ShellIdentity,
+        _installation: InstallationId,
+        _access: &AppFileAccess,
+    ) -> Result<AppFileOutcome, AppAccessError> {
+        Err(AppAccessError::Unavailable)
+    }
+    /// The calling user's personal-files usage in bytes. Used by the quota
+    /// check; providers without a personal store fail closed (Unavailable) so
+    /// a write can never bypass the budget.
+    fn personal_files_usage(
+        &self,
+        _identity: ShellIdentity,
+        _installation: InstallationId,
+    ) -> Result<u64, AppAccessError> {
+        Err(AppAccessError::Unavailable)
+    }
+    /// One personal entry by id without reading its content. Only the owner's
+    /// ids resolve; anything else denies.
+    fn personal_files_entry(
+        &self,
+        _identity: ShellIdentity,
+        _installation: InstallationId,
+        _key: &str,
+    ) -> Result<rumahl_core::PersonalFile, AppAccessError> {
+        Err(AppAccessError::Denied)
+    }
+    /// The recorded runtime environment of an installed app. Fails closed
+    /// when no runtime record store is wired.
+    fn app_runtime_environment(
+        &self,
+        _identity: ShellIdentity,
+        _installation: InstallationId,
+    ) -> Result<AppRuntimeEnvironment, AppAccessError> {
+        Err(AppAccessError::Unavailable)
+    }
+    /// Measured storage usage of an installed app's data directory. Fails
+    /// closed when no data root is wired.
+    fn app_storage(
+        &self,
+        _identity: ShellIdentity,
+        _installation: InstallationId,
+    ) -> Result<AppStorageInfo, AppAccessError> {
+        Err(AppAccessError::Unavailable)
+    }
+    /// The browser session ended: memory-only grants issued for it must not
+    /// outlive it. Best effort by design.
+    fn session_ended(&self, _session: SessionId) {}
 }
 #[derive(Clone)]
 struct Lease {
     identity: ShellIdentity,
     installation: InstallationId,
+    /// `Some` for a Tier B surface lease; `None` for a normal window lease.
+    surface: Option<String>,
     expires: Instant,
 }
+/// Resolves the dynamic port a hosted app uses for IP-based access.
+pub trait AppPortProvider: Send + Sync + 'static {
+    fn ensure_port(&self, installation: &str) -> Option<u16>;
+    fn port_for(&self, installation: &str) -> Option<u16>;
+    fn installation_for_port(&self, port: u16) -> Option<String>;
+    fn all_ports(&self) -> Vec<u16>;
+}
+
 pub struct AppAccess {
     provider: Arc<dyn AppProvider>,
-    shell_origin: String,
-    suffix: String,
+    shell_origins: Vec<String>,
+    device_hosts: Vec<String>,
+    suffixes: Vec<String>,
     port: Option<u16>,
+    ports: Option<Arc<dyn AppPortProvider>>,
     leases: Mutex<HashMap<String, Lease>>,
+    policies: Option<Arc<dyn crate::PolicyEngine>>,
 }
 pub struct AppLaunch {
     pub app: CatalogApp,
     pub lease: String,
     pub frame_url: String,
 }
+pub struct SurfaceLaunch {
+    pub app: CatalogApp,
+    pub surface: String,
+    pub lease: String,
+    pub frame_url: String,
+}
 impl AppAccess {
+    fn installed(
+        &self,
+        identity: ShellIdentity,
+        id: &str,
+        installation: &str,
+    ) -> Result<CatalogApp, AppAccessError> {
+        AppId::parse(id).map_err(|_| AppAccessError::Denied)?;
+        self.catalog(identity)?
+            .into_iter()
+            .find(|app| app.id == id && app.installation_id.to_string() == installation)
+            .ok_or(AppAccessError::Denied)
+    }
+    /// The consent state of one installed app: what its manifest requests and
+    /// which grants the calling user has issued.
+    pub fn app_grants(
+        &self,
+        identity: ShellIdentity,
+        id: &str,
+        installation: &str,
+    ) -> Result<AppGrantState, AppAccessError> {
+        let app = self.installed(identity, id, installation)?;
+        self.provider.app_grants(identity, app.installation_id)
+    }
+    /// Issues a grant from an explicit user consent.
+    pub fn issue_app_grant(
+        &self,
+        identity: ShellIdentity,
+        id: &str,
+        installation: &str,
+        issue: &GrantIssue,
+    ) -> Result<AppGrantInfo, AppAccessError> {
+        let app = self.installed(identity, id, installation)?;
+        self.provider
+            .issue_app_grant(identity, app.installation_id, issue)
+    }
+    /// Revokes one of the calling user's grants for an installed app.
+    pub fn revoke_app_grant(
+        &self,
+        identity: ShellIdentity,
+        id: &str,
+        installation: &str,
+        grant_id: &str,
+    ) -> Result<(), AppAccessError> {
+        let app = self.installed(identity, id, installation)?;
+        self.provider
+            .revoke_app_grant(identity, app.installation_id, grant_id)
+    }
+    /// Reads or writes one personal file on an app's behalf, authorized per
+    /// call against the app's grants.
+    pub fn app_file(
+        &self,
+        identity: ShellIdentity,
+        id: &str,
+        installation: &str,
+        access: &AppFileAccess,
+    ) -> Result<AppFileOutcome, AppAccessError> {
+        let app = self.installed(identity, id, installation)?;
+        self.app_file_checked(identity, &app.installation_id, access)
+    }
+
+    /// Consent-checked access after the app (not the installation) has been
+    /// resolved; also the path the channel takes, where the installation is
+    /// known but the app id is not.
+    fn app_file_checked(
+        &self,
+        identity: ShellIdentity,
+        installation: &InstallationId,
+        access: &AppFileAccess,
+    ) -> Result<AppFileOutcome, AppAccessError> {
+        if let AppFileAction::Write { bytes } = &access.action {
+            let quota = self
+                .policies
+                .clone()
+                .map_or(rumahl_core::DEFAULT_PERSONAL_QUOTA_BYTES, |engine| {
+                    engine.personal_file_quota(identity.user_id)
+                });
+            let used = self
+                .provider
+                .personal_files_usage(identity, *installation)
+                .map_err(|_| AppAccessError::Unavailable)?;
+            let replaced = self
+                .provider
+                .personal_files_entry(identity, *installation, &access.key)
+                .map(|entry| entry.size)
+                .unwrap_or(0);
+            if used
+                .saturating_sub(replaced)
+                .saturating_add(bytes.len() as u64)
+                > quota
+            {
+                return Ok(AppFileOutcome::Denied(AppFileDeny::QuotaExceeded));
+            }
+        }
+        self.provider.app_file(identity, *installation, access)
+    }
+    /// The recorded runtime environment of an installed app.
+    pub fn app_runtime_environment(
+        &self,
+        identity: ShellIdentity,
+        id: &str,
+        installation: &str,
+    ) -> Result<AppRuntimeEnvironment, AppAccessError> {
+        let app = self.installed(identity, id, installation)?;
+        self.provider
+            .app_runtime_environment(identity, app.installation_id)
+    }
+    /// Measured storage usage of an installed app's data directory.
+    pub fn app_storage(
+        &self,
+        identity: ShellIdentity,
+        id: &str,
+        installation: &str,
+    ) -> Result<AppStorageInfo, AppAccessError> {
+        let app = self.installed(identity, id, installation)?;
+        self.provider.app_storage(identity, app.installation_id)
+    }
+
+    /// Drops the memory-only grants of an ended browser session.
+    pub fn session_ended(&self, session: SessionId) {
+        self.provider.session_ended(session);
+    }
+
+    /// Resolves an internal path for a channel app with the invocation's
+    /// identity, so an app can use `/home/<user>/...` without ever naming
+    /// another account or bypassing the grant on the resolved id.
+    pub fn resolve_channel_path(
+        &self,
+        identity: ShellIdentity,
+        installation: InstallationId,
+        path: &str,
+    ) -> Result<String, AppAccessError> {
+        self.catalog(identity)?
+            .into_iter()
+            .find(|app| app.installation_id == installation)
+            .ok_or(AppAccessError::Denied)?;
+        self.provider
+            .resolve_channel_path(identity, installation, path)
+    }
+    /// File access for a channel app, addressed by installation id only: the
+    /// identity comes from the user's in-flight capability invocation, never
+    /// from the app itself.
+    pub fn app_file_for_installation(
+        &self,
+        identity: ShellIdentity,
+        installation: InstallationId,
+        access: &AppFileAccess,
+    ) -> Result<AppFileOutcome, AppAccessError> {
+        let app = self
+            .catalog(identity)?
+            .into_iter()
+            .find(|app| app.installation_id == installation)
+            .ok_or(AppAccessError::Denied)?;
+        self.app_file_checked(identity, &app.installation_id, access)
+    }
     pub fn new(
         provider: Arc<dyn AppProvider>,
-        shell_origin: &Url,
-        suffix: &str,
+        primary_origin: &Url,
+        shell_origins: &[Url],
+        suffixes: &[String],
+        ports: Option<Arc<dyn AppPortProvider>>,
     ) -> Result<Self, AppAccessError> {
-        let valid = suffix.len() <= 180
-            && suffix.contains('.')
-            && suffix.split('.').all(|label| {
-                !label.is_empty()
-                    && label.len() <= 63
-                    && !label.starts_with('-')
-                    && !label.ends_with('-')
-                    && label
-                        .bytes()
-                        .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-')
-            });
-        if !valid || shell_origin.host_str() == Some(suffix) || shell_origin.scheme() != "https" {
+        if primary_origin.scheme() != "https"
+            || suffixes.is_empty()
+            || suffixes.iter().any(|suffix| {
+                let valid = suffix.len() <= 180
+                    && suffix.contains('.')
+                    && suffix.split('.').all(|label| {
+                        !label.is_empty()
+                            && label.len() <= 63
+                            && !label.starts_with('-')
+                            && !label.ends_with('-')
+                            && label
+                                .bytes()
+                                .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-')
+                    });
+                !valid || primary_origin.host_str() == Some(suffix.as_str())
+            })
+        {
             return Err(AppAccessError::Unavailable);
         }
+        let mut origins: Vec<String> = shell_origins
+            .iter()
+            .map(|origin| origin.origin().ascii_serialization())
+            .collect();
+        if origins.is_empty() {
+            origins.push(primary_origin.origin().ascii_serialization());
+        }
+        origins.sort();
+        origins.dedup();
+        let mut unique_suffixes: Vec<String> = Vec::new();
+        for suffix in suffixes {
+            if !unique_suffixes.contains(suffix) {
+                unique_suffixes.push(suffix.clone());
+            }
+        }
+        let device_hosts: Vec<String> = shell_origins
+            .iter()
+            .filter(|origin| matches!(origin.host(), Some(url::Host::Ipv4(_) | url::Host::Ipv6(_))))
+            .filter_map(|origin| origin.host_str().map(str::to_owned))
+            .collect();
         Ok(Self {
             provider,
-            shell_origin: shell_origin.origin().ascii_serialization(),
-            suffix: suffix.into(),
-            port: shell_origin.port(),
+            shell_origins: origins,
+            device_hosts,
+            suffixes: unique_suffixes,
+            port: primary_origin.port(),
+            ports,
             leases: Mutex::new(HashMap::new()),
+            policies: None,
         })
     }
-    fn authority(&self, installation: InstallationId) -> String {
+    /// Attach the policy engine so consented app file writes respect the
+    /// account's personal-files budget, exactly like the shell's own routes.
+    pub fn with_policies(mut self, policies: Arc<dyn crate::PolicyEngine>) -> Self {
+        self.policies = Some(policies);
+        self
+    }
+    fn authority_for(&self, installation: InstallationId, suffix: &str) -> String {
         format!(
-            "{installation}.{}{}",
-            self.suffix,
+            "{installation}.{suffix}{}",
             self.port.map_or(String::new(), |port| format!(":{port}"))
         )
+    }
+    fn authority(&self, installation: InstallationId) -> String {
+        self.authority_for(installation, &self.suffixes[0])
     }
     pub fn accepts_host(&self, authority: &str) -> bool {
-        let Some((id, _)) = authority.split_once('.') else {
+        if let Some((id, _)) = authority.split_once('.')
+            && InstallationId::parse(id).is_ok_and(|installation| {
+                self.suffixes
+                    .iter()
+                    .any(|suffix| self.authority_for(installation, suffix) == authority)
+            })
+        {
+            return true;
+        }
+        let Some((host, port)) = split_ip_port(authority) else {
             return false;
         };
-        InstallationId::parse(id)
-            .is_ok_and(|installation| self.authority(installation) == authority)
+        self.device_hosts.iter().any(|candidate| candidate == host)
+            && self
+                .ports
+                .as_ref()
+                .is_some_and(|ports| ports.installation_for_port(port).is_some())
     }
-    pub fn frame_source(&self) -> String {
-        format!(
-            "https://*.{}{}",
-            self.suffix,
-            self.port.map_or(String::new(), |port| format!(":{port}"))
-        )
+    fn host_matches_installation(&self, authority: &str, installation: InstallationId) -> bool {
+        if self
+            .suffixes
+            .iter()
+            .any(|suffix| self.authority_for(installation, suffix) == authority)
+        {
+            return true;
+        }
+        let Some((host, port)) = split_ip_port(authority) else {
+            return false;
+        };
+        self.device_hosts.iter().any(|candidate| candidate == host)
+            && self
+                .ports
+                .as_ref()
+                .and_then(|ports| ports.port_for(&installation.to_string()))
+                == Some(port)
+    }
+    fn launch_authority(
+        &self,
+        installation: InstallationId,
+        shell_host: &str,
+    ) -> Result<String, AppAccessError> {
+        // On the default HTTPS port the Host header has no port, so detect a
+        // device IP before stripping an optional port.
+        let host = match split_ip_port(shell_host) {
+            Some((host, _)) => host,
+            None => shell_host,
+        };
+        if self.device_hosts.iter().any(|candidate| candidate == host) {
+            let port = self
+                .ports
+                .as_ref()
+                .and_then(|ports| ports.ensure_port(&installation.to_string()))
+                .ok_or(AppAccessError::Unavailable)?;
+            return Ok(format!("{host}:{port}"));
+        }
+        let host = host.rsplit_once(':').map_or(host, |(host, _)| host);
+        let suffix = format!("apps.{host}");
+        if !self.suffixes.iter().any(|candidate| candidate == &suffix) {
+            return Err(AppAccessError::Unavailable);
+        }
+        Ok(self.authority_for(installation, &suffix))
+    }
+    pub fn frame_sources(&self) -> Vec<String> {
+        let mut sources: Vec<String> = self
+            .suffixes
+            .iter()
+            .map(|suffix| {
+                format!(
+                    "https://*.{suffix}{}",
+                    self.port.map_or(String::new(), |port| format!(":{port}"))
+                )
+            })
+            .collect();
+        if let Some(ports) = &self.ports {
+            let allocated = ports.all_ports();
+            for host in &self.device_hosts {
+                for port in &allocated {
+                    sources.push(format!("https://{host}:{port}"));
+                }
+            }
+        }
+        sources
     }
     pub fn catalog(&self, identity: ShellIdentity) -> Result<Vec<CatalogApp>, AppAccessError> {
         let apps = self.provider.catalog(identity)?;
@@ -315,7 +929,86 @@ impl AppAccess {
             .find(|app| app.id == id && app.installation_id.to_string() == installation)
             .ok_or(AppAccessError::Denied)?;
         let manifest = self.provider.settings(identity, app.installation_id)?;
-        Ok(AppSettingsInfo { app, manifest })
+        let values = self
+            .provider
+            .app_settings_values(identity, app.installation_id)?;
+        let secrets = self
+            .provider
+            .app_setting_secrets(identity, app.installation_id)?;
+        Ok(AppSettingsInfo {
+            app,
+            manifest,
+            values,
+            secrets,
+        })
+    }
+
+    /// Persists manifest-declared setting values for one installation.
+    pub fn update_settings(
+        &self,
+        identity: ShellIdentity,
+        id: &str,
+        installation: &str,
+        values: HashMap<String, serde_json::Value>,
+    ) -> Result<(), AppAccessError> {
+        let app = self.installed(identity, id, installation)?;
+        self.provider
+            .update_app_settings(identity, app.installation_id, values)
+    }
+
+    /// Origins the calling user approved for this app installation.
+    pub fn network_origins(
+        &self,
+        identity: ShellIdentity,
+        id: &str,
+        installation: &str,
+    ) -> Result<Vec<AppNetworkOrigin>, AppAccessError> {
+        let app = self.installed(identity, id, installation)?;
+        self.provider
+            .app_network_origins(identity, app.installation_id)
+    }
+
+    /// Records a user consent for one exact network origin.
+    pub fn grant_network_origin(
+        &self,
+        identity: ShellIdentity,
+        id: &str,
+        installation: &str,
+        origin: &str,
+        validity: GrantValidityChoice,
+    ) -> Result<AppNetworkOrigin, AppAccessError> {
+        let app = self.installed(identity, id, installation)?;
+        self.provider
+            .grant_app_network(identity, app.installation_id, origin, validity)
+    }
+
+    /// Revokes a network origin consent.
+    pub fn revoke_network_origin(
+        &self,
+        identity: ShellIdentity,
+        id: &str,
+        installation: &str,
+        origin: &str,
+    ) -> Result<(), AppAccessError> {
+        let app = self.installed(identity, id, installation)?;
+        self.provider
+            .revoke_app_network(identity, app.installation_id, origin)
+    }
+
+    /// Authorizes one brokered network request. The transport still validates
+    /// the target independently before opening a socket.
+    pub fn prepare_network_request(
+        &self,
+        identity: ShellIdentity,
+        id: &str,
+        installation: &str,
+        request: &AppNetworkRequest,
+    ) -> Result<PreparedNetworkRequest, AppNetworkError> {
+        let app = self
+            .installed(identity, id, installation)
+            .map_err(|_| AppNetworkError::Denied)?;
+        self.provider
+            .prepare_app_network(identity, app.installation_id, request)
     }
     pub fn data(
         &self,
@@ -387,6 +1080,7 @@ impl AppAccess {
         id: &str,
         installation: &str,
         previous: Option<&str>,
+        shell_host: &str,
     ) -> Result<AppLaunch, AppAccessError> {
         AppId::parse(id).map_err(|_| AppAccessError::Denied)?;
         let app = self
@@ -408,7 +1102,9 @@ impl AppAccess {
             leases
                 .get(previous)
                 .filter(|lease| {
-                    lease.identity == identity && lease.installation == app.installation_id
+                    lease.identity == identity
+                        && lease.installation == app.installation_id
+                        && lease.surface.is_none()
                 })
                 .ok_or(AppAccessError::Denied)?;
             previous.to_owned()
@@ -431,6 +1127,71 @@ impl AppAccess {
             Lease {
                 identity,
                 installation: app.installation_id,
+                surface: None,
+                expires: now + Duration::from_secs(90),
+            },
+        );
+        let authority = self.launch_authority(app.installation_id, shell_host)?;
+        let frame_url = format!("https://{authority}/launch/{token}/{entry}");
+        Ok(AppLaunch {
+            app,
+            lease: token,
+            frame_url,
+        })
+    }
+    pub fn surface(
+        &self,
+        identity: ShellIdentity,
+        installation: &str,
+        surface_id: &str,
+        previous: Option<&str>,
+    ) -> Result<SurfaceLaunch, AppAccessError> {
+        rumahl_core::ContributionId::parse(surface_id).map_err(|_| AppAccessError::Denied)?;
+        let app = self
+            .catalog(identity)?
+            .into_iter()
+            .find(|app| app.installation_id.to_string() == installation && app.launchable)
+            .ok_or(AppAccessError::Denied)?;
+        let entry = self
+            .provider
+            .surface_entrypoint(identity, app.installation_id, surface_id)?;
+        PackagePath::parse(&entry).map_err(|_| AppAccessError::Unavailable)?;
+        let mut leases = self
+            .leases
+            .lock()
+            .map_err(|_| AppAccessError::Unavailable)?;
+        let now = Instant::now();
+        leases.retain(|_, lease| lease.expires > now);
+        let token = if let Some(previous) = previous {
+            leases
+                .get(previous)
+                .filter(|lease| {
+                    lease.identity == identity
+                        && lease.installation == app.installation_id
+                        && lease.surface.as_deref() == Some(surface_id)
+                })
+                .ok_or(AppAccessError::Denied)?;
+            previous.to_owned()
+        } else {
+            if leases.len() >= 1024
+                || leases
+                    .values()
+                    .filter(|lease| lease.identity == identity)
+                    .count()
+                    >= 32
+            {
+                return Err(AppAccessError::Unavailable);
+            }
+            let mut random = [0_u8; 32];
+            rand::rng().fill_bytes(&mut random);
+            random.iter().map(|byte| format!("{byte:02x}")).collect()
+        };
+        leases.insert(
+            token.clone(),
+            Lease {
+                identity,
+                installation: app.installation_id,
+                surface: Some(surface_id.to_owned()),
                 expires: now + Duration::from_secs(90),
             },
         );
@@ -438,12 +1199,14 @@ impl AppAccess {
             "https://{}/launch/{token}/{entry}",
             self.authority(app.installation_id)
         );
-        Ok(AppLaunch {
+        Ok(SurfaceLaunch {
             app,
+            surface: surface_id.to_owned(),
             lease: token,
             frame_url,
         })
     }
+
     pub fn resource(&self, host: &str, path: &str) -> Result<AppAsset, AppAccessError> {
         let rest = path
             .strip_prefix("/launch/")
@@ -461,7 +1224,7 @@ impl AppAccess {
             .filter(|lease| lease.expires > Instant::now())
             .cloned()
             .ok_or(AppAccessError::Denied)?;
-        if host != self.authority(lease.installation) {
+        if !self.host_matches_installation(host, lease.installation) {
             return Err(AppAccessError::Denied);
         }
         self.provider
@@ -472,7 +1235,7 @@ impl AppAccess {
         let origin = format!("https://{host}");
         let csp = format!(
             "sandbox allow-scripts; default-src 'none'; script-src {origin} 'unsafe-inline'; style-src {origin} 'unsafe-inline'; img-src {origin} data:; font-src {origin}; connect-src {origin}; frame-src 'none'; form-action 'none'; base-uri 'none'; object-src 'none'; frame-ancestors {}",
-            self.shell_origin
+            self.shell_origins.join(" ")
         );
         let headers = response.headers_mut();
         headers.insert("content-type", HeaderValue::from_static(asset.content_type));
@@ -513,6 +1276,32 @@ pub fn app_error(error: AppAccessError) -> Response {
         .headers_mut()
         .insert("cache-control", HeaderValue::from_static("no-store"));
     response
+}
+
+impl crate::app_channel::ChannelFiles for AppAccess {
+    fn access(
+        &self,
+        identity: ShellIdentity,
+        installation: InstallationId,
+        access: &AppFileAccess,
+    ) -> Result<AppFileOutcome, AppAccessError> {
+        self.app_file_for_installation(identity, installation, access)
+    }
+
+    fn resolve(
+        &self,
+        identity: ShellIdentity,
+        installation: InstallationId,
+        path: &str,
+    ) -> Result<String, AppAccessError> {
+        self.resolve_channel_path(identity, installation, path)
+    }
+}
+
+fn split_ip_port(authority: &str) -> Option<(&str, u16)> {
+    let (host, port) = authority.rsplit_once(':')?;
+    let port = port.parse().ok()?;
+    Some((host, port))
 }
 
 #[cfg(test)]
@@ -577,6 +1366,21 @@ mod tests {
             _: InstallationId,
         ) -> Result<String, AppAccessError> {
             Ok("web/index.html".into())
+        }
+        fn surface_entrypoint(
+            &self,
+            identity: ShellIdentity,
+            installation: InstallationId,
+            surface: &str,
+        ) -> Result<String, AppAccessError> {
+            if identity == self.owner
+                && installation == self.installation
+                && surface == "com.rumahl.test.desktop"
+            {
+                Ok("web/surface.html".into())
+            } else {
+                Err(AppAccessError::Denied)
+            }
         }
         fn asset(
             &self,
@@ -668,7 +1472,9 @@ mod tests {
                 installation,
             }),
             &Url::parse("https://localhost:8443").unwrap(),
-            "apps.localhost",
+            &[Url::parse("https://localhost:8443").unwrap()],
+            &["apps.localhost".to_owned()],
+            None,
         )
         .unwrap();
         let imported = access
@@ -697,7 +1503,9 @@ mod tests {
                 installation,
             }),
             &Url::parse("https://localhost:8443").unwrap(),
-            "apps.localhost",
+            &[Url::parse("https://localhost:8443").unwrap()],
+            &["apps.localhost".to_owned()],
+            None,
         )
         .unwrap();
         assert_eq!(
@@ -745,7 +1553,9 @@ mod tests {
                 installation,
             }),
             &Url::parse("https://localhost:8443").unwrap(),
-            "apps.localhost",
+            &[Url::parse("https://localhost:8443").unwrap()],
+            &["apps.localhost".to_owned()],
+            None,
         )
         .unwrap();
         assert_eq!(
@@ -785,7 +1595,9 @@ mod tests {
                 installation,
             }),
             &Url::parse("https://localhost:8443").unwrap(),
-            "apps.localhost",
+            &[Url::parse("https://localhost:8443").unwrap()],
+            &["apps.localhost".to_owned()],
+            None,
         )
         .unwrap();
         access
@@ -825,11 +1637,19 @@ mod tests {
                 installation,
             }),
             &Url::parse("https://localhost:8443").unwrap(),
-            "apps.localhost",
+            &[Url::parse("https://localhost:8443").unwrap()],
+            &["apps.localhost".to_owned()],
+            None,
         )
         .unwrap();
         let launch = access
-            .launch(owner, "com.rumahl.test", &installation.to_string(), None)
+            .launch(
+                owner,
+                "com.rumahl.test",
+                &installation.to_string(),
+                None,
+                "localhost:8443",
+            )
             .unwrap();
         let url = Url::parse(&launch.frame_url).unwrap();
         let host = access.authority(installation);
@@ -858,7 +1678,8 @@ mod tests {
                     other,
                     "com.rumahl.test",
                     &installation.to_string(),
-                    Some(&launch.lease)
+                    Some(&launch.lease),
+                    "localhost:8443",
                 )
                 .is_err()
         );
@@ -868,7 +1689,8 @@ mod tests {
                     owner,
                     "com.rumahl.test",
                     &InstallationId::new().to_string(),
-                    Some(&launch.lease)
+                    Some(&launch.lease),
+                    "localhost:8443",
                 )
                 .is_err()
         );
@@ -878,7 +1700,8 @@ mod tests {
                     owner,
                     "com.rumahl.test",
                     &installation.to_string(),
-                    Some(&launch.lease)
+                    Some(&launch.lease),
+                    "localhost:8443",
                 )
                 .unwrap()
                 .frame_url,
@@ -911,7 +1734,8 @@ mod tests {
                     owner,
                     "com.rumahl.test",
                     &installation.to_string(),
-                    Some(&launch.lease)
+                    Some(&launch.lease),
+                    "localhost:8443",
                 )
                 .is_err()
         );
@@ -930,7 +1754,9 @@ mod tests {
                 installation,
             }),
             &Url::parse("https://localhost:8443").unwrap(),
-            "apps.localhost",
+            &[Url::parse("https://localhost:8443").unwrap()],
+            &["apps.localhost".to_owned()],
+            None,
         )
         .unwrap();
 
@@ -957,6 +1783,125 @@ mod tests {
                     },
                     "com.rumahl.test",
                     &installation.to_string()
+                )
+                .is_err()
+        );
+    }
+    #[test]
+    fn surface_leases_are_bound_to_the_surface_and_app() {
+        let owner = ShellIdentity {
+            user_id: UserId::new(),
+            session_id: SessionId::new(),
+        };
+        let installation = InstallationId::new();
+        let access = AppAccess::new(
+            Arc::new(Provider {
+                owner,
+                installation,
+            }),
+            &Url::parse("https://localhost:8443").unwrap(),
+            &[Url::parse("https://localhost:8443").unwrap()],
+            &["apps.localhost".to_owned()],
+            None,
+        )
+        .unwrap();
+
+        let launch = access
+            .launch(
+                owner,
+                "com.rumahl.test",
+                &installation.to_string(),
+                None,
+                "localhost:8443",
+            )
+            .unwrap();
+        let surface = access
+            .surface(
+                owner,
+                &installation.to_string(),
+                "com.rumahl.test.desktop",
+                None,
+            )
+            .unwrap();
+        assert_eq!(surface.surface, "com.rumahl.test.desktop");
+        assert_eq!(surface.lease.len(), 64);
+        assert!(
+            surface
+                .frame_url
+                .ends_with(&format!("/launch/{}/web/surface.html", surface.lease)[..])
+        );
+
+        let renewed = access
+            .surface(
+                owner,
+                &installation.to_string(),
+                "com.rumahl.test.desktop",
+                Some(&surface.lease),
+            )
+            .unwrap();
+        assert_eq!(renewed.lease, surface.lease);
+
+        assert!(
+            access
+                .surface(
+                    owner,
+                    &installation.to_string(),
+                    "com.rumahl.test.desktop",
+                    Some(&launch.lease),
+                )
+                .is_err()
+        );
+        assert!(
+            access
+                .surface(
+                    owner,
+                    &installation.to_string(),
+                    "com.rumahl.test.missing",
+                    None
+                )
+                .is_err()
+        );
+    }
+
+    #[test]
+    fn surface_token_resolves_only_on_its_app_origin() {
+        let owner = ShellIdentity {
+            user_id: UserId::new(),
+            session_id: SessionId::new(),
+        };
+        let installation = InstallationId::new();
+        let access = AppAccess::new(
+            Arc::new(Provider {
+                owner,
+                installation,
+            }),
+            &Url::parse("https://localhost:8443").unwrap(),
+            &[Url::parse("https://localhost:8443").unwrap()],
+            &["apps.localhost".to_owned()],
+            None,
+        )
+        .unwrap();
+        let surface = access
+            .surface(
+                owner,
+                &installation.to_string(),
+                "com.rumahl.test.desktop",
+                None,
+            )
+            .unwrap();
+        let authority = format!("{installation}.apps.localhost:8443");
+        let asset = access
+            .resource(
+                &authority,
+                &format!("/launch/{}/web/surface.html", surface.lease),
+            )
+            .unwrap();
+        assert_eq!(asset.content_type, "text/html; charset=utf-8");
+        assert!(
+            access
+                .resource(
+                    "other.apps.localhost:8443",
+                    &format!("/launch/{}/web/surface.html", surface.lease)
                 )
                 .is_err()
         );

@@ -1,5 +1,6 @@
 import type { ReactNode, Ref } from "react";
 import { MobileIslandNav, type MobileIslandNavItem } from "../MobileIslandNav/MobileIslandNav";
+import { useRegisterMobileNav } from "../MobileIslandNav/MobileNavSlot";
 
 export interface AppNavLayoutMobileNav {
   items: readonly MobileIslandNavItem[];
@@ -37,12 +38,16 @@ export function AppNavLayout({
   contentClassName = "",
   contentRef
 }: AppNavLayoutProps) {
-  return <div className={`rumahl-app-nav-layout ${className}`.trim()}>
+  // Inside the shell the bottom bar is owned by the window (system actions +
+  // registered app destinations). Outside it (Storybook, UI tests) the layout
+  // still renders the standalone island.
+  const slotted = useRegisterMobileNav(mobileNav ?? null);
+  return <div className={`rumahl-app-nav-layout ${className}`.trim()} data-mobile-nav-slotted={slotted ? "true" : undefined}>
     {navbar ? <div className="rumahl-app-nav-layout__navbar">{navbar}</div> : null}
     <div className={`rumahl-app-nav-layout__body${sidebar ? "" : " is-content-only"}`}>
       {sidebar ? <div className="rumahl-app-nav-layout__rail">{sidebar}</div> : null}
       <div className={`rumahl-app-nav-layout__content ${contentClassName}`.trim()} ref={contentRef}>{children}</div>
     </div>
-    {mobileNav ? <div className="rumahl-app-nav-layout__island"><MobileIslandNav {...mobileNav} /></div> : null}
+    {mobileNav && !slotted ? <div className="rumahl-app-nav-layout__island"><MobileIslandNav {...mobileNav} /></div> : null}
   </div>;
 }

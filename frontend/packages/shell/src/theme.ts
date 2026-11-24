@@ -1,6 +1,6 @@
 import type { ShellSnapshotV1 } from "@rumahl/contracts";
 import { getTheme } from "@rumahl/ui/sdk";
-import { applyTokens, defaultTokens, type Tokens } from "@rumahl/ui/tokens";
+import { applyTokens, mergeTokens, tokensForBase, type Tokens } from "@rumahl/ui/tokens";
 import type { Theme } from "@rumahl/ui/themes";
 import { resolveWallpaper } from "./wallpapers";
 import { emptyAppearance, parseWorkspace } from "./preferences/Workspace";
@@ -10,13 +10,17 @@ import { adaptiveTypographicScale, monitorSize } from "./preferences/adaptive-ty
 /** Builds the server-resolved theme, substituting the bundled wallpaper. */
 export function buildSnapshotTheme(snapshot: ShellSnapshotV1): Theme {
   const registered = getTheme(snapshot.theme.id);
-  const base: Tokens = { ...defaultTokens, ...registered?.tokens, ...(snapshot.theme.tokens as Partial<Tokens>) };
-  const tokens = { ...base, "texture.wallpaper": resolveWallpaper(base["texture.wallpaper"]) };
+  const base = registered?.base ?? "iris";
+  const tokens: Tokens = mergeTokens(
+    tokensForBase(base),
+    registered?.tokens,
+    snapshot.theme.tokens as Partial<Tokens>
+  );
   return {
     ...registered,
     id: snapshot.theme.id,
     name: snapshot.theme.id,
-    tokens,
+    tokens: { ...tokens, "texture.wallpaper": resolveWallpaper(tokens["texture.wallpaper"]) },
     variants: {
       shellLayout: snapshot.theme.shellLayout,
       launcherLayout: snapshot.theme.launcherLayout,

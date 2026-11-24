@@ -26,7 +26,8 @@ pub use docker_image_channel::{
 };
 pub use docker_image_importer::{
     ContainerImageImporter, DockerImageImportError, DockerImageImporter, DockerImageImporterConfig,
-    DockerImageImporterConfigError, DockerImageTarget, MAX_ARCHIVE_BYTES,
+    DockerImageImporterConfigError, DockerImageTarget, MAX_ARCHIVE_BYTES, MAX_IMAGE_ENV_ENTRIES,
+    MAX_IMAGE_ENV_LINE_BYTES, StagedImage, StagedImageEnvironment,
 };
 pub use docker_runtime_target::{
     DockerImageReference, DockerImageReferenceError, DockerImageResolver, DockerRuntimeTarget,
@@ -69,6 +70,6 @@ pub use staged_docker_image_writer::{
     StagedDockerImageWriterError,
 };
 pub use tpm2_key_provider::{
-    Tpm2Authorization, Tpm2SealedKey, Tpm2SealedKeyError, Tpm2UnsealKeyProvider,
+    Tpm2Authorization, Tpm2Object, Tpm2SealedKey, Tpm2SealedKeyError, Tpm2UnsealKeyProvider,
     Tpm2UnsealKeyProviderError,
 };

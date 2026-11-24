@@ -9,6 +9,7 @@ mod registrar;
 mod registration;
 mod settings;
 mod stream_presentation;
+mod surface;
 mod validator;
 mod version;
 
@@ -19,6 +20,10 @@ pub use contribution::{
 
 pub use manifest::{AppManifest, AppManifestError, RuntimeLifecycle};
 
+/// Permission that lets an installed app ask the OS to make an HTTP(S)
+/// request to an origin the user explicitly approved.
+pub const APP_NETWORK_PERMISSION: &str = "com.rumahl.os.network";
+
 pub use connector::{ConnectorDeclaration, ConnectorTarget, ConnectorTargetError};
 
 pub use settings::{
@@ -28,6 +33,11 @@ pub use settings::{
 
 pub use stream_presentation::{
     PreferredStreamSize, STREAMING_ENGINE_CAPABILITY, StreamPresentation, StreamPresentationError,
+};
+
+pub use surface::{
+    SurfaceDeclaration, SurfaceIcon, SurfaceKind, SurfacePlacement, SurfaceSize, SurfaceSlot,
+    SurfaceTone,
 };
 
 pub use oidc::{

@@ -23,7 +23,7 @@ use rumahl_oidc_provider::{
 use serde_json::{Value, json};
 use zeroize::Zeroizing;
 
-use crate::server::{GatewayState, authenticate, credential, secure_headers, valid_origin};
+use crate::server::{GatewayState, authenticate, credential, secure_headers};
 
 const MAX_FORM_BYTES: usize = 8192;
 
@@ -270,7 +270,7 @@ async fn approve(
     let Some(oidc) = state.oidc.as_ref() else {
         return unavailable();
     };
-    if !valid_origin(&headers, &state.config.public_origin) {
+    if !state.config.accepts_origin(&headers) {
         return oauth_error(StatusCode::FORBIDDEN, "invalid_request");
     }
     let Some(fields) = parse_form(&headers, &body) else {
@@ -653,6 +653,7 @@ mod tests {
         .unwrap();
         let app = router(GatewayState {
             host_files: None,
+            weather_warnings: None,
             config: GatewayConfig::new("https://rumahl.dev", "/private/run/rumahl-ssr.sock")
                 .unwrap(),
             backend: Arc::new(TestLogin(ShellIdentity {
@@ -665,12 +666,16 @@ mod tests {
             apps: None,
             preferences: None,
             os_mode: None,
+
+            policies: None,
             workspace: None,
             files: None,
             browser_sessions: None,
+            admin: None,
             login_slots: Arc::new(tokio::sync::Semaphore::new(2)),
             audit: None,
             state_dir: None,
+            platform_config: None,
             oidc: Some(Arc::new(protocol)),
         });
         let challenge = base64::engine::general_purpose::URL_SAFE_NO_PAD

@@ -2,8 +2,8 @@ use std::error::Error;
 use std::fmt;
 
 use crate::{
-    CapabilityId, ContributionId, OidcClientType, RuntimeEntrypointId, RuntimeEntrypointKind,
-    RuntimeKind,
+    CapabilityId, ContributionId, OidcClientType, OsPermissionCatalogError, PermissionScope,
+    RuntimeEntrypointId, RuntimeEntrypointKind, RuntimeKind, os_permission_catalog_validate,
 };
 
 use super::{AppManifest, ContributionDeclaration, RuntimeLifecycle};
@@ -28,12 +28,30 @@ pub enum AppManifestValidationError {
         contribution: ContributionId,
         capability: CapabilityId,
     },
+    /// The manifest requested an OS-owned permission the platform does not
+    /// define. Such a request can never be granted.
+    UnknownOsPermission {
+        permission: String,
+    },
+    /// The manifest requested a known OS-owned permission in a scope the
+    /// platform does not honor for it.
+    OsPermissionScopeNotAllowed {
+        permission: String,
+        scope: PermissionScope,
+    },
     OidcClientTypeIncompatible {
         runtime: RuntimeKind,
         client_type: OidcClientType,
     },
     OidcCallbackEntrypointMissing(RuntimeEntrypointId),
     OidcCallbackEntrypointIncompatible {
+        runtime: RuntimeKind,
+        entrypoint: RuntimeEntrypointId,
+        kind: RuntimeEntrypointKind,
+    },
+    SurfaceEntrypointMissing(ContributionId, RuntimeEntrypointId),
+    SurfaceEntrypointIncompatible {
+        contribution: ContributionId,
         runtime: RuntimeKind,
         entrypoint: RuntimeEntrypointId,
         kind: RuntimeEntrypointKind,
@@ -51,9 +69,70 @@ impl AppManifestValidator {
         self.validate_connectors(manifest)?;
         self.validate_stream_presentation(manifest)?;
         self.validate_oidc(manifest)?;
+        self.validate_surfaces(manifest)?;
+        self.validate_permission_requests(manifest)?;
 
         for contribution in manifest.contributions() {
             self.validate_contribution(manifest, contribution)?;
+        }
+
+        Ok(())
+    }
+
+    /// OS-owned permission ids are a contract: an app can only request what the
+    /// platform catalog defines, in a scope the platform actually honors.
+    /// Third-party permissions in a publisher namespace pass through.
+    fn validate_permission_requests(
+        &self,
+        manifest: &AppManifest,
+    ) -> Result<(), AppManifestValidationError> {
+        for request in manifest.permission_requests() {
+            match os_permission_catalog_validate(request) {
+                Ok(()) => continue,
+                Err(OsPermissionCatalogError::UnknownPermission { permission }) => {
+                    return Err(AppManifestValidationError::UnknownOsPermission { permission });
+                }
+                Err(OsPermissionCatalogError::ScopeNotAllowed { permission, scope }) => {
+                    return Err(AppManifestValidationError::OsPermissionScopeNotAllowed {
+                        permission,
+                        scope,
+                    });
+                }
+            }
+        }
+
+        Ok(())
+    }
+
+    fn validate_surfaces(&self, manifest: &AppManifest) -> Result<(), AppManifestValidationError> {
+        // Tier B surfaces run in an isolated frame on the app origin. The
+        // declaration names an entrypoint; it never carries a URL or path.
+        let runtime = manifest.runtime();
+        if runtime.kind() == RuntimeKind::Native {
+            return Err(AppManifestValidationError::NativeRuntimeUnsupported);
+        }
+        // A Tier B surface is a static web asset served by the shell's frame
+        // resolver. Container endpoints and native code are not frame targets.
+        let expected_kind = RuntimeEntrypointKind::WebAsset;
+
+        for surface in manifest.surfaces() {
+            let Some(id) = surface.entrypoint() else {
+                continue;
+            };
+            let entrypoint = runtime.entrypoint(id).ok_or_else(|| {
+                AppManifestValidationError::SurfaceEntrypointMissing(
+                    surface.id().clone(),
+                    id.clone(),
+                )
+            })?;
+            if entrypoint.kind() != expected_kind {
+                return Err(AppManifestValidationError::SurfaceEntrypointIncompatible {
+                    contribution: surface.id().clone(),
+                    runtime: runtime.kind(),
+                    entrypoint: entrypoint.id().clone(),
+                    kind: entrypoint.kind(),
+                });
+            }
         }
 
         Ok(())
@@ -273,6 +352,14 @@ impl fmt::Display for AppManifestValidationError {
                     "search contribution '{contribution}' references capability '{capability}' that the app does not provide"
                 )
             }
+            Self::UnknownOsPermission { permission } => write!(
+                f,
+                "permission '{permission}' is not defined by the OS permission catalog"
+            ),
+            Self::OsPermissionScopeNotAllowed { permission, scope } => write!(
+                f,
+                "permission '{permission}' cannot be requested with scope '{scope:?}'"
+            ),
             Self::OidcClientTypeIncompatible {
                 runtime,
                 client_type,
@@ -292,6 +379,19 @@ impl fmt::Display for AppManifestValidationError {
                 f,
                 "OIDC callback entrypoint '{entrypoint}' of kind '{kind:?}' is incompatible with runtime '{runtime:?}'"
             ),
+            Self::SurfaceEntrypointMissing(contribution, entrypoint) => write!(
+                f,
+                "surface '{contribution}' references missing runtime entrypoint '{entrypoint}'"
+            ),
+            Self::SurfaceEntrypointIncompatible {
+                contribution,
+                runtime,
+                entrypoint,
+                kind,
+            } => write!(
+                f,
+                "surface '{contribution}' entrypoint '{entrypoint}' of kind '{kind:?}' is incompatible with runtime '{runtime:?}'"
+            ),
         }
     }
 }
@@ -305,10 +405,24 @@ mod tests {
     use crate::{
         AppId, AppVersion, CapabilityId, CommandAction, CommandContributionDeclaration,
         ConnectorDeclaration, ConnectorTarget, ContributionId, OidcCallbackPath,
-        OidcClientDeclaration, OidcScope, PackagePath, PublisherId, RuntimeDescriptor,
-        RuntimeEndpointId, RuntimeEntrypoint, RuntimeEntrypointId, SearchContributionDeclaration,
-        StreamPresentation,
+        OidcClientDeclaration, OidcScope, PackagePath, PermissionId, PermissionRequest,
+        PermissionScope, PublisherId, RuntimeDescriptor, RuntimeEndpointId, RuntimeEntrypoint,
+        RuntimeEntrypointId, SearchContributionDeclaration, StreamPresentation, SurfaceDeclaration,
+        SurfaceIcon, SurfaceKind, SurfacePlacement, SurfaceSize, SurfaceSlot, SurfaceTone,
     };
+
+    fn surface(entrypoint: Option<&str>) -> SurfaceDeclaration {
+        SurfaceDeclaration::new(
+            ContributionId::parse("com.rumahl.notes.desktop").unwrap(),
+            SurfaceSlot::Desktop,
+            SurfaceKind::Companion,
+            SurfaceSize::Medium,
+            SurfacePlacement::BottomRight,
+            SurfaceTone::Accent,
+            SurfaceIcon::Pulse,
+        )
+        .with_entrypoint(entrypoint.map(|value| RuntimeEntrypointId::parse(value).unwrap()))
+    }
 
     fn manifest() -> AppManifest {
         let mut runtime = RuntimeDescriptor::web();
@@ -337,6 +451,85 @@ mod tests {
         let validator = AppManifestValidator::new();
 
         assert!(validator.validate(&manifest).is_ok());
+    }
+
+    #[test]
+    fn cataloged_files_permissions_validate() {
+        let mut manifest = manifest();
+        manifest
+            .add_permission_request(PermissionRequest::new(
+                PermissionId::parse("rumahl.files.read").unwrap(),
+                PermissionScope::UserSelected,
+                false,
+                Some("Open files the user selected".to_owned()),
+            ))
+            .unwrap();
+        manifest
+            .add_permission_request(PermissionRequest::new(
+                PermissionId::parse("rumahl.files.write").unwrap(),
+                PermissionScope::Explicit,
+                false,
+                Some("Save back to the selected file".to_owned()),
+            ))
+            .unwrap();
+
+        assert!(AppManifestValidator::new().validate(&manifest).is_ok());
+    }
+
+    #[test]
+    fn unknown_files_permission_is_rejected() {
+        let mut manifest = manifest();
+        manifest
+            .add_permission_request(PermissionRequest::new(
+                PermissionId::parse("rumahl.files.delete").unwrap(),
+                PermissionScope::Explicit,
+                false,
+                None,
+            ))
+            .unwrap();
+
+        assert_eq!(
+            AppManifestValidator::new().validate(&manifest),
+            Err(AppManifestValidationError::UnknownOsPermission {
+                permission: "rumahl.files.delete".to_owned()
+            })
+        );
+    }
+
+    #[test]
+    fn files_permission_in_an_unhonored_scope_is_rejected() {
+        let mut manifest = manifest();
+        manifest
+            .add_permission_request(PermissionRequest::new(
+                PermissionId::parse("rumahl.files.read").unwrap(),
+                PermissionScope::UserOwn,
+                true,
+                None,
+            ))
+            .unwrap();
+
+        assert_eq!(
+            AppManifestValidator::new().validate(&manifest),
+            Err(AppManifestValidationError::OsPermissionScopeNotAllowed {
+                permission: "rumahl.files.read".to_owned(),
+                scope: PermissionScope::UserOwn,
+            })
+        );
+    }
+
+    #[test]
+    fn third_party_permissions_are_not_catalog_checked() {
+        let mut manifest = manifest();
+        manifest
+            .add_permission_request(PermissionRequest::new(
+                PermissionId::parse("com.rumahl.notes.export").unwrap(),
+                PermissionScope::UserOwn,
+                false,
+                None,
+            ))
+            .unwrap();
+
+        assert!(AppManifestValidator::new().validate(&manifest).is_ok());
     }
 
     #[test]
@@ -688,6 +881,51 @@ mod tests {
             .unwrap();
 
         assert!(AppManifestValidator::new().validate(&manifest).is_ok());
+    }
+
+    #[test]
+    fn accepts_web_surface_entrypoints() {
+        let mut manifest = manifest();
+        manifest.add_surface(surface(Some("main"))).unwrap();
+
+        assert!(AppManifestValidator::new().validate(&manifest).is_ok());
+    }
+
+    #[test]
+    fn rejects_surface_for_missing_entrypoint() {
+        let mut manifest = manifest();
+        manifest.add_surface(surface(Some("overlay"))).unwrap();
+
+        assert!(matches!(
+            AppManifestValidator::new().validate(&manifest),
+            Err(AppManifestValidationError::SurfaceEntrypointMissing(_, entrypoint))
+                if entrypoint.as_str() == "overlay"
+        ));
+    }
+
+    #[test]
+    fn rejects_surface_entrypoint_that_is_not_a_web_asset() {
+        let mut runtime = RuntimeDescriptor::container();
+        runtime
+            .add_entrypoint(RuntimeEntrypoint::container_artifact(
+                RuntimeEntrypointId::parse("service").unwrap(),
+                PackagePath::parse("runtime/server.oci").unwrap(),
+            ))
+            .unwrap();
+        let mut container = AppManifest::new(
+            AppId::parse("com.rumahl.notes").unwrap(),
+            PublisherId::parse("com.rumahl").unwrap(),
+            AppVersion::new(1, 0, 0),
+            "Notes",
+            runtime,
+        )
+        .unwrap();
+        container.add_surface(surface(Some("service"))).unwrap();
+
+        assert!(matches!(
+            AppManifestValidator::new().validate(&container),
+            Err(AppManifestValidationError::SurfaceEntrypointIncompatible { .. })
+        ));
     }
 
     #[test]

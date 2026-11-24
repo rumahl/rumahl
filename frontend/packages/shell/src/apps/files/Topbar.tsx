@@ -1,24 +1,29 @@
-import { SearchIcon } from "../../icons";
 import { useI18n } from "../../i18n";
-import { Breadcrumb } from "./Breadcrumb";
+import { PathBar, type PathCrumb, type PathOption } from "./PathBar";
 import {
   ArrowLeftIcon,
   ArrowRightIcon,
   ArrowUpIcon,
   FilePlusIcon,
   FolderIcon,
-  GridViewIcon,
-  ListViewIcon,
   MoveIcon,
   PlusIcon,
   UploadIcon,
 } from "./icons";
+import { SearchField } from "./SearchField";
 import type { Nav } from "./types";
+import { ViewSwitch } from "./ViewSwitch";
 
 export interface TopbarProps {
   nav: Nav;
+  /** Canonical rumahl path of the current folder. */
+  addressPath: string;
+  /** Crumbs from the area root to the current folder. */
+  crumbs: readonly PathCrumb[];
+  /** Advanced mode shows the Windows-style crumbs; guided keeps the input. */
+  advanced: boolean;
   compact: boolean;
-  isStore: boolean;
+  writable: boolean;
   canBack: boolean;
   canForward: boolean;
   canUp: boolean;
@@ -27,6 +32,9 @@ export interface TopbarProps {
   view: "grid" | "list";
   search: string;
   onNavigate: (next: Nav) => void;
+  onAddress: (input: string) => void;
+  onNavigateCrumb: (index: number) => void;
+  onCrumbOptions: (index: number) => Promise<readonly PathOption[]>;
   onBack: () => void;
   onForward: () => void;
   onUp: () => void;
@@ -54,10 +62,18 @@ export function Topbar(props: TopbarProps) {
       </div>
       <div className="files-topbar__path">
         <FolderIcon className="files-topbar__path-icon" />
-        <Breadcrumb nav={props.nav} onNavigate={props.onNavigate} />
+        <PathBar
+          path={props.addressPath}
+          crumbs={props.crumbs}
+          advanced={props.advanced}
+          busy={props.busy}
+          onNavigate={props.onNavigateCrumb}
+          onOptions={props.onCrumbOptions}
+          onSubmit={props.onAddress}
+        />
       </div>
       <span className="files-topbar__spacer" />
-      {props.isStore
+      {props.writable
         ? <div className="files-topbar__group files-topbar__group--actions">
             <button className="files-icon-btn files-topbar__action" type="button" disabled={props.busy} onClick={props.onNewFolder} aria-label={t("files.newFolder")} title={t("files.newFolder")}><PlusIcon /><span className="files-action-label">{t("files.newFolder")}</span></button>
             <button className="files-icon-btn files-topbar__action" type="button" disabled={props.busy} onClick={props.onNewFile} aria-label={t("files.newFile")} title={t("files.newFile")}><FilePlusIcon /><span className="files-action-label">{t("files.newFile")}</span></button>
@@ -68,18 +84,8 @@ export function Topbar(props: TopbarProps) {
             {props.canPaste ? <button className="files-icon-btn files-topbar__action" type="button" disabled={props.busy} onClick={props.onPaste} aria-label={t("files.moveHere")} title={t("files.moveHere")}><MoveIcon /><span className="files-action-label">{t("files.moveHere")}</span></button> : null}
           </div>
         : <span className="files-readonly files-topbar__readonly">{t("files.readOnly")}</span>}
-      <label className="files-topbar__search">
-        <SearchIcon className="files-search__icon" />
-        <input aria-label={t("files.search")} value={props.search} onChange={(event) => props.onSearch(event.target.value)} placeholder={t("files.search")} maxLength={255} />
-      </label>
-      <label className="files-view-switch" title={`${t("files.grid")} / ${t("files.list")}`}>
-        <input type="checkbox" role="switch" aria-label={`${t("files.grid")} / ${t("files.list")}`} checked={props.view === "list"} onChange={event => props.onView(event.target.checked ? "list" : "grid")} />
-        <span className="files-view-switch__track">
-          <span className="files-view-switch__thumb" aria-hidden="true" />
-          <span className="files-view-switch__icon files-view-switch__icon--grid"><GridViewIcon /></span>
-          <span className="files-view-switch__icon files-view-switch__icon--list"><ListViewIcon /></span>
-        </span>
-      </label>
+      <SearchField className="files-topbar__search" value={props.search} onChange={props.onSearch} />
+      <ViewSwitch view={props.view} onView={props.onView} />
     </div>}
   </div>;
 }

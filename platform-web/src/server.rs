@@ -21,7 +21,7 @@ use hyper::client::conn::http1;
 use hyper::{Request, StatusCode as UpstreamStatus};
 use hyper_util::rt::TokioIo;
 use rand::RngCore;
-use rumahl_core::{BrowserProfileId, UserId};
+use rumahl_core::{BrowserProfileId, InstallationId, MAX_APP_SETTINGS, UserId};
 use rumahl_ui_contracts::{ExtensionContribution, ShellEvent, ShellSnapshot};
 use tokio::net::{UnixListener, UnixStream};
 use tokio::sync::broadcast;
@@ -50,7 +50,12 @@ pub trait WidgetFrameResolver: Send + Sync + 'static {
 }
 
 pub struct GatewayConfig {
+    /// Canonical origin used for generated URLs, CSP and OIDC redirects.
     pub public_origin: Url,
+    /// Every origin accepted for Host/Origin checks. The first entry is always
+    /// `public_origin`; deployment configuration and detected device addresses
+    /// add further entries.
+    pub allowed_origins: Vec<Url>,
     pub ssr_socket: PathBuf,
 }
 
@@ -63,27 +68,56 @@ pub enum GatewayError {
 
 impl GatewayConfig {
     pub fn new(public_origin: &str, ssr_socket: impl Into<PathBuf>) -> Result<Self, GatewayError> {
-        let origin = Url::parse(public_origin).map_err(|_| GatewayError::InvalidOrigin)?;
-        if origin.scheme() != "https"
-            || origin.host_str().is_none()
-            || origin.username() != ""
-            || origin.password().is_some()
-            || origin.path() != "/"
-            || origin.query().is_some()
-            || origin.fragment().is_some()
-            || origin.origin().ascii_serialization() != public_origin
-        {
-            return Err(GatewayError::InvalidOrigin);
-        }
+        let origin = parse_origin(public_origin)?;
         let ssr_socket = ssr_socket.into();
         if !ssr_socket.is_absolute() {
             return Err(GatewayError::InvalidSocketPath);
         }
         Ok(Self {
-            public_origin: origin,
+            public_origin: origin.clone(),
+            allowed_origins: vec![origin],
             ssr_socket,
         })
     }
+
+    /// Accepts additional canonical https origins (configured hosts and device
+    /// addresses). Duplicates are ignored.
+    pub fn add_allowed_origins(
+        &mut self,
+        origins: impl IntoIterator<Item = String>,
+    ) -> Result<(), GatewayError> {
+        for value in origins {
+            let origin = parse_origin(&value)?;
+            if !self.allowed_origins.contains(&origin) {
+                self.allowed_origins.push(origin);
+            }
+        }
+        Ok(())
+    }
+
+    /// True when the request carries exactly one Origin header and it is one of
+    /// the accepted origins.
+    pub fn accepts_origin(&self, headers: &HeaderMap) -> bool {
+        self.allowed_origins
+            .iter()
+            .any(|origin| valid_origin(headers, origin))
+    }
+}
+
+fn parse_origin(value: &str) -> Result<Url, GatewayError> {
+    let origin = Url::parse(value).map_err(|_| GatewayError::InvalidOrigin)?;
+    if origin.scheme() != "https"
+        || origin.host_str().is_none()
+        || origin.username() != ""
+        || origin.password().is_some()
+        || origin.path() != "/"
+        || origin.query().is_some()
+        || origin.fragment().is_some()
+        || origin.origin().ascii_serialization() != value
+    {
+        return Err(GatewayError::InvalidOrigin);
+    }
+    Ok(origin)
 }
 
 pub struct GatewayState {
@@ -99,16 +133,26 @@ pub struct GatewayState {
     pub preferences: Option<Arc<dyn rumahl_core::ShellPreferencesRepository>>,
     /// Exposure-mode policy; None keeps the guided default.
     pub os_mode: Option<Arc<dyn rumahl_core::OsModeRepository>>,
+    /// Administrative policies (device, group, user). None keeps the
+    /// catalog defaults from the built-in engine.
+    pub policies: Option<Arc<dyn crate::PolicyEngine>>,
     /// Real host roots the explorer may browse; None disables them.
     pub host_files: Option<Arc<dyn crate::HostFiles>>,
+    /// OS-owned severe-weather warning store; None disables that API.
+    pub weather_warnings: Option<Arc<dyn rumahl_core::WeatherWarningRepository>>,
     /// None leaves the Shell and recovery routes usable while OIDC is offline.
     pub oidc: Option<Arc<dyn oidc::OidcGateway>>,
     pub browser_sessions: Option<Arc<dyn crate::BrowserSessions>>,
+    /// None disables account administration without disabling the shell.
+    pub admin: Option<Arc<dyn crate::Administration>>,
     pub login_slots: Arc<tokio::sync::Semaphore>,
     /// Central append-only audit log; None disables auditing without disabling the shell.
     pub audit: Option<Arc<dyn rumahl_core::AuditLog>>,
     /// State directory for recovery settings/diagnostics; None disables them.
     pub state_dir: Option<std::path::PathBuf>,
+    /// Startup-captured, display-safe platform configuration; None disables
+    /// the extended config view.
+    pub platform_config: Option<Arc<crate::PlatformConfig>>,
 }
 
 /// Current wall-clock time as an audit timestamp.
@@ -196,13 +240,20 @@ pub fn router(state: GatewayState) -> Router {
         .route("/", get(shell))
         .fallback(shell_fallback)
         .route("/api/v1/shell/snapshot", get(snapshot))
+        .route("/api/v1/device/addresses", get(device_addresses))
         .route("/api/v1/shell/apps", get(app_catalog))
         .route(
             "/api/v1/shell/apps/{id}/launch",
             post(app_launch).layer(axum::extract::DefaultBodyLimit::max(1024)),
         )
-        .route("/api/v1/shell/apps/{id}/settings", get(app_settings))
+        .route(
+            "/api/v1/shell/apps/{id}/settings",
+            get(app_settings)
+                .put(update_app_settings)
+                .layer(axum::extract::DefaultBodyLimit::max(256 * 1024)),
+        )
         .route("/api/v1/shell/apps/{id}/data", get(app_data))
+        .merge(crate::app_network::routes())
         .route(
             "/api/v1/shell/apps/{id}",
             delete(app_uninstall).layer(axum::extract::DefaultBodyLimit::max(2048)),
@@ -221,6 +272,10 @@ pub fn router(state: GatewayState) -> Router {
         )
         .route("/api/v1/shell/events", get(events))
         .route("/api/v1/shell/widgets/{id}/frame", get(widget_frame))
+        .route(
+            "/api/v1/shell/surfaces/{id}/frame",
+            post(surface_frame).layer(axum::extract::DefaultBodyLimit::max(2048)),
+        )
         .route("/api/v1/shell/streams", get(stream_list))
         .route("/api/v1/shell/streams/{id}/grant", post(stream_grant))
         .route(
@@ -265,9 +320,14 @@ pub fn router(state: GatewayState) -> Router {
         .merge(crate::os_mode::routes())
         .merge(crate::store::routes())
         .merge(crate::host_files::routes())
+        .merge(crate::weather_warnings::routes())
         .merge(crate::workspace::routes())
         .merge(crate::files::routes())
+        .merge(crate::app_grants::routes())
+        .merge(crate::platform_config::routes())
+        .merge(crate::app_runtime::routes())
         .merge(crate::browser_auth::routes())
+        .merge(crate::admin::routes())
         .merge(crate::offline::routes())
         .layer(axum::middleware::from_fn_with_state(
             state.clone(),
@@ -351,7 +411,7 @@ async fn app_launch(
     headers: HeaderMap,
     body: axum::body::Bytes,
 ) -> Response {
-    if !valid_origin(&headers, &state.config.public_origin) {
+    if !state.config.accepts_origin(&headers) {
         return error(StatusCode::FORBIDDEN);
     }
     if body.len() > 1024 {
@@ -401,13 +461,101 @@ async fn app_launch(
     let Some(apps) = state.apps.clone() else {
         return error(StatusCode::SERVICE_UNAVAILABLE);
     };
+    let shell_host = headers
+        .get("host")
+        .and_then(|value| value.to_str().ok())
+        .unwrap_or_default()
+        .to_owned();
     match tokio::task::spawn_blocking(move || {
-        apps.launch(identity, &id, &installation, lease.as_deref())
+        apps.launch(identity, &id, &installation, lease.as_deref(), &shell_host)
     })
     .await
     {
         Ok(Ok(launch)) => {
             let mut response = axum::Json(serde_json::json!({"launchVersion": 1, "id": launch.app.id, "installationId": launch.app.installation_id.to_string(), "lease": launch.lease, "frameUrl": launch.frame_url, "renewAfterSeconds": 30})).into_response();
+            secure_headers(&mut response);
+            response
+        }
+        Ok(Err(error)) => crate::app_error(error),
+        Err(_) => error(StatusCode::SERVICE_UNAVAILABLE),
+    }
+}
+
+async fn surface_frame(
+    State(state): State<Arc<GatewayState>>,
+    UrlPath(id): UrlPath<String>,
+    headers: HeaderMap,
+    body: axum::body::Bytes,
+) -> Response {
+    if !valid_origin(&headers, &state.config.public_origin) {
+        return error(StatusCode::FORBIDDEN);
+    }
+    if headers.get("content-type").and_then(|v| v.to_str().ok()) != Some("application/json") {
+        return error(StatusCode::UNSUPPORTED_MEDIA_TYPE);
+    }
+    let recovery = crate::recovery_settings::load(state.state_dir.as_deref());
+    if recovery.safe_mode {
+        let mut response =
+            axum::Json(serde_json::json!({"surfaceError": "safe-mode"})).into_response();
+        *response.status_mut() = StatusCode::LOCKED;
+        secure_headers(&mut response);
+        return response;
+    }
+    let identity = match credential(&headers) {
+        Ok(token) => match authenticate(&state, &token).await {
+            Ok(identity) => identity,
+            Err(error) => return backend_error(error),
+        },
+        Err(_) => return error(StatusCode::UNAUTHORIZED),
+    };
+    let Ok(value) = serde_json::from_slice::<serde_json::Value>(&body) else {
+        return error(StatusCode::BAD_REQUEST);
+    };
+    let Some(object) = value.as_object() else {
+        return error(StatusCode::BAD_REQUEST);
+    };
+    if object
+        .keys()
+        .any(|key| key != "installationId" && key != "lease")
+    {
+        return error(StatusCode::BAD_REQUEST);
+    }
+    let Some(app) = value
+        .get("installationId")
+        .and_then(|v| v.as_str())
+        .map(str::to_owned)
+    else {
+        return error(StatusCode::BAD_REQUEST);
+    };
+    let lease = match value.get("lease") {
+        None => None,
+        Some(serde_json::Value::String(s))
+            if s.len() == 64 && s.bytes().all(|b| b.is_ascii_hexdigit()) =>
+        {
+            Some(s.clone())
+        }
+        _ => return error(StatusCode::BAD_REQUEST),
+    };
+    let Some(apps) = state.apps.clone() else {
+        return error(StatusCode::SERVICE_UNAVAILABLE);
+    };
+    match tokio::task::spawn_blocking(move || apps.surface(identity, &app, &id, lease.as_deref()))
+        .await
+    {
+        Ok(Ok(launch)) => {
+            if crate::recovery_settings::is_disabled(&recovery, &launch.app.id) {
+                return error(StatusCode::NOT_FOUND);
+            }
+            let mut response = axum::Json(serde_json::json!({
+                "frameVersion": 1,
+                "surfaceId": launch.surface,
+                "appId": launch.app.id,
+                "installationId": launch.app.installation_id.to_string(),
+                "lease": launch.lease,
+                "frameUrl": launch.frame_url,
+                "renewAfterSeconds": 30,
+            }))
+            .into_response();
             secure_headers(&mut response);
             response
         }
@@ -440,38 +588,119 @@ async fn app_settings(
         return error(StatusCode::SERVICE_UNAVAILABLE);
     };
     match tokio::task::spawn_blocking(move || apps.settings(identity, &id, &installation)).await {
-        Ok(Ok(settings)) => {
-            let manifest: Vec<_> = settings
-                .manifest
+        Ok(Ok(settings)) => settings_response(settings),
+        Ok(Err(error)) => crate::app_error(error),
+        Err(_) => error(StatusCode::SERVICE_UNAVAILABLE),
+    }
+}
+
+fn settings_response(settings: crate::AppSettingsInfo) -> Response {
+    let manifest: Vec<_> = settings
+        .manifest
+        .into_iter()
+        .map(|setting| {
+            let options: Vec<_> = setting
+                .options
                 .into_iter()
-                .map(|setting| {
-                    let options: Vec<_> = setting
-                        .options
-                        .into_iter()
-                        .map(|option| {
-                            serde_json::json!({"value": option.value, "label": option.label})
-                        })
-                        .collect();
-                    serde_json::json!({
-                        "key": setting.key,
-                        "title": setting.title,
-                        "description": setting.description,
-                        "type": setting.kind,
-                        "required": setting.required,
-                        "options": options,
-                    })
-                })
+                .map(|option| serde_json::json!({"value": option.value, "label": option.label}))
                 .collect();
-            let mut response = axum::Json(serde_json::json!({
-                "settingsVersion": 1,
-                "id": settings.app.id,
-                "installationId": settings.app.installation_id.to_string(),
-                "manifest": manifest,
-                "extended": serde_json::Value::Null,
-            }))
-            .into_response();
-            secure_headers(&mut response);
-            response
+            serde_json::json!({
+                "key": setting.key,
+                "title": setting.title,
+                "description": setting.description,
+                "type": setting.kind,
+                "required": setting.required,
+                "options": options,
+            })
+        })
+        .collect();
+    let mut response = axum::Json(serde_json::json!({
+        "settingsVersion": 1,
+        "id": settings.app.id,
+        "installationId": settings.app.installation_id.to_string(),
+        "manifest": manifest,
+        "values": settings.values,
+        "secrets": settings.secrets,
+        "extended": serde_json::Value::Null,
+    }))
+    .into_response();
+    secure_headers(&mut response);
+    response
+}
+
+/// Writes manifest-declared setting values. Secrets are accepted write-only
+/// and are never echoed back; the response contains only `configured` flags.
+async fn update_app_settings(
+    State(state): State<Arc<GatewayState>>,
+    UrlPath(id): UrlPath<String>,
+    Query(query): Query<BTreeMap<String, String>>,
+    headers: HeaderMap,
+    body: axum::body::Bytes,
+) -> Response {
+    if !valid_origin(&headers, &state.config.public_origin) {
+        return error(StatusCode::FORBIDDEN);
+    }
+    let identity = match credential(&headers) {
+        Ok(token) => match authenticate(&state, &token).await {
+            Ok(identity) => identity,
+            Err(error) => return backend_error(error),
+        },
+        Err(_) => return error(StatusCode::UNAUTHORIZED),
+    };
+    if query.len() != 1 {
+        return error(StatusCode::BAD_REQUEST);
+    }
+    let Some(installation) = query.get("installationId").cloned() else {
+        return error(StatusCode::BAD_REQUEST);
+    };
+    if InstallationId::parse(&installation).is_err() {
+        return error(StatusCode::BAD_REQUEST);
+    }
+    if headers
+        .get("content-type")
+        .and_then(|value| value.to_str().ok())
+        != Some("application/json")
+    {
+        return error(StatusCode::UNSUPPORTED_MEDIA_TYPE);
+    }
+    let Ok(value) = serde_json::from_slice::<serde_json::Value>(&body) else {
+        return error(StatusCode::BAD_REQUEST);
+    };
+    let Some(object) = value.as_object() else {
+        return error(StatusCode::BAD_REQUEST);
+    };
+    if object.keys().any(|key| key != "values") {
+        return error(StatusCode::BAD_REQUEST);
+    }
+    let Some(values) = object.get("values").and_then(|value| value.as_object()) else {
+        return error(StatusCode::BAD_REQUEST);
+    };
+    if values.len() > MAX_APP_SETTINGS {
+        return error(StatusCode::BAD_REQUEST);
+    }
+    let values: std::collections::HashMap<String, serde_json::Value> = values
+        .iter()
+        .map(|(key, value)| (key.clone(), value.clone()))
+        .collect();
+    let Some(apps) = state.apps.clone() else {
+        return error(StatusCode::SERVICE_UNAVAILABLE);
+    };
+    let id_for_call = id.clone();
+    let installation_for_call = installation.clone();
+    let apps_for_write = apps.clone();
+    match tokio::task::spawn_blocking(move || {
+        apps_for_write.update_settings(identity, &id_for_call, &installation_for_call, values)
+    })
+    .await
+    {
+        Ok(Ok(())) => {
+            match tokio::task::spawn_blocking(move || apps.settings(identity, &id, &installation))
+                .await
+            {
+                Ok(Ok(settings)) => settings_response(settings),
+                Ok(Err(error)) => crate::app_error(error),
+                Err(_) => error(StatusCode::SERVICE_UNAVAILABLE),
+            }
         }
         Ok(Err(error)) => crate::app_error(error),
         Err(_) => error(StatusCode::SERVICE_UNAVAILABLE),
@@ -565,6 +794,18 @@ async fn app_data(
     }
 }
 
+/// Whether the user holds an administrator role. Policies that reserve an
+/// action for administrators check this beside the policy.
+async fn administrator(state: &Arc<GatewayState>, user: rumahl_core::UserId) -> bool {
+    let Some(admin) = state.admin.clone() else {
+        return false;
+    };
+    match tokio::task::spawn_blocking(move || admin.role(user)).await {
+        Ok(Ok(role)) => role.is_administrator(),
+        _ => false,
+    }
+}
+
 async fn app_uninstall(
     State(state): State<Arc<GatewayState>>,
     UrlPath(id): UrlPath<String>,
@@ -603,6 +844,15 @@ async fn app_uninstall(
     let Some(apps) = state.apps.clone() else {
         return error(StatusCode::SERVICE_UNAVAILABLE);
     };
+    // A policy can reserve uninstalls for administrators.
+    if !state
+        .policies
+        .clone()
+        .is_none_or(|policies| policies.app_uninstall_allowed(identity.user_id))
+        && !administrator(&state, identity.user_id).await
+    {
+        return error(StatusCode::FORBIDDEN);
+    }
     let user = identity.user_id;
     let audit_id = id.clone();
     match tokio::task::spawn_blocking(move || apps.uninstall(identity, &id, &installation)).await {
@@ -614,6 +864,19 @@ async fn app_uninstall(
                 rumahl_core::AuditOutcome::Success,
                 Some(audit_id.as_str()),
             );
+            // Warnings belong to the app that published them. Uninstalling the
+            // app must not leave that source alive in the OS warning surface.
+            if let Some(warnings) = state.weather_warnings.clone() {
+                let source = audit_id.clone();
+                let now = i64::try_from(now_seconds())
+                    .unwrap_or(i64::MAX / 1_000)
+                    .saturating_mul(1_000);
+                let _ =
+                    tokio::task::spawn_blocking(move || warnings.forget_source(&source, now)).await;
+                state
+                    .events
+                    .publish_all(rumahl_ui_contracts::ShellEvent::warnings_changed());
+            }
             let mut response = StatusCode::NO_CONTENT.into_response();
             secure_headers(&mut response);
             response
@@ -688,7 +951,7 @@ async fn app_runtime_action(
     headers: HeaderMap,
     body: axum::body::Bytes,
 ) -> Response {
-    if !valid_origin(&headers, &state.config.public_origin) {
+    if !state.config.accepts_origin(&headers) {
         return error(StatusCode::FORBIDDEN);
     }
     if body.len() > 1024 {
@@ -788,7 +1051,7 @@ async fn capabilities_invoke(
     headers: HeaderMap,
     body: axum::body::Bytes,
 ) -> Response {
-    if !valid_origin(&headers, &state.config.public_origin) {
+    if !state.config.accepts_origin(&headers) {
         return error(StatusCode::FORBIDDEN);
     }
     if body.len() > 4096 {
@@ -914,7 +1177,7 @@ async fn app_import(
     headers: HeaderMap,
     body: axum::body::Bytes,
 ) -> Response {
-    if !valid_origin(&headers, &state.config.public_origin) {
+    if !state.config.accepts_origin(&headers) {
         return error(StatusCode::FORBIDDEN);
     }
     if headers.get("content-type").and_then(|v| v.to_str().ok()) != Some("application/json") {
@@ -967,6 +1230,15 @@ async fn app_import(
     if !(mode.policy().can_install_apps() || store_install && mode.policy().is_guided()) {
         return error(StatusCode::FORBIDDEN);
     }
+    // A policy can reserve installs for administrators.
+    if !state
+        .policies
+        .clone()
+        .is_none_or(|policies| policies.store_install_allowed(identity.user_id))
+        && !administrator(&state, identity.user_id).await
+    {
+        return error(StatusCode::FORBIDDEN);
+    }
     let Some(files) = value.get("files").and_then(|v| v.as_array()) else {
         return error(StatusCode::BAD_REQUEST);
     };
@@ -1016,6 +1288,17 @@ async fn app_import(
                 "version": app.version,
             }))
             .into_response();
+            secure_headers(&mut response);
+            response
+        }
+        // A denial is a policy decision (exposure mode, install policy,
+        // publisher allowlist), not a missing app.
+        Ok(Err(crate::AppAccessError::Denied)) => {
+            let mut response = axum::Json(serde_json::json!({
+                "error": "denied"
+            }))
+            .into_response();
+            *response.status_mut() = StatusCode::FORBIDDEN;
             secure_headers(&mut response);
             response
         }
@@ -1100,6 +1383,18 @@ async fn shell(
         }
         Err(()) => error(StatusCode::SERVICE_UNAVAILABLE),
     }
+}
+
+/// Configured shell hosts and detected device addresses. This is public like
+/// the sign-in page, which already displays the same information.
+async fn device_addresses(State(state): State<Arc<GatewayState>>) -> Response {
+    let addresses: Vec<String> = state
+        .config
+        .allowed_origins
+        .iter()
+        .map(|origin| origin.origin().ascii_serialization())
+        .collect();
+    axum::Json(serde_json::json!({ "addresses": addresses })).into_response()
 }
 
 async fn snapshot(State(state): State<Arc<GatewayState>>, headers: HeaderMap) -> Response {
@@ -1188,7 +1483,7 @@ async fn stream_grant(
     UrlPath(id): UrlPath<String>,
     headers: HeaderMap,
 ) -> Response {
-    if !valid_origin(&headers, &state.config.public_origin) {
+    if !state.config.accepts_origin(&headers) {
         return error(StatusCode::FORBIDDEN);
     }
     let Ok(credential) = credential(&headers) else {
@@ -1382,7 +1677,7 @@ async fn stream_socket(
     headers: HeaderMap,
     upgrade: WebSocketUpgrade,
 ) -> Response {
-    if !valid_origin(&headers, &state.config.public_origin) {
+    if !state.config.accepts_origin(&headers) {
         return error(StatusCode::FORBIDDEN);
     }
     let (endpoint, credential, identity) = match authorized_stream(&state, &headers, &id).await {
@@ -1488,7 +1783,7 @@ async fn events(
     headers: HeaderMap,
     upgrade: WebSocketUpgrade,
 ) -> Response {
-    if !valid_origin(&headers, &state.config.public_origin) {
+    if !state.config.accepts_origin(&headers) {
         return error(StatusCode::FORBIDDEN);
     }
     let Ok(credential) = credential(&headers) else {
@@ -1894,7 +2189,7 @@ async fn recovery_network_test(
     State(state): State<Arc<GatewayState>>,
     headers: HeaderMap,
 ) -> Response {
-    if !valid_origin(&headers, &state.config.public_origin) {
+    if !state.config.accepts_origin(&headers) {
         return error(StatusCode::FORBIDDEN);
     }
     let identity = match recovery_identity(&state, &headers).await {
@@ -2058,7 +2353,7 @@ async fn recovery_quarantine(
     headers: HeaderMap,
     body: axum::body::Bytes,
 ) -> Response {
-    if !valid_origin(&headers, &state.config.public_origin) {
+    if !state.config.accepts_origin(&headers) {
         return error(StatusCode::FORBIDDEN);
     }
     if body.len() > 1024 {
@@ -2167,7 +2462,7 @@ async fn recovery_disk_test(
     headers: HeaderMap,
     body: axum::body::Bytes,
 ) -> Response {
-    if !valid_origin(&headers, &state.config.public_origin) {
+    if !state.config.accepts_origin(&headers) {
         return error(StatusCode::FORBIDDEN);
     }
     if body.len() > 1024 {
@@ -2238,7 +2533,7 @@ async fn recovery_settings_put(
     headers: HeaderMap,
     body: axum::body::Bytes,
 ) -> Response {
-    if !valid_origin(&headers, &state.config.public_origin) {
+    if !state.config.accepts_origin(&headers) {
         return error(StatusCode::FORBIDDEN);
     }
     if body.len() > 1024 {
@@ -2295,7 +2590,7 @@ async fn recovery_host_action(
     headers: HeaderMap,
     body: axum::body::Bytes,
 ) -> Response {
-    if !valid_origin(&headers, &state.config.public_origin) {
+    if !state.config.accepts_origin(&headers) {
         return error(StatusCode::FORBIDDEN);
     }
     let identity = match recovery_identity(&state, &headers).await {
@@ -2445,7 +2740,7 @@ async fn recovery_restart(
     headers: HeaderMap,
     body: axum::body::Bytes,
 ) -> Response {
-    if !valid_origin(&headers, &state.config.public_origin) {
+    if !state.config.accepts_origin(&headers) {
         return error(StatusCode::FORBIDDEN);
     }
     if body.len() > 4096 {
@@ -2568,7 +2863,7 @@ async fn recovery_self_heal(
     State(state): State<Arc<GatewayState>>,
     headers: HeaderMap,
 ) -> Response {
-    if !valid_origin(&headers, &state.config.public_origin) {
+    if !state.config.accepts_origin(&headers) {
         return error(StatusCode::FORBIDDEN);
     }
     let identity = match recovery_identity(&state, &headers).await {
@@ -2675,7 +2970,7 @@ async fn shell_report(
     headers: HeaderMap,
     body: axum::body::Bytes,
 ) -> Response {
-    if !valid_origin(&headers, &state.config.public_origin) {
+    if !state.config.accepts_origin(&headers) {
         return error(StatusCode::FORBIDDEN);
     }
     if headers
@@ -2958,7 +3253,7 @@ fn frame_origins(
     }
     let mut result: Vec<_> = origins.into_iter().take(31).collect();
     if let Some(apps) = &state.apps {
-        result.push(apps.frame_source());
+        result.extend(apps.frame_sources());
     }
     result
 }
@@ -3026,7 +3321,7 @@ fn backend_error(cause: ShellBackendError) -> Response {
 mod tests {
     use super::*;
     use axum::http::Request;
-    use rumahl_core::SessionId;
+    use rumahl_core::{InstallationId, SessionId};
     use rumahl_ui_contracts::{
         ResolvedTheme, ShellSystemStatus, ShellTheme, ShellUser, SystemProtectionStatus,
     };
@@ -3080,9 +3375,111 @@ mod tests {
         }
     }
 
+    struct TestApps(InstallationId);
+
+    impl crate::AppProvider for TestApps {
+        fn catalog(
+            &self,
+            _: ShellIdentity,
+        ) -> Result<Vec<crate::CatalogApp>, crate::AppAccessError> {
+            Ok(vec![crate::CatalogApp {
+                id: "com.rumahl.weather".into(),
+                installation_id: self.0,
+                title: "Weather".into(),
+                version: "1.0.0".into(),
+                launchable: true,
+                capabilities: vec![],
+                runtime: "web".into(),
+                lifecycle: "on-demand".into(),
+                connectors: vec![],
+            }])
+        }
+        fn entrypoint(
+            &self,
+            _: ShellIdentity,
+            _: InstallationId,
+        ) -> Result<String, crate::AppAccessError> {
+            Ok("web/index.html".into())
+        }
+        fn surface_entrypoint(
+            &self,
+            _: ShellIdentity,
+            _: InstallationId,
+            surface: &str,
+        ) -> Result<String, crate::AppAccessError> {
+            if surface == "com.rumahl.weather.overlay" {
+                Ok("web/surface.html".into())
+            } else {
+                Err(crate::AppAccessError::Denied)
+            }
+        }
+        fn asset(
+            &self,
+            _: ShellIdentity,
+            _: InstallationId,
+            _: &str,
+        ) -> Result<crate::AppAsset, crate::AppAccessError> {
+            Ok(crate::AppAsset {
+                bytes: b"<html>surface</html>".to_vec(),
+                content_type: "text/html; charset=utf-8",
+            })
+        }
+        fn settings(
+            &self,
+            _: ShellIdentity,
+            _: InstallationId,
+        ) -> Result<Vec<crate::AppSettingInfo>, crate::AppAccessError> {
+            Ok(vec![])
+        }
+        fn data(
+            &self,
+            _: ShellIdentity,
+            _: InstallationId,
+            _: &str,
+        ) -> Result<crate::AppData, crate::AppAccessError> {
+            Ok(crate::AppData::Directory(vec![]))
+        }
+    }
+
+    fn surface_state(safe_mode: bool) -> (GatewayState, InstallationId, tempfile::TempDir) {
+        let installation = InstallationId::new();
+        let access = crate::AppAccess::new(
+            Arc::new(TestApps(installation)),
+            &Url::parse("https://rumahl.dev").unwrap(),
+            &[Url::parse("https://rumahl.dev").unwrap()],
+            &["apps.rumahl.dev".to_owned()],
+            None,
+        )
+        .unwrap();
+        let directory = tempfile::tempdir().unwrap();
+        if safe_mode {
+            std::fs::write(
+                directory.path().join("recovery-settings.json"),
+                br#"{"safeMode":true}"#,
+            )
+            .unwrap();
+        }
+        let mut state = state(true, "https://weather.apps.rumahl.dev/widget");
+        state.apps = Some(Arc::new(access));
+        state.state_dir = Some(directory.path().to_path_buf());
+        (state, installation, directory)
+    }
+
+    fn surface_request(surface: &str, body: &str) -> Request<Body> {
+        Request::builder()
+            .method("POST")
+            .uri(format!("/api/v1/shell/surfaces/{surface}/frame"))
+            .header(COOKIE, format!("{SESSION_COOKIE}={TOKEN}"))
+            .header(ORIGIN, "https://rumahl.dev")
+            .header(CONTENT_TYPE, "application/json")
+            .body(Body::from(body.to_owned()))
+            .unwrap()
+    }
+
     fn state(available: bool, widget_url: &'static str) -> GatewayState {
         GatewayState {
             host_files: None,
+            weather_warnings: None,
             config: GatewayConfig::new("https://rumahl.dev", "/private/run/rumahl-ssr.sock")
                 .unwrap(),
             backend: Arc::new(TestBackend {
@@ -3098,13 +3495,17 @@ mod tests {
             apps: None,
             preferences: None,
             os_mode: None,
+
+            policies: None,
             workspace: None,
             files: None,
             oidc: None,
             browser_sessions: None,
+            admin: None,
             login_slots: Arc::new(tokio::sync::Semaphore::new(2)),
             audit: None,
             state_dir: None,
+            platform_config: None,
         }
     }
 
@@ -3114,6 +3515,95 @@ mod tests {
             .header(COOKIE, format!("{SESSION_COOKIE}={TOKEN}"))
             .body(Body::empty())
             .unwrap()
+    }
+
+    #[tokio::test]
+    async fn surface_frame_requires_origin_cookie_and_a_declared_surface() {
+        let (state, installation, _directory) = surface_state(false);
+        let app = router(state);
+        let body = format!(r#"{{"installationId":"{installation}"}}"#);
+
+        let accepted = app
+            .clone()
+            .oneshot(surface_request("com.rumahl.weather.overlay", &body))
+            .await
+            .unwrap();
+        assert_eq!(accepted.status(), StatusCode::OK);
+        let bytes = axum::body::to_bytes(accepted.into_body(), 4096)
+            .await
+            .unwrap();
+        let value: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+        assert_eq!(value["surfaceId"], "com.rumahl.weather.overlay");
+        assert_eq!(value["frameVersion"], 1);
+        assert!(
+            value["frameUrl"]
+                .as_str()
+                .unwrap()
+                .starts_with(&format!("https://{installation}.apps.rumahl.dev/launch/"))
+        );
+
+        let unknown = app
+            .clone()
+            .oneshot(surface_request("com.rumahl.weather.missing", &body))
+            .await
+            .unwrap();
+        assert_eq!(unknown.status(), StatusCode::NOT_FOUND);
+
+        let no_origin = Request::builder()
+            .method("POST")
+            .uri("/api/v1/shell/surfaces/com.rumahl.weather.overlay/frame")
+            .header(COOKIE, format!("{SESSION_COOKIE}={TOKEN}"))
+            .header(CONTENT_TYPE, "application/json")
+            .body(Body::from(body.clone()))
+            .unwrap();
+        assert_eq!(
+            app.clone().oneshot(no_origin).await.unwrap().status(),
+            StatusCode::FORBIDDEN
+        );
+
+        let no_cookie = Request::builder()
+            .method("POST")
+            .uri("/api/v1/shell/surfaces/com.rumahl.weather.overlay/frame")
+            .header(ORIGIN, "https://rumahl.dev")
+            .header(CONTENT_TYPE, "application/json")
+            .body(Body::from(body))
+            .unwrap();
+        assert_eq!(
+            app.oneshot(no_cookie).await.unwrap().status(),
+            StatusCode::UNAUTHORIZED
+        );
+    }
+
+    #[tokio::test]
+    async fn disabled_apps_cannot_resolve_surface_frames() {
+        let (state, installation, directory) = surface_state(false);
+        std::fs::write(
+            directory.path().join("recovery-settings.json"),
+            br#"{"disabledApps":["com.rumahl.weather"]}"#,
+        )
+        .unwrap();
+        let body = format!(r#"{{"installationId":"{installation}"}}"#);
+        let response = router(state)
+            .oneshot(surface_request("com.rumahl.weather.overlay", &body))
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::NOT_FOUND);
+    }
+
+    #[tokio::test]
+    async fn safe_mode_blocks_surface_frames_before_resolution() {
+        let (state, installation, _directory) = surface_state(true);
+        let body = format!(r#"{{"installationId":"{installation}"}}"#);
+        let response = router(state)
+            .oneshot(surface_request("com.rumahl.weather.overlay", &body))
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::LOCKED);
+        let bytes = axum::body::to_bytes(response.into_body(), 4096)
+            .await
+            .unwrap();
+        let value: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+        assert_eq!(value["surfaceError"], "safe-mode");
     }
 
     #[tokio::test]
@@ -3217,6 +3707,7 @@ mod tests {
             .unwrap();
         let app = router(GatewayState {
             host_files: None,
+            weather_warnings: None,
             config: GatewayConfig::new("https://rumahl.dev", "/private/run/rumahl-ssr.sock")
                 .unwrap(),
             backend: Arc::new(TestBackend {
@@ -3229,13 +3720,17 @@ mod tests {
             apps: None,
             preferences: None,
             os_mode: None,
+
+            policies: None,
             workspace: None,
             files: None,
             oidc: None,
             browser_sessions: None,
+            admin: None,
             login_slots: Arc::new(tokio::sync::Semaphore::new(2)),
             audit: None,
             state_dir: None,
+            platform_config: None,
         });
         let list = app
             .clone()
@@ -3353,6 +3848,7 @@ mod tests {
             .unwrap();
         let app = router(GatewayState {
             host_files: None,
+            weather_warnings: None,
             config: GatewayConfig::new("https://rumahl.dev", "/private/run/rumahl-ssr.sock")
                 .unwrap(),
             backend: Arc::new(TestBackend {
@@ -3365,13 +3861,17 @@ mod tests {
             apps: None,
             preferences: None,
             os_mode: None,
+
+            policies: None,
             workspace: None,
             files: None,
             oidc: None,
             browser_sessions: None,
+            admin: None,
             login_slots: Arc::new(tokio::sync::Semaphore::new(2)),
             audit: None,
             state_dir: None,
+            platform_config: None,
         });
         let grant = Request::builder()
             .method("POST")

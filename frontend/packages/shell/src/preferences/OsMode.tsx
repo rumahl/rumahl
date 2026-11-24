@@ -8,6 +8,7 @@ export interface OsModePolicy {
   guided: boolean;
   advancedSettings: boolean;
   browseSystemFiles: boolean;
+  viewPlatformConfig: boolean;
   terminal: boolean;
   ssh: boolean;
   webConsole: boolean;
@@ -20,6 +21,7 @@ export function osModePolicy(mode: OsMode): OsModePolicy {
     guided: mode === "guided",
     advancedSettings: advanced,
     browseSystemFiles: advanced,
+    viewPlatformConfig: advanced,
     terminal: developer,
     ssh: developer,
     webConsole: developer

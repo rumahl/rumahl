@@ -62,7 +62,7 @@
 .springboard-grid[data-compact] .app-tile {
   gap: 7px;
   padding: 6px 2px;
-  font-size: 11px;
+  font-size: 12px;
 }
 .springboard-grid[data-compact] .app-tile__icon {
   width: 54px;
@@ -95,7 +95,7 @@
 .shell[data-mobile="true"][data-orientation="landscape"] .desktop-icon {
   gap: 6px;
   padding: 6px 2px;
-  font-size: 11px;
+  font-size: 12px;
 }
 .shell[data-mobile="true"][data-orientation="landscape"] .desktop-icon__art {
   width: 46px;
@@ -180,7 +180,7 @@
   border-radius: 999px;
   color: inherit;
   background: color-mix(in srgb, currentColor 10%, transparent);
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 600;
   white-space: nowrap;
 }
@@ -250,7 +250,7 @@
 .shell[data-mobile="true"][data-launcher="app"] .workspace-surfaces {
   margin: 0;
 }
-.shell[data-mobile="true"][data-launcher="app"] .window-position > .shell-window {
+.shell[data-mobile="true"][data-launcher="app"] .window-position > .window-motion > .shell-window {
   border-radius: 0;
 }
 
@@ -463,6 +463,27 @@
   width: 16px;
   height: 16px;
 }
+.shell[data-mobile="true"] .shell-window:has(.files-app) .shell-window__titlebar {
+  display: none;
+}
+.shell[data-mobile="true"] .files-toolbar {
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 6px 8px;
+}
+.shell[data-mobile="true"] .files-toolbar__spacer {
+  display: none;
+}
+.shell[data-mobile="true"] .files-toolbar__group--actions {
+  margin-left: auto;
+}
+.shell[data-mobile="true"] .files-search {
+  flex: 1 1 100%;
+  order: 3;
+}
+.shell[data-mobile="true"] .files-view-switch {
+  order: 2;
+}
 .shell[data-mobile="true"] .files-icon-btn {
   width: 44px;
   height: 40px;
@@ -653,7 +674,7 @@
   letter-spacing: -0.03em;
 }
 .shell[data-mobile="true"] .launcher-clock strong { font-size: 13px; }
-.shell[data-mobile="true"] .launcher-clock span { font-size: 11.5px; }
+.shell[data-mobile="true"] .launcher-clock span { font-size: 12px; }
 
 /* Put the compact search under the greeting; the board gets the bottom room. */
 .shell[data-mobile="true"] .launcher-footer { display: contents; }
@@ -677,30 +698,39 @@
     background: rgba(255, 255, 255, 0.19);
   }
   .launcher-home .folder-preview > span:nth-child(n + 5) { display: none; }
-  .launcher-home .folder-preview .app-icon-glyph { font-size: 0.62rem; }
+  .launcher-home .folder-preview .app-icon-glyph { font-size: 0.75rem; }
 }
 
 
-/* Keep the app visibly inside rumahl, with space for its own system dock. */
+/* Mobile apps fill the screen above the floating system bar. No floating
+   window chrome, no rounded inset, no generic titlebar or window controls:
+   the app's own topbar (Files/Store) is the only top chrome. */
 .shell[data-mobile="true"][data-launcher="app"] .menubar.topbar { display: none; }
-.shell[data-mobile="true"][data-launcher="app"] .window-position:not([data-fullscreen="true"]) > .shell-window {
-  top: max(8px, env(safe-area-inset-top)) !important;
-  left: max(8px, env(safe-area-inset-left)) !important;
-  width: calc(100% - max(8px, env(safe-area-inset-left)) - max(8px, env(safe-area-inset-right))) !important;
-  height: calc(100% - max(8px, env(safe-area-inset-top)) - 86px - env(safe-area-inset-bottom)) !important;
-  border-radius: 24px;
+.shell[data-mobile="true"][data-launcher="app"] .window-position:not([data-fullscreen="true"]) > .window-motion > .shell-window {
+  top: env(safe-area-inset-top) !important;
+  left: 0 !important;
+  width: 100% !important;
+  height: calc(100% - env(safe-area-inset-top) - 86px - env(safe-area-inset-bottom)) !important;
+  border-radius: 0;
+  border: 0;
   overflow: hidden;
 }
 .shell[data-mobile="true"][data-launcher="app"] .shell-window__titlebar {
   display: flex;
   min-height: 54px;
-  padding-inline: 18px 6px;
-  border-bottom: 1px solid color-mix(in srgb, currentColor 12%, transparent);
+  padding: 0;
+  border-bottom: 0;
 }
-.shell[data-mobile="true"][data-launcher="app"] .shell-window__titlebar .window-control--minimize { display: none; }
-.shell[data-mobile="true"][data-launcher="app"] .shell-window__titlebar .window-control { width: 44px; height: 44px; }
+.shell[data-mobile="true"][data-launcher="app"] .shell-window__titlebar:not([data-custom]) { display: none; }
+.shell[data-mobile="true"][data-launcher="app"] .shell-window__titlebar[data-custom] { --window-controls-safe: 0px !important; }
+.shell[data-mobile="true"][data-launcher="app"] .shell-window__titlebar[data-custom] .shell-window__controls,
+.shell[data-mobile="true"][data-launcher="app"] .shell-window__titlebar[data-custom] .titlebar-titles,
+.shell[data-mobile="true"][data-launcher="app"] .shell-window__titlebar[data-custom] .shell-window__topbar-fallback { display: none; }
 .shell[data-mobile="true"][data-launcher="app"] .shell-window__content { padding: 0; }
-.shell[data-mobile="true"][data-launcher="app"] .settings-content { padding: 22px 18px 28px; }
+.shell[data-mobile="true"][data-launcher="app"] .settings-content { padding: 0 18px 28px; }
+.shell[data-mobile="true"][data-launcher="app"] .settings-page-heading { margin: 0 -18px 18px; padding: 22px 18px 12px; }
+.shell[data-mobile="true"][data-launcher="app"] .settings-page-heading[data-stuck] { padding-block: 8px; }
+.shell[data-mobile="true"][data-launcher="app"] .settings-page-heading[data-stuck] h1 { margin-block: 0; }
 .window-launcher-controls { display: none; }
 .shell[data-mobile="true"][data-launcher="app"] .window-launcher-controls {
   position: absolute;
@@ -744,6 +774,79 @@
 .window-launcher-controls svg { width: 20px; height: 20px; flex: none; }
 .window-launcher-controls button:hover { background: color-mix(in srgb, currentColor 16%, transparent); }
 .window-launcher-controls button:focus-visible { outline: 2px solid var(--rumahl-ui-color-accent); outline-offset: 2px; }
+
+/* One shell-owned bottom bar for every mobile app: registered app
+   destinations (inside MobileIslandNav) plus the system Home/Open windows
+   actions. Apps without destinations still get the system actions. */
+.mobile-app-nav { display: none; }
+.shell[data-mobile="true"][data-launcher="app"] .mobile-app-nav {
+  position: absolute;
+  left: 50%;
+  bottom: max(10px, env(safe-area-inset-bottom));
+  z-index: 30;
+  display: flex;
+  align-items: stretch;
+  gap: 4px;
+  width: min(430px, calc(100% - 16px));
+  padding: 6px;
+  border: 1px solid rgb(255 255 255 / .14);
+  border-radius: 26px;
+  background: rgb(8 15 12 / .92);
+  color: rgb(255 255 255 / .64);
+  box-shadow: 0 18px 42px #00000066, inset 0 1px 0 rgb(255 255 255 / .12);
+  backdrop-filter: blur(20px) saturate(1.4);
+  -webkit-backdrop-filter: blur(20px) saturate(1.4);
+  transform: translateX(-50%);
+  pointer-events: auto;
+}
+.shell[data-mobile="true"][data-launcher="app"] .mobile-app-nav:not(.mobile-app-nav--with-items) {
+  width: max-content;
+}
+.mobile-app-nav__system {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  flex: 0 0 auto;
+  min-width: 44px;
+  min-height: 48px;
+  padding: 4px 6px;
+  border: 0;
+  border-radius: 18px;
+  color: inherit;
+  background: transparent;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.15;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.mobile-app-nav__system svg { width: 18px; height: 18px; }
+.mobile-app-nav__system:hover { background: rgb(255 255 255 / .08); color: #fff; }
+.mobile-app-nav__system:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
+.mobile-app-nav--with-items .mobile-app-nav__system {
+  width: 44px;
+  min-width: 44px;
+  padding: 0;
+}
+.mobile-app-nav--with-items .mobile-app-nav__system span { display: none; }
+.shell[data-mobile="true"] .mobile-app-nav .mobile-app-nav__island {
+  flex: 1 1 auto;
+  width: auto !important;
+  max-width: none !important;
+  min-width: 0;
+  padding: 0 !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+.mobile-app-nav__island .rumahl-island__item { min-height: 48px; }
+.mobile-app-nav__spacer { flex: 1; }
 
 /* Compact value rows: label and value share a line with the value aligned right. */
 .shell[data-mobile="true"] .settings-content .setting--value {
@@ -838,7 +941,7 @@
 }
 .app-switcher__eyebrow {
   color: var(--rumahl-ui-color-text-muted, #fff9);
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 650;
   letter-spacing: 0.08em;
   text-transform: uppercase;
@@ -898,7 +1001,7 @@
   width: 46px;
   height: 46px;
   border-radius: 14px;
-  background: color-mix(in srgb, var(--rumahl-ui-color-accent, #beff2d) 26%, transparent);
+  background: color-mix(in srgb, var(--rumahl-ui-color-accent, #28694c) 26%, transparent);
   color: var(--rumahl-ui-color-text-primary, #fff);
 }
 .app-switcher__icon svg { width: 22px; height: 22px; }
@@ -912,7 +1015,7 @@
 .app-switcher__path {
   overflow: hidden;
   color: var(--rumahl-ui-color-text-muted, #fff9);
-  font-size: 11px;
+  font-size: 12px;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -976,7 +1079,7 @@
   height: 36px;
   flex: none;
   border-radius: 50%;
-  background: var(--rumahl-ui-color-accent, #beff2d);
+  background: var(--rumahl-ui-color-accent, #28694c);
   color: var(--rumahl-ui-color-on-accent, #050505);
   font-size: 14px;
   font-weight: 750;
@@ -985,7 +1088,7 @@
 .control-center__identity strong { font-size: 13px; font-weight: 650; }
 .control-center__identity small {
   color: var(--rumahl-ui-color-text-muted, #888);
-  font-size: 11px;
+  font-size: 12px;
 }
 .control-center__identity small::before {
   content: "";
@@ -1019,7 +1122,7 @@
   padding: 2px 6px;
   border-radius: 999px;
   background: color-mix(in srgb, currentColor 10%, transparent);
-  font-size: 11px;
+  font-size: 12px;
   text-align: center;
 }
 
@@ -1089,7 +1192,7 @@
 }
 .mobile-tour__eyebrow {
   color: var(--rumahl-ui-color-text-muted, #8a938e);
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 700;
   letter-spacing: 0.1em;
   text-transform: uppercase;
@@ -1146,7 +1249,7 @@
 .mobile-tour__body { display: grid; gap: 8px; }
 .mobile-tour__count {
   color: var(--rumahl-ui-color-accent);
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 700;
   letter-spacing: 0.12em;
 }
@@ -1298,7 +1401,7 @@ dialog.app-switcher-overlay::backdrop {
   color: var(--rumahl-ui-color-text-primary, #f4f8f6);
   flex-shrink: 0;
 }
-.app-switcher__card.is-current { border-color: var(--rumahl-ui-color-accent, #beff2d); }
+.app-switcher__card.is-current { border-color: var(--rumahl-ui-color-accent, #28694c); }
 .app-switcher__preview {
   position: relative;
   height: clamp(150px, 38dvh, 360px);
@@ -1315,7 +1418,7 @@ dialog.app-switcher-overlay::backdrop {
 .app-switcher__open { display: flex; align-items: center; gap: 10px; min-height: 64px; padding: 12px; }
 .app-switcher__open::after { content: ""; position: absolute; inset: 0; }
 .app-switcher__open:focus-visible { outline: none; }
-.app-switcher__card:has(.app-switcher__open:focus-visible) { outline: 2px solid var(--rumahl-ui-color-accent, #beff2d); outline-offset: 2px; }
+.app-switcher__card:has(.app-switcher__open:focus-visible) { outline: 2px solid var(--rumahl-ui-color-accent, #28694c); outline-offset: 2px; }
 .app-switcher__icon { width: 38px; height: 38px; flex: none; border-radius: 12px; overflow: hidden; }
 .app-switcher__icon > img { width: 100%; height: 100%; object-fit: cover; }
 .app-switcher__icon .app-icon-glyph { width: 100%; height: 100%; display: grid; place-items: center; }
@@ -1324,7 +1427,7 @@ dialog.app-switcher-overlay::backdrop {
 .app-switcher__footer { justify-content: center; }
 .app-switcher__footer button { display: flex; align-items: center; justify-content: center; gap: 8px; flex: 0 1 220px; min-height: 48px; }
 .app-switcher__footer svg { width: 20px; height: 20px; }
-.app-switcher button:focus-visible { outline: 2px solid var(--rumahl-ui-color-accent, #beff2d); outline-offset: 2px; }
+.app-switcher button:focus-visible { outline: 2px solid var(--rumahl-ui-color-accent, #28694c); outline-offset: 2px; }
 @media (max-height: 650px) {
   .shell[data-mobile="true"] .launcher-heading { gap: 6px; padding-block: 4px; }
   .shell[data-mobile="true"] .launcher-greeting > span { font-size: 30px; }
@@ -1336,7 +1439,7 @@ dialog.app-switcher-overlay::backdrop {
   .app-switcher { background: var(--rumahl-ui-color-panel-background, #263238); backdrop-filter: none; }
   dialog.app-switcher-overlay::backdrop { background: #071016e6; backdrop-filter: none; }
 }
-.shell[data-mobile="true"][data-launcher="app"] .window-position.is-hidden .window-launcher-controls { display: none; }
+.shell[data-mobile="true"][data-launcher="app"] .window-position.is-hidden :is(.window-launcher-controls, .mobile-app-nav) { display: none; }
 /* Respect the system's solid-surface preference in the new chrome too. */
 :root[data-material="solid"] :is(.app-switcher, .window-launcher-controls) {
   background: var(--rumahl-ui-color-panel-background, #263238);

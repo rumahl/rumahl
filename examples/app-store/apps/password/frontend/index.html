@@ -1,0 +1,16 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Password Generator</title>
+<style>*{box-sizing:border-box}body{margin:0;min-height:100vh;font:15px/1.55 system-ui,-apple-system,"Segoe UI",sans-serif;color:#e8eef0;background:radial-gradient(circle at 15% 10%,#24444d,#101719 60%);padding:2rem}main{max-width:760px;margin:auto}h1{font:600 2rem/1.1 Georgia,serif;margin:.2rem 0 .3rem}p.lead{color:#a9b7ba;margin:0 0 1.4rem}section{background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.13);border-radius:16px;padding:1.1rem;margin-bottom:1rem}input,textarea,button,select{font:inherit}input,textarea,select{width:100%;padding:.7rem .8rem;border:1px solid rgba(255,255,255,.18);border-radius:10px;background:rgba(0,0,0,.22);color:inherit}textarea{min-height:120px;resize:vertical}button{padding:.62rem .9rem;border:0;border-radius:10px;background:#5cc8a0;color:#061310;font-weight:750;cursor:pointer}button.secondary{background:rgba(255,255,255,.13);color:inherit}button.danger{background:#d56b62;color:#fff}.row{display:flex;gap:.6rem;flex-wrap:wrap}.row>*{flex:1 1 130px}.list{display:grid;gap:.5rem;margin-top:.8rem}.item{display:flex;align-items:center;justify-content:space-between;gap:.7rem;padding:.65rem .75rem;border-radius:10px;background:rgba(0,0,0,.2)}.item.done span{opacity:.5;text-decoration:line-through}.muted{color:#a9b7ba;font-size:.9rem}.stat{font:700 2.4rem/1 Georgia,serif;color:#8fe3c1}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:.7rem}.card{padding:.85rem;border-radius:12px;background:rgba(0,0,0,.2)}small{color:#9fb0b3}a{color:#8fe3c1}</style>
+<body>
+<main>
+<header><h1>Password Generator</h1><p class="lead">Generate strong passwords without sending anything to a server.</p></header>
+<section><div class="row"><label class="card">Length <input id="length" type="number" min="8" max="64" value="20"></label><label class="card">Symbols <input id="symbols" type="checkbox" checked></label><label class="card">Digits <input id="digits" type="checkbox" checked></label></div><div class="row" style="margin-top:.8rem"><input id="result" readonly style="font-family:ui-monospace,monospace"><button id="generate">Generate</button></div><p class="muted" id="strength"></p></section>
+</main>
+<script>const result=document.querySelector('#result');
+function generate(){const length=Math.max(8,Math.min(64,Number(document.querySelector('#length').value)||20));const symbols=document.querySelector('#symbols').checked;const digits=document.querySelector('#digits').checked;let chars='abcdefghijkmnopqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ';if(digits)chars+='23456789';if(symbols)chars+='!@#$%^&*()-_=+[]{}:,.?';const bytes=new Uint32Array(length);crypto.getRandomValues(bytes);result.value=Array.from(bytes,value=>chars[value%chars.length]).join('');document.querySelector('#strength').textContent=length>=18&&symbols&&digits?'Very strong':length>=12?'Strong':'Moderate';}
+document.querySelector('#generate').onclick=generate;result.onclick=()=>{result.select();navigator.clipboard?.writeText(result.value);};generate();</script>
+</body>
+</html>

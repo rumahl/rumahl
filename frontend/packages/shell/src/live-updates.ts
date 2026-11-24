@@ -35,7 +35,8 @@ export function watchShellUpdates(
   source: ShellLiveSource,
   onSnapshot: (snapshot: ShellSnapshotV1) => void,
   onSessionExpired: () => void,
-  onSystemState: (state: "restarting" | "shutting-down") => void = () => {}
+  onSystemState: (state: "restarting" | "shutting-down") => void = () => {},
+  onWarningsChanged: () => void = () => {}
 ): () => void {
   let stopped = false;
   let socket: EventSocket | null = null;
@@ -127,6 +128,8 @@ export function watchShellUpdates(
             expire();
           } else if (value.kind === "system_lifecycle") {
             onSystemState(value.state);
+          } else if (value.kind === "warnings_changed") {
+            onWarningsChanged();
           } else if (value.revision !== currentRevision) {
             requestRefresh();
           }

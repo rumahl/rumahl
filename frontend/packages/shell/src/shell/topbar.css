@@ -73,8 +73,59 @@
   -webkit-backdrop-filter: var(--topbar-island-backdrop);
   color: var(--rumahl-ui-color-text-primary, #f5f7f8);
 }
+/* Without quick actions the left island is the logo alone — macOS-style, a
+   round island. With the focused app's actions it stretches back into a pill. */
 .topbar__island--left {
+  justify-content: center;
+  padding: 0;
+  aspect-ratio: 1 / 1;
+  border-radius: 50%;
+}
+.topbar__island--left[data-quick] {
+  justify-content: flex-start;
   padding: 0 6px;
+  aspect-ratio: auto;
+  border-radius: var(--topbar-island-radius);
+}
+.topbar__island--left:not([data-quick]) .menubar__wordmark {
+  display: none;
+}
+/* Ground themes force their island radius with !important; out-specify them so
+   the logo-only island keeps its circle there too. */
+.shell .topbar__island--left:not([data-quick]) {
+  border-radius: 50% !important;
+  flex: none;
+  width: var(--topbar-island-height);
+}
+.shell .topbar__island--left:not([data-quick]) .menubar__menus,
+.shell .topbar__island--left:not([data-quick]) .menubar__menu {
+  display: grid;
+  place-items: center;
+  width: 100%;
+  height: 100%;
+  gap: 0;
+  border-radius: inherit;
+}
+.shell .topbar__island--left:not([data-quick]) .menubar__item {
+  display: grid;
+  place-items: center;
+  width: 100%;
+  height: 100%;
+  padding: 0 !important; /* Override typography-scale's menu padding. */
+  border-radius: inherit;
+}
+.shell .topbar__island--left:not([data-quick]) .menubar__brand {
+  display: grid;
+  place-items: center;
+  width: 100%;
+  height: 100%;
+  gap: 0;
+}
+.menubar__quick {
+  max-width: 22ch;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .topbar__island--right {
   margin-left: auto;
@@ -193,7 +244,7 @@
 .control-center__error {
   margin: 0;
   color: #a64335;
-  font-size: 11px;
+  font-size: 12px;
 }
 .control-center__settings {
   padding: 9px;

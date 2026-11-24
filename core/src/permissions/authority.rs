@@ -5,8 +5,8 @@ use crate::identity::Identity;
 use crate::resources::ResourceRef;
 
 use super::{
-    GrantIssuerPolicy, GrantIssuerPolicyError, PermissionGrant, PermissionGrantError, PermissionId,
-    PermissionScope,
+    GrantIssuerPolicy, GrantIssuerPolicyError, GrantValidity, PermissionGrant,
+    PermissionGrantError, PermissionId, PermissionScope,
 };
 
 #[derive(Debug, Default, Clone, Copy)]
@@ -37,6 +37,28 @@ impl GrantAuthority {
             .map_err(GrantAuthorityError::IssuerNotAuthorized)?;
 
         PermissionGrant::new(subject, permission, scope, resources, issuer)
+            .map_err(GrantAuthorityError::InvalidGrant)
+    }
+
+    /// Issues a grant with an explicit lifetime. Session grants are still
+    /// issued by a user, but they never reach the platform snapshot, so they
+    /// cannot outlive the session that consented to them.
+    #[allow(clippy::too_many_arguments)]
+    pub fn issue_with_validity(
+        &self,
+        policy: &GrantIssuerPolicy,
+        issuer: Identity,
+        subject: Identity,
+        permission: PermissionId,
+        scope: PermissionScope,
+        resources: Vec<ResourceRef>,
+        validity: GrantValidity,
+    ) -> Result<PermissionGrant, GrantAuthorityError> {
+        policy
+            .authorize_issuer(&issuer, scope)
+            .map_err(GrantAuthorityError::IssuerNotAuthorized)?;
+
+        PermissionGrant::new_with_validity(subject, permission, scope, resources, issuer, validity)
             .map_err(GrantAuthorityError::InvalidGrant)
     }
 }

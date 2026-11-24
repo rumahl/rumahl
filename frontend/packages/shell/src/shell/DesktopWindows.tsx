@@ -1,21 +1,25 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent, type PointerEvent } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent, type PointerEvent } from "react";
 import { AnimatePresence, motion } from "motion/react";
 import { useLocation } from "react-router";
 import { useTheme } from "@rumahl/ui";
+import { MobileNavSlotContext, type MobileNavModel } from "@rumahl/ui/components";
+import { MobileAppNav } from "./MobileAppNav";
 import { ProtectedWindow } from "../components/ProtectedWindow";
 import { findFirstPartyApp } from "../apps/registry";
 import { describeRoute, ShellRoutes } from "../routing/routes";
 import { useI18n } from "../i18n";
-import { HomeIcon, WindowExitFullscreenIcon, WindowStackIcon } from "../icons";
+import { WindowExitFullscreenIcon } from "../icons";
 import { RouteBoundary } from "../routing/RouteBoundary";
 import { useShell } from "./ShellContext";
+import { TopbarWindowContext } from "./TopbarActions";
+import { useWorkspace } from "../preferences/Workspace";
 import type { ShellWindow } from "../shell-state";
-import { centeredRect, constrainRect, placedRect, type WindowPlacement, type WorkArea } from "./desktop/geometry";
+import { centeredRect, constrainRect, placedRect, type WindowPlacement, type WindowRect, type WorkArea } from "./desktop/geometry";
 
 import { readWindowRect, writeWindowRect } from "./window-positions";
 
 /** Height of the flush top bar maximized/snapped windows sit below. */
-const TOPBAR_HEIGHT = 38;
+const TOPBAR_HEIGHT = 54;
 /** Desktop windows keep a small breathing room from the screen edges. */
 const WINDOW_GAP = 12;
 
@@ -29,8 +33,31 @@ export function isInstalledAppWindow(id: string): boolean {
 }
 
 export function DesktopWindows({ animations = true }: { animations?: boolean } = {}) {
-  const { state } = useShell();
+  const { state, mode } = useShell();
+  const workspace = useWorkspace();
   const layer = useRef<HTMLDivElement>(null);
+  const chrome = workspace.userWorkspace?.fullscreenChrome ?? workspace.effective.fullscreenChrome;
+  const clearance = mode === "desktop" && chrome.hideDock === false && chrome.dockClearance === true;
+  // Space reserved at the bottom of the window layer so windows end above the
+  // visible dock instead of running behind it. Measured from the real dock so
+  // theme-specific dock sizes and offsets are respected.
+  const [dockReserve, setDockReserve] = useState(0);
+  useEffect(() => {
+    if (!clearance) { setDockReserve(0); return; }
+    const dock = document.querySelector<HTMLElement>(".os-dock");
+    if (!dock) { setDockReserve(0); return; }
+    const measure = () => {
+      const layerRect = layer.current?.getBoundingClientRect();
+      const dockRect = dock.getBoundingClientRect();
+      if (!layerRect || !dockRect.height) { setDockReserve(0); return; }
+      setDockReserve(Math.max(0, Math.round(layerRect.bottom - dockRect.top)));
+    };
+    measure();
+    const observer = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(measure);
+    observer?.observe(dock);
+    window.addEventListener("resize", measure);
+    return () => { observer?.disconnect(); window.removeEventListener("resize", measure); };
+  }, [clearance]);
   // `null` until the layer is measured; until then the server-rendered nonce
   // position style stays in effect (no jump from a default work area).
   const [area, setArea] = useState<WorkArea | null>(null);
@@ -62,49 +89,75 @@ export function DesktopWindows({ animations = true }: { animations?: boolean } =
   }, [state.windows, state.focusedWindowId]);
   return <div ref={layer} className="window-layer">
     <AnimatePresence initial={false}>{state.windows.map((item) =>
-      <HostedWindow key={item.id} item={item} area={area} zIndex={zIndex[item.id] ?? 1} animations={animations} />
+      <HostedWindow key={item.id} item={item} area={area} dockReserve={dockReserve} zIndex={zIndex[item.id] ?? 1} animations={animations} />
     )}</AnimatePresence>
   </div>;
 }
-function HostedWindow({ item, area, zIndex, animations: motionEnabled = true }: { item: ShellWindow; area: WorkArea | null; zIndex: number; animations?: boolean }) {
+function HostedWindow({ item, area, dockReserve, zIndex, animations: motionEnabled = true }: { item: ShellWindow; area: WorkArea | null; dockReserve: number; zIndex: number; animations?: boolean }) {
   const { state, dispatch, open, mode } = useShell();
   const { t } = useI18n();
+  const workspace = useWorkspace();
   const { variants, tokens } = useTheme();
   const topbarInset = TOPBAR_HEIGHT * (Number.parseFloat(tokens["typography.scale"] ?? "1") || 1);
   const location = useLocation();
   const active = describeRoute(location.pathname + location.search + location.hash).id;
   const isLauncher = mode === "launcher" || mode === "mobile";
+  const mobileShell = mode === "mobile";
+  const [mobileNav, setMobileNav] = useState<MobileNavModel | null>(null);
+  const registerMobileNav = useCallback((windowId: string, model: MobileNavModel | null) => {
+    if (windowId === item.id) setMobileNav(model);
+  }, [item.id]);
+  const mobileNavSlot = useMemo(() => ({ windowId: item.id, register: registerMobileNav }), [item.id, registerMobileNav]);
   const flush = isInstalledAppWindow(item.id);
-  const customTopbar = active.startsWith("app:") && findFirstPartyApp(active.slice(4))?.customTopbar === true;
+  // Chrome belongs to this window, not the globally active route. Otherwise
+  // focusing Settings strips Files' header (and lends it to other windows).
+  const topbarApp = item.id.startsWith("app:") ? findFirstPartyApp(item.id.slice(4)) : undefined;
+  const customTopbar = topbarApp?.customTopbar === true;
+  const customTopbarFullscreen = customTopbar && topbarApp?.customTopbarFullscreen === true;
   const isFullscreen = item.fullscreen === true;
   const hidden = item.minimized || (isLauncher && active !== item.id);
+  // The usable desktop ends above the dock when clearance is on. Fullscreen
+  // windows still own the whole screen; everything else respects the reserve.
+  const workArea = area ? { width: area.width, height: Math.max(1, area.height - dockReserve) } : null;
+  // With a reserved dock row, even floating windows keep their bottom edge
+  // inside the usable desktop instead of hanging behind the dock.
+  const constrain = (rect: WindowRect, target: WorkArea): WindowRect => {
+    const next = constrainRect(rect, target);
+    return dockReserve > 0 ? { ...next, y: Math.min(next.y, Math.max(0, target.height - next.height)) } : next;
+  };
   const savedRect = readWindowRect(item.id);
   // Ignore the old generic frame and the Store's superseded 1040×720 default
   // so a wider preferred size is adopted without discarding user resizes.
   const supersededDefault = savedRect?.width === 1040 && savedRect.height === 720 && item.preferredSize && (item.preferredSize.width !== 1040 || item.preferredSize.height !== 720);
   const effectiveSaved = item.preferredSize && (supersededDefault || (savedRect?.width === 760 && savedRect.height === 540)) ? undefined : savedRect;
-  const stored = item.rect ?? effectiveSaved ?? centeredRect(area ?? { width: 760, height: 540 }, item.preferredSize);
+  const stored = item.rect ?? effectiveSaved ?? centeredRect(workArea ?? { width: 760, height: 540 }, item.preferredSize);
   const positionReady = useRef(false);
   useLayoutEffect(() => {
-    if (!area) return;
+    if (!workArea) return;
     if (!positionReady.current) {
       positionReady.current = true;
       // The latest position takes precedence over the initial workspace preset.
-      const initial = item.rect ?? effectiveSaved ?? centeredRect(area, item.preferredSize);
+      const initial = item.rect ?? effectiveSaved ?? centeredRect(workArea, item.preferredSize);
       if (initial !== item.rect) {
         dispatch({ type: "set-window-rect", id: item.id, rect: initial });
         return;
       }
     }
     if (item.rect) writeWindowRect(item.id, item.rect);
-  }, [area, item.id, item.rect, dispatch]);
+  }, [area, dockReserve, item.id, item.rect, dispatch]);
   const placement = item.placement ?? "floating";
-  const immersive = isLauncher || placement === "maximized";
-  const windowTopInset = immersive ? 10 : topbarInset;
-  const rect = area
+  // Maximized desktop windows sit below the 54px top bar; only the launcher
+  // fills the screen behind its own chrome. When the user hides the top bar,
+  // the window takes that space instead of leaving an empty strip behind it.
+  const chromeHidesTopbar = mode === "desktop" ? placement === "maximized" : mode === "launcher";
+  const hideTopbar = (workspace.userWorkspace?.fullscreenChrome ?? workspace.effective.fullscreenChrome).hideTopbar;
+  const windowTopInset = isFullscreen || (hideTopbar && chromeHidesTopbar)
+    ? 0
+    : topbarInset;
+  const rect = area && workArea
     ? isFullscreen
       ? { x: 0, y: 0, width: area.width, height: area.height }
-      : placedRect(stored, isLauncher ? "maximized" : placement, area, windowTopInset, isLauncher ? 0 : WINDOW_GAP)
+      : constrain(placedRect(stored, isLauncher ? "maximized" : placement, workArea, windowTopInset, isLauncher ? 0 : WINDOW_GAP), workArea)
     : stored;
   useEffect(() => {
     if (!isFullscreen) return;
@@ -122,7 +175,7 @@ function HostedWindow({ item, area, zIndex, animations: motionEnabled = true }: 
     if (active !== item.id && item.location) open(item.location);
   }
   function begin(event: PointerEvent<HTMLElement>, resize: boolean) {
-    if (!area || isLauncher || event.button !== 0 || (!resize && (event.target as HTMLElement).closest("button, input, a, select"))) return;
+    if (!workArea || isLauncher || event.button !== 0 || (!resize && (event.target as HTMLElement).closest("button, input, a, select"))) return;
     if (resize && placement !== "floating") return;
     event.preventDefault(); event.stopPropagation(); focus();
     const wrapper = event.currentTarget.closest(".window-position") as HTMLElement | null;
@@ -143,12 +196,12 @@ function HostedWindow({ item, area, zIndex, animations: motionEnabled = true }: 
   }
   function move(event: PointerEvent) {
     const start = gesture.current;
-    if (!start || start.pointer !== event.pointerId || !area) return;
+    if (!start || start.pointer !== event.pointerId || !workArea) return;
     const dx = event.clientX - start.x, dy = event.clientY - start.y;
     if (start.pending) {
       if (Math.abs(dx) + Math.abs(dy) < 4) return;
       const under = start.pending;
-      const next = constrainRect({ ...under.stored, x: event.clientX - under.stored.width * under.ratio, y: event.clientY - under.offsetY }, area);
+      const next = constrain({ ...under.stored, x: event.clientX - under.stored.width * under.ratio, y: event.clientY - under.offsetY }, workArea);
       start.pending = null; start.rect = next; start.live = next; start.moved = true;
       start.x = event.clientX; start.y = event.clientY;
       dispatch({ type: "set-window-placement", id: item.id, placement: "floating" });
@@ -156,13 +209,13 @@ function HostedWindow({ item, area, zIndex, animations: motionEnabled = true }: 
       return;
     }
     if (start.resize) {
-      const next = constrainRect({ ...start.rect, width: start.rect.width + dx, height: start.rect.height + dy }, area);
+      const next = constrain({ ...start.rect, width: start.rect.width + dx, height: start.rect.height + dy }, workArea);
       start.live = next; start.moved = true;
       const element = start.element;
       if (element) { element.style.left = `${next.x}px`; element.style.top = `${next.y}px`; element.style.width = `${next.width}px`; element.style.height = `${next.height}px`; }
       return;
     }
-    const next = constrainRect({ ...start.rect, x: start.rect.x + dx, y: start.rect.y + dy }, area);
+    const next = constrain({ ...start.rect, x: start.rect.x + dx, y: start.rect.y + dy }, workArea);
     start.live = next; start.moved = true;
     // Move with a composited transform (no layout thrash); commit the rect on release.
     if (start.element) start.element.style.transform = `translate3d(${next.x - start.rect.x}px, ${next.y - start.rect.y}px, 0)`;
@@ -171,8 +224,8 @@ function HostedWindow({ item, area, zIndex, animations: motionEnabled = true }: 
     if (target !== start.snap) { start.snap = target; setSnap(target); }
   }
   function snapTarget(x: number, y: number): WindowPlacement | null {
-    if (!area) return null;
-    return y <= 16 ? "maximized" : x <= 20 ? "left" : x >= area.width - 20 ? "right" : null;
+    if (!workArea) return null;
+    return y <= 16 ? "maximized" : x <= 20 ? "left" : x >= workArea.width - 20 ? "right" : null;
   }
   function end() {
     const start = gesture.current;
@@ -201,7 +254,7 @@ function HostedWindow({ item, area, zIndex, animations: motionEnabled = true }: 
     gesture.current = null; setMoving(false); setSnap(null);
   }
   function keyboard(event: KeyboardEvent, resize: boolean) {
-    if (!area || event.target !== event.currentTarget || isLauncher) return;
+    if (!workArea || event.target !== event.currentTarget || isLauncher) return;
     if (event.altKey && ["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown"].includes(event.key)) {
       event.preventDefault();
       dispatch({ type: "set-window-placement", id: item.id, placement: event.key === "ArrowLeft" ? "left" : event.key === "ArrowRight" ? "right" : event.key === "ArrowUp" ? "maximized" : "floating" }); return;
@@ -211,43 +264,54 @@ function HostedWindow({ item, area, zIndex, animations: motionEnabled = true }: 
     if (!delta) return;
     event.preventDefault(); const step = event.shiftKey ? 40 : 10;
     const next = resize ? { ...rect, width: rect.width + delta[0]! * step, height: rect.height + delta[1]! * step } : { ...rect, x: rect.x + delta[0]! * step, y: rect.y + delta[1]! * step };
-    dispatch({ type: "set-window-rect", id: item.id, rect: constrainRect(next, area) });
+    dispatch({ type: "set-window-rect", id: item.id, rect: constrain(next, workArea) });
   }
+  const position = useRef<HTMLDivElement>(null);
+  // Write the focus z-index through CSSOM as well as the style prop. React's
+  // initial style string is not always parsed for numeric z-index in a freshly
+  // hydrated tree, which left a newly focused window behind the old one.
+  useLayoutEffect(() => { if (position.current) position.current.style.zIndex = String(zIndex); }, [zIndex]);
   const animate = motionEnabled && typeof window !== "undefined" && typeof window.matchMedia === "function" && !window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-  const enter = isLauncher ? { opacity: 0, y: 140 } : { opacity: 0 };
-  return <motion.div
+  const enter = isLauncher ? { opacity: 0, y: 140, scale: 0.94 } : { opacity: 0, y: 10, scale: 0.985 };
+  // The focus z-index lives on a plain wrapper: motion owns the inner element's
+  // style for its entrance animation and drops foreign style props.
+  return <div
     aria-hidden={hidden ? true : undefined}
+    ref={position}
     className={`window-position${moving ? " is-moving is-dragging" : ""}${hidden ? " is-hidden" : ""}`}
     data-fullscreen={isFullscreen ? "true" : undefined}
-    style={{ zIndex }}
+    style={{ zIndex }}>
+  <motion.div
+    className="window-motion"
     {...(animate ? { initial: enter, exit: enter } : { initial: false })}
-    animate={{ opacity: 1, y: 0 }}
-    transition={isLauncher ? { type: "spring", stiffness: 320, damping: 30 } : { duration: 0.22, ease: [0.2, 0.7, 0.2, 1] }}
+    animate={{ opacity: 1, y: 0, scale: 1 }}
+    transition={isLauncher ? { type: "spring", stiffness: 320, damping: 30 } : { type: "spring", stiffness: 430, damping: 34, mass: 0.82 }}
     onPointerMove={move} onPointerUp={end} onPointerCancel={end} onLostPointerCapture={end}>
     {snap ? <div aria-hidden="true" className={`snap-preview snap-preview--${snap}`} /> : null}
-    <ProtectedWindow customTopbar={customTopbar} flush={flush} id={item.id} focused={state.focusedWindowId === item.id}
+    <MobileNavSlotContext.Provider value={mobileShell ? mobileNavSlot : null}>
+    <TopbarWindowContext.Provider value={item.id}>
+    <ProtectedWindow customTopbar={customTopbar} fullscreenTopbar={customTopbarFullscreen} flush={flush} id={item.id} focused={state.focusedWindowId === item.id}
       style={area ? { left: rect.x, top: rect.y, width: rect.width, height: rect.height } : undefined}
       onClose={() => { dispatch({ type: "close-window", id: item.id }); if (active === item.id) open("/"); }}
       onFocus={focus} onMinimize={() => { dispatch({ type: "toggle-minimize", id: item.id }); if (active === item.id) open("/"); }}
       onMaximize={isLauncher ? undefined : () => dispatch({ type: "set-window-placement", id: item.id, placement: placement !== "floating" ? "floating" : "maximized" })}
       onFullscreen={isLauncher ? undefined : () => dispatch({ type: "set-window-fullscreen", id: item.id, fullscreen: !isFullscreen })}
       onSnap={isLauncher ? undefined : (side) => dispatch({ type: "set-window-placement", id: item.id, placement: side })}
-      fullscreen={isFullscreen} frameless={isFullscreen}
+      fullscreen={isFullscreen} frameless={isFullscreen && !customTopbarFullscreen}
       maximized={placement !== "floating" || isFullscreen} {...(!isLauncher ? { onTitlePointerDown: (event: PointerEvent<HTMLElement>) => begin(event, false), onTitleKeyDown: (event: KeyboardEvent<HTMLElement>) => keyboard(event, false) } : {})}
       onResizePointerDown={(event) => begin(event, true)} onResizeKeyDown={(event) => keyboard(event, true)}
       subtitle={item.subtitle} title={item.title} stream={item.streamId !== undefined} variant={variants.windowChrome}>
       <RouteBoundary location={item.location ?? "/"}><ShellRoutes location={item.location ?? "/"} /></RouteBoundary>
     </ProtectedWindow>
+    </TopbarWindowContext.Provider>
+    </MobileNavSlotContext.Provider>
     {isFullscreen ? <button type="button" className="window-exit-fullscreen" onClick={() => dispatch({ type: "set-window-fullscreen", id: item.id, fullscreen: false })} aria-label={t("window.exitFullscreen")}>
       <WindowExitFullscreenIcon aria-hidden="true" /><span>{t("window.exitFullscreen")}</span>
     </button> : null}
-    {isLauncher ? <div className="window-launcher-controls">
-      <button type="button" className="window-launcher-home" aria-label={t("nav.home")} title={t("nav.home")} onClick={() => open("/")}>
-        <HomeIcon aria-hidden="true" /><span>{t("nav.home")}</span>
-      </button>
-      <button type="button" className="window-launcher-switcher" aria-label={t("switcher.title")} title={t("switcher.title")} onClick={() => dispatch({ type: "toggle-app-switcher" })}>
-        <WindowStackIcon aria-hidden="true" /><span>{t("switcher.title")}</span>
-      </button>
-    </div> : null}
-  </motion.div>;
+    {mobileShell ? <MobileAppNav
+      model={mobileNav}
+      onSwitcher={() => dispatch({ type: "toggle-app-switcher" })}
+    /> : null}
+  </motion.div>
+  </div>;
 }

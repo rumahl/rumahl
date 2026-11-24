@@ -2,13 +2,15 @@ import type { ReactNode } from "react";
 
 /** Shared presentation of the OS settings heading; routing stays with the host. */
 /** Page heading with an optional back link and help text. */
-export function RumahlPageHeading({ title, help, back, className = "rumahl-page-heading" }: {
+export function RumahlPageHeading({ title, help, back, breadcrumb, className = "rumahl-page-heading" }: {
   title: string;
   help?: string | undefined;
   back?: ReactNode;
+  breadcrumb?: ReactNode;
   className?: string;
 }) {
   return <header className={className}>
+    {breadcrumb}
     <div className="settings-heading">
       {back}
       <h1 className="pagetitle">{title}</h1>

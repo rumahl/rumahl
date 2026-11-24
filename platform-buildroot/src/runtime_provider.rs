@@ -28,7 +28,11 @@ const STATE_ABSENT: u8 = 0;
 const STATE_PREPARED: u8 = 1;
 const STATE_ACTIVE: u8 = 2;
 const RESPONSE_LENGTH: usize = 7;
-const BASE_SPEC_FIELD_COUNT: usize = 5;
+/// Base fields: installation id, app id, publisher id, version, runtime kind
+/// and the optional app data directory (`-` when none).
+const BASE_SPEC_FIELD_COUNT: usize = 6;
+/// Sentinel for "this app has no data directory".
+const NO_DATA_DIR: &str = "-";
 const ENTRYPOINT_FIELD_COUNT: usize = 3;
 const ID_FIELD_COUNT: u8 = 1;
 const MAX_ENTRYPOINTS: usize = 64;
@@ -47,12 +51,14 @@ pub struct UnixAppRuntimeProviderConfig {
     socket_path: PathBuf,
     expected_peer_uid: u32,
     timeout: Duration,
+    data_root: Option<PathBuf>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum UnixAppRuntimeProviderConfigError {
     SocketPathMustBeAbsolute,
     ZeroTimeout,
+    DataRootMustBeAbsolute,
 }
 
 #[derive(Debug, Clone)]
@@ -79,6 +85,9 @@ pub struct RuntimeInstallationSpec {
     identity: AppIdentity,
     version: AppVersion,
     runtime: RuntimeDescriptor,
+    /// The app's private data directory, mounted into its container. The
+    /// supervisor validates the path before mounting it.
+    data_dir: Option<PathBuf>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -184,6 +193,20 @@ impl UnixAppRuntimeProviderConfig {
         Self::with_timeout(socket_path, expected_peer_uid, DEFAULT_RESPONSE_TIMEOUT)
     }
 
+    /// Mounts each container app's private data directory from this root.
+    /// The supervisor validates the resolved path before mounting it.
+    pub fn with_data_root(
+        mut self,
+        data_root: impl Into<PathBuf>,
+    ) -> Result<Self, UnixAppRuntimeProviderConfigError> {
+        let data_root = data_root.into();
+        if !data_root.is_absolute() {
+            return Err(UnixAppRuntimeProviderConfigError::DataRootMustBeAbsolute);
+        }
+        self.data_root = Some(data_root);
+        Ok(self)
+    }
+
     pub fn with_timeout(
         socket_path: impl Into<PathBuf>,
         expected_peer_uid: u32,
@@ -201,6 +224,7 @@ impl UnixAppRuntimeProviderConfig {
             socket_path,
             expected_peer_uid,
             timeout,
+            data_root: None,
         })
     }
 
@@ -214,6 +238,10 @@ impl UnixAppRuntimeProviderConfig {
 
     pub fn timeout(&self) -> Duration {
         self.timeout
+    }
+
+    pub fn data_root(&self) -> Option<&Path> {
+        self.data_root.as_deref()
     }
 }
 
@@ -285,7 +313,10 @@ impl UnixAppRuntimeProvider {
         operation: u8,
         app: &InstalledApp,
     ) -> Result<RuntimeControlResponse, UnixAppRuntimeProviderError> {
-        self.exchange(operation, &encode_spec(app)?)
+        self.exchange(
+            operation,
+            &encode_spec(app, self.config.data_root.as_deref())?,
+        )
     }
 
     fn exchange_installation(
@@ -356,7 +387,18 @@ impl RuntimeInstallationSpec {
             identity,
             version,
             runtime,
+            data_dir: None,
         }
+    }
+
+    /// Attaches the app's private data directory to the runtime spec.
+    pub fn with_data_dir(mut self, data_dir: impl Into<PathBuf>) -> Self {
+        self.data_dir = Some(data_dir.into());
+        self
+    }
+
+    pub fn data_dir(&self) -> Option<&Path> {
+        self.data_dir.as_deref()
     }
 
     pub fn identity(&self) -> &AppIdentity {
@@ -541,7 +583,10 @@ impl ParsedRequest {
     }
 }
 
-fn encode_spec(app: &InstalledApp) -> Result<Vec<Vec<u8>>, UnixAppRuntimeProviderError> {
+fn encode_spec(
+    app: &InstalledApp,
+    data_root: Option<&Path>,
+) -> Result<Vec<Vec<u8>>, UnixAppRuntimeProviderError> {
     let runtime = app.manifest().runtime();
     if runtime.entrypoints().len() > MAX_ENTRYPOINTS {
         return Err(UnixAppRuntimeProviderError::InvalidRequest);
@@ -555,6 +600,15 @@ fn encode_spec(app: &InstalledApp) -> Result<Vec<Vec<u8>>, UnixAppRuntimeProvide
     fields.push(app.identity().publisher_id().as_str().as_bytes().to_vec());
     fields.push(app.manifest().version().to_string().into_bytes());
     fields.push(runtime_kind_name(runtime.kind()).as_bytes().to_vec());
+    match data_root {
+        Some(root) => fields.push(
+            root.join(app.identity().app_id().as_str())
+                .to_string_lossy()
+                .into_owned()
+                .into_bytes(),
+        ),
+        None => fields.push(NO_DATA_DIR.as_bytes().to_vec()),
+    }
 
     for entrypoint in runtime.entrypoints() {
         fields.push(entrypoint.id().as_str().as_bytes().to_vec());
@@ -685,6 +739,11 @@ fn parse_spec(
     let version = AppVersion::parse(field_as_str(&fields[3])?)
         .map_err(|_| UnixRuntimeControlServerError::InvalidRequest)?;
     let kind = parse_runtime_kind(field_as_str(&fields[4])?)?;
+    let data_dir = match field_as_str(&fields[5])? {
+        NO_DATA_DIR => None,
+        path if path.starts_with('/') => Some(PathBuf::from(path)),
+        _ => return Err(UnixRuntimeControlServerError::InvalidRequest),
+    };
     let mut runtime = RuntimeDescriptor::new(kind);
 
     for entrypoint in fields[BASE_SPEC_FIELD_COUNT..].chunks_exact(ENTRYPOINT_FIELD_COUNT) {
@@ -715,11 +774,15 @@ fn parse_spec(
             .map_err(|_| UnixRuntimeControlServerError::InvalidRequest)?;
     }
 
-    Ok(RuntimeInstallationSpec::new(
+    let mut spec = RuntimeInstallationSpec::new(
         AppIdentity::new(app_id, installation_id, publisher_id),
         version,
         runtime,
-    ))
+    );
+    if let Some(data_dir) = data_dir {
+        spec = spec.with_data_dir(data_dir);
+    }
+    Ok(spec)
 }
 
 fn parse_installation_id(
@@ -811,6 +874,9 @@ impl fmt::Display for UnixAppRuntimeProviderConfigError {
                 write!(f, "runtime provider socket path must be absolute")
             }
             Self::ZeroTimeout => write!(f, "runtime provider timeout must be non-zero"),
+            Self::DataRootMustBeAbsolute => {
+                write!(f, "app data root must be absolute")
+            }
         }
     }
 }
@@ -1231,7 +1297,7 @@ mod tests {
         let app = installed_app(AppVersion::new(1, 0, 0));
         provider.prepare_installation(&app).unwrap();
 
-        let mut conflicting_fields = encode_spec(&app).unwrap();
+        let mut conflicting_fields = encode_spec(&app, None).unwrap();
         conflicting_fields[3] = AppVersion::new(2, 0, 0).to_string().into_bytes();
         let error = provider
             .exchange(OP_PREPARE, &conflicting_fields)

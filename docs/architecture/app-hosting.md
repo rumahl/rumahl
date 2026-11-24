@@ -140,6 +140,13 @@ Nextcloud or Plex): the manifest declares a connector target plus a
 container-artifact entrypoint, and the OS installs the bundle and registers the
 app as an OIDC relying party for it.
 
+Integration apps that need a LAN service use the generic app resources
+documented in [`app-network.md`](app-network.md): persisted manifest settings
+(with write-only encrypted secrets) and a brokered HTTP(S) request that is
+limited to origins the user approved for that installation. The app never gets
+a socket, a cookie jar or the secret plaintext, and the platform re-checks the
+live installation, account and consent on every call.
+
 ## Deployment and checks
 
 Development uses `*.apps.localhost`, the developer HTTPS port, and a certificate

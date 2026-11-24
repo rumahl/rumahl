@@ -1,9 +1,10 @@
 import { describe, expect, it } from "vitest";
 import type { ShellRequest } from "../snapshot-client";
-import { controlAppRuntime, fetchAppRuntime, invokeCapability, launchApp, parseAppData, parseAppSettings, parseCapabilityInvocation, parseCatalog, parseImport, parseLaunch, SafeModeError, uninstallApp } from "./client";
+import { controlAppRuntime, fetchAppRuntime, invokeCapability, launchApp, parseAppData, parseAppSettings, parseCapabilityInvocation, parseCatalog, parseImport, parseLaunch, parseSurfaceFrame, requestSurfaceFrame, SafeModeError, uninstallApp } from "./client";
 const app = { id: "com.rumahl.notes", installationId: "01990000-0000-7000-8000-000000000001", title: "Notes", version: "1.0.0", launchable: true };
 const lease = "a".repeat(64);
 const launch = { launchVersion: 1, id: app.id, installationId: app.installationId, lease, frameUrl: `https://${app.installationId}.apps.localhost:8443/launch/${lease}/web/index.html`, renewAfterSeconds: 30 };
+const surfaceFrame = { frameVersion: 1, surfaceId: "com.rumahl.notes.desktop", appId: app.id, installationId: app.installationId, lease, frameUrl: `https://${app.installationId}.apps.localhost:8443/launch/${lease}/web/surface.html`, renewAfterSeconds: 30 };
 const settings = {
   settingsVersion: 1,
   id: app.id,
@@ -11,7 +12,10 @@ const settings = {
   manifest: [
     { key: "server.url", title: "Server URL", description: "Backend endpoint", type: "text", required: true, options: [] },
     { key: "mode", title: "Mode", description: null, type: "select", required: false, options: [{ value: "fast", label: "Fast" }] },
+    { key: "ha.token", title: "Access token", description: null, type: "secret", required: false, options: [] },
   ],
+  values: { "server.url": "http://ha.local:8123", mode: "fast" },
+  secrets: ["ha.token"],
   extended: null,
 };
 describe("installed app contracts", () => {
@@ -48,15 +52,20 @@ describe("installed app contracts", () => {
   });
   it("renders only typed manifest settings and rejects malformed declarations", () => {
     const parsed = parseAppSettings(settings);
-    expect(parsed.manifest).toHaveLength(2);
+    expect(parsed.manifest).toHaveLength(3);
     expect(parsed.manifest[0]).toMatchObject({ key: "server.url", type: "text", required: true, options: [] });
     expect(parsed.manifest[1]).toMatchObject({ type: "select", options: [{ value: "fast", label: "Fast" }] });
+    expect(parsed.values).toEqual({ "server.url": "http://ha.local:8123", mode: "fast" });
+    expect(parsed.secrets).toEqual(["ha.token"]);
     expect(parsed.extended).toBeNull();
 
     const cases = [
       { ...settings, settingsVersion: 2 },
       { ...settings, extended: [{ key: "x", value: "y" }] },
       { ...settings, manifest: [{ ...settings.manifest[0], type: "date" }] },
+      { ...settings, values: { "ha.token": "leak" } },
+      { ...settings, secrets: ["server.url"] },
+      { ...settings, values: { "server.url": 5 } },
       { ...settings, manifest: [{ ...settings.manifest[0], key: "Bad Key" }] },
       { ...settings, manifest: [{ ...settings.manifest[0], required: "yes" }] },
       { ...settings, manifest: [settings.manifest[0], settings.manifest[0]] },
@@ -112,6 +121,35 @@ describe("installed app contracts", () => {
       .toEqual({ capability: "cap", outcome: "invoked", browser: { appId: app.id, installationId: app.installationId } });
     expect(() => parseCapabilityInvocation({ capabilityVersion: 1, outcome: "invoked", browser: { appId: "../escape", installationId: app.installationId } }, "cap")).toThrow();
     expect(() => parseCapabilityInvocation({ capabilityVersion: 1, outcome: "invoked", browser: { appId: app.id } }, "cap")).toThrow();
+  });
+  it("binds a surface frame to the app origin, surface and lease", () => {
+    expect(parseSurfaceFrame(surfaceFrame, app, surfaceFrame.surfaceId, "https://localhost:8443").frameUrl).toBe(surfaceFrame.frameUrl);
+    const cases = [
+      { ...surfaceFrame, frameVersion: 2 },
+      { ...surfaceFrame, surfaceId: "com.rumahl.notes.other" },
+      { ...surfaceFrame, appId: "com.rumahl.other" },
+      { ...surfaceFrame, lease: "short" },
+      { ...surfaceFrame, frameUrl: surfaceFrame.frameUrl.replace("https:", "http:") },
+      { ...surfaceFrame, frameUrl: surfaceFrame.frameUrl.replace(`${app.installationId}.apps.localhost`, "localhost") },
+      { ...surfaceFrame, frameUrl: `${surfaceFrame.frameUrl}?token=secret` },
+      { ...surfaceFrame, renewAfterSeconds: 60 },
+    ];
+    for (const value of cases) expect(() => parseSurfaceFrame(value, app, surfaceFrame.surfaceId, "https://localhost:8443")).toThrow();
+  });
+  it("requests a per-surface frame without a bridge or same-origin access", async () => {
+    const calls: { url: string; body: unknown }[] = [];
+    const request = (async (url: string, init?: RequestInit) => {
+      calls.push({ url, body: init?.body ? JSON.parse(String(init.body)) : null });
+      return new Response(JSON.stringify(surfaceFrame), { status: 200, headers: { "content-type": "application/json" } });
+    }) as unknown as ShellRequest;
+    const parsed = await requestSurfaceFrame(request, app, surfaceFrame.surfaceId, "https://localhost:8443", new AbortController().signal);
+    expect(parsed.lease).toBe(lease);
+    expect(calls).toEqual([{
+      url: `/api/v1/shell/surfaces/${encodeURIComponent(surfaceFrame.surfaceId)}/frame`,
+      body: { installationId: app.installationId },
+    }]);
+    const safe = (async () => new Response(JSON.stringify({ surfaceError: "safe-mode" }), { status: 423 })) as unknown as ShellRequest;
+    await expect(requestSurfaceFrame(safe, app, surfaceFrame.surfaceId, "https://localhost:8443", new AbortController().signal)).rejects.toBeInstanceOf(SafeModeError);
   });
   it("identifies safe-mode launch blocks", async () => {
     const request = (async () => new Response(JSON.stringify({ launchError: "safe-mode" }), {

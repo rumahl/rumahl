@@ -103,8 +103,12 @@ export function Button({
   const showSuccess = Boolean(success) && !loading;
   const content = loading ? (
     <>
+      <span className="btn__pending-label">
+        {leftIcon ? <span className="btn__icon">{leftIcon}</span> : null}
+        {children}
+        {rightIcon ? <span className="btn__icon">{rightIcon}</span> : null}
+      </span>
       <span className="btn__loader" aria-hidden="true" />
-      {successText ? null : children}
     </>
   ) : showSuccess ? (
     <>
