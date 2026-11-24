@@ -110,6 +110,8 @@ jobs:
           branch: automation/buildroot-update
           delete-branch: true
           signoff: true
+          author: 'rumahl[bot] <349283150+rumahl[bot]@users.noreply.github.com>'
+          committer: 'rumahl[bot] <349283150+rumahl[bot]@users.noreply.github.com>'
           commit-message: 'build(buildroot): update to ${{ steps.check.outputs.version }}'
           title: 'build(buildroot): update to ${{ steps.check.outputs.version }}'
           body: |
