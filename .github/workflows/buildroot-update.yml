@@ -97,7 +97,7 @@ jobs:
         id: app-token
         uses: actions/create-github-app-token@v2
         with:
-          app-id: ${{ vars.BUILDROOT_APP_ID }}
+          app-id: ${{ secrets.BUILDROOT_APP_ID }}
           private-key: ${{ secrets.BUILDROOT_APP_PRIVATE_KEY }}
           permission-contents: write
           permission-pull-requests: write
