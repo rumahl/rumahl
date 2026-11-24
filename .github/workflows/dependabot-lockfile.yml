@@ -1,0 +1,84 @@
+name: Dependabot lockfile
+
+# Dependabot occasionally opens a manifest-only PR for the pnpm workspace.
+# Regenerate the workspace lockfile on its branch so the frozen-lockfile CI
+# can pass. The job runs from main, not from the pull request, so no untrusted
+# workflow receives the app token; only Dependabot's npm branches are touched
+# and dependency scripts stay disabled while resolving.
+on:
+  schedule:
+    - cron: '23 * * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pull-requests: read
+
+concurrency:
+  group: dependabot-lockfile
+  cancel-in-progress: false
+
+jobs:
+  repair:
+    name: Regenerate frontend lockfiles
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - name: Generate GitHub App installation token
+        id: app-token
+        uses: actions/create-github-app-token@fee1f7d63c2ff003460e3d139729b119787bc349 # v2
+        with:
+          app-id: ${{ secrets.BUILDROOT_APP_ID }}
+          private-key: ${{ secrets.BUILDROOT_APP_PRIVATE_KEY }}
+          permission-contents: write
+      - name: List open npm Dependabot pull requests
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh api --paginate "repos/${GITHUB_REPOSITORY}/pulls?state=open&per_page=100" \
+            --jq '.[] | select(.user.login == "dependabot[bot]") | select(.head.repo.full_name == .base.repo.full_name) | select(.head.ref | startswith("dependabot/npm_and_yarn/")) | [.number, .head.ref] | @tsv' \
+            > "${RUNNER_TEMP}/dependabot-prs.tsv"
+          cat "${RUNNER_TEMP}/dependabot-prs.tsv"
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: '24'
+      - name: Install pinned frontend package manager
+        run: npm install --global pnpm@11.19.0
+      - name: Repair lockfiles
+        run: |
+          set -u
+          while IFS=$'\t' read -r number ref; do
+            [ -n "${number:-}" ] || continue
+            echo "::group::PR #${number} (${ref})"
+            work="$(mktemp -d)"
+            if ! git clone --quiet --filter=blob:none --sparse --depth=1 --branch "${ref}" \
+                 "https://github.com/${GITHUB_REPOSITORY}.git" "${work}"; then
+              echo "::warning::Could not clone PR #${number}; skipping."
+              rm -rf "${work}"
+              echo "::endgroup::"
+              continue
+            fi
+            git -C "${work}" sparse-checkout set frontend
+            if ! ( cd "${work}/frontend" && pnpm install --lockfile-only --ignore-scripts ); then
+              echo "::warning::pnpm could not resolve PR #${number}; leaving it unchanged."
+              rm -rf "${work}"
+              echo "::endgroup::"
+              continue
+            fi
+            if git -C "${work}" diff --quiet -- frontend/pnpm-lock.yaml; then
+              echo "Lockfile is current."
+            else
+              git -C "${work}" config user.name 'rumahl[bot]'
+              git -C "${work}" config user.email '349283150+rumahl[bot]@users.noreply.github.com'
+              git -C "${work}" add frontend/pnpm-lock.yaml
+              git -C "${work}" commit -s -m "fix(deps): regenerate the pnpm lockfile"
+              APP_TOKEN="${{ steps.app-token.outputs.token }}"
+              export APP_TOKEN
+              if ! git -C "${work}" push "https://x-access-token:${APP_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" "HEAD:${ref}"; then
+                echo "::warning::Could not push the lockfile for PR #${number}; it will be retried on the next run."
+              fi
+            fi
+            rm -rf "${work}"
+            echo "::endgroup::"
+          done < "${RUNNER_TEMP}/dependabot-prs.tsv"
