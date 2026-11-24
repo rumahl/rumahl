@@ -8,6 +8,8 @@ import { grantNetworkOrigin, type InstalledApp } from "./client";
 /** One pending network consent from an installed app. */
 export interface NetworkConsentRequest {
   origin: string;
+  /** The origin needs private/loopback access; start with the box checked. */
+  requiresPrivate?: boolean;
   resolve: (granted: boolean) => void;
 }
 
@@ -26,6 +28,7 @@ export function NetworkConsentDialog({ app, request, onDone }: {
   const { t } = useI18n();
   const [busy, setBusy] = useState<"session" | "durable" | null>(null);
   const [failed, setFailed] = useState(false);
+  const [allowPrivate, setAllowPrivate] = useState(request.requiresPrivate === true);
 
   const allow = async (validity: "session" | "durable") => {
     if (!live || busy) return;
@@ -33,7 +36,7 @@ export function NetworkConsentDialog({ app, request, onDone }: {
     setFailed(false);
     try {
       await grantNetworkOrigin(
-        live.request, app, request.origin, validity, new AbortController().signal
+        live.request, app, request.origin, validity, allowPrivate, new AbortController().signal
       );
       onDone(true);
     } catch {
@@ -67,6 +70,16 @@ export function NetworkConsentDialog({ app, request, onDone }: {
       <dt>{t("netBridge.app")}</dt>
       <dd>{app.title}</dd>
     </dl>
+    <label className="net-consent__private">
+      <input
+        type="checkbox"
+        checked={allowPrivate}
+        disabled={busy !== null}
+        onChange={(event) => setAllowPrivate(event.target.checked)}
+      />
+      <span>{t("netBridge.private")}</span>
+    </label>
+    <p className="net-consent__private-help">{t("netBridge.privateHelp")}</p>
     <p>{t("netBridge.warning")}</p>
     {failed ? <p role="alert">{t("netBridge.failed")}</p> : null}
   </RumahlModal>;

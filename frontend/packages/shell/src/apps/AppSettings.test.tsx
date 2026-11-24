@@ -44,7 +44,7 @@ vi.mock("./client", () => ({
   fetchAppStorage: vi.fn(async () => ({ usedBytes: 2 * 1024 * 1024, quotaBytes: 256 * 1024 * 1024 })),
   revokeAppGrant: vi.fn(async (_request: unknown, _app: unknown, grantId: string) => { state.revoked.push(grantId); }),
   fetchNetworkOrigins: vi.fn(async () => [
-    { origin: "http://homeassistant.local:8123", validity: "durable", expiresAt: null }
+    { origin: "http://homeassistant.local:8123", validity: "durable", expiresAt: null, allowPrivate: true }
   ]),
   revokeNetworkOrigin: vi.fn(async () => undefined),
 }));

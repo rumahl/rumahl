@@ -1023,6 +1023,19 @@
   margin: 0;
   overflow-wrap: anywhere;
 }
+.net-consent__private {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin: 12px 0 4px;
+  font-size: 0.86rem;
+}
+.net-consent__private-help {
+  margin: 0 0 12px;
+  color: var(--rumahl-ui-color-text-muted, var(--rumahl-color-text-muted));
+  font-size: 0.8rem;
+  line-height: 1.4;
+}
 .app-settings__path {
   margin: 8px 0;
   font-family: ui-monospace, monospace;

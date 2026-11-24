@@ -23,6 +23,8 @@ pub struct StoredNetworkGrant {
     pub origin: String,
     /// Unix seconds; `None` means until revoked.
     pub expires_at: Option<u64>,
+    /// The user explicitly allowed private and loopback destinations.
+    pub allow_private: bool,
 }
 
 #[derive(Debug)]
@@ -78,12 +80,34 @@ impl SqliteNetworkGrants {
                      origin TEXT NOT NULL,
                      created_at INTEGER NOT NULL CHECK (created_at >= 0),
                      expires_at INTEGER,
+                     allow_private INTEGER NOT NULL DEFAULT 0 CHECK (allow_private IN (0, 1)),
                      PRIMARY KEY (installation_id, user_id, origin)
                  );
                  CREATE INDEX IF NOT EXISTS app_network_grant_installation
                  ON app_network_grant(installation_id);",
             )
             .map_err(NetworkGrantStoreError::Database)?;
+        // Databases created before private-network scopes get the column too.
+        let columns: Vec<String> = {
+            let mut statement = connection
+                .prepare("PRAGMA table_info(app_network_grant)")
+                .map_err(NetworkGrantStoreError::Database)?;
+            let rows = statement
+                .query_map([], |row| row.get::<_, String>(1))
+                .map_err(NetworkGrantStoreError::Database)?;
+            rows.collect::<Result<_, _>>()
+                .map_err(NetworkGrantStoreError::Database)?
+        };
+        if !columns.iter().any(|column| column == "allow_private") {
+            connection
+                .execute(
+                    "ALTER TABLE app_network_grant
+                     ADD COLUMN allow_private INTEGER NOT NULL DEFAULT 0
+                     CHECK (allow_private IN (0, 1))",
+                    [],
+                )
+                .map_err(NetworkGrantStoreError::Database)?;
+        }
         Ok(Self {
             connection: Mutex::new(connection),
         })
@@ -103,6 +127,7 @@ impl SqliteNetworkGrants {
         user_id: &str,
         origin: &str,
         expires_at: Option<u64>,
+        allow_private: bool,
     ) -> Result<(), NetworkGrantStoreError> {
         if expires_at.is_some_and(|expires| expires <= now_seconds()) {
             return self.revoke(installation, user_id, origin);
@@ -117,12 +142,20 @@ impl SqliteNetworkGrants {
         connection
             .execute(
                 "INSERT INTO app_network_grant (
-                     installation_id, user_id, origin, created_at, expires_at
-                 ) VALUES (?1, ?2, ?3, ?4, ?5)
+                     installation_id, user_id, origin, created_at, expires_at, allow_private
+                 ) VALUES (?1, ?2, ?3, ?4, ?5, ?6)
                  ON CONFLICT(installation_id, user_id, origin) DO UPDATE SET
                      created_at = excluded.created_at,
-                     expires_at = excluded.expires_at",
-                params![installation, user_id, origin, created_at, expires_at],
+                     expires_at = excluded.expires_at,
+                     allow_private = excluded.allow_private",
+                params![
+                    installation,
+                    user_id,
+                    origin,
+                    created_at,
+                    expires_at,
+                    allow_private
+                ],
             )
             .map_err(NetworkGrantStoreError::Database)?;
         Ok(())
@@ -156,7 +189,7 @@ impl SqliteNetworkGrants {
         let connection = self.connection()?;
         let mut statement = connection
             .prepare(
-                "SELECT origin, expires_at FROM app_network_grant
+                "SELECT origin, expires_at, allow_private FROM app_network_grant
                  WHERE installation_id = ?1 AND user_id = ?2
                  AND (expires_at IS NULL OR expires_at > ?3)
                  ORDER BY origin",
@@ -169,9 +202,11 @@ impl SqliteNetworkGrants {
                     .map(u64::try_from)
                     .transpose()
                     .map_err(|_| rusqlite::Error::IntegralValueOutOfRange(1, i64::MAX))?;
+                let allow_private: i64 = row.get(2)?;
                 Ok(StoredNetworkGrant {
                     origin: row.get(0)?,
                     expires_at,
+                    allow_private: allow_private != 0,
                 })
             })
             .map_err(NetworkGrantStoreError::Database)?;
@@ -188,19 +223,30 @@ impl SqliteNetworkGrants {
         user_id: &str,
         origin: &str,
     ) -> Result<bool, NetworkGrantStoreError> {
+        self.grant_scope(installation, user_id, origin)
+            .map(|scope| scope.is_some())
+    }
+
+    /// The stored private-network decision, or `None` when not granted.
+    pub fn grant_scope(
+        &self,
+        installation: &str,
+        user_id: &str,
+        origin: &str,
+    ) -> Result<Option<bool>, NetworkGrantStoreError> {
         let now = i64::try_from(now_seconds())
             .map_err(|_| NetworkGrantStoreError::InvalidTimestamp(i64::MAX))?;
         let connection = self.connection()?;
         connection
             .query_row(
-                "SELECT 1 FROM app_network_grant
+                "SELECT allow_private FROM app_network_grant
                  WHERE installation_id = ?1 AND user_id = ?2 AND origin = ?3
                  AND (expires_at IS NULL OR expires_at > ?4)",
                 params![installation, user_id, origin, now],
-                |_| Ok(()),
+                |row| row.get::<_, i64>(0),
             )
             .optional()
-            .map(|row| row.is_some())
+            .map(|scope| scope.map(|value| value != 0))
             .map_err(NetworkGrantStoreError::Database)
     }
 
@@ -247,10 +293,16 @@ mod tests {
     fn durable_grants_are_scoped_to_installation_and_user() {
         let store = SqliteNetworkGrants::open_in_memory().unwrap();
         store
-            .grant("installation", "user-a", "http://ha.local:8123", None)
+            .grant(
+                "installation",
+                "user-a",
+                "http://ha.local:8123",
+                None,
+                false,
+            )
             .unwrap();
         store
-            .grant("installation", "user-b", "http://other.local", None)
+            .grant("installation", "user-b", "http://other.local", None, false)
             .unwrap();
 
         assert!(
@@ -272,10 +324,34 @@ mod tests {
     }
 
     #[test]
+    fn private_scope_round_trips_and_updates() {
+        let store = SqliteNetworkGrants::open_in_memory().unwrap();
+        store
+            .grant("installation", "user", "http://ha.local", None, true)
+            .unwrap();
+        assert_eq!(
+            store
+                .grant_scope("installation", "user", "http://ha.local")
+                .unwrap(),
+            Some(true)
+        );
+        assert!(store.list("installation", "user").unwrap()[0].allow_private);
+        store
+            .grant("installation", "user", "http://ha.local", None, false)
+            .unwrap();
+        assert_eq!(
+            store
+                .grant_scope("installation", "user", "http://ha.local")
+                .unwrap(),
+            Some(false)
+        );
+    }
+
+    #[test]
     fn expired_and_revoked_grants_do_not_authorize() {
         let store = SqliteNetworkGrants::open_in_memory().unwrap();
         store
-            .grant("installation", "user", "http://ha.local", Some(1))
+            .grant("installation", "user", "http://ha.local", Some(1), false)
             .unwrap();
         assert!(store.list("installation", "user").unwrap().is_empty());
         assert!(
@@ -285,7 +361,7 @@ mod tests {
         );
 
         store
-            .grant("installation", "user", "http://ha.local", None)
+            .grant("installation", "user", "http://ha.local", None, false)
             .unwrap();
         assert!(
             store
@@ -306,10 +382,10 @@ mod tests {
     fn uninstall_removes_all_grants_of_an_installation() {
         let store = SqliteNetworkGrants::open_in_memory().unwrap();
         store
-            .grant("installation", "a", "http://a.local", None)
+            .grant("installation", "a", "http://a.local", None, false)
             .unwrap();
         store
-            .grant("installation", "b", "http://b.local", None)
+            .grant("installation", "b", "http://b.local", None, false)
             .unwrap();
         assert_eq!(store.remove_for_installation("installation").unwrap(), 2);
         assert!(store.list("installation", "a").unwrap().is_empty());
