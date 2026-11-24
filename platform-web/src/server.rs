@@ -20,7 +20,7 @@ use http_body_util::{BodyExt, Full, Limited};
 use hyper::client::conn::http1;
 use hyper::{Request, StatusCode as UpstreamStatus};
 use hyper_util::rt::TokioIo;
-use rand::RngCore;
+use rand::Rng;
 use rumahl_core::{BrowserProfileId, InstallationId, MAX_APP_SETTINGS, UserId};
 use rumahl_ui_contracts::{ExtensionContribution, ShellEvent, ShellSnapshot};
 use tokio::net::{UnixListener, UnixStream};

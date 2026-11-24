@@ -9,7 +9,7 @@ use axum::{
     http::{HeaderValue, StatusCode},
     response::Response,
 };
-use rand::RngCore;
+use rand::Rng;
 use rumahl_core::{AppId, InstallationId, PackagePath, SessionId};
 use url::Url;
 
