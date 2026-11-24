@@ -494,13 +494,21 @@ fn non_public_ip(ip: IpAddr) -> bool {
                 || octets[0] >= 240
         }
         IpAddr::V6(ip) => {
-            if let Some(mapped) = ip.to_ipv4_mapped() {
-                return non_public_ip(IpAddr::V4(mapped));
+            // IPv4-compatible and IPv4-mapped addresses carry an IPv4 target.
+            if let Some(v4) = ip.to_ipv4() {
+                return non_public_ip(IpAddr::V4(v4));
             }
             let segments = ip.segments();
+            // Transition mechanisms can embed an IPv4 destination: 6to4,
+            // Teredo and the NAT64 prefixes. Refuse them wholesale so a store
+            // cannot reach a private target through an IPv6 literal.
+            let transition = segments[0] == 0x2002
+                || (segments[0] == 0x2001 && segments[1] == 0x0000)
+                || (segments[0] == 0x0064 && segments[1] == 0xff9b);
             ip.is_loopback()
                 || ip.is_unspecified()
                 || ip.is_multicast()
+                || transition
                 || (segments[0] & 0xfe00) == 0xfc00
                 || (segments[0] & 0xffc0) == 0xfe80
                 || (segments[0] & 0xffc0) == 0xfec0
@@ -893,6 +901,24 @@ mod tests {
         for origin in ["https://demo.rumahl.com/", "https://192.168.1.10/"] {
             assert!(!allows_private_targets(&Url::parse(origin).unwrap()));
         }
+    }
+
+    #[test]
+    fn transition_addresses_are_never_public() {
+        for address in [
+            "2002:7f00:1::",
+            "2002:0a00:0001::",
+            "2001:0:4136:e378::",
+            "64:ff9b::7f00:1",
+            "::ffff:127.0.0.1",
+            "::1",
+        ] {
+            assert!(
+                non_public_ip(address.parse().unwrap()),
+                "{address} must not be treated as public"
+            );
+        }
+        assert!(!non_public_ip("2606:4700:4700::1111".parse().unwrap()));
     }
 
     #[tokio::test]
