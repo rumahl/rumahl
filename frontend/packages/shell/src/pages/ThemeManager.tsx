@@ -3,16 +3,24 @@ import { useNavigate } from "react-router";
 import { Button } from "../components/Button";
 import { RumahlSelect } from "../components/RumahlSelect";
 import { SettingsHeading } from "../components/SettingsHeading";
+import { ThemeConsent } from "../components/ThemeConsent";
 import { useI18n } from "../i18n";
 import { useShellPreferences } from "../preferences/ShellPreferences";
 import {
   exportThemePackage,
-  installThemeFile,
+  installTheme,
   isInstalledTheme,
+  isThemeTrusted,
+  prepareThemeFile,
+  revokeThemeTrust,
+  trustTheme,
   uninstallTheme,
   useThemeRegistry,
+  type PreparedThemeInstall,
 } from "../preferences/installed-themes";
 import { ThemeSafetyError } from "../preferences/theme-safety";
+import { useOptionalShell } from "../shell/ShellContext";
+import { reportActivity } from "../apps/recovery-client";
 import { dismissToast, showToast } from "../shell/toasts";
 import { useTheme } from "@rumahl/ui";
 import { getTheme } from "@rumahl/ui/sdk";
@@ -69,14 +77,44 @@ export function ThemeManager() {
   const { theme: active } = useTheme();
   const activeName = getTheme(active.id)?.name ?? active.name;
   const fileRef = useRef<HTMLInputElement>(null);
+  const shell = useOptionalShell();
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [pendingTheme, setPendingTheme] = useState<string | null>(null);
+  const [consent, setConsent] = useState<{
+    theme: Theme;
+    codeHash: string | null;
+    prepared?: PreparedThemeInstall;
+    apply?: string;
+  } | null>(null);
 
-  const apply = (id: string) => {
+  const activity = (action: string) => {
+    if (shell?.live) reportActivity(shell.live.request, action);
+  };
+
+  const applyNow = (id: string) => {
     if (settings.preferences?.[settings.scope].shellTheme === id) return;
     settings.saveTheme(settings.scope, id);
     setPendingTheme(id);
+  };
+
+  const finishInstall = (prepared: PreparedThemeInstall, execution: "sandbox" | "trusted") => {
+    const theme = installTheme(prepared.data, "manual", {
+      execution,
+      ...(prepared.codeHash ? { codeHash: prepared.codeHash } : {}),
+    });
+    activity(`theme install ${theme.id} ${execution}`);
+    setError(null);
+    applyNow(theme.id);
+  };
+
+  const apply = (id: string) => {
+    const theme = themes.find((item) => item.id === id);
+    if (theme?.code && !isThemeTrusted(theme) && (theme.runtime ?? "shell") !== "sandbox") {
+      setConsent({ theme, codeHash: theme.codeHash ?? null, apply: id });
+      return;
+    }
+    applyNow(id);
   };
 
   // Ask for the reload only after the preference was persisted, exactly like
@@ -108,9 +146,17 @@ export function ThemeManager() {
   const install = async (file: File) => {
     setBusy(true);
     try {
-      const theme = await installThemeFile(file);
-      setError(null);
-      apply(theme.id);
+      const prepared = await prepareThemeFile(file);
+      const runtime = prepared.theme.runtime ?? "shell";
+      if (!prepared.theme.code || runtime === "sandbox") {
+        finishInstall(prepared, "sandbox");
+      } else {
+        setConsent({
+          theme: prepared.theme,
+          codeHash: prepared.codeHash,
+          prepared,
+        });
+      }
     } catch (failure) {
       setError(
         failure instanceof ThemeSafetyError
@@ -123,8 +169,41 @@ export function ThemeManager() {
     }
   };
 
+  const chooseExecution = (execution: "sandbox" | "trusted") => {
+    if (!consent) return;
+    const current = consent;
+    setConsent(null);
+    if (current.prepared) {
+      finishInstall(current.prepared, execution);
+      return;
+    }
+    if (execution === "trusted") {
+      void trustTheme(current.theme.id, current.codeHash ?? undefined)
+        .then(() => {
+          activity(`theme trust ${current.theme.id}`);
+          setError(null);
+          if (current.apply) applyNow(current.apply);
+        })
+        .catch(() => setError(t("themes.invalid")));
+    } else {
+      revokeThemeTrust(current.theme.id);
+      activity(`theme revoke ${current.theme.id}`);
+      if (current.apply) applyNow(current.apply);
+    }
+  };
+
+  const requestTrust = (theme: Theme) => {
+    setConsent({ theme, codeHash: theme.codeHash ?? null });
+  };
+
+  const revoke = (id: string) => {
+    revokeThemeTrust(id);
+    activity(`theme revoke ${id}`);
+  };
+
   return <section className="theme-manager">
     <SettingsHeading title={t("themes.title")} help={t("themes.help")} back="/settings/display" />
+    <p className="theme-security-notice">{t("themes.securityNotice")}</p>
 
     <h3 className="section-title">{t("themes.general")}</h3>
     <div className="settings-group">
@@ -174,6 +253,15 @@ export function ThemeManager() {
         const isActive = active.id === theme.id;
         const scopeSelected = settings.preferences?.[settings.scope].shellTheme === theme.id;
         const origin = theme.origin === "store" ? t("themes.fromStore") : theme.origin === "builtin" ? t("themes.builtIn") : t("themes.manual");
+        const runtime = theme.runtime ?? "shell";
+        const trusted = isThemeTrusted(theme);
+        const badge = theme.code
+          ? trusted
+            ? t("themes.fullAccessBadge")
+            : runtime === "shell"
+              ? t("themes.fullAccessRequired")
+              : t("themes.sandboxedBadge")
+          : null;
         return <article key={theme.id} className="theme-card" data-active={isActive ? "true" : undefined}>
           {theme.preview
             ? <img className="theme-card__image" src={theme.preview} alt="" />
@@ -181,6 +269,7 @@ export function ThemeManager() {
           <div className="theme-card__meta">
             <div className="theme-card__identity">
               <strong>{theme.name}</strong>
+              {badge ? <span className={`theme-card__badge${trusted || runtime === "shell" ? " theme-card__badge--danger" : ""}`}>{badge}</span> : null}
               <small>
                 {origin}
                 {theme.modes.includes("dark") && !theme.modes.includes("light") ? ` · ${t("themes.darkOnly")}` : ""}
@@ -191,6 +280,11 @@ export function ThemeManager() {
               <Button size="sm" variant={isActive ? "primary" : "secondary"} onClick={() => apply(theme.id)}>
                 {isActive ? t("themes.active") : t("themes.apply")}
               </Button>
+              {theme.code && trusted
+                ? <Button size="sm" variant="ghost" onClick={() => revoke(theme.id)}>{t("themes.revokeFullAccess")}</Button>
+                : theme.code && runtime !== "sandbox"
+                  ? <Button size="sm" variant="ghost" onClick={() => requestTrust(theme)}>{t("themes.allowFullAccess")}</Button>
+                  : null}
               {isInstalledTheme(theme.id) ? <Button size="sm" variant="ghost" onClick={() => remove(theme.id)}>{t("themes.uninstall")}</Button> : null}
               <Button size="sm" variant="ghost" onClick={() => download(theme)}>{t("themes.export")}</Button>
             </div>
@@ -199,5 +293,11 @@ export function ThemeManager() {
         </article>;
       })}
     </div>
+    {consent ? <ThemeConsent
+      theme={consent.theme}
+      codeHash={consent.codeHash}
+      onCancel={() => setConsent(null)}
+      onChoose={chooseExecution}
+    /> : null}
   </section>;
 }

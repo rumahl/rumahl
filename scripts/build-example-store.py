@@ -187,7 +187,7 @@ def main():
             "publisher": manifest["publisherId"],
             "packageUrl": f"packages/{slug}.package.json",
         }
-        for field in ("category", "categories", "rating", "downloads", "featured"):
+        for field in ("category", "categories", "rating", "downloads", "featured", "permissions", "fullAccess"):
             if field in entry:
                 item[field] = entry[field]
         if (media / f"{slug}-icon.png").is_file():

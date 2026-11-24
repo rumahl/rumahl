@@ -53,14 +53,14 @@ describe("store metadata", () => {
         id: "com.example.notes", title: "Notes", version: "1.0.0", packageUrl: "notes.package.json",
         category: "Productivity", categories: ["Utilities", "Productivity"],
         rating: 4.76, downloads: 18400, featured: true,
-        permissions: ["Read personal files", "Show notifications"],
+        permissions: ["Read personal files", "Show notifications"], fullAccess: true,
         iconUrl: "./media/tones-icon.png",
         screenshots: ["/media/notes.png", "https://cdn.example/shot.png", "http://store.example/plain.png"]
       }]
     }, source);
     expect(index.apps[0]).toMatchObject({
       categories: ["Productivity", "Utilities"], rating: 4.8, downloads: 18400, featured: true,
-      permissions: ["Read personal files", "Show notifications"],
+      permissions: ["Read personal files", "Show notifications"], fullAccess: true,
       iconUrl: "https://store.example/media/tones-icon.png",
       screenshots: ["https://store.example/media/notes.png"]
     });
@@ -74,13 +74,13 @@ describe("store metadata", () => {
       name: "Example Store",
       apps: [{
         id: "com.example.notes", title: "Notes", version: "1.0.0", packageUrl: "notes.package.json",
-        rating: 8, downloads: -1, featured: "yes", categories: ["Valid", 42, ""],
+        rating: 8, downloads: -1, featured: "yes", fullAccess: "yes", categories: ["Valid", 42, ""],
         iconUrl: "https://cdn.example/icon.png", screenshots: "not-a-list"
       }]
     }, source);
     expect(index.apps[0]).toMatchObject({
       categories: ["Valid"], rating: null, downloads: null, featured: false,
-      permissions: [], iconUrl: null, screenshots: []
+      permissions: [], fullAccess: false, iconUrl: null, screenshots: []
     });
   });
 });

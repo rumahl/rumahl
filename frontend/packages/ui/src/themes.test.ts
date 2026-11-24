@@ -1,6 +1,7 @@
 import { describe, expect, test } from "vitest";
 import { readFileSync } from "node:fs";
 import { defaultTheme, normalizeThemeBase, rumahlTheme, themeFromPackage, themes } from "./themes";
+import { defineTheme } from "./sdk";
 import { defaultTokens } from "./tokens";
 
 const packageFile = (name: string) => readFileSync(`../../../examples/themes/hallows/${name}`, "utf8");
@@ -145,4 +146,22 @@ test("hallows is a dark-only candle-lit theme with its own stylesheet", () => {
   expect(css).toContain("hallows-unstable-bar");
   expect(css).toContain("prefers-reduced-motion: no-preference");
   expect(hallowsTheme.variants).toEqual(rumahlTheme.variants);
+});
+
+describe("theme runtime metadata", () => {
+  test("defaults legacy code to full-shell support and preserves sandbox declarations", () => {
+    expect(defineTheme({ id: "com.example.legacy", name: "Legacy", code: "export default () => {}" }).runtime).toBe("shell");
+    expect(defineTheme({ id: "com.example.both", name: "Both", code: "export default () => {}", runtime: "both" }).runtime).toBe("both");
+    expect(defineTheme({ id: "com.example.sandbox", name: "Sandbox", code: "export default () => {}", runtime: "sandbox" }).runtime).toBe("sandbox");
+  });
+
+  test("carries package runtime and capabilities through themeFromPackage", () => {
+    const theme = themeFromPackage(
+      { id: "com.example.package", name: "Package", runtime: "sandbox", capabilities: ["network"] },
+      undefined,
+      "export default () => {}"
+    );
+    expect(theme.runtime).toBe("sandbox");
+    expect(theme.capabilities).toEqual(["network"]);
+  });
 });

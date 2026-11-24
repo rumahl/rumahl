@@ -580,7 +580,7 @@ function StoreDetail({ entry, app, source, more, installing, busy, backLabel, on
       <span className="store-product-hero__scrim" aria-hidden="true" />
       <AppArtwork id={entry.id} title={entry.title} iconUrl={entry.iconUrl} large />
       <div className="store-product-hero__identity">
-        <h1>{entry.title}{app ? <span className="store-pill">{t("store.installedShort")}</span> : null}</h1>
+        <h1>{entry.title}{app ? <span className="store-pill">{t("store.installedShort")}</span> : null}{entry.fullAccess ? <span className="store-pill store-pill--danger">{t("store.fullAccessBadge")}</span> : null}</h1>
         <button type="button" className="store-developer-link" onClick={() => onDeveloper(entry)}>{publisherLabel(entry)}</button>
         <p className="store-product-hero__category">{entry.categories.join(" · ") || t("store.category")} <span>·</span> {entry.sourceName}</p>
       </div>
@@ -619,6 +619,11 @@ function StoreDetail({ entry, app, source, more, installing, busy, backLabel, on
         <div className="store-fact"><span className="store-fact__icon"><InfoIcon aria-hidden="true" /></span><div><span>{t("store.permissions")}</span><strong>{permissionFact}</strong><p>{entry.permissions.length ? t("store.declared") : t("store.noSpecialPermissions")}</p><a href={`#${sectionId("permissions")}`} onClick={(event) => { event.preventDefault(); jump("permissions"); }}>{t("store.seePermissions")}</a></div></div>
         <div className="store-fact"><span className="store-fact__icon"><StoreIcon aria-hidden="true" /></span><div><span>{t("store.source")}</span><strong>{entry.sourceName}</strong><p>{sourceHost ?? ""}</p><a href={`#${sectionId("package")}`} onClick={(event) => { event.preventDefault(); jump("package"); }}>{t("store.packageDetails")}</a></div></div>
       </div>
+      {entry.fullAccess ? <p className="store-full-access-warning">
+        <strong>{t("store.fullAccessTitle")}</strong>
+        {" "}{t("store.fullAccessWarning", { title: entry.title })}{" "}
+        {t("store.fullAccessLiability")}
+      </p> : null}
       <p className="store-requirements__note">{t("store.requirementsNote")}</p>
     </section>
 
@@ -710,6 +715,7 @@ export function StoreApp() {
   const [searchFocusTick, setSearchFocusTick] = useState(0);
   const [reload, setReload] = useState(0);
   const [installing, setInstalling] = useState<string | null>(null);
+  const [fullAccess, setFullAccess] = useState<StoreAppEntry | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
   const [developerKey, setDeveloperKey] = useState<string | null>(null);
@@ -1013,7 +1019,7 @@ export function StoreApp() {
     open(appPath(app.id));
   };
 
-  const install = async (entry: StoreAppEntry) => {
+  const performInstall = async (entry: StoreAppEntry) => {
     if (!live || installing || installFeature.state !== "ready") return;
     setInstalling(entryKey(entry));
     setError(null);
@@ -1032,6 +1038,14 @@ export function StoreApp() {
     } finally {
       setInstalling(null);
     }
+  };
+
+  const install = (entry: StoreAppEntry) => {
+    if (entry.fullAccess) {
+      setFullAccess(entry);
+      return;
+    }
+    void performInstall(entry);
   };
 
   const confirmCertificate = async () => {
@@ -1259,6 +1273,15 @@ export function StoreApp() {
           <Button variant="primary" disabled={trusting} onClick={() => void confirmCertificate()}>{trusting ? t("store.certificate.trusting") : t("store.certificate.trust")}</Button>
         </div>
       </div></RumahlModal> : null}
+      {fullAccess ? <RumahlModal open kind="alert" onClose={() => setFullAccess(null)} title={t("store.fullAccessTitle")} description={t("store.fullAccessWarning", { title: fullAccess.title })} application={t("store.brandName")} closeLabel={t("store.fullAccessCancel")}>
+        <div className="store-full-access">
+          <p className="store-full-access__liability">{t("store.fullAccessLiability")}</p>
+          <div className="store-certificate__actions">
+            <Button variant="secondary" onClick={() => setFullAccess(null)}>{t("store.fullAccessCancel")}</Button>
+            <Button variant="danger" onClick={() => { if (!fullAccess) return; const entry = fullAccess; setFullAccess(null); void performInstall(entry); }}>{t("store.fullAccessAccept")}</Button>
+          </div>
+        </div>
+      </RumahlModal> : null}
     </main>
   </>;
 }

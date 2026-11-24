@@ -432,6 +432,29 @@
   white-space: nowrap;
 }
 .store-pill::before { content: ""; width: 5px; height: 5px; border-radius: 50%; background: currentColor; }
+.store-pill--danger {
+  border-color: color-mix(in srgb, var(--rumahl-ui-color-danger, #e5484d) 50%, transparent);
+  background: color-mix(in srgb, var(--rumahl-ui-color-danger, #e5484d) 12%, transparent);
+  color: var(--rumahl-ui-color-danger, #e5484d);
+}
+.store-full-access-warning {
+  margin: 0 0 14px;
+  padding: 12px 14px;
+  border: 1px solid color-mix(in srgb, var(--rumahl-ui-color-danger, #e5484d) 45%, transparent);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--rumahl-ui-color-danger, #e5484d) 7%, transparent);
+  font-size: 13px;
+  line-height: 1.5;
+}
+.store-full-access__liability {
+  margin: 0 0 16px;
+  padding: 12px 14px;
+  border: 1px solid color-mix(in srgb, var(--rumahl-ui-color-danger, #e5484d) 45%, transparent);
+  border-radius: 12px;
+  color: var(--rumahl-ui-color-danger, #e5484d);
+  font-size: 13px;
+  line-height: 1.5;
+}
 .store-result-list { display: grid; }
 .store-row { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 14px; padding: 12px 0; border-bottom: 1px solid color-mix(in srgb, currentColor 8%, transparent); }
 .store-row .store-art { width: 44px; height: 44px; border-radius: 12px; font-size: 17px; }

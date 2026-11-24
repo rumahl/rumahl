@@ -2,11 +2,19 @@ import { RumahlButtonGroup } from "../components/RumahlButtonGroup";
 import { LoadingStatus } from "../components/LoadingStatus";
 import { useEffect, useRef, useState } from "react";
 import { useTheme } from "@rumahl/ui";
-import type { ColorParameter } from "@rumahl/ui/themes";
+import type { ColorParameter, Theme } from "@rumahl/ui/themes";
 import {
-  installThemeFile,
-  useThemeRegistry
+  installTheme,
+  isThemeTrusted,
+  prepareThemeFile,
+  revokeThemeTrust,
+  trustTheme,
+  useThemeRegistry,
+  type PreparedThemeInstall
 } from "../preferences/installed-themes";
+import { ThemeConsent } from "../components/ThemeConsent";
+import { useOptionalShell } from "../shell/ShellContext";
+import { reportActivity } from "../apps/recovery-client";
 import { ThemeSafetyError } from "../preferences/theme-safety";
 import type { MessageKey } from "../i18n/locales/en";
 import { useShellPreferences } from "../preferences/ShellPreferences";
@@ -119,13 +127,31 @@ export function DisplaySettings({ section = "appearance" }: { section?: DisplayS
   const themes = useThemeRegistry();
   const effectiveTheme = themes.find((item) => item.id === settings.theme);
   const { tokens, theme: activeTheme } = useTheme();
+  const shell = useOptionalShell();
   const installRef = useRef<HTMLInputElement>(null);
   const [installError, setInstallError] = useState<string | null>(null);
   const [pendingTheme, setPendingTheme] = useState<{ scope: "user" | "device"; value: string | null } | null>(null);
-  function chooseTheme(value: string | null) {
+  const [consent, setConsent] = useState<{
+    theme: Theme;
+    codeHash: string | null;
+    prepared?: PreparedThemeInstall;
+    value?: string | null;
+  } | null>(null);
+  const activity = (action: string) => {
+    if (shell?.live) reportActivity(shell.live.request, action);
+  };
+  function chooseThemeNow(value: string | null) {
     if (settings.preferences?.[scope].shellTheme === value) return;
     settings.saveTheme(scope, value);
     setPendingTheme({ scope, value });
+  }
+  function chooseTheme(value: string | null) {
+    const theme = value ? themes.find((item) => item.id === value) : undefined;
+    if (theme?.code && !isThemeTrusted(theme) && (theme.runtime ?? "shell") !== "sandbox") {
+      setConsent({ theme, codeHash: theme.codeHash ?? null, value });
+      return;
+    }
+    chooseThemeNow(value);
   }
   // Ask only after the preference was persisted, so an immediate reload cannot
   // discard the newly selected theme.
@@ -144,17 +170,57 @@ export function DisplaySettings({ section = "appearance" }: { section?: DisplayS
       ]
     });
   }, [pendingTheme, settings.preferences, t]);
-  const installTheme = async (file: File) => {
+  const finishInstall = (prepared: PreparedThemeInstall, execution: "sandbox" | "trusted") => {
+    const theme = installTheme(prepared.data, "manual", {
+      execution,
+      ...(prepared.codeHash ? { codeHash: prepared.codeHash } : {}),
+    });
+    activity(`theme install ${theme.id} ${execution}`);
+    chooseThemeNow(theme.id);
+    setInstallError(null);
+  };
+
+  const installPackage = async (file: File) => {
     try {
-      const theme = await installThemeFile(file);
-      chooseTheme(theme.id);
-      setInstallError(null);
+      const prepared = await prepareThemeFile(file);
+      const runtime = prepared.theme.runtime ?? "shell";
+      if (!prepared.theme.code || runtime === "sandbox") {
+        finishInstall(prepared, "sandbox");
+      } else {
+        setConsent({
+          theme: prepared.theme,
+          codeHash: prepared.codeHash,
+          prepared,
+        });
+      }
     } catch (error) {
       setInstallError(
         error instanceof ThemeSafetyError
           ? error.message
-          : "This theme could not be installed."
+          : t("themes.invalid")
       );
+    }
+  };
+
+  const chooseExecution = (execution: "sandbox" | "trusted") => {
+    if (!consent) return;
+    const current = consent;
+    setConsent(null);
+    if (current.prepared) {
+      finishInstall(current.prepared, execution);
+      return;
+    }
+    if (execution === "trusted") {
+      void trustTheme(current.theme.id, current.codeHash ?? undefined)
+        .then(() => {
+          activity(`theme trust ${current.theme.id}`);
+          if (current.value !== undefined) chooseThemeNow(current.value);
+        })
+        .catch(() => setInstallError(t("themes.invalid")));
+    } else {
+      revokeThemeTrust(current.theme.id);
+      activity(`theme revoke ${current.theme.id}`);
+      if (current.value !== undefined) chooseThemeNow(current.value);
     }
   };
   const {
@@ -500,7 +566,7 @@ export function DisplaySettings({ section = "appearance" }: { section?: DisplayS
               onChange={(event) => {
                 const file = event.target.files?.[0];
                 event.target.value = "";
-                if (file) void installTheme(file);
+                if (file) void installPackage(file);
               }}
             />
             <Button onClick={() => installRef.current?.click()}>
@@ -1125,6 +1191,12 @@ export function DisplaySettings({ section = "appearance" }: { section?: DisplayS
       {settings.persistence !== "local" ? (
         <p>{t("preferences.temporary")}</p>
       ) : null}
+      {consent ? <ThemeConsent
+        theme={consent.theme}
+        codeHash={consent.codeHash}
+        onCancel={() => setConsent(null)}
+        onChoose={chooseExecution}
+      /> : null}
     </section>
   );
 }

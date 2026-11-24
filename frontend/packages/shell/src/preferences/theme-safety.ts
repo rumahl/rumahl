@@ -1,6 +1,7 @@
 import { contrastRatio } from "@rumahl/ui/color";
 import { composite } from "@rumahl/ui/palette";
 import { defineTheme, type ThemeInput } from "@rumahl/ui/sdk";
+import { normalizeThemeRuntime } from "@rumahl/ui/themes";
 import { readIconPack } from "@rumahl/ui/icon-pack";
 import { TOKEN_IDS, type Tokens } from "@rumahl/ui/tokens";
 
@@ -279,11 +280,14 @@ export function validateTheme(raw: unknown): SafetyReport {
 
   const code = typeof input.code === "string" ? input.code : "";
   if (code) {
+    const runtime = normalizeThemeRuntime(input.runtime);
     issues.push(
       issue(
         "warning",
         "code-theme",
-        "This theme contains executable code; only install code themes from authors you trust."
+        runtime === "shell"
+          ? "This theme contains executable code that requires full shell access; only install it from authors you trust."
+          : "This theme contains executable code that runs in an isolated sandbox layer."
       )
     );
     for (const { pattern, label } of FORBIDDEN_CODE) {
