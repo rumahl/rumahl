@@ -5,8 +5,6 @@ updates:
     schedule:
       interval: "weekly"
     open-pull-requests-limit: 5
-    # Keep the branch editable if the lockfile repair workflow ever misses one.
-    maintainerCanModify: true
     labels:
       - frontend
       - dependencies
