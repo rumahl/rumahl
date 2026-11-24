@@ -318,6 +318,7 @@ pub fn router(state: GatewayState) -> Router {
         .merge(oidc::routes())
         .merge(crate::preferences::routes())
         .merge(crate::os_mode::routes())
+        .merge(crate::theme_policy::routes())
         .merge(crate::store::routes())
         .merge(crate::host_files::routes())
         .merge(crate::weather_warnings::routes())

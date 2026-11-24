@@ -382,6 +382,14 @@ pub fn policy_catalog() -> &'static [PolicyDefinition] {
             maximum: 0,
             description: "Who may remove installed apps. Off: only administrators can uninstall.",
         },
+        PolicyDefinition {
+            key: "rumahl.os.allow_full_access_themes",
+            kind: PolicyKind::Boolean,
+            default: PolicyDefault::Boolean(true),
+            minimum: 0,
+            maximum: 0,
+            description: "Allow themes that request full shell access. Off: code themes must run sandboxed and full access is unavailable.",
+        },
         // Cross-account home access.
         PolicyDefinition {
             key: "rumahl.home.cross_user_read",

@@ -23,6 +23,8 @@ pub use sensors::{
 mod recovery_settings;
 pub use recovery_settings::RecoverySettings;
 
+mod theme_policy;
+
 mod recovery_tools;
 pub use recovery_tools::{read_boot, read_logs, read_network, read_system, run_network_test};
 

@@ -20,6 +20,7 @@ import {
 } from "../preferences/installed-themes";
 import { ThemeSafetyError } from "../preferences/theme-safety";
 import { useOptionalShell } from "../shell/ShellContext";
+import { useFullAccessThemes } from "../preferences/theme-policy";
 import { reportActivity } from "../apps/recovery-client";
 import { dismissToast, showToast } from "../shell/toasts";
 import { useTheme } from "@rumahl/ui";
@@ -78,6 +79,7 @@ export function ThemeManager() {
   const activeName = getTheme(active.id)?.name ?? active.name;
   const fileRef = useRef<HTMLInputElement>(null);
   const shell = useOptionalShell();
+  const fullAccessAllowed = useFullAccessThemes(shell?.live);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [pendingTheme, setPendingTheme] = useState<string | null>(null);
@@ -203,7 +205,7 @@ export function ThemeManager() {
 
   return <section className="theme-manager">
     <SettingsHeading title={t("themes.title")} help={t("themes.help")} back="/settings/display" />
-    <p className="theme-security-notice">{t("themes.securityNotice")}</p>
+    <p className="theme-security-notice">{fullAccessAllowed ? t("themes.securityNotice") : t("themes.fullAccessDisabled")}</p>
 
     <h3 className="section-title">{t("themes.general")}</h3>
     <div className="settings-group">
@@ -282,7 +284,7 @@ export function ThemeManager() {
               </Button>
               {theme.code && trusted
                 ? <Button size="sm" variant="ghost" onClick={() => revoke(theme.id)}>{t("themes.revokeFullAccess")}</Button>
-                : theme.code && runtime !== "sandbox"
+                : theme.code && runtime !== "sandbox" && fullAccessAllowed
                   ? <Button size="sm" variant="ghost" onClick={() => requestTrust(theme)}>{t("themes.allowFullAccess")}</Button>
                   : null}
               {isInstalledTheme(theme.id) ? <Button size="sm" variant="ghost" onClick={() => remove(theme.id)}>{t("themes.uninstall")}</Button> : null}
@@ -296,6 +298,7 @@ export function ThemeManager() {
     {consent ? <ThemeConsent
       theme={consent.theme}
       codeHash={consent.codeHash}
+      allowFullAccess={fullAccessAllowed}
       onCancel={() => setConsent(null)}
       onChoose={chooseExecution}
     /> : null}

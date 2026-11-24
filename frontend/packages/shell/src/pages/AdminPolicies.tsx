@@ -26,6 +26,7 @@ const labels: Record<string, MessageKey> = {
   "rumahl.os.advanced_mode": "admin.policies.advancedMode",
   "rumahl.os.allow_store_install": "admin.policies.storeInstall",
   "rumahl.os.allow_app_uninstall": "admin.policies.appUninstall",
+  "rumahl.os.allow_full_access_themes": "admin.policies.fullAccessThemes",
   "rumahl.home.cross_user_read": "admin.policies.crossUserRead",
   "rumahl.files.quota_bytes": "admin.policies.quotaBytes",
   "rumahl.files.max_file_bytes": "admin.policies.maxFileBytes",

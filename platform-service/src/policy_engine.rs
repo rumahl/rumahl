@@ -62,6 +62,12 @@ impl PolicyEngine for LocalPolicyEngine {
             .unwrap_or(false)
     }
 
+    fn full_access_themes_allowed(&self) -> bool {
+        self.effective_device(&key("rumahl.os.allow_full_access_themes"))
+            .as_bool()
+            .unwrap_or(true)
+    }
+
     fn home_cross_user_read(&self, actor: UserId) -> bool {
         self.effective(actor, &key("rumahl.home.cross_user_read"))
             .as_bool()
@@ -144,6 +150,7 @@ mod tests {
         assert!(engine.advanced_mode_allowed(user));
         assert!(engine.store_install_allowed(user));
         assert!(engine.app_uninstall_allowed(user));
+        assert!(engine.full_access_themes_allowed());
         assert!(!engine.home_cross_user_read(user));
         assert!(engine.durable_grants_allowed(user));
         assert_eq!(
@@ -218,10 +225,18 @@ mod tests {
                 ])),
             )
             .unwrap();
+        store
+            .set_assignment(
+                rumahl_core::PolicySubject::Device,
+                key("rumahl.os.allow_full_access_themes"),
+                Some(rumahl_core::PolicyValue::Boolean(false)),
+            )
+            .unwrap();
         drop(store);
 
         let engine = LocalPolicyEngine::open(&path).unwrap();
         assert!(!engine.advanced_mode_allowed(user));
+        assert!(!engine.full_access_themes_allowed());
         assert_eq!(engine.session_lifetime_seconds(user), 600);
         assert_eq!(engine.password_rules().minimum_characters, 24);
         assert_eq!(engine.password_rules().required_character_classes, 3);
