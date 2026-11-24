@@ -11,6 +11,8 @@
 //! * no redirects (a 30x is returned to the app as-is);
 //! * link-local/unspecified/multicast destinations are refused, even after
 //!   DNS resolution, so the broker cannot be aimed at metadata services;
+//! * private/loopback destinations need a separate consent on the origin
+//!   grant; a public grant cannot reach them through DNS;
 //! * a small method/header/body/response budget;
 //! * one resolved address is pinned for the request, so DNS cannot change
 //!   the destination between the check and the connection.
@@ -29,9 +31,10 @@ use axum::{
     routing::{get, post},
 };
 use futures_util::StreamExt;
+use rumahl_core::network::{allowed, private};
 use rumahl_core::{AuditAction, AuditActor, AuditOutcome, InstallationId};
 use std::collections::HashMap;
-use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
+use std::net::{IpAddr, SocketAddr};
 use std::sync::Arc;
 use std::time::Duration;
 use url::Url;
@@ -116,6 +119,7 @@ fn origin_info(origin: &crate::AppNetworkOrigin) -> serde_json::Value {
         "origin": origin.origin,
         "validity": origin.validity,
         "expiresAt": origin.expires_at,
+        "allowPrivate": origin.allow_private,
     })
 }
 
@@ -188,10 +192,12 @@ async fn grant_origin(
     let Some(object) = value.as_object() else {
         return error(StatusCode::BAD_REQUEST);
     };
-    if object
-        .keys()
-        .any(|key| !matches!(key.as_str(), "origin" | "validity" | "expiresIn"))
-    {
+    if object.keys().any(|key| {
+        !matches!(
+            key.as_str(),
+            "origin" | "validity" | "expiresIn" | "allowPrivate"
+        )
+    }) {
         return error(StatusCode::BAD_REQUEST);
     }
     let Some(origin) = value
@@ -201,6 +207,11 @@ async fn grant_origin(
         .map(str::to_owned)
     else {
         return error(StatusCode::BAD_REQUEST);
+    };
+    let allow_private = match value.get("allowPrivate") {
+        None | Some(serde_json::Value::Bool(false)) => false,
+        Some(serde_json::Value::Bool(true)) => true,
+        Some(_) => return error(StatusCode::BAD_REQUEST),
     };
     let validity = match value.get("validity").and_then(|value| value.as_str()) {
         Some("session") => {
@@ -250,7 +261,14 @@ async fn grant_origin(
     };
     let installation_for_call = installation.clone();
     match tokio::task::spawn_blocking(move || {
-        apps.grant_network_origin(identity, &id, &installation_for_call, &origin, validity)
+        apps.grant_network_origin(
+            identity,
+            &id,
+            &installation_for_call,
+            &origin,
+            validity,
+            allow_private,
+        )
     })
     .await
     {
@@ -260,7 +278,15 @@ async fn grant_origin(
                 AuditActor::User(identity.user_id),
                 AuditAction::GrantIssued,
                 AuditOutcome::Success,
-                Some(&format!("{installation}:network:{}", origin.origin)),
+                Some(&format!(
+                    "{installation}:network:{}:{}",
+                    origin.origin,
+                    if origin.allow_private {
+                        "private"
+                    } else {
+                        "public"
+                    }
+                )),
             );
             json_response(origin_info(&origin), StatusCode::OK)
         }
@@ -447,6 +473,16 @@ async fn forward(
                 StatusCode::FORBIDDEN,
             );
         }
+        Ok(Err(AppNetworkError::PrivateConsentRequired { origin })) => {
+            return json_response(
+                serde_json::json!({
+                    "outcome": "denied",
+                    "reason": "private-approval-required",
+                    "origin": origin,
+                }),
+                StatusCode::FORBIDDEN,
+            );
+        }
         Ok(Err(AppNetworkError::Denied)) => {
             record_audit(
                 &state,
@@ -490,44 +526,52 @@ async fn forward(
             );
             response
         }
-        Err(_) => denied("upstream-unavailable"),
+        Err(ExecuteError::PrivateConsent { origin }) => json_response(
+            serde_json::json!({
+                "outcome": "denied",
+                "reason": "private-approval-required",
+                "origin": origin,
+            }),
+            StatusCode::FORBIDDEN,
+        ),
+        Err(ExecuteError::Blocked) => denied("blocked-target"),
+        Err(ExecuteError::Unavailable) => denied("upstream-unavailable"),
     }
 }
 
-fn blocked_ip(ip: IpAddr) -> bool {
-    match ip {
-        IpAddr::V4(ip) => blocked_v4(ip),
-        IpAddr::V6(ip) => blocked_v6(ip),
-    }
-}
-
-fn blocked_v4(ip: Ipv4Addr) -> bool {
-    ip.is_link_local() || ip.is_unspecified() || ip.is_broadcast() || ip.is_multicast()
-}
-
-fn blocked_v6(ip: Ipv6Addr) -> bool {
-    ip.is_unspecified() || ip.is_multicast() || (ip.segments()[0] & 0xffc0) == 0xfe80
+#[derive(Debug)]
+enum ExecuteError {
+    Blocked,
+    PrivateConsent { origin: String },
+    Unavailable,
 }
 
 /// Performs the prepared request with a pinned destination and a bounded body.
 async fn execute(
     request: crate::PreparedNetworkRequest,
-) -> Result<(u16, Option<String>, Vec<u8>, bool), ()> {
-    let url = Url::parse(&request.url).map_err(|_| ())?;
-    let host = url.host_str().ok_or(())?;
-    let port = url.port_or_known_default().ok_or(())?;
+) -> Result<(u16, Option<String>, Vec<u8>, bool), ExecuteError> {
+    let url = Url::parse(&request.url).map_err(|_| ExecuteError::Unavailable)?;
+    let host = url.host_str().ok_or(ExecuteError::Unavailable)?;
+    let port = url
+        .port_or_known_default()
+        .ok_or(ExecuteError::Unavailable)?;
     let addresses: Vec<SocketAddr> = if let Ok(ip) = host.parse::<IpAddr>() {
         vec![SocketAddr::new(ip, port)]
     } else {
         tokio::net::lookup_host((host, port))
             .await
-            .map_err(|_| ())?
+            .map_err(|_| ExecuteError::Unavailable)?
             .collect()
     };
+    if !request.allow_private && addresses.iter().any(|address| private(address.ip())) {
+        return Err(ExecuteError::PrivateConsent {
+            origin: url.origin().ascii_serialization(),
+        });
+    }
     let address = addresses
         .into_iter()
-        .find(|address| !blocked_ip(address.ip()))
-        .ok_or(())?;
+        .find(|address| allowed(address.ip(), request.allow_private))
+        .ok_or(ExecuteError::Blocked)?;
     let mut builder = reqwest::Client::builder()
         .redirect(reqwest::redirect::Policy::none())
         .connect_timeout(CONNECT_TIMEOUT)
@@ -538,8 +582,9 @@ async fn execute(
     if host.parse::<IpAddr>().is_err() {
         builder = builder.resolve(host, address);
     }
-    let client = builder.build().map_err(|_| ())?;
-    let method = reqwest::Method::from_bytes(request.method.as_bytes()).map_err(|_| ())?;
+    let client = builder.build().map_err(|_| ExecuteError::Unavailable)?;
+    let method = reqwest::Method::from_bytes(request.method.as_bytes())
+        .map_err(|_| ExecuteError::Unavailable)?;
     let mut builder = client.request(method, &request.url);
     for (name, value) in &request.headers {
         builder = builder.header(name, value);
@@ -547,7 +592,10 @@ async fn execute(
     if let Some(body) = request.body {
         builder = builder.body(body);
     }
-    let response = builder.send().await.map_err(|_| ())?;
+    let response = builder
+        .send()
+        .await
+        .map_err(|_| ExecuteError::Unavailable)?;
     let status = response.status().as_u16();
     let content_type = response
         .headers()
@@ -559,7 +607,7 @@ async fn execute(
     let mut truncated = false;
     while let Some(chunk) = stream.next().await {
         let Ok(chunk) = chunk else {
-            return Err(());
+            return Err(ExecuteError::Unavailable);
         };
         if body.len() + chunk.len() > request.max_bytes {
             let remaining = request.max_bytes.saturating_sub(body.len());

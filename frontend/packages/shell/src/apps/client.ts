@@ -364,11 +364,18 @@ export interface AppNetworkOrigin {
   origin: string;
   validity: "session" | "durable";
   expiresAt: number | null;
+  allowPrivate: boolean;
 }
 export class NetworkConsentRequiredError extends Error {
   constructor(readonly origin: string) {
     super("network consent required");
     this.name = "NetworkConsentRequiredError";
+  }
+}
+export class NetworkPrivateConsentRequiredError extends Error {
+  constructor(readonly origin: string) {
+    super("private network consent required");
+    this.name = "NetworkPrivateConsentRequiredError";
   }
 }
 export class NetworkDeniedError extends Error {
@@ -395,6 +402,8 @@ function networkError(value: unknown): Error {
   const object = typeof value === "object" && value !== null ? value as Record<string, unknown> : {};
   if (object.reason === "approval-required" && typeof object.origin === "string")
     return new NetworkConsentRequiredError(object.origin);
+  if (object.reason === "private-approval-required" && typeof object.origin === "string")
+    return new NetworkPrivateConsentRequiredError(object.origin);
   return new NetworkDeniedError(typeof object.reason === "string" ? object.reason : "network-denied");
 }
 export async function requestAppNetwork(
@@ -451,6 +460,7 @@ export async function grantNetworkOrigin(
   app: InstalledApp,
   origin: string,
   validity: "session" | "durable",
+  allowPrivate: boolean,
   signal: AbortSignal
 ): Promise<AppNetworkOrigin> {
   const value = record(await payload(await request(
@@ -458,13 +468,14 @@ export async function grantNetworkOrigin(
     {
       method: "PUT", cache: "no-store", credentials: "same-origin", signal,
       headers: { Accept: "application/json", "Content-Type": "application/json" },
-      body: JSON.stringify({ origin, validity }),
+      body: JSON.stringify({ origin, validity, allowPrivate }),
     }
   ), 64 * 1024));
   if (typeof value.origin !== "string" || (value.validity !== "session" && value.validity !== "durable") ||
-      !(value.expiresAt === null || typeof value.expiresAt === "number"))
+      !(value.expiresAt === null || typeof value.expiresAt === "number") ||
+      typeof value.allowPrivate !== "boolean")
     throw new Error("invalid network origin");
-  return { origin: value.origin, validity: value.validity, expiresAt: value.expiresAt };
+  return { origin: value.origin, validity: value.validity, expiresAt: value.expiresAt, allowPrivate: value.allowPrivate };
 }
 export async function revokeNetworkOrigin(
   request: ShellRequest,

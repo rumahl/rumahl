@@ -191,6 +191,8 @@ pub struct PreparedNetworkRequest {
     pub headers: Vec<(String, String)>,
     pub body: Option<Vec<u8>>,
     pub max_bytes: usize,
+    /// The origin grant explicitly allows private and loopback destinations.
+    pub allow_private: bool,
 }
 
 /// One origin the user approved for an app installation.
@@ -201,6 +203,8 @@ pub struct AppNetworkOrigin {
     /// `durable` or `session`.
     pub validity: String,
     pub expires_at: Option<u64>,
+    /// The user approved private and loopback destinations for this origin.
+    pub allow_private: bool,
 }
 
 /// Why a brokered network request did not run. Consent is a separate outcome
@@ -216,6 +220,9 @@ pub enum AppNetworkError {
     Blocked,
     /// The user has not approved this exact origin yet.
     ConsentRequired { origin: String },
+    /// The origin was approved for public internet only; reaching a private
+    /// address needs a new private-network consent.
+    PrivateConsentRequired { origin: String },
 }
 /// One entry of an app's private data directory.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -385,6 +392,7 @@ pub trait AppProvider: Send + Sync + 'static {
         _installation: InstallationId,
         _origin: &str,
         _validity: GrantValidityChoice,
+        _allow_private: bool,
     ) -> Result<AppNetworkOrigin, AppAccessError> {
         Err(AppAccessError::Unavailable)
     }
@@ -976,10 +984,16 @@ impl AppAccess {
         installation: &str,
         origin: &str,
         validity: GrantValidityChoice,
+        allow_private: bool,
     ) -> Result<AppNetworkOrigin, AppAccessError> {
         let app = self.installed(identity, id, installation)?;
-        self.provider
-            .grant_app_network(identity, app.installation_id, origin, validity)
+        self.provider.grant_app_network(
+            identity,
+            app.installation_id,
+            origin,
+            validity,
+            allow_private,
+        )
     }
 
     /// Revokes a network origin consent.

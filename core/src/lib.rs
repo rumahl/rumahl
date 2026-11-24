@@ -7,6 +7,7 @@ pub mod contributions;
 pub mod databases;
 pub mod events;
 pub mod identity;
+pub mod network;
 pub mod permissions;
 pub mod persistence;
 pub mod platform;

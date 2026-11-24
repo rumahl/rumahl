@@ -103,9 +103,9 @@ pub struct PersistentApps {
     pub(crate) network_sessions: NetworkSessions,
 }
 
-/// Session-only network approvals: (session, installation) → [(origin, expiry)].
+/// Session-only network approvals: (session, installation) → [(origin, expiry, allow_private)].
 pub(crate) type NetworkSessions = std::sync::Mutex<
-    std::collections::HashMap<(SessionId, InstallationId), Vec<(String, Option<u64>)>>,
+    std::collections::HashMap<(SessionId, InstallationId), Vec<(String, Option<u64>, bool)>>,
 >;
 
 /// Default per-app storage quota: 256 MiB of private app data.
@@ -705,8 +705,9 @@ impl AppProvider for PersistentApps {
         installation: InstallationId,
         origin: &str,
         validity: rumahl_platform_web::GrantValidityChoice,
+        allow_private: bool,
     ) -> Result<rumahl_platform_web::AppNetworkOrigin, AppAccessError> {
-        self.grant_app_network_impl(identity, installation, origin, validity)
+        self.grant_app_network_impl(identity, installation, origin, validity, allow_private)
     }
     fn revoke_app_network(
         &self,

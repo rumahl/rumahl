@@ -21,7 +21,7 @@ import {
 import {
   fetchAppSettings, invokeCapability as requestCapabilityInvocation, launchApp,
   readAppFileContent, requestAppNetwork, updateAppSettings, writeAppFileContent,
-  NetworkConsentRequiredError, SafeModeError, type InstalledApp
+  NetworkConsentRequiredError, NetworkPrivateConsentRequiredError, SafeModeError, type InstalledApp
 } from "./client";
 import { AppFilePickerDialog, type FilePickerRequest } from "./FilePickerDialog";
 import { NetworkConsentDialog, type NetworkConsentRequest } from "./NetworkConsentDialog";
@@ -255,14 +255,15 @@ function AppFrame({ app }: { app: InstalledApp }) {
         return { values: settings.values, secrets: [...settings.secrets] };
       },
       netRequest: async (input) => {
-        const askConsent = (origin: string) => new Promise<boolean>((resolve) => {
-          setNetworkConsent({ origin, resolve });
+        const askConsent = (origin: string, requiresPrivate: boolean) => new Promise<boolean>((resolve) => {
+          setNetworkConsent({ origin, requiresPrivate, resolve });
         });
         try {
           return await requestAppNetwork(live.request, app, input, new AbortController().signal);
         } catch (error) {
-          if (!(error instanceof NetworkConsentRequiredError)) throw error;
-          const granted = await askConsent(error.origin);
+          const privateConsent = error instanceof NetworkPrivateConsentRequiredError;
+          if (!(error instanceof NetworkConsentRequiredError) && !privateConsent) throw error;
+          const granted = await askConsent(error.origin, privateConsent);
           if (!granted) throw new Error("the user declined network access", { cause: error });
           return await requestAppNetwork(live.request, app, input, new AbortController().signal);
         }

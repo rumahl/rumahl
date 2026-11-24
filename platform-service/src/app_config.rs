@@ -8,8 +8,9 @@
 //! manifest and the user's consent.
 
 use std::collections::{HashMap, HashSet};
-use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
+use std::net::IpAddr;
 
+use rumahl_core::network::{blocked, private};
 use rumahl_core::{
     APP_NETWORK_PERMISSION, AppSettingKind, InstallationId, SessionId, UnixTimestamp,
 };
@@ -78,21 +79,6 @@ fn consent_origin(value: &str) -> Option<String> {
         return None;
     }
     request_origin(&url)
-}
-
-fn blocked_ip(ip: IpAddr) -> bool {
-    match ip {
-        IpAddr::V4(ip) => blocked_v4(ip),
-        IpAddr::V6(ip) => blocked_v6(ip),
-    }
-}
-
-fn blocked_v4(ip: Ipv4Addr) -> bool {
-    ip.is_link_local() || ip.is_unspecified() || ip.is_broadcast() || ip.is_multicast()
-}
-
-fn blocked_v6(ip: Ipv6Addr) -> bool {
-    ip.is_unspecified() || ip.is_multicast() || (ip.segments()[0] & 0xffc0) == 0xfe80
 }
 
 fn has_network_permission(app: &rumahl_core::InstalledAppSnapshot) -> bool {
@@ -309,7 +295,7 @@ impl PersistentApps {
         &self,
         session: SessionId,
         installation: InstallationId,
-    ) -> Vec<(String, Option<u64>)> {
+    ) -> Vec<(String, Option<u64>, bool)> {
         let now = now_seconds();
         let mut sessions = self
             .network_sessions
@@ -318,19 +304,20 @@ impl PersistentApps {
         let Some(entries) = sessions.get_mut(&(session, installation)) else {
             return Vec::new();
         };
-        entries.retain(|(_, expires)| expires.is_none_or(|expires| expires > now));
+        entries.retain(|(_, expires, _)| expires.is_none_or(|expires| expires > now));
         entries.clone()
     }
 
-    fn session_network_granted(
+    fn session_network_scope(
         &self,
         session: SessionId,
         installation: InstallationId,
         origin: &str,
-    ) -> bool {
+    ) -> Option<bool> {
         self.session_network_origins(session, installation)
-            .iter()
-            .any(|(candidate, _)| candidate == origin)
+            .into_iter()
+            .find(|(candidate, _, _)| candidate == origin)
+            .map(|(_, _, allow_private)| allow_private)
     }
 
     pub(crate) fn app_network_origins_impl(
@@ -353,15 +340,18 @@ impl PersistentApps {
                     origin: grant.origin,
                     validity: "durable".into(),
                     expires_at: grant.expires_at,
+                    allow_private: grant.allow_private,
                 },
             );
         }
-        for (origin, expires_at) in self.session_network_origins(identity.session_id, installation)
+        for (origin, expires_at, allow_private) in
+            self.session_network_origins(identity.session_id, installation)
         {
             origins.entry(origin.clone()).or_insert(AppNetworkOrigin {
                 origin,
                 validity: "session".into(),
                 expires_at,
+                allow_private,
             });
         }
         let mut values: Vec<_> = origins.into_values().collect();
@@ -375,6 +365,7 @@ impl PersistentApps {
         installation: InstallationId,
         origin: &str,
         validity: GrantValidityChoice,
+        allow_private: bool,
     ) -> Result<AppNetworkOrigin, AppAccessError> {
         let app = self.app(identity, installation)?;
         if !has_network_permission(&app) {
@@ -390,16 +381,22 @@ impl PersistentApps {
                 let entry = sessions
                     .entry((identity.session_id, installation))
                     .or_default();
-                if !entry.iter().any(|(candidate, _)| candidate == &origin) {
+                if let Some(item) = entry
+                    .iter_mut()
+                    .find(|(candidate, _, _)| candidate == &origin)
+                {
+                    *item = (origin.clone(), None, allow_private);
+                } else {
                     if entry.len() >= 64 {
                         return Err(AppAccessError::Unavailable);
                     }
-                    entry.push((origin.clone(), None));
+                    entry.push((origin.clone(), None, allow_private));
                 }
                 return Ok(AppNetworkOrigin {
                     origin,
                     validity: "session".into(),
                     expires_at: None,
+                    allow_private,
                 });
             }
             GrantValidityChoice::Durable { expires_in } => match expires_in {
@@ -420,11 +417,13 @@ impl PersistentApps {
             &identity.user_id.to_string(),
             &origin,
             expires_at,
+            allow_private,
         ))?;
         Ok(AppNetworkOrigin {
             origin,
             validity: "durable".into(),
             expires_at,
+            allow_private,
         })
     }
 
@@ -445,7 +444,7 @@ impl PersistentApps {
                 .lock()
                 .unwrap_or_else(|poisoned| poisoned.into_inner());
             if let Some(entries) = sessions.get_mut(&(identity.session_id, installation)) {
-                entries.retain(|(candidate, _)| candidate != &origin);
+                entries.retain(|(candidate, _, _)| candidate != &origin);
             }
         }
         let store = self.network_store()?;
@@ -472,26 +471,35 @@ impl PersistentApps {
         if url.host_str().is_none() {
             return Err(AppNetworkError::Blocked);
         }
+        let origin = request_origin(&url).ok_or(AppNetworkError::Blocked)?;
+        let allow_private =
+            match self.session_network_scope(identity.session_id, installation, &origin) {
+                Some(scope) => scope,
+                None => {
+                    let store = self
+                        .network_store()
+                        .map_err(|_| AppNetworkError::Unavailable)?;
+                    match store
+                        .grant_scope(
+                            &installation.to_string(),
+                            &identity.user_id.to_string(),
+                            &origin,
+                        )
+                        .map_err(|_| AppNetworkError::Unavailable)?
+                    {
+                        Some(scope) => scope,
+                        None => return Err(AppNetworkError::ConsentRequired { origin }),
+                    }
+                }
+            };
         if let Some(host) = url.host_str()
             && let Ok(ip) = host.parse::<IpAddr>()
-            && blocked_ip(ip)
         {
-            return Err(AppNetworkError::Blocked);
-        }
-        let origin = request_origin(&url).ok_or(AppNetworkError::Blocked)?;
-        if !self.session_network_granted(identity.session_id, installation, &origin) {
-            let store = self
-                .network_store()
-                .map_err(|_| AppNetworkError::Unavailable)?;
-            let granted = store
-                .is_granted(
-                    &installation.to_string(),
-                    &identity.user_id.to_string(),
-                    &origin,
-                )
-                .map_err(|_| AppNetworkError::Unavailable)?;
-            if !granted {
-                return Err(AppNetworkError::ConsentRequired { origin });
+            if blocked(ip) {
+                return Err(AppNetworkError::Blocked);
+            }
+            if private(ip) && !allow_private {
+                return Err(AppNetworkError::PrivateConsentRequired { origin });
             }
         }
         let method = request.method.trim().to_ascii_uppercase();
@@ -559,6 +567,7 @@ impl PersistentApps {
             headers,
             body,
             max_bytes,
+            allow_private,
         })
     }
 
@@ -592,6 +601,7 @@ impl PersistentApps {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use rumahl_core::network::allowed;
 
     #[test]
     fn origins_are_exactly_what_the_user_approves() {
@@ -638,16 +648,19 @@ mod tests {
             "224.0.0.1",
             "ff02::1",
         ] {
-            assert!(
-                blocked_ip(value.parse().unwrap()),
-                "{value} must be blocked"
-            );
+            assert!(blocked(value.parse().unwrap()), "{value} must be blocked");
         }
         for value in ["127.0.0.1", "::1", "192.168.1.2", "10.0.0.1", "2001:db8::1"] {
             assert!(
-                !blocked_ip(value.parse().unwrap()),
-                "{value} must be allowed"
+                !blocked(value.parse().unwrap()),
+                "{value} must not be blocked"
             );
+        }
+        for value in ["127.0.0.1", "::1", "192.168.1.2", "10.0.0.1", "fd00::1"] {
+            let ip: IpAddr = value.parse().unwrap();
+            assert!(private(ip), "{value} must be private");
+            assert!(!allowed(ip, false), "{value} must need consent");
+            assert!(allowed(ip, true), "{value} must be reachable with consent");
         }
     }
 }

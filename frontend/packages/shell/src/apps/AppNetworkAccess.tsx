@@ -62,6 +62,8 @@ export function AppNetworkAccess({ app }: { app: InstalledApp }) {
                 <code>{origin.origin}</code>
                 {" · "}
                 {t(origin.validity === "session" ? "appNetwork.session" : "appNetwork.durable")}
+                {" · "}
+                {t(origin.allowPrivate ? "appNetwork.private" : "appNetwork.public")}
                 {origin.expiresAt !== null
                   ? ` · ${t("appNetwork.expires", { date: new Intl.DateTimeFormat(locale).format(new Date(origin.expiresAt * 1000)) })}`
                   : ""}
