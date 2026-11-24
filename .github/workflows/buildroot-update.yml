@@ -27,19 +27,47 @@ jobs:
         run: |
           python3 <<'PY'
           import hashlib
+          import http.client
           import json
           import os
           import re
+          import time
+          import urllib.error
           import urllib.request
           from pathlib import Path
+
+          # buildroot.org (lighttpd) truncates the release index over HTTP/1.x:
+          # the response advertises 396051 bytes but closes after 390929.
+          # Resume interrupted transfers with Range requests instead of letting
+          # a single early EOF fail the scheduled job.
+          def fetch_bytes(url, *, timeout=120, attempts=6):
+              data = b''
+              for attempt in range(1, attempts + 1):
+                  headers = {'User-Agent': 'rumahl-buildroot-updater/1.0'}
+                  if data:
+                      headers['Range'] = f'bytes={len(data)}-'
+                  try:
+                      request = urllib.request.Request(url, headers=headers)
+                      with urllib.request.urlopen(request, timeout=timeout) as response:
+                          chunk = response.read()
+                          if data and response.status != 206:
+                              # The server ignored the range: start over.
+                              data = b''
+                          data += chunk
+                      return data
+                  except http.client.IncompleteRead as failure:
+                      data += failure.partial
+                      print(f'{url}: interrupted at {len(data)} bytes; resuming', flush=True)
+                  except (urllib.error.URLError, TimeoutError, ConnectionError) as failure:
+                      print(f'{url}: {failure}; retrying ({attempt}/{attempts})', flush=True)
+                  time.sleep(min(2 ** attempt, 15))
+              raise SystemExit(f'Unable to download {url} after {attempts} attempts')
 
           pin = Path('platform-buildroot/image/buildroot-source.json')
           current = json.loads(pin.read_text(encoding='utf-8'))
           # Official release archive index. Ignore release candidates and non-quarterly snapshots.
           index_url = 'https://buildroot.org/downloads/'
-          request = urllib.request.Request(index_url, headers={'User-Agent': 'rumahl-buildroot-updater/1.0'})
-          with urllib.request.urlopen(request, timeout=30) as response:
-              html = response.read().decode('utf-8', errors='replace')
+          html = fetch_bytes(index_url, timeout=60).decode('utf-8', errors='replace')
           versions = set(re.findall(r'buildroot-(20\d{2}\.(?:02|05|08|11)(?:\.\d+)?)\.tar\.gz(?:["<\s])', html))
           if not versions:
               raise SystemExit('No official stable releases discovered; refusing to change pin')
@@ -53,11 +81,7 @@ jobs:
               changed = False
           else:
               url = f'https://buildroot.org/downloads/buildroot-{latest}.tar.gz'
-              sha = hashlib.sha256()
-              request = urllib.request.Request(url, headers={'User-Agent': 'rumahl-buildroot-updater/1.0'})
-              with urllib.request.urlopen(request, timeout=120) as response:
-                  while chunk := response.read(1024 * 1024):
-                      sha.update(chunk)
+              sha = hashlib.sha256(fetch_bytes(url, timeout=300))
               current.update(version=latest, url=url, sha256=sha.hexdigest())
               pin.write_text(json.dumps(current, indent=2, ensure_ascii=False) + '\n', encoding='utf-8')
               print(f'Updated {old} -> {latest}; SHA-256: {sha.hexdigest()}')
